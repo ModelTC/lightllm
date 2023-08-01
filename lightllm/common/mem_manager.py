@@ -2,13 +2,13 @@ import torch
     
 
 class MemoryManager:
-    def __init__(self, size, dtype, head_num, head_dim, layer_num):
-        self.mem_state = torch.ones((size,), dtype=torch.bool, device="cuda")
-        self._mem_cum_sum = torch.empty((size,), dtype=torch.int32, device="cuda")
-        self.indexes = torch.arange(0, size, dtype=torch.long, device="cuda")
+    def __init__(self, size, dtype, head_num, head_dim, layer_num, device='cuda'):
+        self.mem_state = torch.ones((size,), dtype=torch.bool, device=device)
+        self._mem_cum_sum = torch.empty((size,), dtype=torch.int32, device=device)
+        self.indexes = torch.arange(0, size, dtype=torch.long, device=device)
         self.can_use_mem_size = size
-        self.key_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)]
-        self.value_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)]
+        self.key_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device=device) for _ in range(layer_num)]
+        self.value_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device=device) for _ in range(layer_num)]
     
     @torch.no_grad()
     def alloc(self, need_size):
