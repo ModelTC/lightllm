@@ -15,8 +15,8 @@ class TestInferBatch(unittest.TestCase):
 
     def test_init(self):
         for target in test_targets:
-            reqs = [self.get_test_requeet(request_id=0, length=233),
-                    self.get_test_requeet(request_id=4, length=234),]
+            reqs = [self.get_test_request(request_id=0, length=233),
+                    self.get_test_request(request_id=4, length=234),]
             mgr = MemoryManager(size=2048 * 50, dtype=torch.float16,
                                 head_dim=23, head_num=23, layer_num=23, device=target)
             batch = InferBatch.init_batch(
@@ -35,7 +35,7 @@ class TestInferBatch(unittest.TestCase):
 
     def test_filter(self):
         reqs = [
-            TestInferBatch.get_test_requeet(request_id=x, length=y) for x, y in [
+            TestInferBatch.get_test_request(request_id=x, length=y) for x, y in [
                 (2, 232),
                 (0, 230),
                 (1, 231),
@@ -82,14 +82,14 @@ class TestInferBatch(unittest.TestCase):
 
     def test_merge(self):
         reqs1 = [
-            TestInferBatch.get_test_requeet(request_id=x, length=y) for x, y in [
+            TestInferBatch.get_test_request(request_id=x, length=y) for x, y in [
                 (5, 235),
                 (2, 232),
                 (0, 230),
             ]
         ]
         reqs2 = [
-            TestInferBatch.get_test_requeet(request_id=x, length=y) for x, y in [
+            TestInferBatch.get_test_request(request_id=x, length=y) for x, y in [
                 (3, 233),
                 (1, 231),
             ]
@@ -117,7 +117,7 @@ class TestInferBatch(unittest.TestCase):
             self.assertEqual(lst, list(batch.nopad_b_seq_len))
 
     @staticmethod
-    def get_test_requeet(*, request_id, length):
+    def get_test_request(*, request_id, length):
         return {
             'request_id': request_id,
             'input_id': np.array([233] * length, dtype=np.int32),
