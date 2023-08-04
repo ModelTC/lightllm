@@ -1,17 +1,36 @@
 import os
 import json
 import torch
-from lightllm.models.llama.layer_infer.pre_layer_inference import PreLayerInfer
-from lightllm.models.llama.layer_infer.post_layer_inference import PostLayerInfer
-from lightllm.models.llama.layer_infer.transformer_layer_inference import TransformerLayerInfer
-from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import *
-from lightllm.models.llama.layer_weights.transformer_layer_weight import *
-from lightllm.models.llama.layer_infer.infer_struct import InferStateInfo
+from .pre_layer_inference import PreLayerInfer
+from .post_layer_inference import PostLayerInfer
+from .transformer_layer_inference import TransformerLayerInfer
+from ..layer_weights.pre_and_post_layer_weight import *
+from ..layer_weights.transformer_layer_weight import *
+from .infer_struct import InferStateInfo
 from lightllm.models.llama.layer_weights.hf_load_utils import load_hf_weights
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.infer_utils import init_bloc
+from lightllm.common import np_from_tensor
+from typing import List, Dict
 
 class LlamaTpPartModel:
+    tp_rank_: int
+    world_size_: int
+    weight_dir_: str
+    config: Dict
+    mem_manager: MemoryManager
+    pre_post_weight: PreAndPostLayerWeight
+    trans_layers_weight: List[TransformerLayerWeight]
+    pre_infer: PreLayerInfer
+    post_infer: PostLayerInfer
+    layers_infer: List[TransformerLayerInfer]
+    head_num_: int
+    head_dim_: int
+    tp_head_num_: int
+    vocab_size: int
+    _cos_cached: torch.Tensor
+    _sin_cached: torch.Tensor
+
     def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=""):
         self.tp_rank_ = tp_rank
         self.world_size_ = world_size
@@ -44,8 +63,9 @@ class LlamaTpPartModel:
                 tp_rank=self.tp_rank_,
                 world_size=self.world_size_,
                 network_config=self.config,
-                mode=mode) for i in range(
-                self.config["num_hidden_layers"])]
+                mode=mode
+            ) for i in range(self.config["num_hidden_layers"])
+        ]
 
         self.head_num_ = self.config["num_attention_heads"]
         self.head_dim_ = self.config["hidden_size"] // self.head_num_
@@ -61,44 +81,54 @@ class LlamaTpPartModel:
         t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32)
         freqs = torch.outer(t, inv_freq)
 
-        self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
-        self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
+        cos_sin_cached = torch.empty([2] + list(freqs.shape), dtype=torch.float16, device='cuda')
+        cos_sin_cached[0][:] = torch.cos(freqs).to(torch.float16)
+        cos_sin_cached[1][:] = torch.sin(freqs).to(torch.float16)
+        self._cos_sin_cached = cos_sin_cached
+        self._cos_cached = self._cos_sin_cached[0]
+        self._sin_cached = self._cos_sin_cached[1]
         return
 
     @torch.no_grad()
     def forward(
             self,
-            batch_size,
-            total_token_num,
-            max_len_in_batch,
-            input_ids,
-            b_loc,
-            b_start_loc,
-            b_seq_len,
+            batch_size: int,
+            total_token_num: int,
+            max_len_in_batch: int,
+            input_ids: torch.Tensor,
+            b_loc: torch.Tensor,
+            b_start_loc: torch.Tensor,
+            b_seq_len: torch.Tensor,
             is_prefill=True):
         if is_prefill:
+            assert (input_ids.shape[0] == total_token_num)
+            assert (b_loc.shape[0] == b_start_loc.shape[0] == b_seq_len.shape[0])
             infer_state = InferStateInfo()
             infer_state.is_prefill = is_prefill
             infer_state.batch_size = batch_size
             infer_state.total_token_num = total_token_num
             infer_state.max_len_in_batch = max_len_in_batch
-            assert (input_ids.shape[0] == total_token_num)
-            assert (b_loc.shape[0] == b_start_loc.shape[0] == b_seq_len.shape[0])
-
-            b_seq_len_numpy = b_seq_len.cpu().numpy()
-            position_ids = torch.from_numpy(np.concatenate([np.arange(0, b_seq_len_numpy[i])
-                                            for i in range(len(b_seq_len_numpy))], axis=0)).cuda()
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids).view(position_ids.shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids).view(position_ids.shape[0], -1)
-            position_ids = None
             infer_state.b_loc = b_loc
             infer_state.b_start_loc = b_start_loc
             infer_state.b_seq_len = b_seq_len
             infer_state.mem_manager = self.mem_manager
             infer_state.prefill_mem_index = self.mem_manager.alloc(infer_state.total_token_num)
+
+            b_seq_len_cpu = b_seq_len.cpu()
+
+            _arange = np.arange(0, max_len_in_batch)
+            b_seq_len_numpy = np_from_tensor(b_seq_len_cpu)
+            position_ids = torch.from_numpy(np.concatenate([_arange[:x] for x in b_seq_len_numpy], axis=0)).cuda()
+            del _arange
+
+            position_cos_sin = torch.index_select(self._cos_sin_cached, 1, position_ids)
+            infer_state.position_cos = position_cos_sin[0].view(position_ids.shape[0], -1)
+            infer_state.position_sin = position_cos_sin[1].view(position_ids.shape[0], -1)
+            del position_ids
+
             infer_state.prefill_key_buffer = torch.empty((infer_state.total_token_num, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
             infer_state.prefill_value_buffer = torch.empty((infer_state.total_token_num, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-            init_bloc(b_loc, b_seq_len, max_len_in_batch, infer_state.prefill_mem_index)
+            init_bloc(b_loc, b_seq_len_numpy, max_len_in_batch, infer_state.prefill_mem_index)
             
             predict_logics = self._context_forward(input_ids, infer_state)
             return predict_logics
@@ -108,9 +138,13 @@ class LlamaTpPartModel:
             infer_state.batch_size = batch_size
             infer_state.total_token_num = total_token_num
             infer_state.max_len_in_batch = max_len_in_batch
-            assert (b_loc.shape[0] == b_start_loc.shape[0] == b_seq_len.shape[0])
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0, b_seq_len - 1).view(b_seq_len.shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0, b_seq_len - 1).view(b_seq_len.shape[0], -1)
+            assert (batch_size == b_loc.shape[0] == b_start_loc.shape[0] == b_seq_len.shape[0])
+
+            _sel = b_seq_len - 1
+            position_cos_sin = torch.index_select(self._cos_sin_cached, 1, _sel)
+            infer_state.position_cos = position_cos_sin[0].view(batch_size, -1)
+            infer_state.position_sin = position_cos_sin[1].view(batch_size, -1)
+            del _sel
             infer_state.b_loc = b_loc
             infer_state.b_start_loc = b_start_loc
             infer_state.b_seq_len = b_seq_len

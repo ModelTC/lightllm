@@ -12,6 +12,7 @@ from lightllm.models.llama2.layer_infer.model import Llama2TpPartModel
 from lightllm.models.bloom.layer_infer.model import BloomTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
+from lightllm.common import np_from_tensor
 from .post_process import sample
 
 class ModelRpcServer(rpyc.Service):
@@ -119,7 +120,7 @@ class ModelRpcServer(rpyc.Service):
         next_token_ids = sample(logits, batch)
         output_dict = {}
         new_input_ids = []        
-        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_ids = np_from_tensor(next_token_ids.detach().cpu())
         for i, (r, all_input_ids, next_token_id) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids)):
             # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
             all_input_ids.append(int(next_token_id))
