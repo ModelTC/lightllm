@@ -9,7 +9,7 @@ from lightllm.models.llama.triton_kernel.context_flashattention_nopad import con
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
 
-from lightllm.models.llama.layer_infer.infer_struct import InferStateInfo
+from lightllm.models.qwen.layer_infer.infer_struct import InferStateInfo
 from lightllm.utils.infer_utils import mark_cost_time
 
 torch.backends.cudnn.enabled = True
@@ -34,6 +34,7 @@ class QwenTransformerLayerInfer(TransformerLayerInfer):
         calcu_shape1 = (total_token_num, self.tp_head_num_, self.head_dim_)
         input1 = rmsnorm_forward(input_embding, weight=layer_weight.input_layernorm, eps=self.layer_norm_eps_)
         q = torch.addmm(layer_weight.q_bias_, input1.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0)
+        q.mul_(infer_state.logn_values.view(-1, 1))
         rotary_emb_fwd(q.view(calcu_shape1), infer_state.position_cos, infer_state.position_sin)
         torch.addmm(layer_weight.k_bias_, input1.view(-1, self.embed_dim_), layer_weight.k_weight_, beta=1.0, alpha=1.0,
                     out=prefill_key_buffer[0:total_token_num, :, :].view(-1, self.tp_head_sum_dim_))
@@ -74,6 +75,7 @@ class QwenTransformerLayerInfer(TransformerLayerInfer):
         input1 = rmsnorm_forward(input_embding, weight=layer_weight.input_layernorm, eps=self.layer_norm_eps_)
 
         q = torch.addmm(layer_weight.q_bias_, input1.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0)
+        q.mul_(infer_state.logn_values.view(-1, 1))
         rotary_emb_fwd(q.view(calcu_shape1), infer_state.position_cos, infer_state.position_sin)
         torch.addmm(layer_weight.k_bias_, input1.view(-1, self.embed_dim_), layer_weight.k_weight_, beta=1.0, alpha=1.0,
                     out=cache_k.view(-1, self.tp_head_sum_dim_))
