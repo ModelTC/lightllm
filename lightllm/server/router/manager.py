@@ -232,9 +232,9 @@ class RouterManager:
 
         now = time.time()
         if now - self.last_log_time > self.log_stats_interval:
-            print(f"Avg tokens(prompt+generate) per second: ", self.all_tokens/(now-self.last_log_time), " tokens/s, "
-                  f"Avg prompt tokens per second: ", self.prompt_tokens/(now-self.last_log_time), " tokens/s, "
-                  f"Avg generate tokens per second: ", self.output_tokens/(now-self.last_log_time), " tokens/s ")
+            print(f"Avg tokens(prompt+generate) throughput: {self.all_tokens/(now-self.last_log_time):8.3f} tokens/s\n"
+                  f"Avg prompt tokens throughput:           {self.prompt_tokens/(now-self.last_log_time):8.3f} tokens/s\n"
+                  f"Avg generate tokens throughput:         {self.output_tokens/(now-self.last_log_time):8.3f} tokens/s")
             self.all_tokens = 0
             self.output_tokens = 0
             self.prompt_tokens = 0
