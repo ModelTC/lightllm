@@ -37,10 +37,14 @@ Please provide information about your environment, such as:
 - [ ] Using container
 
 - OS: (Ubuntu 14.04, CentOS7)
+- GPU info:
+  - `nvidia-smi` (e.g. `NVIDIA-SMI 525.116.04   Driver Version: 525.116.04   CUDA Version: 12.0`)
+  - Graphics cards: (e.g. 4090x8)
 - Python: (e.g. CPython3.9)
   - currently, only python>=3.9 is supported
-- LightLLm: (git commit hash)
+- LightLLm: (git commit-hash)
   - for container: `docker run --entrypoint cat --rm ghcr.io/modeltc/lightllm:main /lightllm/.git/refs/heads/main`
+- openai-triton: `pip show triton`
 
 **Additional context:**
 
