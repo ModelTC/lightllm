@@ -22,7 +22,8 @@ tokenizer load mode, can be "slow" or "auto", "slow" mode always load fast but r
 
 #### --max_total_token_num
 
-default is 6000,  
+default is automatically calculated. if you run into OOM error, try setting manually.
+
 the total token num the gpu and model can support, a sample about how to set this arg:   
 gpu: use 2 A100 80G, (--tp 2)  
 model: llama-7b,  

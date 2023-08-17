@@ -35,6 +35,7 @@ from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
+from lightllm.utils.max_token_num_utils import calc_max_total_token_num
 from lightllm.common.configs.config import setting
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
@@ -123,7 +124,7 @@ def main():
     parser.add_argument("--tokenizer_mode", type=str, default="slow",
                         help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is good for debug and test, 
                         when you want to get best performance, try auto mode""")
-    parser.add_argument("--max_total_token_num", type=int, default=6000,
+    parser.add_argument("--max_total_token_num", type=int, default=None,
                         help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)")
     parser.add_argument("--batch_max_tokens", type=int, default=None,
                         help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM")
@@ -152,6 +153,11 @@ def main():
     assert args.max_req_input_len < args.max_req_total_len
     setting['max_req_total_len'] = args.max_req_total_len
     setting['nccl_port'] = args.nccl_port
+
+    if args.max_total_token_num is None:
+        max_total_token_num = calc_max_total_token_num(args.tp, args.model_dir)
+        print("Automatically setting max_total_token_num to", max_total_token_num)
+        args.max_total_token_num = max_total_token_num
 
     if args.batch_max_tokens is None:
         batch_max_tokens = int(1 / 6 * args.max_total_token_num)
