@@ -17,11 +17,12 @@ from .stats import Stats
 class RouterManager:
 
     def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, 
-                 router_port, detokenization_port, model_rpc_ports, mode="", log_stats=True, log_stats_interval=10):
+                 router_port, detokenization_port, model_rpc_ports, ntk_alpha, mode="", log_stats=True, log_stats_interval=10):
         self.model_weightdir = weightdir
         self.world_size = world_size
         self.load_way = load_way
         self.mode = mode
+        self.ntk_alpha = ntk_alpha
         self.max_total_token_num = max_total_token_num
 
         self.req_queue = ReqQueue(max_total_token_num, batch_max_tokens, running_max_req_size)
@@ -56,6 +57,7 @@ class RouterManager:
                     self.world_size,
                     self.model_weightdir,
                     self.max_total_token_num,
+                    self.ntk_alpha,
                     self.load_way,
                     self.mode))
 
@@ -236,7 +238,7 @@ class RouterManager:
             model_rpc.rpc_server_process.join()
         return
 
-def start_router_process(args, router_port, detokenization_port, model_rpc_ports, mode, pipe_writer):
+def start_router_process(args, router_port, detokenization_port, model_rpc_ports, mode, ntk_alpha, pipe_writer):
     try:
         router = RouterManager(
             args.model_dir,
@@ -250,6 +252,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             detokenization_port=detokenization_port,
             model_rpc_ports=model_rpc_ports,
             mode=mode,
+            ntk_alpha=ntk_alpha,
             log_stats = not args.disable_log_stats,
             log_stats_interval = args.log_stats_interval)
     

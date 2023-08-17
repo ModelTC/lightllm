@@ -68,3 +68,10 @@ the max value for one reqest's input token len.
 #### --max_req_total_len
 default is 3072,  
 the max value for req_input_len + req_output_len.
+
+#### --ntk
+This parameter is related to NTK-aware Scaled RoPE, a method to extend the context of LLaMA models without any need for fine-tuning. See the discussion [here](https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/)
+
+This argument specifies the alpha value (scaling factor) for NTK-aware Scaled RoPE. If you do not want to use this method, set the value to 1, which is equivalent to not scaling.
+
+Currently only LLaMA2-based models have been tested, argument is ignored for other models.

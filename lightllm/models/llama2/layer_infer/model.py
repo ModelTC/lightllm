@@ -12,7 +12,7 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.infer_utils import init_bloc
 
 class Llama2TpPartModel:
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=""):
+    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, ntk_alpha, load_way="HF", mode=""):
         self.tp_rank_ = tp_rank
         self.world_size_ = world_size
         self.weight_dir_ = weight_dir
@@ -54,9 +54,9 @@ class Llama2TpPartModel:
         self.tp_head_num_ = self.head_num_ // self.world_size_
         self.tp_kv_head_num_ = self.config["num_key_value_heads"] // self.world_size_
         self.vocab_size = self.config["vocab_size"]
-        self.init_to_get_rotary()
+        self.init_to_get_rotary(ntk_alpha=ntk_alpha)
 
-    def init_to_get_rotary(self, base=10000):
+    def init_to_get_rotary(self, base=10000, ntk_alpha=1):
         if self.config.get("rope_scaling", {}) is None:
             rope_scaling_factor = 1.0
         else:
@@ -66,6 +66,11 @@ class Llama2TpPartModel:
         else:
             max_seq_len = self.config.get("max_position_embeddings", 2048) * rope_scaling_factor
         base = float(base)
+
+        # NTK
+        max_seq_len *= ntk_alpha
+        base = base * (ntk_alpha ** (self.head_dim_ / (self.head_dim_-2))) #Base change formula
+
         inv_freq = 1.0 / (base ** (torch.arange(0, self.head_dim_, 2, device="cpu", dtype=torch.float32) / self.head_dim_))
         t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
         freqs = torch.outer(t, inv_freq)

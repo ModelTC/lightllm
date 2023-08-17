@@ -147,6 +147,8 @@ def main():
                         help="disable logging throughput stats.")
     parser.add_argument("--log_stats_interval", type=int, default=10,
                         help="log stats interval in second.")
+    parser.add_argument("--ntk", type=int, default=1,
+                        help="Alpha value for NTK-aware Scaled RoPE. 1 = disabled. Currently only LLaMA2-based models are supported, argument is ignored for other models.")
     args = parser.parse_args()
 
     assert args.max_req_input_len < args.max_req_total_len
@@ -159,6 +161,8 @@ def main():
         args.batch_max_tokens = batch_max_tokens
     else:
         assert args.batch_max_tokens >= args.max_req_total_len, "batch_max_tokens must >= max_req_total_len"
+
+    assert args.ntk >= 1, "Invalid NTK Alpha value."
 
     can_use_ports = alloc_can_use_network_port(
         num=3 + args.tp, used_nccl_port=args.nccl_port)
@@ -177,7 +181,7 @@ def main():
     pipe_router_reader, pipe_router_writer = mp.Pipe(duplex=False)
     pipe_detoken_reader, pipe_detoken_writer = mp.Pipe(duplex=False)
     proc_router = mp.Process(target=start_router_process, args=(
-        args, router_port, detokenization_port, model_rpc_ports, args.mode, pipe_router_writer))
+        args, router_port, detokenization_port, model_rpc_ports, args.mode, args.ntk, pipe_router_writer))
     proc_router.start()
     proc_detoken = mp.Process(target=start_detokenization_process, args=(
         args, detokenization_port, httpserver_port, pipe_detoken_writer, args.trust_remote_code))

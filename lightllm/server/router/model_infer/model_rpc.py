@@ -20,7 +20,7 @@ from .post_process import sample
 
 class ModelRpcServer(rpyc.Service):
 
-    def exposed_init_model(self, rank_id, world_size, weight_dir, max_total_token_num, load_way, mode):
+    def exposed_init_model(self, rank_id, world_size, weight_dir, max_total_token_num, ntk_alpha, load_way, mode):
         import torch
         import torch.distributed as dist
         if world_size != 1:
@@ -47,7 +47,7 @@ class ModelRpcServer(rpyc.Service):
            if "num_key_value_heads" not in model_cfg.keys():
                self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
            else:
-               self.model = Llama2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+               self.model = Llama2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, ntk_alpha, load_way, mode)
         elif self.model_type == 'gpt_bigcode':
             self.model = StarcoderTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
         elif self.model_type == 'qwen':
@@ -181,8 +181,8 @@ class ModelRpcClient:
             self._remove_batch = self.model.exposed_remove_batch
         return
 
-    async def init_model(self, rank_id, world_size, weight_dir, max_total_token_num, load_way, mode):
-        ans : rpyc.AsyncResult = self._init_model(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+    async def init_model(self, rank_id, world_size, weight_dir, max_total_token_num, ntk_alpha, load_way, mode):
+        ans : rpyc.AsyncResult = self._init_model(rank_id, world_size, weight_dir, max_total_token_num, ntk_alpha, load_way, mode)
         if self.use_rpc:
             await ans
             return
