@@ -3,7 +3,7 @@ import torch.functional as F
 import torch.distributed as dist
 import numpy as np
 
-from lightllm.models.llama.layer_weights.transformer_layer_weight import TransformerLayerWeight
+from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.models.llama.triton_kernel.context_flashattention_nopad import context_attention_fwd
 from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd, token_att_fwd_int8k
 from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
@@ -11,22 +11,19 @@ from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import to
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
 
-from lightllm.models.llama.layer_infer.infer_struct import InferStateInfo
+from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.utils.infer_utils import mark_cost_time
-from lightllm.common.triton_kernel.destindex_copy_kv import destindex_copy_kv, destindex_copy_quantize_kv
+from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv, destindex_copy_quantize_kv
+from lightllm.common.basemodel import TransformerLayerInfer
 
-torch.backends.cudnn.enabled = True
-
-
-class TransformerLayerInfer:
+class LlamaTransformerLayerInfer(TransformerLayerInfer):
     """
     """
+    # context attention kernel, a bug for call, use tuple
+    context_attention_fwd_func = (context_attention_fwd,)
 
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=""):
-        self.layer_num_ = layer_num
-        self.tp_rank_ = tp_rank
-        self.world_size_ = world_size
-        self.network_config_ = network_config
+        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.embed_dim_ = network_config["hidden_size"]
         self.layer_norm_eps_ = network_config["rms_norm_eps"]
         self.head_num_ = network_config["num_attention_heads"]
@@ -34,7 +31,11 @@ class TransformerLayerInfer:
         assert self.head_num_ % self.world_size_ == 0
         self.tp_head_num_ = self.head_num_ // self.world_size_
         self.tp_head_sum_dim_ = self.tp_head_num_ * self.head_dim_
-        self.mode = mode
+        # easy to llama2 use
+        self.tp_q_head_sum_dim_ = self.tp_head_sum_dim_
+        self.tp_k_head_sum_dim_ = self.tp_head_sum_dim_
+        self.tp_v_head_sum_dim_ = self.tp_head_sum_dim_
+        self.tp_o_head_sum_dim_ = self.tp_head_sum_dim_
         return
     
     def _copy_kv_to_mem_cache(self, key_buffer, value_buffer, prefill_mem_index, mem_manager):
@@ -50,10 +51,21 @@ class TransformerLayerInfer:
                                        prefill_mem_index,
                                        mem_manager.value_buffer[self.layer_num_],
                                        mem_manager.value_scale_buffer[self.layer_num_])
-        return 
+        return
+
+    def _get_qkv(self, input_emb, cache_k, cache_v, infer_state: LlamaInferStateInfo,layer_weight:LlamaTransformerLayerWeight):
+        q = torch.mm(input_emb.view(-1, self.embed_dim_), layer_weight.q_weight_)
+        rotary_emb_fwd(q.view(-1, self.tp_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
+        torch.mm(input_emb.view(-1, self.embed_dim_), layer_weight.k_weight_,
+                    out=cache_k.view(-1, self.tp_k_head_sum_dim_))
+        rotary_emb_fwd(cache_k, infer_state.position_cos, infer_state.position_sin)
+        torch.mm(input_emb.view(-1, self.embed_dim_), layer_weight.v_weight_,
+                    out=cache_v.view(-1, self.tp_v_head_sum_dim_))
+        return q
+
 
     @mark_cost_time("trans context flash forward time cost")  # dont to remove this, will make performence down, did not know why
-    def _context_flash_attention(self, input_embding, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _context_flash_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight):
         mem_manager = infer_state.mem_manager
         prefill_mem_index = infer_state.prefill_mem_index
         prefill_key_buffer = infer_state.prefill_key_buffer
@@ -63,17 +75,14 @@ class TransformerLayerInfer:
         calcu_shape1 = (total_token_num, self.tp_head_num_, self.head_dim_)
         input1 = rmsnorm_forward(input_embding, weight=layer_weight.input_layernorm, eps=self.layer_norm_eps_)
 
-        q = torch.mm(input1.view(-1, self.embed_dim_), layer_weight.q_weight_)
-        rotary_emb_fwd(q.view(calcu_shape1), infer_state.position_cos, infer_state.position_sin)
-        torch.mm(input1.view(-1, self.embed_dim_), layer_weight.k_weight_,
-                    out=prefill_key_buffer[0:total_token_num, :, :].view(-1, self.tp_head_sum_dim_))
-        rotary_emb_fwd(prefill_key_buffer[0:total_token_num, :, :], infer_state.position_cos, infer_state.position_sin)
-        torch.mm(input1.view(-1, self.embed_dim_), layer_weight.v_weight_,
-                    out=prefill_value_buffer[0:total_token_num, :, :].view(-1, self.tp_head_sum_dim_))
-        
+        q = self._get_qkv(input1, 
+                          prefill_key_buffer[0:total_token_num, :, :], 
+                          prefill_value_buffer[0:total_token_num, :, :],
+                          infer_state,
+                          layer_weight)
         input1 = None
         o_tensor = torch.empty_like(q)
-        context_attention_fwd(q.view(calcu_shape1),
+        self.context_attention_fwd_func[0](q.view(calcu_shape1),
                               prefill_key_buffer[0:total_token_num, :, :],
                               prefill_value_buffer[0:total_token_num, :, :],
                               o_tensor.view(calcu_shape1),
@@ -82,7 +91,7 @@ class TransformerLayerInfer:
                               infer_state.max_len_in_batch)
         self._copy_kv_to_mem_cache(prefill_key_buffer, prefill_value_buffer, prefill_mem_index, mem_manager)
         q = None
-        o_tensor1 = torch.mm(o_tensor.view(-1, self.tp_head_sum_dim_), layer_weight.att_out_dense_weight_)
+        o_tensor1 = torch.mm(o_tensor.view(-1, self.tp_o_head_sum_dim_), layer_weight.att_out_dense_weight_)
         o_tensor = None
         if self.world_size_ > 1:
             dist.all_reduce(o_tensor1, op=dist.ReduceOp.SUM, async_op=False)
@@ -91,7 +100,7 @@ class TransformerLayerInfer:
         return
 
     @mark_cost_time("trans context ffn forward time cost")
-    def _context_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _context_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight):
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
         input1 = rmsnorm_forward(input_embdings,
@@ -113,7 +122,7 @@ class TransformerLayerInfer:
         ffn2_out = None
         return
 
-    def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def context_forward(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight):
         self._context_flash_attention(input_embdings,
                                       infer_state,
                                       layer_weight=layer_weight)
@@ -121,7 +130,7 @@ class TransformerLayerInfer:
         return input_embdings
     
     
-    def _token_decode_attention_normal(self, q, infer_state: InferStateInfo):
+    def _token_decode_attention_normal(self, q, infer_state: LlamaInferStateInfo):
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
         calcu_shape1 = (batch_size, self.tp_head_num_, self.head_dim_)
@@ -151,7 +160,7 @@ class TransformerLayerInfer:
         prob = None
         return o_tensor
     
-    def _token_decode_attention_int8kv(self, q, infer_state: InferStateInfo):
+    def _token_decode_attention_int8kv(self, q, infer_state: LlamaInferStateInfo):
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
         calcu_shape1 = (batch_size, self.tp_head_num_, self.head_dim_)
@@ -181,7 +190,7 @@ class TransformerLayerInfer:
         prob = None
         return o_tensor
     
-    def _token_decode_attention_mode(self, q, infer_state: InferStateInfo):
+    def _token_decode_attention_mode(self, q, infer_state: LlamaInferStateInfo):
         if self.mode == "":
             return self._token_decode_attention_normal(q, infer_state)
         if self.mode == "int8kv":
@@ -189,7 +198,7 @@ class TransformerLayerInfer:
         assert False, f"error mode {self.mode}"
         return
 
-    def _token_flash_attention(self, input_embding, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _token_flash_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight):
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
         calcu_shape1 = (batch_size, self.tp_head_num_, self.head_dim_)
@@ -202,14 +211,7 @@ class TransformerLayerInfer:
             
         input1 = rmsnorm_forward(input_embding, weight=layer_weight.input_layernorm, eps=self.layer_norm_eps_)
 
-        q = torch.mm(input1.view(-1, self.embed_dim_), layer_weight.q_weight_)
-        rotary_emb_fwd(q.view(calcu_shape1), infer_state.position_cos, infer_state.position_sin)
-        torch.mm(input1.view(-1, self.embed_dim_), layer_weight.k_weight_,
-                    out=cache_k.view(-1, self.tp_head_sum_dim_))
-        rotary_emb_fwd(cache_k,
-                        infer_state.position_cos, infer_state.position_sin)
-        torch.mm(input1.view(-1, self.embed_dim_), layer_weight.v_weight_,
-                    out=cache_v.view(-1, self.tp_head_sum_dim_))
+        q = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
         
         if not infer_state.decode_is_contiguous: # int8kv always is not contiguous
             self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.decode_mem_index, infer_state.mem_manager)
@@ -217,7 +219,7 @@ class TransformerLayerInfer:
         input1 = None
         o_tensor = self._token_decode_attention_mode(q, infer_state)
         q = None
-        o_tensor1 = torch.mm(o_tensor.view(-1, self.tp_head_sum_dim_), layer_weight.att_out_dense_weight_)
+        o_tensor1 = torch.mm(o_tensor.view(-1, self.tp_o_head_sum_dim_), layer_weight.att_out_dense_weight_)
         o_tensor = None
         if self.world_size_ > 1:
             dist.all_reduce(o_tensor1, op=dist.ReduceOp.SUM, async_op=False)
@@ -225,7 +227,7 @@ class TransformerLayerInfer:
         o_tensor1 = None
         return
 
-    def _token_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _token_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight):
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
         input1 = rmsnorm_forward(input_embdings,
@@ -248,7 +250,7 @@ class TransformerLayerInfer:
         ffn2_out = None
         return
 
-    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def token_forward(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight):
         self._token_flash_attention(input_embdings,
                                     infer_state,
                                     layer_weight=layer_weight)

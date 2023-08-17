@@ -3,22 +3,18 @@ import torch.functional as F
 import torch.distributed as dist
 import numpy as np
 
-from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import PreAndPostLayerWeight
+from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from einops import rearrange
-from lightllm.models.llama.layer_infer.infer_struct import InferStateInfo
+from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
+from lightllm.common.basemodel import PostLayerInfer
 
-torch.backends.cudnn.enabled = True
-
-
-class PostLayerInfer:
+class LlamaPostLayerInfer(PostLayerInfer):
     """
     """
 
-    def __init__(self, tp_rank, world_size, network_config):
-        self.tp_rank_ = tp_rank
-        self.world_size_ = world_size
-        self.network_config_ = network_config
+    def __init__(self, tp_rank, world_size, network_config, mode):
+        super().__init__(tp_rank, world_size, network_config, mode)
         assert (network_config["vocab_size"] % self.world_size_ == 0)
         self.vocab_size_ = network_config["vocab_size"]
         self.tp_vocab_size_ = network_config["vocab_size"] // self.world_size_
@@ -30,7 +26,7 @@ class PostLayerInfer:
     def soft_max(self, data):
         return torch.softmax(data.permute(1, 0).float(), dim=-1)
 
-    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: PreAndPostLayerWeight, return_logics=False):
+    def token_forward(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight, return_logics=False):
         batch_size = infer_state.batch_size
         last_input = torch.empty((batch_size, self.embed_dim_), device=input_embdings.device, dtype=torch.float16)
         if infer_state.is_prefill:

@@ -4,25 +4,22 @@ import torch.functional as F
 import torch.distributed as dist
 import numpy as np
 
-from lightllm.models.bloom.layer_weights.transformer_layer_weight import TransformerLayerWeight
+from lightllm.common.basemodel import TransformerLayerInfer
+from lightllm.models.bloom.layer_weights.transformer_layer_weight import BloomTransformerLayerWeight
 from lightllm.models.bloom.triton_kernel.context_flashattention_nopad import context_attention_fwd
 from lightllm.models.bloom.triton_kernel.token_flashattention_nopad import token_attention_fwd
 from lightllm.models.bloom.triton_kernel.layernorm import layernorm_forward
-from lightllm.models.bloom.layer_infer.infer_struct import InferStateInfo
+from lightllm.common.basemodel import InferStateInfo
 from lightllm.utils.infer_utils import mark_cost_time
-from lightllm.common.triton_kernel.destindex_copy_kv import destindex_copy_kv
-torch.backends.cudnn.enabled = True
+from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
 
 
-class TransformerLayerInfer:
+class BloomTransformerLayerInfer(TransformerLayerInfer):
     """
     """
 
-    def __init__(self, layer_num, tp_rank, world_size, network_config):
-        self.layer_num_ = layer_num
-        self.tp_rank_ = tp_rank
-        self.world_size_ = world_size
-        self.network_config_ = network_config
+    def __init__(self, layer_num, tp_rank, world_size, network_config, mode):
+        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.embed_dim_ = network_config["n_embed"]
         self.layer_norm_eps_ = network_config["layer_norm_epsilon"]
         self.head_num_ = network_config["num_attention_heads"]
@@ -33,7 +30,7 @@ class TransformerLayerInfer:
         return
 
     @mark_cost_time("trans context flash forward time cost")  # dont to remove this, will make performence down, did not know why
-    def _context_flash_attention(self, input_embding, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _context_flash_attention(self, input_embding, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight):
         mem_manager = infer_state.mem_manager
         prefill_mem_index = infer_state.prefill_mem_index
         prefill_key_buffer = infer_state.prefill_key_buffer
@@ -76,7 +73,7 @@ class TransformerLayerInfer:
         return
 
     @mark_cost_time("trans context ffn forward time cost")  # dont to remove this, will make performence down, did not know why
-    def _context_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _context_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight):
         total_token_num = infer_state.total_token_num
         input1 = layernorm_forward(input_embdings,
                                    weight=layer_weight.post_attention_layernorm_weight_,
@@ -95,14 +92,14 @@ class TransformerLayerInfer:
         ffn2_out = None
         return
 
-    def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight):
         self._context_flash_attention(input_embdings,
                                       infer_state,
                                       layer_weight=layer_weight)
         self._context_ffn(input_embdings, infer_state, layer_weight)
         return input_embdings
 
-    def _token_flash_attention(self, input_embding, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _token_flash_attention(self, input_embding, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight):
 
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
@@ -153,7 +150,7 @@ class TransformerLayerInfer:
         o_tensor1 = None
         return
 
-    def _token_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def _token_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight):
         total_token_num = infer_state.total_token_num
         batch_size = infer_state.batch_size
         input1 = layernorm_forward(input_embdings,
@@ -173,7 +170,7 @@ class TransformerLayerInfer:
         ffn2_out = None
         return
 
-    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: TransformerLayerWeight):
+    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight):
         self._token_flash_attention(input_embdings,
                                     infer_state,
                                     layer_weight=layer_weight)
