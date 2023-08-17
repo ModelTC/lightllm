@@ -11,7 +11,6 @@ def get_total_free_gpu_memory(tp):
     for i in range(devices):
         total_free += torch.cuda.mem_get_info(i)[0]
     total_free = total_free / (1024 ** 3)
-    torch.cuda.close()
     return total_free
 
 def get_total_weight_size(weight_dir):
