@@ -49,16 +49,15 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         raise Exception("need to impl")
     
     def _post_cache_kv(self, cache_k, cache_v, infer_state:InferStateInfo, layer_weight):
-        mem_index = infer_state.prefill_mem_index
+        mem_manager = infer_state.mem_manager
         if infer_state.is_prefill:
-            mem_manager = infer_state.mem_manager
-            destindex_copy_kv(cache_k, mem_index, mem_manager.key_buffer[self.layer_num_])
-            destindex_copy_kv(cache_v, mem_index, mem_manager.value_buffer[self.layer_num_])
+            destindex_copy_kv(cache_k, infer_state.prefill_mem_index, mem_manager.key_buffer[self.layer_num_])
+            destindex_copy_kv(cache_v, infer_state.prefill_mem_index, mem_manager.value_buffer[self.layer_num_])
             return
         else:
             if not infer_state.decode_is_contiguous:
-                destindex_copy_kv(cache_k, mem_index, mem_manager.key_buffer[self.layer_num_])
-                destindex_copy_kv(cache_v, mem_index, mem_manager.value_buffer[self.layer_num_])
+                destindex_copy_kv(cache_k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_num_])
+                destindex_copy_kv(cache_v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_num_])
                 return
         return
     

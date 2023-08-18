@@ -49,14 +49,13 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return q
     
     def _post_cache_kv(self, cache_k, cache_v, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight):
-        mem_index = infer_state.prefill_mem_index
+        mem_manager = infer_state.mem_manager
         if infer_state.is_prefill:
-            mem_manager = infer_state.mem_manager
-            self._copy_kv_to_mem_cache(cache_k, cache_v, mem_index, mem_manager)
+            self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.prefill_mem_index, mem_manager)
             return
         else:
             if not infer_state.decode_is_contiguous:
-                self._copy_kv_to_mem_cache(cache_k, cache_v, mem_index, mem_manager)
+                self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.decode_mem_index, mem_manager)
                 return
         return
     

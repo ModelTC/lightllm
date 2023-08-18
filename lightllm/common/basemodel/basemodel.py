@@ -32,6 +32,7 @@ class TpPartBaseModel:
         self.mode = mode
 
         self._init_config()
+        self._verify_must()
         self._verify_params()
         self._init_weights()
         self._init_mem_manager()
@@ -48,6 +49,11 @@ class TpPartBaseModel:
         repair_config(self.config, same_names=["hidden_size", "n_embd", "n_embed"])
         repair_config(self.config, same_names=["num_hidden_layers", "n_layer"])
 
+        return
+    
+    @final
+    def _verify_must(self):
+        assert self.config["num_attention_heads"] % self.world_size_ == 0
         return
     
     def _verify_params(self):
