@@ -11,15 +11,15 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
 
     def verify_load(self):
         errors = "weights load not ok"
-        weights = [self.input_layernorm,
+        weights = [self.att_norm_weight_,
                    self.q_weight_,
                    self.k_weight_,
                    self.v_weight_,
                    self.q_bias_,
                    self.k_bias_,
                    self.v_bias_,
-                   self.att_out_dense_weight_,
-                   self.post_attention_layernorm_weight_,
+                   self.o_weight_,
+                   self.ffn_norm_weight_,
                    self.ffn_1_weight_,
                    self.ffn_2_weight_,
                    ]
@@ -30,7 +30,7 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
     def _load_qkvo_weights(self, weights):
         # input layernorm params
         if f"transformer.encoder.layers.{self.layer_num_}.input_layernorm.weight" in weights:
-            self.input_layernorm = weights[f"transformer.encoder.layers.{self.layer_num_}.input_layernorm.weight"].to(self.data_type_).cuda()
+            self.att_norm_weight_ = weights[f"transformer.encoder.layers.{self.layer_num_}.input_layernorm.weight"].to(self.data_type_).cuda()
 
         # attention params
         n_embed = self.network_config_["hidden_size"]
@@ -56,14 +56,14 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
 
         # attention output dense params
         if f"transformer.encoder.layers.{self.layer_num_}.self_attention.dense.weight" in weights:
-            self.att_out_dense_weight_ = weights[f"transformer.encoder.layers.{self.layer_num_}.self_attention.dense.weight"][:,
+            self.o_weight_ = weights[f"transformer.encoder.layers.{self.layer_num_}.self_attention.dense.weight"][:,
                                                                                                             split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
-            self.att_out_dense_weight_ = self.att_out_dense_weight_.transpose(0, 1).contiguous().to(self.data_type_)
-            self.att_out_dense_weight_ = self.att_out_dense_weight_.cuda()
+            self.o_weight_ = self.o_weight_.transpose(0, 1).contiguous().to(self.data_type_)
+            self.o_weight_ = self.o_weight_.cuda()
 
     def _load_ffn_weights(self, weights):
         if f"transformer.encoder.layers.{self.layer_num_}.post_attention_layernorm.weight" in weights:
-            self.post_attention_layernorm_weight_ = weights[f"transformer.encoder.layers.{self.layer_num_}.post_attention_layernorm.weight"].to(
+            self.ffn_norm_weight_ = weights[f"transformer.encoder.layers.{self.layer_num_}.post_attention_layernorm.weight"].to(
                 self.data_type_).cuda()
 
         # ffn params

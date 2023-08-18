@@ -13,17 +13,11 @@ from rpyc.utils.classic import obtain
 from lightllm.models.bloom.model import BloomTpPartModel
 # from lightllm.models.llama2.layer_infer.model import Llama2TpPartModel
 from lightllm.models.llama.model import LlamaTpPartModel
-<<<<<<< HEAD
 from lightllm.models.llama2.model import Llama2TpPartModel
-# from lightllm.models.starcoder.layer_infer.model import StarcoderTpPartModel
+from lightllm.models.starcoder.model import StarcoderTpPartModel
 from lightllm.models.qwen.model import QWenTpPartModel
 from lightllm.models.baichuan13b.model import Baichuan13bTpPartModel
-# from lightllm.models.chatglm2.layer_infer.model import ChatGlm2TpPartModel
-=======
-from lightllm.models.starcoder.model import StarcoderTpPartModel
-# from lightllm.models.qwen.model import QWenTpPartModel
-# from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
->>>>>>> refactor starcoder
+from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.common.configs.config import setting
@@ -64,6 +58,10 @@ class ModelRpcServer(rpyc.Service):
                 self.model = QWenTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "baichuan":
                 self.model = Baichuan13bTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+            elif self.model_type == 'gpt_bigcode':
+                self.model = StarcoderTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+            elif self.model_type == 'chatglm':
+                self.model = ChatGlm2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             # raise Exception("sb")
         except Exception as e:
             print(str(e))

@@ -5,7 +5,7 @@ import numpy as np
 
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
-from lightllm.models.llama2.layer_infer.transformer_layer_inference import Llama2TransformerLayerInfer
+from lightllm.models.llama2.layer_infer.transformer_layer_infer import Llama2TransformerLayerInfer
 from lightllm.models.chatglm2.layer_weights.transformer_layer_weight import ChatGLM2TransformerLayerWeight
 
 from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd
@@ -26,12 +26,12 @@ class ChatGLM2TransformerLayerInfer(Llama2TransformerLayerInfer):
 
     def _get_qkv(self, input_emb, cache_k, cache_v, infer_state: LlamaInferStateInfo, layer_weight:ChatGLM2TransformerLayerWeight):        
         q = torch.addmm(layer_weight.q_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0)
-        rotary_emb_fwd(q.view(-1, self.tp_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
+        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
         torch.addmm(layer_weight.k_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.k_weight_, beta=1.0, alpha=1.0,
-                    out=cache_k.view(-1, self.tp_kv_head_sum_dim_))
+                    out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
         rotary_emb_fwd(cache_k, infer_state.position_cos, infer_state.position_sin)
         torch.addmm(layer_weight.v_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.v_weight_, beta=1.0, alpha=1.0,
-                    out=cache_v.view(-1, self.tp_kv_head_sum_dim_))
+                    out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
         return q
 
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight):
