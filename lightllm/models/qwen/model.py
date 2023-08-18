@@ -2,7 +2,7 @@ import os
 import json
 import torch
 
-from .layer_infer.transformer_layer_inference import QwenTransformerLayerInfer
+from .layer_infer.transformer_layer_infer import QwenTransformerLayerInfer
 from .layer_weights.pre_and_post_layer_weight import QwenPreAndPostLayerWeight
 from .layer_weights.transformer_layer_weight import QwenTransformerLayerWeight
 
@@ -18,11 +18,9 @@ class QWenTpPartModel(LlamaTpPartModel):
     # infer class
     transformer_layer_infer_class = QwenTransformerLayerInfer
 
-    # infer state class
     def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=""):
         super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode)
     
-
     def _init_config(self):
         super()._init_config()
         # rename key

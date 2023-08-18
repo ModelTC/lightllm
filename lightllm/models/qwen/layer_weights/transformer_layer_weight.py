@@ -11,7 +11,7 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
     def load_hf_weights(self, weights):
         # input layernorm params
         if f"transformer.h.{self.layer_num_}.ln_1.weight" in weights:
-            self.input_layernorm = self._cuda(weights[f"transformer.h.{self.layer_num_}.ln_1.weight"])
+            self.att_norm_weight_ = self._cuda(weights[f"transformer.h.{self.layer_num_}.ln_1.weight"])
 
         # attention params
         n_embed = self.network_config_["hidden_size"]
@@ -39,12 +39,12 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
 
         # attention output dense params
         if f"transformer.h.{self.layer_num_}.attn.c_proj.weight" in weights:
-            self.att_out_dense_weight_ = weights[f"transformer.h.{self.layer_num_}.attn.c_proj.weight"][:,
+            self.o_weight_ = weights[f"transformer.h.{self.layer_num_}.attn.c_proj.weight"][:,
                                                                                                             split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
-            self.att_out_dense_weight_ = self._cuda(self.att_out_dense_weight_.transpose(0, 1))
+            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
 
         if f"transformer.h.{self.layer_num_}.ln_2.weight" in weights:
-            self.post_attention_layernorm_weight_ = self._cuda(weights[f"transformer.h.{self.layer_num_}.ln_2.weight"])
+            self.ffn_norm_weight_ = self._cuda(weights[f"transformer.h.{self.layer_num_}.ln_2.weight"])
         # ffn params
         inter_size = self.network_config_['ffn_hidden_size'] // 2
         split_inter_size = inter_size // self.world_size_
@@ -68,15 +68,15 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
     
     def verify_load(self):
         errors = "weights load not ok"
-        weights = [self.input_layernorm,
+        weights = [self.att_norm_weight_,
                    self.q_weight_,
                    self.k_weight_,
                    self.v_weight_,
                    self.q_bias_,
                    self.k_bias_,
                    self.v_bias_,
-                   self.att_out_dense_weight_,
-                   self.post_attention_layernorm_weight_,
+                   self.o_weight_,
+                   self.ffn_norm_weight_,
                    self.up_proj,
                    self.gate_proj,
                    self.down_proj

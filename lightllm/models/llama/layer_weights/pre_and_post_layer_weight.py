@@ -18,7 +18,7 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
                                                                     self.tp_rank_: split_vob_size * (self.tp_rank_ + 1), :])
         if 'lm_head.weight' in weights:
             # print(weights['lm_head.weight'].shape)
-            self.lm_head_weight = self._cuda(weights['lm_head.weight'][split_vob_size * self.tp_rank_: split_vob_size *
+            self.lm_head_weight_ = self._cuda(weights['lm_head.weight'][split_vob_size * self.tp_rank_: split_vob_size *
                                                             (self.tp_rank_ + 1), :])
         if 'model.norm.weight' in weights:
             self.final_norm_weight_ = self._cuda(weights['model.norm.weight'])
@@ -28,7 +28,7 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
     def verify_load(self):
         errors = "weights load not ok"
         weights = [self.wte_weight_, 
-                   self.lm_head_weight, 
+                   self.lm_head_weight_, 
                    self.final_norm_weight_]
         for i in range(len(weights)):
             assert weights[i] is not None, "index:" + str(i) + " " + errors

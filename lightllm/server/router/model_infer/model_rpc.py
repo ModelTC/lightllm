@@ -13,7 +13,7 @@ from rpyc.utils.classic import obtain
 from lightllm.models.bloom.model import BloomTpPartModel
 from lightllm.models.llama.model import LlamaTpPartModel
 # from lightllm.models.starcoder.layer_infer.model import StarcoderTpPartModel
-# from lightllm.models.qwen.model import QWenTpPartModel
+from lightllm.models.qwen.model import QWenTpPartModel
 # from lightllm.models.chatglm2.layer_infer.model import ChatGlm2TpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
@@ -48,8 +48,8 @@ class ModelRpcServer(rpyc.Service):
                 self.model = BloomTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "llama":
                 self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
-            # elif self.model_type == "qwen":
-            #     self.model = QWenTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+            elif self.model_type == "qwen":
+                self.model = QWenTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             # raise Exception("sb")
         except Exception as e:
             print(str(e))

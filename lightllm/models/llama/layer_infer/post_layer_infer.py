@@ -37,7 +37,7 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         input_embdings = None
         last_input = self._norm(last_input, infer_state, layer_weight)
         last_input = rearrange(last_input, "batch embed_dim -> embed_dim batch").contiguous().reshape(-1, batch_size)
-        logic_batch = torch.mm(layer_weight.lm_head_weight, last_input)
+        logic_batch = torch.mm(layer_weight.lm_head_weight_, last_input)
         last_input = None
         if self.world_size_ == 1:
             gather_data = logic_batch
