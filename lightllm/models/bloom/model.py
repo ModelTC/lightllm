@@ -1,8 +1,8 @@
 import os
 import json
-from lightllm.models.bloom.layer_infer.pre_layer_inference import BloomPreLayerInfer
-from lightllm.models.bloom.layer_infer.post_layer_inference import BloomPostLayerInfer
-from lightllm.models.bloom.layer_infer.transformer_layer_inference import BloomTransformerLayerInfer
+from lightllm.models.bloom.layer_infer.pre_layer_infer import BloomPreLayerInfer
+from lightllm.models.bloom.layer_infer.post_layer_infer import BloomPostLayerInfer
+from lightllm.models.bloom.layer_infer.transformer_layer_infer import BloomTransformerLayerInfer
 from lightllm.models.bloom.layer_weights.pre_and_post_layer_weight import BloomPreAndPostLayerWeight
 from lightllm.models.bloom.layer_weights.transformer_layer_weight import BloomTransformerLayerWeight
 from lightllm.common.basemodel import InferStateInfo, TpPartBaseModel

@@ -9,8 +9,6 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
         return
 
     def load_hf_weights(self, weights):
-        # input layernorm params
-
         vob_size = self.network_config_["vocab_size"]
         split_vob_size = vob_size // self.world_size_
         n_embed = self.network_config_["hidden_size"]
@@ -23,7 +21,7 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
             self.lm_head_weight = self._cuda(weights['lm_head.weight'][split_vob_size * self.tp_rank_: split_vob_size *
                                                             (self.tp_rank_ + 1), :])
         if 'model.norm.weight' in weights:
-            self.final_layernorm_weight_ = self._cuda(weights['model.norm.weight'])
+            self.final_norm_weight_ = self._cuda(weights['model.norm.weight'])
 
         return
     
@@ -31,7 +29,7 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
         errors = "weights load not ok"
         weights = [self.wte_weight_, 
                    self.lm_head_weight, 
-                   self.final_layernorm_weight_]
+                   self.final_norm_weight_]
         for i in range(len(weights)):
             assert weights[i] is not None, "index:" + str(i) + " " + errors
         return 

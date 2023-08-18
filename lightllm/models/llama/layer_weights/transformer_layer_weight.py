@@ -16,12 +16,12 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
     
     def verify_load(self):
         errors = "weights load not ok"
-        weights = [self.input_layernorm,
+        weights = [self.att_norm_weight_,
                    self.q_weight_,
                    self.k_weight_,
                    self.v_weight_,
-                   self.att_out_dense_weight_,
-                   self.post_attention_layernorm_weight_,
+                   self.o_weight_,
+                   self.ffn_norm_weight_,
                    self.up_proj,
                    self.gate_proj,
                    self.down_proj
@@ -33,7 +33,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
     def _load_qkvo_weights(self, weights):
         # input layernorm params
         if f"model.layers.{self.layer_num_}.input_layernorm.weight" in weights:
-            self.input_layernorm = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
+            self.att_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
 
         n_embed = self.network_config_["hidden_size"]
         split_n_embed = n_embed // self.world_size_
@@ -54,14 +54,14 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
-            self.att_out_dense_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][:,
+            self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][:,
                                                                                                             split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
-            self.att_out_dense_weight_ = self._cuda(self.att_out_dense_weight_.transpose(0, 1))
+            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
         return
     
     def _load_ffn_weights(self, weights):
         if f"model.layers.{self.layer_num_}.post_attention_layernorm.weight" in weights:
-            self.post_attention_layernorm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.post_attention_layernorm.weight"])
+            self.ffn_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.post_attention_layernorm.weight"])
     
         inter_size = self.network_config_['intermediate_size']
         split_inter_size = inter_size // self.world_size_
