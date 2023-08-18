@@ -20,6 +20,6 @@ class ChatGLM2PreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
             self.lm_head_weight = weights['transformer.output_layer.weight'][split_vob_size * self.tp_rank_: split_vob_size *
                                                             (self.tp_rank_ + 1), :].contiguous().to(self.data_type_).cuda()
         if "transformer.encoder.final_layernorm.weight" in weights:
-            self.final_layernorm_weight_ = weights['transformer.encoder.final_layernorm.weight'].contiguous().to(self.data_type_).cuda()
+            self.final_norm_weight_ = weights['transformer.encoder.final_layernorm.weight'].contiguous().to(self.data_type_).cuda()
 
         return

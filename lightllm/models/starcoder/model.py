@@ -2,8 +2,8 @@ import os
 import json
 import torch
 
-from lightllm.models.starcoder.layer_infer.transformer_layer_inference import StarcoderTransformerLayerInfer
-from lightllm.models.starcoder.layer_infer.pre_layer_inference import StarcoderPreLayerInfer
+from lightllm.models.starcoder.layer_infer.transformer_layer_infer import StarcoderTransformerLayerInfer
+from lightllm.models.starcoder.layer_infer.pre_layer_infer import StarcoderPreLayerInfer
 from lightllm.models.starcoder.layer_infer.infer_struct import StarcoderInferStateInfo
 from lightllm.models.starcoder.layer_weights.transformer_layer_weight import StarcoderTransformerLayerWeight
 from lightllm.models.starcoder.layer_weights.pre_and_post_layer_weight import StarcoderPreAndPostLayerWeight
@@ -53,5 +53,5 @@ class StarcoderTpPartModel(BloomTpPartModel):
 
     def _init_some_value(self):
         super()._init_some_value()
-        self.tp_key_head_num_ = self.config["num_key_value_heads"]
-        self.tp_value_head_num_ = self.config["num_key_value_heads"]
+        self.tp_k_head_num_ = self.config["num_key_value_heads"]
+        self.tp_v_head_num_ = self.config["num_key_value_heads"]

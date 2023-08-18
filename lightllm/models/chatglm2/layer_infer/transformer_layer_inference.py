@@ -34,35 +34,10 @@ class ChatGLM2TransformerLayerInfer(Llama2TransformerLayerInfer):
                     out=cache_v.view(-1, self.tp_kv_head_sum_dim_))
         return q
 
-    @mark_cost_time("trans context ffn forward time cost")
-    def _context_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight):
-        total_token_num = infer_state.total_token_num
-        batch_size = infer_state.batch_size
-        input1 = rmsnorm_forward(input_embdings,
-                                 weight=layer_weight.post_attention_layernorm_weight_,
-                                 eps=self.layer_norm_eps_)
+    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight):
 
-        ffn1_out = torch.mm(input1.view(-1, self.embed_dim_), layer_weight.ffn_1_weight_)
+        ffn1_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.ffn_1_weight_)
         act_out = self.swiglu(ffn1_out)
         ffn1_out = None
         ffn2_out = torch.mm(act_out, layer_weight.ffn_2_weight_)
-        if self.world_size_ > 1:
-            dist.all_reduce(ffn2_out, op=dist.ReduceOp.SUM, async_op=False)
-        input_embdings.add_(ffn2_out.view(total_token_num, self.embed_dim_))
-        return 
-
-    def _token_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight):
-        total_token_num = infer_state.total_token_num
-        batch_size = infer_state.batch_size
-        input1 = rmsnorm_forward(input_embdings,
-                                 weight=layer_weight.post_attention_layernorm_weight_,
-                                 eps=self.layer_norm_eps_)
-
-        ffn1_out = torch.mm(input1.view(-1, self.embed_dim_), layer_weight.ffn_1_weight_)
-        act_out = self.swiglu(ffn1_out)
-        ffn1_out = None
-        ffn2_out = torch.mm(act_out, layer_weight.ffn_2_weight_)
-        if self.world_size_ > 1:
-            dist.all_reduce(ffn2_out, op=dist.ReduceOp.SUM, async_op=False)
-        input_embdings.add_(ffn2_out.view(batch_size, self.embed_dim_))
-        return
+        return ffn2_out

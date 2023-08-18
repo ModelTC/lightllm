@@ -23,15 +23,15 @@ class StarcoderPreAndPostLayerWeight(PreAndPostLayerWeight):
             self.lm_head_weight = weights['lm_head.weight'][split_vob_size * self.tp_rank_: split_vob_size *
                                                             (self.tp_rank_ + 1), :].contiguous().to(self.data_type_).cuda()
         if "transformer.ln_f.weight" in weights:
-            self.final_layernorm_weight_ = weights['transformer.ln_f.weight'].contiguous().to(self.data_type_).cuda()
+            self.final_norm_weight_ = weights['transformer.ln_f.weight'].contiguous().to(self.data_type_).cuda()
         if "transformer.ln_f.bias" in weights:
-            self.final_layernorm_bias_ = weights["transformer.ln_f.bias"].contiguous().to(self.data_type_).cuda()
+            self.final_norm_bias_ = weights["transformer.ln_f.bias"].contiguous().to(self.data_type_).cuda()
         return
     
     def verify_load(self):
         errors = "weights load not ok"
-        weights = [self.final_layernorm_weight_, 
-                   self.final_layernorm_bias_,
+        weights = [self.final_norm_weight_, 
+                   self.final_norm_bias_,
                    self.wte_weight_,
                    self.wpe_weight_,
                    self.lm_head_weight]
