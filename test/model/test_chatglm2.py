@@ -4,9 +4,9 @@ import unittest
 from model_infer import test_model_inference
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-class TestLlamaInfer(unittest.TestCase):
+class TestChatglm2Infer(unittest.TestCase):
 
-    def test_llama_infer(self):
+    def test_chatglm2_infer(self):
         from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
         test_model_inference(world_size=1, 
                              model_dir="/nvme/baishihao/chatglm2-6b/", 
