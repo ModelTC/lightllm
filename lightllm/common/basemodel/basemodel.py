@@ -93,12 +93,11 @@ class TpPartBaseModel:
         return
     
     def _init_some_value(self):
-        self.head_num_ = self.config["num_attention_heads"]
-        self.head_dim_ = self.config["n_embed"] // self.head_num_
-        assert self.head_num_ % self.world_size_ == 0
-        self.tp_head_num_ = self.head_num_ // self.world_size_
-        self.vocab_size = self.config["vocab_size"]
+        self.head_dim_ = self.config["n_embed"] // self.config["num_attention_heads"]
+        self.tp_k_head_num_ = self.config["num_attention_heads"] // self.world_size_
+        self.tp_v_head_num_ = self.tp_k_head_num_
         self.layers_num = self.config["n_layer"]
+        self.vocab_size = self.config["vocab_size"]
         return
     
     def _init_custom(self):
@@ -137,8 +136,8 @@ class TpPartBaseModel:
 
         infer_state.mem_manager = self.mem_manager
         infer_state.prefill_mem_index = self.mem_manager.alloc(infer_state.total_token_num)
-        infer_state.prefill_key_buffer = torch.empty((infer_state.total_token_num, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-        infer_state.prefill_value_buffer = torch.empty((infer_state.total_token_num, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+        infer_state.prefill_key_buffer = torch.empty((infer_state.total_token_num, self.tp_k_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+        infer_state.prefill_value_buffer = torch.empty((infer_state.total_token_num, self.tp_v_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
         init_bloc(b_loc, b_seq_len, max_len_in_batch, infer_state.prefill_mem_index)
 
         predict_logics = self._context_forward(input_ids, infer_state)
@@ -169,8 +168,8 @@ class TpPartBaseModel:
             infer_state.decode_is_contiguous = False
             alloc_mem = self.mem_manager.alloc(batch_size)
             infer_state.decode_mem_index = alloc_mem
-            infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-            infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+            infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_k_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+            infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_v_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
             b_loc[:, max_len_in_batch - 1] = infer_state.decode_mem_index
 
         predict_logics = self._token_forward(input_ids, infer_state)

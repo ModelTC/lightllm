@@ -1,7 +1,6 @@
-from .BaseLayerInfer import BaseLayerInfer
+from .base_layer_infer import BaseLayerInfer
 
-
-class PreLayerInfer(BaseLayerInfer):
+class PostLayerInfer(BaseLayerInfer):
     """
     """
     def __init__(self, tp_rank, world_size, network_config, mode):
@@ -9,4 +8,4 @@ class PreLayerInfer(BaseLayerInfer):
         self.world_size_ = world_size
         self.network_config_ = network_config
         self.mode = mode
-        return
+        return 

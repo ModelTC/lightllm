@@ -1,27 +1,24 @@
 import torch
-import torch.functional as F
 import torch.distributed as dist
-import numpy as np
-from einops import rearrange
-from lightllm.common.basemodel import PreLayerInfer
+from lightllm.common.basemodel import PreLayerInferTpl
 from lightllm.common.basemodel import InferStateInfo
 from lightllm.models.bloom.layer_weights.pre_and_post_layer_weight import BloomPreAndPostLayerWeight
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.models.bloom.triton_kernel.layernorm import layernorm_forward
 
-class BloomPreLayerInfer(PreLayerInfer):
+class BloomPreLayerInfer(PreLayerInferTpl):
     """
     """
-
     def __init__(self, tp_rank, world_size, network_config, mode):
         super().__init__(tp_rank, world_size, network_config, mode)
-        assert (network_config["vocab_size"] % self.world_size_ == 0)
-        self.tp_vocab_size_ = network_config["vocab_size"] // self.world_size_
-        self.embed_dim_ = network_config["n_embed"]
-        self.layer_norm_eps_ = network_config["layer_norm_epsilon"]
-        self.vob_start_id_ = self.tp_vocab_size_ * self.tp_rank_
-        self.vob_end_id_ = self.tp_vocab_size_ * (self.tp_rank_ + 1)
+        self.eps_ = network_config["layer_norm_epsilon"]
+        tp_vocab_size_ = network_config["vocab_size"] // self.world_size_
+        self.vob_start_id_ = tp_vocab_size_ * self.tp_rank_
+        self.vob_end_id_ = tp_vocab_size_ * (self.tp_rank_ + 1)
         return
+    
+    def _norm(self, input, infer_state, layer_weight : BloomPreAndPostLayerWeight) -> torch.Tensor:
+        return layernorm_forward(input, layer_weight.pre_norm_weight_, layer_weight.pre_norm_bias_, eps=self.eps_)
 
     @mark_cost_time("pre context forward")  # dont to remove this, will make performence down, did not know why
     def context_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BloomPreAndPostLayerWeight):
@@ -35,11 +32,7 @@ class BloomPreLayerInfer(PreLayerInfer):
         input_embdings[input_mask] = 0.0
         if self.world_size_ > 1:
             dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
-        input_embdings = layernorm_forward(
-            input_embdings,
-            layer_weight.pre_layernorm_weight_,
-            layer_weight.pre_layernorm_bias_,
-            eps=self.layer_norm_eps_)
+        input_embdings = self._norm(input_embdings, infer_state, layer_weight)
         return input_embdings
 
     def token_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BloomPreAndPostLayerWeight):
@@ -50,9 +43,5 @@ class BloomPreLayerInfer(PreLayerInfer):
         input_embdings[input_mask] = 0.0
         if self.world_size_ > 1:
             dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
-        input_embdings = layernorm_forward(
-            input_embdings,
-            layer_weight.pre_layernorm_weight_,
-            layer_weight.pre_layernorm_bias_,
-            eps=self.layer_norm_eps_)
+        input_embdings = self._norm(input_embdings, infer_state, layer_weight)
         return input_embdings

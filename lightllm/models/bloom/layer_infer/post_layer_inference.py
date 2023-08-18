@@ -5,23 +5,24 @@ import numpy as np
 
 from lightllm.models.bloom.layer_weights.pre_and_post_layer_weight import BloomPreAndPostLayerWeight
 from einops import rearrange
-from lightllm.common.basemodel import InferStateInfo, PostLayerInfer
+from lightllm.common.basemodel import InferStateInfo, PostLayerInferTpl
 from lightllm.models.bloom.triton_kernel.layernorm import layernorm_forward
 
 
-class BloomPostLayerInfer(PostLayerInfer):
+class BloomPostLayerInfer(PostLayerInferTpl):
     """
     """
 
     def __init__(self, tp_rank, world_size, network_config, mode):
         super().__init__(tp_rank, world_size, network_config, mode)
         assert (network_config["vocab_size"] % self.world_size_ == 0)
+        self.eps_ = network_config["layer_norm_epsilon"]
         self.vocab_size_ = network_config["vocab_size"]
-        self.tp_vocab_size_ = network_config["vocab_size"] // self.world_size_
         self.embed_dim_ = network_config["n_embed"]
-        self.layer_norm_eps_ = network_config["layer_norm_epsilon"]
-        self.vob_start_id_ = self.tp_vocab_size_ * self.tp_rank_
-        self.vob_end_id_ = self.tp_vocab_size_ * (self.tp_rank_ + 1)
+        return
+    
+    def _norm(self, input, infer_state, layer_weight : BloomPreAndPostLayerWeight) -> torch.Tensor:
+        return layernorm_forward(input, layer_weight.final_norm_weight_, layer_weight.final_norm_bias_, eps=self.eps_)
 
     def soft_max(self, data):
         return torch.softmax(data.permute(1, 0).float(), dim=-1)
@@ -36,11 +37,7 @@ class BloomPostLayerInfer(PostLayerInfer):
             last_input[:, :] = input_embdings[-batch_size:, :]
 
         input_embdings = None
-        last_input = layernorm_forward(
-            last_input,
-            layer_weight.final_layernorm_weight_,
-            layer_weight.final_layernorm_bias_,
-            eps=self.layer_norm_eps_)
+        last_input = self._norm(last_input, infer_state, layer_weight)
         last_input = rearrange(last_input, "batch embed_dim -> embed_dim batch").contiguous().reshape(-1, batch_size)
         logic_batch = torch.mm(layer_weight.wte_weight_, last_input)
         last_input = None

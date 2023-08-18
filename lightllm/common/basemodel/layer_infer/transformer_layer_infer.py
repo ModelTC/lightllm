@@ -1,4 +1,4 @@
-from .BaseLayerInfer import BaseLayerInfer
+from .base_layer_infer import BaseLayerInfer
 
 
 class TransformerLayerInfer(BaseLayerInfer):

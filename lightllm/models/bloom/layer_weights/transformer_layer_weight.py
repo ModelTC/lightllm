@@ -26,19 +26,19 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
     
     def verify_load(self):
         errors = "weights load not ok"
-        weights = [self.input_layernorm_weight_,
-                   self.input_layernorm_bias_,
+        weights = [self.att_norm_weight_,
+                   self.att_norm_bias_,
                    self.q_weight_,
                    self.k_weight_,
                    self.v_weight_,
                    self.q_bias_,
                    self.k_bias_,
                    self.v_bias_,
-                   self.att_out_dense_weight_,
-                   self.att_out_dense_bias_,
+                   self.o_weight_,
+                   self.o_bias_,
 
-                   self.post_attention_layernorm_weight_,
-                   self.post_attention_layernorm_bias_,
+                   self.ffn_norm_weight_,
+                   self.ffn_norm_bias_,
                    self.ffn_1_weight_,
                    self.ffn_1_bias_,
                    self.ffn_2_weight_,
@@ -51,9 +51,9 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
     def _load_qkvo_weights(self, weights):
         # input layernorm params
         if f"h.{self.layer_num_}.input_layernorm.weight" in weights:
-            self.input_layernorm_weight_ = self._cuda(weights[f"h.{self.layer_num_}.input_layernorm.weight"])
+            self.att_norm_weight_ = self._cuda(weights[f"h.{self.layer_num_}.input_layernorm.weight"])
         if f"h.{self.layer_num_}.input_layernorm.bias" in weights:
-            self.input_layernorm_bias_ = self._cuda(weights[f"h.{self.layer_num_}.input_layernorm.bias"])
+            self.att_norm_bias_ = self._cuda(weights[f"h.{self.layer_num_}.input_layernorm.bias"])
 
         if f"h.{self.layer_num_}.self_attention.query_key_value.weight" in weights:
             # attention params
@@ -97,17 +97,17 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
         if f"h.{self.layer_num_}.self_attention.dense.weight" in weights:
             n_embed = self.network_config_["n_embed"]
             split_n_embed = n_embed // self.world_size_
-            self.att_out_dense_weight_ = self._cuda(weights[f"h.{self.layer_num_}.self_attention.dense.weight"][:,
+            self.o_weight_ = self._cuda(weights[f"h.{self.layer_num_}.self_attention.dense.weight"][:,
                                                                                                      split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)].transpose(0, 1))
         if f"h.{self.layer_num_}.self_attention.dense.bias" in weights:
-            self.att_out_dense_bias_ = self._cuda(weights[f"h.{self.layer_num_}.self_attention.dense.bias"])
+            self.o_bias_ = self._cuda(weights[f"h.{self.layer_num_}.self_attention.dense.bias"])
         return 
 
     def _load_ffn_weights(self, weights):
         if f"h.{self.layer_num_}.post_attention_layernorm.weight" in weights:
             # post attention layernorm params
-            self.post_attention_layernorm_weight_ = self._cuda(weights[f"h.{self.layer_num_}.post_attention_layernorm.weight"])
-            self.post_attention_layernorm_bias_ = self._cuda(weights[f"h.{self.layer_num_}.post_attention_layernorm.bias"])
+            self.ffn_norm_weight_ = self._cuda(weights[f"h.{self.layer_num_}.post_attention_layernorm.weight"])
+            self.ffn_norm_bias_ = self._cuda(weights[f"h.{self.layer_num_}.post_attention_layernorm.bias"])
 
         # ffn params
         if f"h.{self.layer_num_}.mlp.dense_h_to_4h.weight" in weights:
@@ -122,7 +122,6 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
             split_n_embed = n_embed // self.world_size_
             self.ffn_1_bias_ = self._cuda(weights[f"h.{self.layer_num_}.mlp.dense_h_to_4h.bias"][split_n_embed *
                                                                                       self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
-
         if f"h.{self.layer_num_}.mlp.dense_4h_to_h.weight" in weights:
             n_embed = self.network_config_["n_embed"] * 4
             split_n_embed = n_embed // self.world_size_
