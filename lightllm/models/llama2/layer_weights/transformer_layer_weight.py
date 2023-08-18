@@ -8,8 +8,6 @@ from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTr
 class Llama2TransformerLayerWeight(LlamaTransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=""):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode)
-        assert network_config["num_key_value_heads"] % self.world_size_ == 0
-        assert network_config["num_attention_heads"] % self.world_size_ == 0
         return
     
     def _load_qkvo_weights(self, weights):
@@ -36,8 +34,8 @@ class Llama2TransformerLayerWeight(LlamaTransformerLayerWeight):
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
-            self.att_out_dense_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][:,
+            self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][:,
                                                                                                             split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
-            self.att_out_dense_weight_ = self._cuda(self.att_out_dense_weight_.transpose(0, 1))
+            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
         return
 
