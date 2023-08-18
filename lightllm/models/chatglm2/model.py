@@ -2,7 +2,7 @@ import os
 import json
 import torch
 
-from lightllm.models.chatglm2.layer_infer.transformer_layer_inference import ChatGLM2TransformerLayerInfer
+from lightllm.models.chatglm2.layer_infer.transformer_layer_infer import ChatGLM2TransformerLayerInfer
 from lightllm.models.chatglm2.layer_weights.transformer_layer_weight import ChatGLM2TransformerLayerWeight
 from lightllm.models.chatglm2.layer_weights.pre_and_post_layer_weight import ChatGLM2PreAndPostLayerWeight
 
