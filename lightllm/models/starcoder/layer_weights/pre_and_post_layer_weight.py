@@ -20,7 +20,7 @@ class StarcoderPreAndPostLayerWeight(PreAndPostLayerWeight):
             # print(weights['transformer.wpe.weight'].shape)
             self.wpe_weight_ = weights['transformer.wpe.weight'].to(self.data_type_).cuda()
         if 'lm_head.weight' in weights:
-            self.lm_head_weight = weights['lm_head.weight'][split_vob_size * self.tp_rank_: split_vob_size *
+            self.lm_head_weight_ = weights['lm_head.weight'][split_vob_size * self.tp_rank_: split_vob_size *
                                                             (self.tp_rank_ + 1), :].contiguous().to(self.data_type_).cuda()
         if "transformer.ln_f.weight" in weights:
             self.final_norm_weight_ = weights['transformer.ln_f.weight'].contiguous().to(self.data_type_).cuda()
@@ -34,7 +34,7 @@ class StarcoderPreAndPostLayerWeight(PreAndPostLayerWeight):
                    self.final_norm_bias_,
                    self.wte_weight_,
                    self.wpe_weight_,
-                   self.lm_head_weight]
+                   self.lm_head_weight_]
         for i in range(len(weights)):
             assert weights[i] is not None, "index:" + str(i) + " " + errors
         return 
