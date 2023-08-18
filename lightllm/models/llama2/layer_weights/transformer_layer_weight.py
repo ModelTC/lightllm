@@ -12,7 +12,7 @@ class Llama2TransformerLayerWeight(LlamaTransformerLayerWeight):
     
     def _load_qkvo_weights(self, weights):
         if f"model.layers.{self.layer_num_}.input_layernorm.weight" in weights:
-            self.input_layernorm = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
+            self.att_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
 
         # attention params
         n_embed = self.network_config_["hidden_size"]
