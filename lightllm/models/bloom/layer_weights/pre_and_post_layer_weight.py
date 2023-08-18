@@ -22,6 +22,7 @@ class BloomPreAndPostLayerWeight(PreAndPostLayerWeight):
             split_vob_size = vob_size // self.world_size_
             self.wte_weight_ = self._cuda(weights["word_embeddings.weight"][split_vob_size *
                                                                  self.tp_rank_: split_vob_size * (self.tp_rank_ + 1), :])
+            self.lm_head_weight = self.lm_head_weight
         return
     
     def verify_load(self):
