@@ -120,25 +120,30 @@ class TpPartBaseModel:
             b_loc : torch.Tensor,
             b_start_loc : torch.Tensor,
             b_seq_len : torch.Tensor,
+            input_embeds: torch.Tensor = None,
             is_prefill=True):
         if is_prefill:
-            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len)
+            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embeds)
         else:
-            return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len)
+            return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embeds)
 
     
-    def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len):
+    def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embs=None):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num
         infer_state.max_len_in_batch = max_len_in_batch
-        assert (input_ids.shape[0] == total_token_num)
+        assert (input_ids is not None) ^ (input_embs is not None)
+        if input_ids is not None:
+            assert (input_ids.shape[0] == total_token_num)
+        else:
+            assert (input_embs.shape[0] == total_token_num)
         assert (b_loc.shape[0] == b_start_loc.shape[0] == b_seq_len.shape[0])
         infer_state.b_loc = b_loc
         infer_state.b_start_loc = b_start_loc
         infer_state.b_seq_len = b_seq_len
-        infer_state.init_some_extra_state(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, True)
+        infer_state.init_some_extra_state(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, True, input_embs=input_embs)
 
         infer_state.mem_manager = self.mem_manager
         infer_state.prefill_mem_index = self.mem_manager.alloc(infer_state.total_token_num)
@@ -146,10 +151,10 @@ class TpPartBaseModel:
         infer_state.prefill_value_buffer = torch.empty((infer_state.total_token_num, self.tp_v_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
         init_bloc(b_loc, b_seq_len, max_len_in_batch, infer_state.prefill_mem_index)
 
-        predict_logics = self._context_forward(input_ids, infer_state)
+        predict_logics = self._context_forward(input_ids, infer_state, input_embs=input_embs)
         return predict_logics
     
-    def _decode(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len):
+    def _decode(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embs=None):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = False
         infer_state.batch_size = batch_size
@@ -161,7 +166,7 @@ class TpPartBaseModel:
         infer_state.b_seq_len = b_seq_len
         
         infer_state.mem_manager = self.mem_manager
-        infer_state.init_some_extra_state(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, False)
+        infer_state.init_some_extra_state(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, False, input_embs=input_embs)
 
         alloc_mem = self.mem_manager.alloc_contiguous(batch_size)
         if alloc_mem is not None:
@@ -178,22 +183,24 @@ class TpPartBaseModel:
             infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_v_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
             b_loc[:, max_len_in_batch - 1] = infer_state.decode_mem_index
 
-        predict_logics = self._token_forward(input_ids, infer_state)
+        predict_logics = self._token_forward(input_ids, infer_state, input_embs=input_embs)
         return predict_logics
     
     @final
-    def _context_forward(self, input_ids, infer_state: InferStateInfo):
-        cuda_input_ids = input_ids
-        input_embs = self.pre_infer.context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
+    def _context_forward(self, input_ids, infer_state: InferStateInfo, input_embs=None):
+        if input_ids is not None:
+            cuda_input_ids = input_ids
+            input_embs = self.pre_infer.context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
         for i in range(self.layers_num):
             input_embs = self.layers_infer[i].context_forward(input_embs, infer_state, self.trans_layers_weight[i])
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight, return_logics=True)
         return predict_logics
 
     @final
-    def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        cuda_input_ids = input_ids
-        input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
+    def _token_forward(self, input_ids, infer_state: InferStateInfo, input_embs=None):
+        if input_ids is not None:
+            cuda_input_ids = input_ids
+            input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
         for i in range(self.layers_num):
             input_embs = self.layers_infer[i].token_forward(input_embs, infer_state, self.trans_layers_weight[i])
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight, return_logics=True)

@@ -36,5 +36,6 @@ class InferStateInfo:
             b_loc : torch.Tensor,
             b_start_loc : torch.Tensor,
             b_seq_len : torch.Tensor,
-            is_prefill):
+            is_prefill,
+            input_embs : torch.Tensor = None):
         pass
