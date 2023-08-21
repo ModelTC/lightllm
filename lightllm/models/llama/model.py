@@ -82,7 +82,7 @@ class LlamaTpPartModel(TpPartBaseModel):
             max_seq_len *= ntk_alpha
             base = base * (ntk_alpha ** (self.head_dim_ / (self.head_dim_-2))) #Base change formula
         except:
-            print("Invalid value for LIGHTLLM_NTK_ALPHA, ignoring")
+            pass
 
         inv_freq = 1.0 / (base ** (torch.arange(0, self.head_dim_, 2, device="cpu", dtype=torch.float32) / self.head_dim_))
         t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
