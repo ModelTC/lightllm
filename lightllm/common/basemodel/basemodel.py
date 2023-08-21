@@ -120,12 +120,12 @@ class TpPartBaseModel:
             b_loc : torch.Tensor,
             b_start_loc : torch.Tensor,
             b_seq_len : torch.Tensor,
-            input_embeds: torch.Tensor = None,
+            input_embs: torch.Tensor = None,
             is_prefill=True):
         if is_prefill:
-            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embeds)
+            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embs)
         else:
-            return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embeds)
+            return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embs)
 
     
     def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, input_embs=None):
