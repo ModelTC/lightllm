@@ -17,7 +17,8 @@ class LlamaInferStateInfo(InferStateInfo):
             b_loc : torch.Tensor,
             b_start_loc : torch.Tensor,
             b_seq_len : torch.Tensor,
-            is_prefill):
+            is_prefill,
+            input_embs : torch.Tensor = None):
         if is_prefill:
             b_seq_len_numpy = b_seq_len.cpu().numpy()
             position_ids = torch.from_numpy(np.concatenate([np.arange(0, b_seq_len_numpy[i])
