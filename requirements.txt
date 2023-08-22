@@ -61,7 +61,7 @@ starlette==0.22.0
 sympy==1.12
 tokenizers==0.13.3
 toolz==0.12.0
-torch==1.13.1
+torch==2.0.0
 tqdm==4.65.0
 transformers==4.29.2
 triton==2.0.0.dev20221202
