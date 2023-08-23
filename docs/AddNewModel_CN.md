@@ -1,6 +1,6 @@
-### 如何添加新的模型支持
+## 如何添加新的模型支持
 
-#### 1. 当前的推理架构介绍
+### 1. 当前的推理架构介绍
 
 在 ***lightllm/common/basemodel*** 目录下，是整个推理架构的基类实现
 
@@ -33,7 +33,7 @@
 
 如上所示，目前模型推理架构主要由权重和推理两个部分组成。
 
-##### 权重
+#### 权重
 
 layer_weights 目录下是权重相关的代码，理论上对于一个新添加的模型需要继承实现 pre_and_post_layer_weight.py 和 transformer_layer_weight.py 中的 PreAndPostLayerWeight 和 TransformerLayerWeight 类来实现权重的加载。
 
@@ -42,7 +42,7 @@ layer_weights 目录下是权重相关的代码，理论上对于一个新添加
 | PreAndPostLayerWeight  | 负责对LLM模型的第一层Embedding层和最后一层后处理层的权重加载并按照所使用的tp参数对权重进行拆分 |
 | TransformerLayerWeight | 负责对LLM模型transformer层进行权重的加载按照所使用的tp参数对权重进行拆分 |
 
-##### 推理
+#### 推理
 
 layer_infer 目录下是进行推理处理的相关基类，并在template目录下提供了一些模板，从模板类进行继承实现可以减少一些不必要的重复代码，简化实现，该目录下需要继承实现的推理类有三个。
 
@@ -59,11 +59,11 @@ layer_infer 目录下是进行推理处理的相关基类，并在template目录
 | def context_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight): | Batch进行第一次推理（在代码中又被叫做prefill） |
 | def token_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight): | 单步decode阶段的推理                           |
 
-##### 算子
+#### 算子
 
 triton_kernel 目录下是一些使用 openai triton 实现的推理需要用到的算子。
 
-##### 状态类
+#### 状态类
 
 infer_struct.py 中的 InferStateInfo 类是进行一次模型推理时，在层间传递一些重要信息的状态类，不同的模型可以继承实现该类，添加每个模型需要传递的独特状态信息， InferStateInfo 类提供了一个供继承的init_some_extra_state接口，用于传递额外独特信息的初始化。
 
@@ -81,7 +81,7 @@ infer_struct.py 中的 InferStateInfo 类是进行一次模型推理时，在层
         pass
 ~~~
 
-##### 模型框架类
+#### 模型框架类
 
 basemodel.py 中的 TpPartBaseModel 类，是整个模型的入口，每个类型的模型都需要继承实现该类。该类通过类似搭积木的方式，使用推理类，权重类，状态类完成模型的加载，推理功能，其中有很多接口可以被继承实现，以完成每个模型类型自己独特的操作。
 
@@ -130,11 +130,11 @@ class TpPartBaseModel:
 | def _init_some_value(self):  | 初始化推理框架会使用的一些成员变量的值                       |
 | def _init_custom(self):      | 一些模型自己的个性化初始化，比如 llama 初始化自己的Rotary值  |
 
-#### 2. 添加 bloom 模型的示例说明
+### 2. 添加 bloom 模型的示例说明
 
 具体实现在 ***lightllm/models/bloom*** 目录下，下面的代码片段请对应源码进行阅读，其中 triton_kernel 目录下为推理类使用的一些 kernel，下文中不做详细介绍，同时 bloom 模型因为不需要传递特殊状态信息使用默认的状态类即可。如想更深入的理解整个框架，可以进一步参考 llama 和 llama2 等模型的接入实现源码。
 
-##### （1） 添加实现权重类
+#### （1） 添加实现权重类
 
 ***pre_and_post_layer_weight.py***
 
@@ -334,7 +334,7 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
         return head_alibi
 ~~~
 
-##### (2) 添加实现推理类
+#### (2) 添加实现推理类
 
 ***pre_layer_infer.py***
 
@@ -549,7 +549,7 @@ class BloomPostLayerInfer(PostLayerInferTpl):
             return ans_logics
 ~~~
 
-##### （3） 实现模型的框架类
+#### （3） 实现模型的框架类
 
 ***model.py***
 
@@ -589,7 +589,7 @@ class BloomTpPartModel(TpPartBaseModel):
         return 
 ~~~
 
-##### (4) 在server服务层加入对模型的支持
+#### (4) 在server服务层加入对模型的支持
 
 ***lightllm/server/router/model_infer/model_rpc.py***
 
