@@ -1,4 +1,5 @@
 import asyncio
+import numpy
 import rpyc
 import torch
 import traceback
@@ -16,6 +17,7 @@ from lightllm.models.qwen.model import QWenTpPartModel
 from lightllm.models.baichuan7b.model import Baichuan7bTpPartModel
 from lightllm.models.baichuan13b.model import Baichuan13bTpPartModel
 from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
+from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.common.configs.config import setting
@@ -65,6 +67,8 @@ class ModelRpcServer(rpyc.Service):
                 self.model = StarcoderTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == 'chatglm':
                 self.model = ChatGlm2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+            elif self.model_type == 'internlm':
+                self.model = InternlmTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
@@ -141,11 +145,12 @@ class ModelRpcServer(rpyc.Service):
         # assert False, f"{kwargs}"
 
         logits = self.model.forward(**kwargs)
-        next_token_ids = sample(logits, batch)
+        next_token_ids, next_token_probs = sample(logits, batch)
+        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
         new_input_ids = []        
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        for i, (r, all_input_ids, next_token_id) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids)):
+        for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)):
             # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
             all_input_ids.append(int(next_token_id))
             # all_input_ids_tensor = None
@@ -153,7 +158,11 @@ class ModelRpcServer(rpyc.Service):
             batch.all_input_ids[i] = all_input_ids
             batch.input_lengths[i] += 1
             batch.out_token_id_counts[i][next_token_id] += 1
-            output_dict[r['request_id']] = int(next_token_id)
+            metadata = {
+                'id': int(next_token_id),
+                'logprob': float(next_token_logprob),
+            }
+            output_dict[r['request_id']] = (int(next_token_id), metadata)
         
         batch.input_ids = torch.tensor(new_input_ids, dtype=torch.long).cuda()
         batch.nopad_b_start_loc = batch.nopad_b_start_loc + torch.arange(0, len(batch), dtype=torch.int32, device="cuda")
