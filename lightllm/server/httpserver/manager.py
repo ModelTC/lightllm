@@ -69,10 +69,13 @@ class HttpServerManager:
             recv_ans:BatchStrOut = await self.recv_from_detokenization.recv_pyobj()
             assert isinstance(recv_ans, BatchStrOut), f"error recv type {type(recv_ans)}"
             for req_id, text, metadata, finished, abort in recv_ans.reqs_infs:
-                if not abort:
-                    _, _, _, event = self.req_id_to_out_inf[req_id]
-                    self.req_id_to_out_inf[req_id] = (text, metadata, finished, event)
-                    event.set()
-                else:
-                    self.req_id_to_out_inf.pop(req_id, None)
+                try:
+                    if not abort:
+                        _, _, _, event = self.req_id_to_out_inf[req_id]
+                        self.req_id_to_out_inf[req_id] = (text, metadata, finished, event)
+                        event.set()
+                    else:
+                        del self.req_id_to_out_inf[req_id]
+                except:
+                    pass
         return
