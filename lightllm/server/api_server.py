@@ -96,7 +96,7 @@ async def generate_stream(request: Request) -> Response:
     async def stream_results() -> AsyncGenerator[bytes, None]:
         async for request_output, metadata in results_generator:
             ret = {"token":{
-                         "id": None, 
+                         "id": metadata.get('id', None),
                          "text":request_output,
                          "logprob":metadata.get('logprob', None),
                          "special":False},
