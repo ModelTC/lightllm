@@ -147,8 +147,7 @@ class ModelRpcServer(rpyc.Service):
         logits = self.model.forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, batch)
         next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_probs = next_token_probs.detach().cpu().numpy()
-        next_token_logprobs = numpy.log(next_token_probs)
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
         new_input_ids = []        
         for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)):

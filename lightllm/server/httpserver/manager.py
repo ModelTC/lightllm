@@ -44,8 +44,8 @@ class HttpServerManager:
                 pass
             event.clear()
             out_str, metadata, finished, _ = self.req_id_to_out_inf[request_id]
-            if out_str != "":
-                self.req_id_to_out_inf[request_id] = ("", metadata, finished, event)
+            if len(metadata) != 0:
+                self.req_id_to_out_inf[request_id] = ("", {}, finished, event)
                 yield out_str, metadata
             if finished:
                 try:
