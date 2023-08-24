@@ -146,7 +146,7 @@ class ModelRpcServer(rpyc.Service):
 
         logits = self.model.forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, batch)
-        next_token_logprobs = torch.log(next_token_probs)
+        next_token_logprobs = torch.log(next_token_probs.cpu())
         output_dict = {}
         new_input_ids = []        
         next_token_ids = next_token_ids.detach().cpu().numpy()
