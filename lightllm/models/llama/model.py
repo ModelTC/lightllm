@@ -6,7 +6,8 @@ import torch
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
 from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
-from lightllm.models.llama.layer_infer.transformer_layer_infer_quantized import LlamaTransformerLayerInferINT8
+from lightllm.models.llama.layer_infer.transformer_layer_infer_quantized import LlamaTransformerLayerInferINT8, \
+    LlamaTransformerLayerInferINT4
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight, \
     LlamaTransformerLayerWeightQuantized
@@ -37,6 +38,7 @@ class LlamaTpPartModel(TpPartBaseModel):
     def _init_class(self, mode):
         class_dict = {
             'int8weight': (LlamaTransformerLayerWeightQuantized, LlamaTransformerLayerInferINT8),
+            'int4weight': (LlamaTransformerLayerWeightQuantized, LlamaTransformerLayerInferINT4),
         }
         mem_dict = {
             "int8kv" : INT8KVMemoryManager

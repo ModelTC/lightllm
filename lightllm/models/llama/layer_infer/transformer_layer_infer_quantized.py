@@ -151,3 +151,68 @@ class LlamaTransformerLayerInferINT8(LlamaTransformerLayerInfer):
         else:
             destindex_copy_kv(cache_k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_num_])
             destindex_copy_kv(cache_v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_num_])
+
+
+class LlamaTransformerLayerInferINT4(LlamaTransformerLayerInfer):
+    """
+    Llama Model Inference using Triton W4A16 kernel.
+    """
+
+    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
+        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
+
+    def _get_qkv(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight, matmul_int8_func) -> torch.Tensor:
+        qkv_output = matmul_dequantize_int4(input.view(-1, self.embed_dim_),
+                                            layer_weight.qkv_fused_weight,
+                                            layer_weight.qkv_fused_weight_scale)
+        tp_hidden_dim = self.embed_dim_ // self.world_size_
+        q = qkv_output[:, : tp_hidden_dim]
+        k = qkv_output[:, tp_hidden_dim : tp_hidden_dim * 2]
+        v = qkv_output[:, tp_hidden_dim * 2 :]
+        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
+        cache_k_ = k.view(-1, self.tp_k_head_num_, self.head_dim_)
+        rotary_emb_fwd(cache_k_, infer_state.position_cos, infer_state.position_sin)
+        cache_v_ = v.view(-1, self.tp_v_head_num_, self.head_dim_)
+        return q, cache_k_, cache_v_
+
+    def _get_o(self, input, infer_state: LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight) -> torch.Tensor:
+        o_tensor = matmul_dequantize_int4(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
+                                          layer_weight.o_weight_, layer_weight.o_weight_scale_)
+        return o_tensor
+
+    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight, matmul_int8_func) -> torch.Tensor:
+        gate_up_output = matmul_dequantize_int4(input.view(-1, self.embed_dim_),
+                                                layer_weight.gate_up_fused_weight,
+                                                layer_weight.gate_up_fused_weight_scale)
+        input = None
+        tp_inter_dim = self.inter_dim_ // self.world_size_
+        gate_up_output = gate_up_output.view(-1, 2, tp_inter_dim)
+        torch.nn.functional.silu(gate_up_output[:, 0], inplace=True)
+        ffn1_out = gate_up_output[:, 0] * gate_up_output[:, 1]
+        gate_up_output = None
+        ffn2_out = matmul_dequantize_int4(ffn1_out, layer_weight.down_proj, layer_weight.down_proj_scale)
+        ffn1_out = None
+        return ffn2_out
+
+    def _pre_cache_kv(self, infer_state:LlamaInferStateInfo, layer_weight)->Tuple[torch.Tensor, torch.Tensor]:
+        '''
+        Release kv buffer to save memory, since we allocate while kv projection.
+        '''
+        if infer_state.is_prefill:
+            infer_state.prefill_key_buffer = None
+            infer_state.prefill_value_buffer = None
+        else:
+            infer_state.decode_key_buffer = None
+            infer_state.decode_value_buffer = None
+
+    def _post_cache_kv(self, cache_k, cache_v, infer_state:LlamaInferStateInfo, layer_weight):
+        '''
+        We always do kv cache copy.
+        '''
+        mem_manager = infer_state.mem_manager
+        if infer_state.is_prefill:
+            destindex_copy_kv(cache_k, infer_state.prefill_mem_index, mem_manager.key_buffer[self.layer_num_])
+            destindex_copy_kv(cache_v, infer_state.prefill_mem_index, mem_manager.value_buffer[self.layer_num_])
+        else:
+            destindex_copy_kv(cache_k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_num_])
+            destindex_copy_kv(cache_v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_num_])

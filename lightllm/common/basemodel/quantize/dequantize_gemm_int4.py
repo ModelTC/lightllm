@@ -65,8 +65,6 @@ def dequantize_kernel(
         bs_offs = (offs_k * 8 + i)[:, None] * stride_bsk + (offs_n // group_size)[None, :] * stride_bsn
         fpb_offs = (offs_k * 8 + i)[:, None] * stride_fpbk + offs_n[None, :] * stride_fpbn
         scale_b = tl.load(b_scale_ptr + bs_offs, mask=n_mask & ((offs_k * 8 + i)[:, None] < K * 8), other=0.0)
-        # print(b_offs, bs_offs, bzp_offs, fpb_offs)
-        # print(int4_b, int4_zp, scale_b)
         fp_weight = (int4_b - int4_zp) * scale_b
         tl.store(fpb_ptr + fpb_offs, fp_weight, mask=n_mask & ((offs_k * 8 + i)[:, None] < K * 8))
 
@@ -189,7 +187,7 @@ def test_int4(M, K, N):
     t2 = time.time()
     torch_time = t2 - t1
     print("Torch time cost", (t2 - t1))
-    return triton_time, torch_time
+    return triton_time, torch_time, 0
 
 
 def test_correct_int4(M=512, K=4096, N=4096):
@@ -239,7 +237,7 @@ def benchmark(M, N, K, provider):
     return perf(ms), perf(max_ms), perf(min_ms)
 
 
-def test_model_layer(bs, sqe_len, hidden, inter, tp):
+def test_model_layer_merge(bs, sqe_len, hidden, inter, tp):
     st1 = 0
     st2 = 0
     t1, t2 = test_int4(bs * sqe_len, hidden, hidden * 3 // tp)
