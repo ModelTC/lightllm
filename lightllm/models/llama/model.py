@@ -55,6 +55,9 @@ class LlamaTpPartModel(TpPartBaseModel):
         # rename key
         # repair_config()
         
+    def _verify_params(self):
+        assert self.load_way == "HF", "only support HF format weights"
+
     def _init_mem_manager(self):
         self.mem_manager = self.memory_manager_class(
             self.max_total_token_num, 

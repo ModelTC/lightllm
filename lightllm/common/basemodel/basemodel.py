@@ -58,6 +58,8 @@ class TpPartBaseModel:
     
     def _verify_params(self):
         assert self.load_way == "HF", "only support HF format weights"
+        assert self.mode == "", "future to support int8 int4 ..."
+        return
     
     def _init_weights(self):
         self.pre_post_weight = self.pre_and_post_weight_class(self.tp_rank_, self.world_size_, torch.float16, network_config=self.config, mode=self.mode)
