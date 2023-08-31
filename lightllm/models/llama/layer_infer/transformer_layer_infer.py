@@ -1,8 +1,9 @@
-import torch
-import torch.functional as F
-import torch.distributed as dist
-import numpy as np
 from typing import Tuple
+
+import numpy as np
+import torch
+import torch.distributed as dist
+import torch.functional as F
 import triton
 
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
@@ -17,11 +18,12 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv, destindex_copy_quantize_kv
 from lightllm.common.basemodel import TransformerLayerInferTpl
 
+
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     """
     """
 
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=""):
+    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.eps_ = network_config["rms_norm_eps"]
         self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
@@ -30,9 +32,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.head_dim_ = network_config["hidden_size"] // network_config["num_attention_heads"]
         self.embed_dim_ = network_config["hidden_size"]
-        return
+        self.inter_dim_ = network_config['intermediate_size']
 
-    
     def _att_norm(self, input, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight)->torch.Tensor:
         return rmsnorm_forward(input, weight=layer_weight.att_norm_weight_, eps=self.eps_)
     
@@ -90,10 +91,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return ffn2_out
     
     def _copy_kv_to_mem_cache(self, key_buffer, value_buffer, mem_index, mem_manager):
-        if self.mode == "":
-            destindex_copy_kv(key_buffer, mem_index, mem_manager.key_buffer[self.layer_num_])
-            destindex_copy_kv(value_buffer, mem_index, mem_manager.value_buffer[self.layer_num_])
-        if self.mode == "int8kv":
+        if 'int8kv' in self.mode:
             destindex_copy_quantize_kv(key_buffer,
                                        mem_index,
                                        mem_manager.key_buffer[self.layer_num_],
@@ -102,7 +100,9 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                                        mem_index,
                                        mem_manager.value_buffer[self.layer_num_],
                                        mem_manager.value_scale_buffer[self.layer_num_])
-        return
+        else:
+            destindex_copy_kv(key_buffer, mem_index, mem_manager.key_buffer[self.layer_num_])
+            destindex_copy_kv(value_buffer, mem_index, mem_manager.value_buffer[self.layer_num_])
     
     def _token_decode_attention_normal(self, q, infer_state: LlamaInferStateInfo):
         total_token_num = infer_state.total_token_num
@@ -178,11 +178,9 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                                 infer_state.max_len_in_batch)
         prob = None
         return o_tensor
-    
+
     def _token_decode_attention_mode(self, q, infer_state: LlamaInferStateInfo):
-        if self.mode == "":
-            return self._token_decode_attention_normal(q, infer_state)
-        if self.mode == "int8kv":
+        if "int8kv" in self.mode:
             return self._token_decode_attention_int8kv(q, infer_state)
-        assert False, f"error mode {self.mode}"
-        return
+        else:
+            return self._token_decode_attention_normal(q, infer_state)
