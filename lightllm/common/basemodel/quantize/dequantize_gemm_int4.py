@@ -71,7 +71,7 @@ def dequantize_kernel(
         tl.store(fpb_ptr + fpb_offs, fp_weight, mask=n_mask & k8_mask)
 
 
-def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=128, out=None):
+def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=64, out=None):
     # Check constraints.
     assert a.is_contiguous(), "Matrix A must be contiguous"
     assert b.is_contiguous(), "Matrix B must be contiguous"
@@ -100,7 +100,7 @@ def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=128, out=None
     return c
 
 
-def quantize_int4(weight, group_size=128):
+def quantize_int4(weight, group_size=64):
     # Weight shape: [H1, H2]
     # Scale shape: [H2]
     h1, h2 = weight.shape
@@ -145,9 +145,9 @@ def quantize_int4(weight, group_size=128):
     return int_weight, scale, int_zero_point
 
 
-def unpack_int4(weight, scale, zp, group_size=128):
-    cos = torch.nn.CosineSimilarity(0)
+def unpack_int4(weight, scale, zp):
     h1, h2 = weight.shape
+    group_size = scale.shape[1] // h2
     fp_weight = torch.zeros(h1 * 8, h2).half().to(weight.device)
     for pack in range(0, h1):
         for i in range(8):
@@ -202,7 +202,7 @@ def test_correct_int4(M=8, K=4096, N=4096):
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     int_b, b_scale, b_zero_point = quantize_int4(b, group_size=group_size)
     cos = torch.nn.CosineSimilarity(0)
-    fp_weight = unpack_int4(int_b, b_scale, b_zero_point, group_size)
+    fp_weight = unpack_int4(int_b, b_scale, b_zero_point)
     print("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
     triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point, group_size)
     torch_output = torch.matmul(a, b)

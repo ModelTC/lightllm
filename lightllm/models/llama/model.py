@@ -53,7 +53,7 @@ class LlamaTpPartModel(TpPartBaseModel):
         }
         for _mode in self.mode:
             if _mode in mem_dict:
-                print("Model using mode ", _mode)
+                print("Model using mode", _mode)
                 self.memory_manager_class = mem_dict[_mode]
         self.mem_manager = self.memory_manager_class(
             self.max_total_token_num, 

@@ -240,3 +240,37 @@ class LlamaTransformerLayerInferINT4(LlamaTransformerLayerInfer):
         if self.world_size_ > 1:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
         input_embding.add_(o.view(-1, self.embed_dim_))
+
+    def _token_decode_attention_normal(self, q, infer_state: LlamaInferStateInfo):
+        '''
+        We override token decode attention normal using triton kernel for 2.0.0 version,
+        since there is bug in kernel for 2.1.0 version when using int4 weight.
+        '''
+        total_token_num = infer_state.total_token_num
+        batch_size = infer_state.batch_size
+        calcu_shape1 = (batch_size, self.tp_q_head_num_, self.head_dim_)
+        att_m_tensor = torch.empty((self.tp_q_head_num_, total_token_num), dtype=q.dtype, device="cuda")
+
+        token_att_fwd(q.view(calcu_shape1),
+                      infer_state.mem_manager.key_buffer[self.layer_num_],
+                      att_m_tensor,
+                      infer_state.b_loc,
+                      infer_state.b_start_loc,
+                      infer_state.b_seq_len,
+                      infer_state.max_len_in_batch)
+
+        prob = torch.empty_like(att_m_tensor)
+        token_softmax_fwd(att_m_tensor, infer_state.b_start_loc, infer_state.b_seq_len, prob, infer_state.max_len_in_batch)
+        att_m_tensor = None
+
+        o_tensor = torch.empty_like(q)
+
+        token_att_fwd2(prob,
+                       infer_state.mem_manager.value_buffer[self.layer_num_],
+                       o_tensor.view(calcu_shape1),
+                       infer_state.b_loc,
+                       infer_state.b_start_loc,
+                       infer_state.b_seq_len,
+                       infer_state.max_len_in_batch)
+        prob = None
+        return o_tensor
