@@ -6,20 +6,11 @@ import triton.language as tl
 
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128}, num_stages=3, num_warps=4),
-        triton.Config({'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 256}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 256}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 128}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 64}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 128}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=5, num_warps=2),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 64}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=5, num_warps=2),
         triton.Config({'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32}, num_stages=5, num_warps=2),
@@ -27,6 +18,16 @@ import triton.language as tl
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=5, num_warps=2),
         triton.Config({'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': 16}, num_stages=5, num_warps=2),
         triton.Config({'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 16}, num_stages=5, num_warps=8),
+        triton.Config({'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': 8}, num_stages=3, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 8, 'BLOCK_SIZE_K': 16}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_SIZE_N': 8, 'BLOCK_SIZE_K': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 8, 'BLOCK_SIZE_K': 4}, num_stages=3, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': 8}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': 4}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': 4}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 8, 'BLOCK_SIZE_K': 32}, num_stages=3, num_warps=4),
+        triton.Config({'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': 64}, num_stages=3, num_warps=8),
     ],
     key=['K', 'N'],
 )
@@ -43,7 +44,7 @@ def dequantize_kernel(
     stride_bzpk, stride_bzpn,
     stride_fpbk, stride_fpbn,
     # Meta-parameters
-    BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
 ):
     """Dequantize weight[K // 8, N], scale[K, N // 128], zp[K // 8, N // 128]
     """
@@ -60,29 +61,31 @@ def dequantize_kernel(
     zp_b = tl.load(b_zp_ptr + bzp_offs, mask=mask, other=0.0)
     # Work on 8 rows once, this should be easily unrolled.
     for i in range(8):
-        int4_b = ((int32_b << (28 - i * 4) >> 28) + 16) % 16
-        int4_zp = ((zp_b << (28 - i * 4) >> 28) + 16) % 16
+        int4_b = ((int32_b << (28 - i * 4) >> 28) + 16) & 15
+        int4_zp = ((zp_b << (28 - i * 4) >> 28) + 16) & 15
         bs_offs = (offs_k * 8 + i)[:, None] * stride_bsk + (offs_n // group_size)[None, :] * stride_bsn
         fpb_offs = (offs_k * 8 + i)[:, None] * stride_fpbk + offs_n[None, :] * stride_fpbn
-        scale_b = tl.load(b_scale_ptr + bs_offs, mask=n_mask & ((offs_k * 8 + i)[:, None] < K * 8), other=0.0)
+        k8_mask = (offs_k * 8 + i)[:, None] < K * 8
+        scale_b = tl.load(b_scale_ptr + bs_offs, mask=n_mask & k8_mask, other=0.0)
         fp_weight = (int4_b - int4_zp) * scale_b
-        tl.store(fpb_ptr + fpb_offs, fp_weight, mask=n_mask & ((offs_k * 8 + i)[:, None] < K * 8))
+        tl.store(fpb_ptr + fpb_offs, fp_weight, mask=n_mask & k8_mask)
 
 
-def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size, out=None):
+def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=128, out=None):
     # Check constraints.
     assert a.is_contiguous(), "Matrix A must be contiguous"
     assert b.is_contiguous(), "Matrix B must be contiguous"
     M, K = a.shape
     Kw, N = b.shape
-    if out == None:
+    if out is None:
         # Allocates output.
         c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     else:
         c = out
     fp_b = torch.empty((K, N), device=a.device, dtype=a.dtype)
     grid = lambda META: (
-        triton.cdiv(Kw, META['BLOCK_SIZE_N']), triton.cdiv(N, META['BLOCK_SIZE_N']),
+        triton.cdiv(Kw, META['BLOCK_SIZE_K']),
+        triton.cdiv(N, META['BLOCK_SIZE_N']), 
     )
     dequantize_kernel[grid](
         b, b_scale, b_zero_point, fp_b,
@@ -92,7 +95,9 @@ def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size, out=None):
         b_zero_point.stride(0), b_zero_point.stride(1),
         fp_b.stride(0), fp_b.stride(1)
     )
-    return torch.matmul(a, fp_b, out=c)
+    torch.mm(a, fp_b, out=c)
+    fp_b = None
+    return c
 
 
 def quantize_int4(weight, group_size=128):
@@ -102,8 +107,7 @@ def quantize_int4(weight, group_size=128):
     assert h1 % 8 == 0, "H1 {} H2 {}".format(h1, h2)
     assert h2 % group_size == 0, "H1 {} H2 {}".format(h1, h2)
 
-    ori_weight = weight.clone()
-    weight = weight.view(-1, group_size)
+    weight = weight.contiguous().view(-1, group_size).cuda()
     weight_max = weight.amax(-1, keepdim=True)
     weight_max = torch.where(weight_max < 0, 0, weight_max)
     weight_min = weight.amin(-1, keepdim=True)
@@ -111,7 +115,7 @@ def quantize_int4(weight, group_size=128):
     weight_range = weight_max - weight_min 
     scale = weight_range / (2 ** 4 - 1)
     zero_point = (-weight_min / scale).round().clamp(0, 15).to(torch.int32)
-    weight = (weight / scale + zero_point).clamp(0, 15).to(torch.int32).view(h1, h2)
+    weight = (weight / scale + zero_point).round().clamp(0, 15).to(torch.int32).view(h1, h2)
     int_weight = torch.empty(h1 // 8, h2).to(torch.int32).to(weight.device)
     int_zero_point = torch.zeros(h1 // 8, h2 // group_size).to(torch.int32).to(weight.device)
     zero_point = zero_point.view(h1, -1)
@@ -137,11 +141,11 @@ def quantize_int4(weight, group_size=128):
 
     print((fp_zp - zero_point).abs().sum())
     '''
-     
+    weight = None
     return int_weight, scale, int_zero_point
 
 
-def unpack_int4(weight, scale, zp, group_size, b):
+def unpack_int4(weight, scale, zp, group_size=128):
     cos = torch.nn.CosineSimilarity(0)
     h1, h2 = weight.shape
     fp_weight = torch.zeros(h1 * 8, h2).half().to(weight.device)
@@ -166,12 +170,12 @@ def test_int4(M, K, N):
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     int_b, b_scale, b_zero_point = quantize_int4(b)
     for _ in range(10):
-        triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point, 128)
+        triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point)
     torch.cuda.synchronize()
     iters = 512
     t1 = time.time()
     for _ in range(iters):
-        triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point, 128)
+        triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point)
     torch.cuda.synchronize()
     t2 = time.time()
     triton_time = t2 - t1
@@ -187,21 +191,22 @@ def test_int4(M, K, N):
     t2 = time.time()
     torch_time = t2 - t1
     print("Torch time cost", (t2 - t1))
-    return triton_time, torch_time, 0
+    return triton_time, torch_time,
 
 
-def test_correct_int4(M=512, K=4096, N=4096):
+def test_correct_int4(M=8, K=4096, N=4096):
     import time
 
+    group_size = 128
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
-    int_b, b_scale, b_zero_point = quantize_int4(b)
+    int_b, b_scale, b_zero_point = quantize_int4(b, group_size=group_size)
     cos = torch.nn.CosineSimilarity(0)
-    fp_weight = unpack_int4(int_b, b_scale, b_zero_point, 128, b)
+    fp_weight = unpack_int4(int_b, b_scale, b_zero_point, group_size)
     print("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
-    triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point, 128)
+    triton_output = matmul_dequantize_int4(a, int_b, b_scale, b_zero_point, group_size)
     torch_output = torch.matmul(a, b)
-    print(f"triton_output={triton_output}")        
+    print(f"triton_output={triton_output}")
     print(f"torch_output={torch_output}")
     print("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
 
@@ -224,6 +229,8 @@ def test_correct_int4(M=512, K=4096, N=4096):
         args={},
     )
 )
+
+
 def benchmark(M, N, K, provider):
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
@@ -237,7 +244,7 @@ def benchmark(M, N, K, provider):
     return perf(ms), perf(max_ms), perf(min_ms)
 
 
-def test_model_layer_merge(bs, sqe_len, hidden, inter, tp):
+def test_model_layer(bs, sqe_len, hidden, inter, tp):
     st1 = 0
     st2 = 0
     t1, t2 = test_int4(bs * sqe_len, hidden, hidden * 3 // tp)

@@ -80,7 +80,8 @@ def matmul_dequantize_int8(a, b, b_scale, out=None):
         b.stride(0), b.stride(1),
         fp_b.stride(0), fp_b.stride(1)
     )
-    return torch.matmul(a, fp_b, out=c)
+    torch.mm(a, fp_b, out=c)
+    return c
 
 
 def quantize_int8(weight, axis=0):

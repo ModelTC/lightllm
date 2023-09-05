@@ -140,17 +140,12 @@ class LlamaTransformerLayerInferINT8(LlamaTransformerLayerInfer):
             infer_state.decode_key_buffer = None
             infer_state.decode_value_buffer = None
 
-    def _post_cache_kv(self, cache_k, cache_v, infer_state:LlamaInferStateInfo, layer_weight):
-        '''
-        We always do kv cache copy.
-        '''
+    def _post_cache_kv(self, cache_k, cache_v, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight):
         mem_manager = infer_state.mem_manager
         if infer_state.is_prefill:
-            destindex_copy_kv(cache_k, infer_state.prefill_mem_index, mem_manager.key_buffer[self.layer_num_])
-            destindex_copy_kv(cache_v, infer_state.prefill_mem_index, mem_manager.value_buffer[self.layer_num_])
+            self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.prefill_mem_index, mem_manager)
         else:
-            destindex_copy_kv(cache_k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_num_])
-            destindex_copy_kv(cache_v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_num_])
+            self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.decode_mem_index, mem_manager)
 
 
 class LlamaTransformerLayerInferINT4(LlamaTransformerLayerInfer):
@@ -161,10 +156,11 @@ class LlamaTransformerLayerInferINT4(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
 
-    def _get_qkv(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight, matmul_int8_func) -> torch.Tensor:
+    def _get_qkv(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight) -> torch.Tensor:
         qkv_output = matmul_dequantize_int4(input.view(-1, self.embed_dim_),
                                             layer_weight.qkv_fused_weight,
-                                            layer_weight.qkv_fused_weight_scale)
+                                            layer_weight.qkv_fused_weight_scale,
+                                            layer_weight.qkv_fused_weight_zp)
         tp_hidden_dim = self.embed_dim_ // self.world_size_
         q = qkv_output[:, : tp_hidden_dim]
         k = qkv_output[:, tp_hidden_dim : tp_hidden_dim * 2]
@@ -177,20 +173,26 @@ class LlamaTransformerLayerInferINT4(LlamaTransformerLayerInfer):
 
     def _get_o(self, input, infer_state: LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight) -> torch.Tensor:
         o_tensor = matmul_dequantize_int4(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
-                                          layer_weight.o_weight_, layer_weight.o_weight_scale_)
+                                          layer_weight.o_weight_,
+                                          layer_weight.o_weight_scale_,
+                                          layer_weight.o_weight_zp_)
         return o_tensor
 
-    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight, matmul_int8_func) -> torch.Tensor:
+    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight) -> torch.Tensor:
         gate_up_output = matmul_dequantize_int4(input.view(-1, self.embed_dim_),
                                                 layer_weight.gate_up_fused_weight,
-                                                layer_weight.gate_up_fused_weight_scale)
+                                                layer_weight.gate_up_fused_weight_scale,
+                                                layer_weight.gate_up_fused_weight_zp)
         input = None
         tp_inter_dim = self.inter_dim_ // self.world_size_
         gate_up_output = gate_up_output.view(-1, 2, tp_inter_dim)
         torch.nn.functional.silu(gate_up_output[:, 0], inplace=True)
         ffn1_out = gate_up_output[:, 0] * gate_up_output[:, 1]
         gate_up_output = None
-        ffn2_out = matmul_dequantize_int4(ffn1_out, layer_weight.down_proj, layer_weight.down_proj_scale)
+        ffn2_out = matmul_dequantize_int4(ffn1_out,
+                                          layer_weight.down_proj,
+                                          layer_weight.down_proj_scale,
+                                          layer_weight.down_proj_zp)
         ffn1_out = None
         return ffn2_out
 
@@ -205,14 +207,36 @@ class LlamaTransformerLayerInferINT4(LlamaTransformerLayerInfer):
             infer_state.decode_key_buffer = None
             infer_state.decode_value_buffer = None
 
-    def _post_cache_kv(self, cache_k, cache_v, infer_state:LlamaInferStateInfo, layer_weight):
-        '''
-        We always do kv cache copy.
-        '''
+    def _post_cache_kv(self, cache_k, cache_v, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight):
         mem_manager = infer_state.mem_manager
         if infer_state.is_prefill:
-            destindex_copy_kv(cache_k, infer_state.prefill_mem_index, mem_manager.key_buffer[self.layer_num_])
-            destindex_copy_kv(cache_v, infer_state.prefill_mem_index, mem_manager.value_buffer[self.layer_num_])
+            self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.prefill_mem_index, mem_manager)
         else:
-            destindex_copy_kv(cache_k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_num_])
-            destindex_copy_kv(cache_v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_num_])
+            self._copy_kv_to_mem_cache(cache_k, cache_v, infer_state.decode_mem_index, mem_manager)
+
+    @mark_cost_time("trans context flash forward time cost")  # dont to remove this, will make performence down, did not know why
+    def _context_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embding, infer_state, layer_weight)
+        self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_k, cache_v = self._get_qkv(input1, infer_state, layer_weight)
+        input1 = None
+        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
+        o = self._context_attention_kernel(q, cache_k, cache_v, infer_state, layer_weight)
+        q = None
+        o = self._get_o(o, infer_state, layer_weight)
+        if self.world_size_ > 1:
+            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+        input_embding.add_(o.view(-1, self.embed_dim_))
+    
+    def _token_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embding, infer_state, layer_weight)
+        self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_k, cache_v = self._get_qkv(input1, infer_state, layer_weight)
+        input1 = None
+        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
+        o = self._token_attention_kernel(q, infer_state, layer_weight)
+        q = None
+        o = self._get_o(o, infer_state, layer_weight)
+        if self.world_size_ > 1:
+            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+        input_embding.add_(o.view(-1, self.embed_dim_))
