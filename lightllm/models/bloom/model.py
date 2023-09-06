@@ -1,10 +1,12 @@
 import os
 import json
+import torch
 from lightllm.models.bloom.layer_infer.pre_layer_infer import BloomPreLayerInfer
 from lightllm.models.bloom.layer_infer.post_layer_infer import BloomPostLayerInfer
 from lightllm.models.bloom.layer_infer.transformer_layer_infer import BloomTransformerLayerInfer
 from lightllm.models.bloom.layer_weights.pre_and_post_layer_weight import BloomPreAndPostLayerWeight
 from lightllm.models.bloom.layer_weights.transformer_layer_weight import BloomTransformerLayerWeight
+from lightllm.models.bloom.layer_weights.hf_load_utils import load_hf_weights
 from lightllm.common.basemodel import InferStateInfo, TpPartBaseModel
 
 from lightllm.common.build_utils import repair_config
