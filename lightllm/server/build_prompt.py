@@ -14,12 +14,12 @@ async def build_prompt(request) -> str:
     if not _fastchat_available:
         raise ModuleNotFoundError(
             "fastchat is not installed. Please install fastchat to use "
-            "the chat completion and conversation APIs: `$ pip install fschat`"
+            "the chat completion and conversation APIs: `$ pip install 'fschat[model_worker,webui]'`"
         )
     if version.parse(fastchat.__version__) < version.parse("0.2.23"):
         raise ImportError(
             f"fastchat version is low. Current version: {fastchat.__version__} "
-            "Please upgrade fastchat to use: `$ pip install -U fschat`")
+            "Please upgrade fastchat to use: `$ pip install 'fschat[model_worker,webui]'`")
 
     conv = get_conversation_template(request.model)
     conv = Conversation(

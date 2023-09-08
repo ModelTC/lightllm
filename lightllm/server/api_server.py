@@ -129,7 +129,7 @@ async def generate_stream(request: Request) -> Response:
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
 
-@app.post("/v1/chat/completions")
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
     global isFirst
     if isFirst:
@@ -220,13 +220,13 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
                 delta=delta_message
             )
 
-            steam_resp = ChatCompletionStreamResponse(
+            stream_resp = ChatCompletionStreamResponse(
                 id=request_id,
                 created=created_time,
                 model=request.model,
                 choices=[stream_choice],
             )
-            yield ("data: " + json.dumps(steam_resp, ensure_ascii=False) + f"\n\n").encode("utf-8")
+            yield ("data: " + stream_resp.json(ensure_ascii=False) + f"\n\n").encode("utf-8")
 
     async def abort_request() -> None:
         await httpserver_manager.abort(request_id)

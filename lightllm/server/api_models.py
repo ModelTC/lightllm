@@ -8,7 +8,7 @@ import uuid
 class ChatCompletionRequest(BaseModel):
     # The openai api native parameters
     model: str
-    messages: Union[str, List[Dict[str, str]]]
+    messages: List[Dict[str, str]]
     function_call: Optional[str] = 'none'
     temperature: Optional[float] = 1
     top_p: Optional[float] = 1.0
