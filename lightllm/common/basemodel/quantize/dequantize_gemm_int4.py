@@ -71,18 +71,9 @@ def dequantize_kernel(
         tl.store(fpb_ptr + fpb_offs, fp_weight, mask=n_mask & k8_mask)
 
 
-def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=64, out=None):
-    # Check constraints.
-    assert a.is_contiguous(), "Matrix A must be contiguous"
-    assert b.is_contiguous(), "Matrix B must be contiguous"
-    M, K = a.shape
+def dequantize_int4(b, b_scale, b_zero_point, device, dtype, group_size):
     Kw, N = b.shape
-    if out is None:
-        # Allocates output.
-        c = torch.empty((M, N), device=a.device, dtype=a.dtype)
-    else:
-        c = out
-    fp_b = torch.empty((K, N), device=a.device, dtype=a.dtype)
+    fp_b = torch.empty((b_scale.shape[0], b.shape[1]), device=device, dtype=dtype)
     grid = lambda META: (
         triton.cdiv(Kw, META['BLOCK_SIZE_K']),
         triton.cdiv(N, META['BLOCK_SIZE_N']), 
@@ -95,12 +86,27 @@ def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=64, out=None)
         b_zero_point.stride(0), b_zero_point.stride(1),
         fp_b.stride(0), fp_b.stride(1)
     )
+    return fp_b
+
+
+def matmul_dequantize_int4(a, b, b_scale, b_zero_point, group_size=128, out=None):
+    # Check constraints.
+    assert a.is_contiguous(), "Matrix A must be contiguous"
+    assert b.is_contiguous(), "Matrix B must be contiguous"
+    M, K = a.shape
+    Kw, N = b.shape
+    if out is None:
+        # Allocates output.
+        c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    else:
+        c = out
+    fp_b = dequantize_int4(b, b_scale, b_zero_point, a.device, a.dtype, group_size)
     torch.mm(a, fp_b, out=c)
     fp_b = None
     return c
 
 
-def quantize_int4(weight, group_size=64):
+def quantize_int4(weight, group_size=128):
     # Weight shape: [H1, H2]
     # Scale shape: [H2]
     h1, h2 = weight.shape
@@ -147,7 +153,7 @@ def quantize_int4(weight, group_size=64):
 
 def unpack_int4(weight, scale, zp):
     h1, h2 = weight.shape
-    group_size = scale.shape[1] // h2
+    group_size = h2 // scale.shape[1]
     fp_weight = torch.zeros(h1 * 8, h2).half().to(weight.device)
     for pack in range(0, h1):
         for i in range(8):
@@ -213,17 +219,17 @@ def test_correct_int4(M=8, K=4096, N=4096):
 
 @triton.testing.perf_report(
     triton.testing.Benchmark(
-        x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
+        x_names=['M'],  # Argument names to use as an x-axis for the plot
         x_vals=[
             128 * i for i in range(2, 33)
         ],  # Different possible values for `x_name`
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
-        line_vals=['cublas', 'triton'],
+        line_vals=['cublas', 'triton', 'dequantize'],
         # Label name for the lines
-        line_names=["cuBLAS", "Triton"],
+        line_names=["cuBLAS", "Triton", "Dequant(GB/s)"],
         # Line styles
-        styles=[('green', '-'), ('blue', '-')],
+        styles=[('green', '-'), ('blue', '-'), ('red', '-')],
         ylabel="TFLOPS",  # Label name for the y-axis
         plot_name="matmul-performance",  # Name for the plot, used also as a file name for saving the plot.
         args={},
@@ -231,16 +237,23 @@ def test_correct_int4(M=8, K=4096, N=4096):
 )
 
 
-def benchmark(M, N, K, provider):
+def benchmark(M, provider):
+    K = 10240
+    N = 27392 * 2 // 8
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     quantiles = [0.5, 0.2, 0.8]
     if provider == 'cublas':
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.matmul(a, b), quantiles=quantiles)
+        perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     if provider == 'triton':
-        intb, b_scale, bzp = quantize_int4(b)
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_dequantize_int4(a, intb, b_scale, bzp, 128), quantiles=quantiles)
-    perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
+        intb, b_scale, bzp = quantize_int4(b, group_size=64)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_dequantize_int4(a, intb, b_scale, bzp, 64), quantiles=quantiles)
+        perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
+    if provider == 'dequantize':
+        intb, b_scale, bzp = quantize_int4(b, group_size=64)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: dequantize_int4(intb, b_scale, bzp, 'cuda', torch.float16, 64), quantiles=quantiles)        
+        perf = lambda ms: 2 * M * K * 1e-9 / (ms * 1e-3)
     return perf(ms), perf(max_ms), perf(min_ms)
 
 

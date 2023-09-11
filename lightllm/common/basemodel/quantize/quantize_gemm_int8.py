@@ -5,6 +5,15 @@ import triton
 import triton.language as tl
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({}, num_stages=2, num_warps=8),
+        triton.Config({}, num_stages=2, num_warps=4),
+        triton.Config({}, num_stages=2, num_warps=2),
+        triton.Config({}, num_stages=2, num_warps=1),
+     ],
+    key=['K'],
+)
 @triton.jit
 def quantize_int8_perrow_kernel(
     fpa_ptr, a_ptr, as_ptr,
@@ -43,8 +52,7 @@ def quantize_int8_perrow(fpa):
     a_scale = torch.empty(fpa.shape[0], device=fpa.device, dtype=torch.float16)
     M, K = fpa.shape
     BLOCK_SIZE_M = 1
-    BLOCK_SIZE_K = 256
-    # grid = lambda META: triton.cdiv(M, META['BLOCK_SIZE_M'])
+    BLOCK_SIZE_K = triton.next_power_of_2(K)
     grid = (M // BLOCK_SIZE_M,)
     quantize_int8_perrow_kernel[grid](
         fpa, a, a_scale,
@@ -53,8 +61,6 @@ def quantize_int8_perrow(fpa):
         a.stride(0), a.stride(1),
         a_scale.stride(0),
         BLOCK_SIZE_M, BLOCK_SIZE_K,
-        num_warps=4,
-        num_stages=2,
     )
     return a, a_scale
 
@@ -233,7 +239,7 @@ def test_correct_int8(M=32, N=4096, K=4096):
     cos = torch.nn.CosineSimilarity(0)
     print("Quantization cos", cos((int_a * scale_a.unsqueeze(1)).flatten().to(torch.float32), a.flatten().to(torch.float32)))
     int_b, scale_b, _ = quantize_int8(b, axis=0)
-    triton_output = matmul_int8(int_a, scale_a, int_b, scale_b, c)
+    triton_output = matmul_int8(int_a, scale_a, int_b, scale_b)
     torch_output = torch.matmul(a, b)
     print(f"triton_output={triton_output}")
     print(f"torch_output={torch_output}")
@@ -259,6 +265,7 @@ def test_int8(M, K, N):
     for _ in range(iters):
         #int_a, a_scale, _ = quantize_int8(a, 1)
         int_a, a_scale = quantize_int8_perrow(a)
+    torch.cuda.synchronize()
     qt2 = time.time()
     for _ in range(iters):
         triton_output = matmul_int8(int_a, a_scale, int_b, scale_b)
@@ -267,7 +274,9 @@ def test_int8(M, K, N):
     quant_time = qt2 - t1
     triton_time = t2 - qt2
     triton_tflops = 2 * M * N * K * 1e-12 / (triton_time / iters)
-    print("Triton time cost: {} (tflops {}) + quant: {}".format(triton_time, triton_tflops, quant_time))
+    quant_bandwith = 2 * M * K * 1e-9 / (quant_time / iters)
+    print("Triton time cost: {} (tflops {}) + quant: {} (bandwidth {})".format(
+        triton_time, triton_tflops, quant_time, quant_bandwith))
     for _ in range(10):
         torch_output = torch.matmul(a, b)
     torch.cuda.synchronize()
@@ -291,36 +300,42 @@ def test_int8(M, K, N):
         ],  # Different possible values for `x_name`
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
-        line_vals=['cublas', 'triton-i8', 'triton-quant-i8'],
+        line_vals=['cublas', 'triton-i8', 'triton-quant-i8', 'quant-perrow'],
         # Label name for the lines
-        line_names=["cuBLAS", "Triton-i8", "Triton-Quant-i8"],
+        line_names=["cuBLAS", "Triton-i8", "Triton-Quant-i8", "Quant-perrow(GB/s)"],
         # Line styles
-        styles=[('green', '-'), ('blue', '-'), ('red', '-')],
+        styles=[('green', '-'), ('blue', '-'), ('red', '-'), ('purple', '-')],
         ylabel="TFLOPS",  # Label name for the y-axis
         plot_name="matmul-performance",  # Name for the plot, used also as a file name for saving the plot.
         args={},
     )
 )
 def benchmark(M, provider):
-    K = 4096
-    N = 4096
+    K = 10240
+    N = 27392 * 2 // 8
     quantiles = [0.5, 0.2, 0.8]
     if provider == 'cublas':
         a = torch.randn((M, K), device='cuda', dtype=torch.float16)
         b = torch.randn((K, N), device='cuda', dtype=torch.float16)
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.matmul(a, b), quantiles=quantiles)
+        perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     if provider == 'triton-i8':
         a = torch.randn((M, K), device='cuda', dtype=torch.float16).to(torch.int8).contiguous()
         b = torch.randn((K, N), device='cuda', dtype=torch.float16).to(torch.int8).contiguous()
         int_a, a_scale, _ = quantize_int8(a, axis=1)
         int_b, b_scale, _ = quantize_int8(b, axis=0)
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_int8(int_a, a_scale, int_b, b_scale), quantiles=quantiles)
+        perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     if provider == 'triton-quant-i8':
         a = torch.randn((M, K), device='cuda', dtype=torch.float16).to(torch.int8).contiguous()
         b = torch.randn((K, N), device='cuda', dtype=torch.float16).to(torch.int8).contiguous()
         int_b, b_scale, _ = quantize_int8(b, axis=0)
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_quantize_int8(a, int_b, b_scale), quantiles=quantiles)
-    perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
+        perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
+    if provider == 'quant-perrow':
+        a = torch.randn((M, K), device='cuda', dtype=torch.float16).to(torch.int8).contiguous()
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: quantize_int8_perrow(a), quantiles=quantiles)
+        perf = lambda ms: 2 * M * K * 1e-9 / (ms * 1e-3)
     return perf(ms), perf(min_ms), perf(max_ms)
 
 
