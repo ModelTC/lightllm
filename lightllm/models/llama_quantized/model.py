@@ -1,66 +1,84 @@
 import os
 import json
+from functools import partial
+
 import torch
+
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
 from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
-from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
-from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
-
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
+from lightllm.models.llama_quantized.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeightQuantized
+from lightllm.models.llama_quantized.layer_infer.transformer_layer_infer import \
+    LlamaTransformerLayerInferINT8, LlamaTransformerLayerInferINT4
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.int8kv_mem_manager import INT8KVMemoryManager
 from lightllm.common.basemodel import TpPartBaseModel
 
 
-class LlamaTpPartModel(TpPartBaseModel):
+class LlamaTpPartModelQuantized(TpPartBaseModel):
     # weight class
     pre_and_post_weight_class = LlamaPreAndPostLayerWeight
-    transformer_weight_class = LlamaTransformerLayerWeight
+    transformer_weight_class = None
 
     # infer class
     pre_layer_infer_class = LlamaPreLayerInfer
     post_layer_infer_class = LlamaPostLayerInfer
-    transformer_layer_infer_class = LlamaTransformerLayerInfer
+    transformer_layer_infer_class = None
 
     # infer state class
     infer_state_class = LlamaInferStateInfo
 
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=""):
+    # Mem manager class
+    memory_manager_class = partial(MemoryManager, always_copy=True)
+
+    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[]):
+        self.init_mode(mode)
         super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode)
-        return
-    
+
+    def init_mode(self, mode):
+        self.q_group_size = 128
+        for _mode in mode:
+            if _mode.startswith('g'):
+                self.q_group_size = int(_mode[1:])
+        infer_class_dict = {
+            'int4weight': partial(LlamaTransformerLayerInferINT4, group_size=self.q_group_size),
+            'int8weight': LlamaTransformerLayerInferINT8,
+        }
+        for _mode in mode:
+            if _mode in infer_class_dict:
+                self.transformer_layer_infer_class = infer_class_dict[_mode]
+                print("Model using mode", _mode)
+        self.transformer_weight_class = partial(LlamaTransformerLayerWeightQuantized, group_size=self.q_group_size)
+
     def _init_config(self):
         super()._init_config()
         # rename key
         # repair_config()
-        return 
     
     def _verify_params(self):
         assert self.load_way == "HF", "llama only support HF format to load Now!"
-        assert self.mode in ["", "int8kv"], "now support int8kv, future to support int8 int4 ..."
-        return
-    
+
     def _init_mem_manager(self):
         mem_dict = {
-            "" : MemoryManager,
             "int8kv" : INT8KVMemoryManager
         }
-        
-        self.mem_manager = mem_dict[self.mode](self.max_total_token_num, 
-                                         dtype=torch.float16,
-                                         head_num=self.config["num_attention_heads"] // self.world_size_,
-                                         head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
-                                         layer_num=self.config["num_hidden_layers"])
-        return    
+        for _mode in self.mode:
+            if _mode in mem_dict:
+                print("Model using mode", _mode)
+                self.memory_manager_class = mem_dict[_mode]
+        self.mem_manager = self.memory_manager_class(
+            self.max_total_token_num, 
+            dtype=torch.float16,
+            head_num=self.config["num_attention_heads"] // self.world_size_,
+            head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
+            layer_num=self.config["num_hidden_layers"])
 
     def _init_custom(self):
         """
         模型特殊的一些初始化
         """
         self._init_to_get_rotary()
-        return
-
 
     def _init_to_get_rotary(self, base=10000):
         if self.config.get("rope_scaling", {}) is None:
@@ -90,4 +108,3 @@ class LlamaTpPartModel(TpPartBaseModel):
 
         self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
         self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
-        return

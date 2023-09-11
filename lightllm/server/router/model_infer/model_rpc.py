@@ -10,7 +10,8 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch
 from rpyc.utils.classic import obtain
 
 from lightllm.models.bloom.model import BloomTpPartModel
-from lightllm.models.llama.model import LlamaTpPartModel, LlamaTpPartModelQuantized
+from lightllm.models.llama.model import LlamaTpPartModel
+from lightllm.models.llama_quantized.model import LlamaTpPartModelQuantized
 from lightllm.models.llama2.model import Llama2TpPartModel
 from lightllm.models.starcoder.model import StarcoderTpPartModel
 from lightllm.models.qwen.model import QWenTpPartModel
