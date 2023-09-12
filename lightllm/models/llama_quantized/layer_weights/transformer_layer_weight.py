@@ -5,7 +5,8 @@ import torch
 from functools import partial
 
 from lightllm.common.basemodel import TransformerLayerWeight
-from lightllm.common.basemodel.quantize import quantize_int8, quantize_int4
+from lightllm.common.basemodel.triton_kernel.quantize_gemm_int8 import quantize_int8
+from lightllm.common.basemodel.triton_kernel.dequantize_gemm_int4 import quantize_int4
 
 
 class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
