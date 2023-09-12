@@ -107,7 +107,7 @@ async def generate(request: Request) -> Response:
         "count_output_tokens": count_output_tokens,
     }
     if return_details:
-        ret["token"] = tokens
+        ret["tokens"] = tokens
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
