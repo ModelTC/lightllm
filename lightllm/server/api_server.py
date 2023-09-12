@@ -99,6 +99,7 @@ async def generate(request: Request) -> Response:
             return Response(status_code=499)
         final_output.append(request_output)
         if return_details:
+            metadata["text"] = request_output
             tokens.append(metadata)
 
     assert final_output is not None
