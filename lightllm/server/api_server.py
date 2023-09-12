@@ -64,6 +64,11 @@ def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
+@app.get("/healthz")
+@app.get("/health")
+def healthcheck():
+    return "OK"
+
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     global isFirst
