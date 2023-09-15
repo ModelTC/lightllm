@@ -100,8 +100,3 @@ class LlamaTpPartMulitModal(LlamaTpPartModel):
         infer_state.init_some_extra_state(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, False, **kwargs)
         predict_logics = self._token_forward(input_ids, infer_state)
         return predict_logics
-
-    def get_input_embeddings(self):
-        def func(input_ids):
-            return self.pre_infer.get_input_embeddings(input_ids, self.pre_post_weight)
-        return func

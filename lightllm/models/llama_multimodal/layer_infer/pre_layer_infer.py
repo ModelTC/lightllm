@@ -7,14 +7,33 @@ from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
 
 
-def parse_input_embeds(infer_state: LlamaMultiModalInferStateInfo):
+"""
+infer_state.kwargs['repad_embeds'] = [(embeds, offset), ...]
+    embeds: torch.Tensor or None
+    offset: int
+"""
+def repad_input_embeds(input_embeds, infer_state: LlamaMultiModalInferStateInfo):
     assert isinstance(infer_state, LlamaMultiModalInferStateInfo)
-    if infer_state.kwargs and 'inputs_embeds' in infer_state.kwargs:
-        token_num, _ = infer_state.kwargs['inputs_embeds'].shape
-        assert token_num == infer_state.total_token_num, "inputs_embeds token_num != infer_state.total_token_num: {} vs {}".foramt(
-            token_num, infer_state.total_token_num)
-        return infer_state.kwargs['inputs_embeds']
-    return None
+
+    if infer_state.kwargs and 'repad_embeds' in infer_state.kwargs:
+        repad_embeds = infer_state.kwargs['repad_embeds']
+        assert len(repad_embeds) == infer_state.batch_size, "length of repad_embeds != batch_size: {} vs {}!".format(len(repad_embeds), infer_state.batch_size)
+
+        for i, (embeds, offset) in enumerate(repad_embeds):
+            # no need to repad if not given repad embeds
+            if embeds is None:
+                continue
+            assert isinstance(embeds, torch.Tensor), "given reapd embeds should be torch.Tensor but got {}!".format(type(embeds))
+
+            start_idx = infer_state.b_start_loc[i]
+            seq_len = infer_state.b_seq_len[i]
+            pad_len, pad_dim = embeds.shape
+            dim = input_embeds.shape[1]
+            assert pad_dim == dim, "invalid pad_dim={}, input_embed_dim={}!".format(pad_dim, dim)
+            assert offset + pad_len <= seq_len, "invalid seq_len={}, offset={}, pad_len={}!".format(seq_len, offset, pad_len)
+            input_embeds[start_idx + offset: start_idx + offset + pad_len] = embeds
+            print("repad input_embeds start_idx={} offset={} pad_len={}".format(start_idx, offset, pad_len))
+    return input_embeds
 
 
 class LlamaMultiModalPreLayerInfer(LlamaPreLayerInfer):
@@ -25,25 +44,10 @@ class LlamaMultiModalPreLayerInfer(LlamaPreLayerInfer):
 
     @mark_cost_time("pre context forward")
     def context_forward(self, input_ids, infer_state: LlamaMultiModalInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
-        ret = parse_input_embeds(infer_state)
-        if ret is not None:
-            return ret
-        else:
-            return super().context_forward(input_ids, infer_state, layer_weight)    
+        input_embeds = super().context_forward(input_ids, infer_state, layer_weight)
+        return repad_input_embeds(input_embeds, infer_state)
+
 
     def token_forward(self, input_ids, infer_state: LlamaMultiModalInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
-        ret = parse_input_embeds(infer_state)
-        if ret is not None:
-            return ret
-        else:
-            return super().token_forward(input_ids, infer_state, layer_weight)
-
-    def get_input_embeddings(self, input_ids, layer_weight: LlamaPreAndPostLayerWeight):
-        input_mask = torch.logical_or(self.vob_start_id_ > input_ids, input_ids >= self.vob_end_id_)
-        tmp_input_ids = (input_ids - self.vob_start_id_)
-        tmp_input_ids[input_mask] = 0
-        input_embdings = torch.embedding(layer_weight.wte_weight_, tmp_input_ids, padding_idx=-1)
-        input_embdings[input_mask] = 0.0
-        if self.world_size_ > 1:
-            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
-        return input_embdings
+        input_embeds = super().token_forward(input_ids, infer_state, layer_weight)
+        return repad_input_embeds(input_embeds, infer_state)

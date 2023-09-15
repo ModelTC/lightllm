@@ -14,8 +14,8 @@ class TestLlamaMultiModalInfer(unittest.TestCase):
                              batch_size=10, 
                              input_len=1024, 
                              output_len=1024,
-                             extra_embed_len=36,
-                             offset=5)
+                             # (pad_len, pad_dim_size, offset)
+                             repad_embeds_args=(36, 4096, 5))
         return
 
 
