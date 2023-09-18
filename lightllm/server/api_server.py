@@ -133,16 +133,18 @@ async def generate_stream(request: Request) -> Response:
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
         async for request_output, metadata, finished in results_generator:
-            print(metadata)
             ret = {
                 "token": {
                     "id": metadata.get("id", None),
                     "text": request_output,
+                    "logprob": metadata.get("logprob", None),
+                    "special": False
                 },
+                "generated_text": None,
                 "finished": finished,
+                "details": None
             }
-            if return_details:
-                ret["token"]["logprob"] = metadata.get("logprob", None)
+
             yield ("data:" + json.dumps(ret, ensure_ascii=False) + f"\n\n").encode(
                 "utf-8"
             )
@@ -225,7 +227,7 @@ async def chat_completions(
         usage = UsageInfo(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens
         )
         chat_message = ChatMessage(role="assistant", content="".join(final_output))
         choice = ChatCompletionResponseChoice(index=0, message=chat_message)
@@ -234,7 +236,7 @@ async def chat_completions(
             created=created_time,
             model=request.model,
             choices=[choice],
-            usage=usage,
+            usage=usage
         )
         return resp
 
@@ -253,9 +255,7 @@ async def chat_completions(
                 model=request.model,
                 choices=[stream_choice],
             )
-            yield ("data: " + stream_resp.json(ensure_ascii=False) + f"\n\n").encode(
-                "utf-8"
-            )
+            yield ("data: " + stream_resp.json(ensure_ascii=False) + f"\n\n").encode("utf-8")
 
     async def abort_request() -> None:
         await httpserver_manager.abort(request_id)
@@ -271,7 +271,7 @@ async def chat_completions(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default=None)
+    parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
 
     parser.add_argument("--model_dir", type=str, default=None,
