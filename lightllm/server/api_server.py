@@ -273,81 +273,37 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default=None)
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument(
-        "--model_dir",
-        type=str,
-        default=None,
-        help="the model weight dir path, the app will load config, weights and tokenizer from this dir",
-    )
-    parser.add_argument(
-        "--tokenizer_mode",
-        type=str,
-        default="slow",
-        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is good for debug and test, 
-                        when you want to get best performance, try auto mode""",
-    )
-    parser.add_argument(
-        "--max_total_token_num",
-        type=int,
-        default=6000,
-        help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
-    )
-    parser.add_argument(
-        "--batch_max_tokens",
-        type=int,
-        default=None,
-        help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM",
-    )
-    parser.add_argument("--eos_id", type=int, default=2, help="eos stop token id")
-    parser.add_argument(
-        "--running_max_req_size",
-        type=int,
-        default=1000,
-        help="the max size for forward requests in the same time",
-    )
-    parser.add_argument(
-        "--tp", type=int, default=1, help="model tp parral size, the default is 1"
-    )
-    parser.add_argument(
-        "--max_req_input_len",
-        type=int,
-        default=2048,
-        help="the max value for req input tokens num",
-    )
-    parser.add_argument(
-        "--max_req_total_len",
-        type=int,
-        default=2048 + 1024,
-        help="the max value for req_input_len + req_output_len",
-    )
-    parser.add_argument(
-        "--nccl_port",
-        type=int,
-        default=28765,
-        help="the nccl_port to build a distributed environment for PyTorch",
-    )
-    parser.add_argument(
-        "--mode",
-        type=str,
-        default="",
-        help="model inference mode, now only support 'int8kv' or '' default",
-    )
-    parser.add_argument(
-        "--trust_remote_code",
-        action="store_true",
-        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
-    )
-    parser.add_argument(
-        "--disable_log_stats",
-        action="store_true",
-        help="disable logging throughput stats.",
-    )
-    parser.add_argument(
-        "--log_stats_interval",
-        type=int,
-        default=10,
-        help="log stats interval in second.",
-    )
+
+    parser.add_argument("--model_dir", type=str, default=None,
+                        help="the model weight dir path, the app will load config, weights and tokenizer from this dir")
+    parser.add_argument("--tokenizer_mode", type=str, default="slow",
+                        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is good for debug and test, 
+                        when you want to get best performance, try auto mode""")
+    parser.add_argument("--max_total_token_num", type=int, default=6000,
+                        help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)")
+    parser.add_argument("--batch_max_tokens", type=int, default=None,
+                        help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM")
+    parser.add_argument("--eos_id", type=int, default=2,
+                        help="eos stop token id")
+    parser.add_argument("--running_max_req_size", type=int, default=1000,
+                        help="the max size for forward requests in the same time")
+    parser.add_argument("--tp", type=int, default=1,
+                        help="model tp parral size, the default is 1")
+    parser.add_argument("--max_req_input_len", type=int, default=2048,
+                        help="the max value for req input tokens num")
+    parser.add_argument("--max_req_total_len", type=int, default=2048 + 1024,
+                        help="the max value for req_input_len + req_output_len")
+    parser.add_argument("--nccl_port", type=int, default=28765,
+                        help="the nccl_port to build a distributed environment for PyTorch")
+    parser.add_argument("--mode", type=str, default=[], nargs='+',
+                        help="Model mode: [int8kv] [int8weight | int4weight]")
+    parser.add_argument("--trust_remote_code", action='store_true',
+                        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.")
+    parser.add_argument("--disable_log_stats", action='store_true',
+                        help="disable logging throughput stats.")
+    parser.add_argument("--log_stats_interval", type=int, default=10,
+                        help="log stats interval in second.")
+    
     args = parser.parse_args()
 
     assert args.max_req_input_len < args.max_req_total_len
