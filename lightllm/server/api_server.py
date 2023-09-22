@@ -283,6 +283,8 @@ def main():
                         help="eos stop token id")
     parser.add_argument("--running_max_req_size", type=int, default=1000,
                         help="the max size for forward requests in the same time")
+    parser.add_argument("--prefill_token_ratio", type=float, default=0.6,
+                        help="the prefill token ratio to control request scheduling")
     parser.add_argument("--tp", type=int, default=1,
                         help="model tp parral size, the default is 1")
     parser.add_argument("--max_req_input_len", type=int, default=2048,

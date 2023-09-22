@@ -16,7 +16,7 @@ from .stats import Stats
 
 class RouterManager:
 
-    def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, 
+    def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, prefill_token_ratio,
                  router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
         self.model_weightdir = weightdir
         self.world_size = world_size
@@ -30,6 +30,7 @@ class RouterManager:
         self.eos_id = eos_id
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
+        self.prefill_token_ratio = prefill_token_ratio
         
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
@@ -114,13 +115,8 @@ class RouterManager:
                 self.has_wait_tokens = 0
             return
 
-        if self.has_wait_tokens < self.max_wait_tokens:
-            self.stats_tool.count_output_tokens(self.running_batch)
-            await self._decode_batch(self.running_batch)
-            self._filter_runing_batch()
-            self.has_wait_tokens += 1
-            return
-        else:
+        prefill_token_ratio = self.running_batch.input_tokens() / self.max_total_token_num
+        if prefill_token_ratio < self.prefill_token_ratio:
             new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_mini_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
@@ -134,7 +130,12 @@ class RouterManager:
                 await self._decode_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens += 1
-        
+            return
+
+        self.stats_tool.count_output_tokens(self.running_batch)
+        await self._decode_batch(self.running_batch)
+        self._filter_runing_batch()
+        self.has_wait_tokens += 1
         return
 
     async def _init_batch(self, batch: Batch):
@@ -248,6 +249,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             batch_max_tokens=args.batch_max_tokens,
             running_max_req_size=args.running_max_req_size,
             eos_id=args.eos_id,
+            prefill_token_ratio=args.prefill_token_ratio,
             router_port=router_port,
             detokenization_port=detokenization_port,
             model_rpc_ports=model_rpc_ports,
