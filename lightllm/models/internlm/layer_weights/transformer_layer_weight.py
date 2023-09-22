@@ -13,7 +13,7 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
     def verify_load(self):
         errors = "weights load not ok"
 
-        if not self.network_config_["bias"]:
+        if not self.network_config_.get("bias", True):
             for layer_type in ("q", "k", "v", "o"):
                 attr_name = f"{layer_type}_bias_"
                 if hasattr(self, attr_name):
