@@ -12,7 +12,8 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
     
     def verify_load(self):
         errors = "weights load not ok"
-
+         
+        # handle internlm 20b, which has no bias, so set q k v o bias to zero
         if not self.network_config_.get("bias", True):
             for layer_type in ("q", "k", "v", "o"):
                 attr_name = f"{layer_type}_bias_"
