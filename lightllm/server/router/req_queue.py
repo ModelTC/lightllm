@@ -18,26 +18,33 @@ class ReqQueue:
     def append(self, req):
         self.waiting_req_list.append(req)
         return
-    
+
     def _init_cache_list(self, current_batch:Batch):
         if current_batch is not None:
-            self.cache_len_list = [(req.input_len + len(req.output_ids), req.max_output_len - len(req.output_ids) - 1) for req in current_batch.reqs]
+            self.cache_len_list = {req.request_id: (req.input_len + len(req.output_ids), req.max_output_len - len(req.output_ids) - 1) for req in current_batch.reqs}
         else:
-            self.cache_len_list = []
+            self.cache_len_list = {}
     
-    # @calculate_time(show=True, min_cost_ms=0.1)
+    def filter_finish(self, current_batch: Batch):
+        for req in current_batch.reqs:
+            for request_id in list(self.cache_len_list):
+                if req.has_generate_finished and (req.request_id == request_id):
+                    self.cache_len_list.pop(request_id)
+
     def _can_add_new_req(self, req):
-        self.cache_len_list.append((req.input_len + 1, req.max_output_len - 1)) # hard to analysis
-        self.cache_len_list.sort(key=lambda x: -x[1])
+        cache_len_list = list(self.cache_len_list.values())
+        cache_len_list.append((req.input_len + 1, req.max_output_len - 1)) # hard to analysis
+        cache_len_list.sort(key=lambda x: -x[1])
         
-        left_out_len_array = np.array([e[1] for e in self.cache_len_list])
+        left_out_len_array = np.array([e[1] for e in cache_len_list])
         # assert left_out_len_array.min() >= 0
-        has_run_len_array = np.array([e[0] for e in self.cache_len_list])
+        has_run_len_array = np.array([e[0] for e in cache_len_list])
         cum_run_len_array = np.cumsum(has_run_len_array)
-        size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
+        size_array = np.arange(1, len(cache_len_list) + 1, 1)
         
         need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
-        if need_max_token_num < self.max_total_tokens and len(self.cache_len_list) <= self.running_max_req_size:
+        if need_max_token_num < self.max_total_tokens and len(cache_len_list) <= self.running_max_req_size:
+            self.cache_len_list[req.request_id] = (req.input_len + 1, req.max_output_len - 1) # hard to analysis
             return True
         else:
             return False

@@ -188,6 +188,7 @@ class RouterManager:
 
     async def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
+            self.req_queue.filter_finish(batch)
             batch.filter_finished()
             if batch.is_clear():
                 await self._remove_batch(batch)
