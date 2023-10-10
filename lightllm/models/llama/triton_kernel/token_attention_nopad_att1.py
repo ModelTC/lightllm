@@ -3,11 +3,12 @@ import torch
 import triton
 import triton.language as tl
 import math
+import numpy as np
 
 
 @triton.jit
 def _fwd_kernel_token_att1(
-    Q, K, sm_scale, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+    Q, K, sm_scale, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
     Att_Out,
     stride_b_loc_b, stride_b_loc_s,
     stride_qbs, stride_qh, stride_qd,
@@ -24,9 +25,10 @@ def _fwd_kernel_token_att1(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
 
-    cur_batch_start_index = max_input_len - cur_batch_seq_len
-    cur_batch_end_index = max_input_len
+    cur_batch_start_index = 0 #max_input_len - cur_batch_seq_len
+    cur_batch_end_index = cur_batch_seq_len #max_input_len
 
     off_q = cur_batch * stride_qbs + cur_head * stride_qh + offs_d * stride_qd
 
@@ -38,7 +40,7 @@ def _fwd_kernel_token_att1(
     for start_mark in range(0, block_mask, 1):
         q = tl.load(Q + off_q + start_mark)
         offs_n_new = cur_batch_start_index + offs_n
-        k_loc = tl.load(B_Loc + stride_b_loc_b * cur_batch + stride_b_loc_s * offs_n_new, mask=offs_n_new < cur_batch_end_index, other=0)
+        k_loc = tl.load(B_Loc + stride_b_loc_b * cur_batch_b_loc_idx + stride_b_loc_s * offs_n_new, mask=offs_n_new < cur_batch_end_index, other=0)
         off_k = k_loc[:, None] * stride_kbs + cur_head * stride_kh + offs_d[None, :] * stride_kd
         k = tl.load(K + off_k, mask=offs_n_new[:, None] < cur_batch_end_index, other=0.0)
         att_value = tl.sum(q[None, :] * k, 1)
@@ -49,7 +51,7 @@ def _fwd_kernel_token_att1(
 
 
 @torch.no_grad()
-def token_att_fwd(q, k, att_out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
+def token_att_fwd(q, k, att_out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len):
     BLOCK = 32
     # shape constraints
     Lq, Lk = q.shape[-1], k.shape[-1]
@@ -57,14 +59,14 @@ def token_att_fwd(q, k, att_out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
     assert Lk in {16, 32, 64, 128}
     sm_scale = 1.0 / (Lk ** 0.5)
 
-    batch, head_num = B_Loc.shape[0], q.shape[1]
+    batch, head_num = B_Seqlen.shape[0], q.shape[1]
 
     grid = (batch, head_num, triton.cdiv(max_input_len, BLOCK))
 
     num_warps = 4
     
     _fwd_kernel_token_att1[grid](
-        q, k, sm_scale, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+        q, k, sm_scale, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
         att_out,
         B_Loc.stride(0), B_Loc.stride(1),
         q.stride(0), q.stride(1), q.stride(2),
@@ -80,7 +82,7 @@ def token_att_fwd(q, k, att_out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
 
 @triton.jit
 def _fwd_kernel_token_att1_int8(
-    Q, K, K_scale, sm_scale, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+    Q, K, K_scale, sm_scale, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
     Att_Out,
     stride_b_loc_b, stride_b_loc_s,
     stride_qbs, stride_qh, stride_qd,
@@ -97,9 +99,10 @@ def _fwd_kernel_token_att1_int8(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
 
-    cur_batch_start_index = max_input_len - cur_batch_seq_len
-    cur_batch_end_index = max_input_len
+    cur_batch_start_index = 0 #max_input_len - cur_batch_seq_len
+    cur_batch_end_index = cur_batch_seq_len #max_input_len
 
     off_q = cur_batch * stride_qbs + cur_head * stride_qh + offs_d * stride_qd
 
@@ -111,7 +114,7 @@ def _fwd_kernel_token_att1_int8(
     for start_mark in range(0, block_mask, 1):
         q = tl.load(Q + off_q + start_mark)
         offs_n_new = cur_batch_start_index + offs_n
-        k_loc = tl.load(B_Loc + stride_b_loc_b * cur_batch + stride_b_loc_s * offs_n_new, mask=offs_n_new < cur_batch_end_index, other=0)
+        k_loc = tl.load(B_Loc + stride_b_loc_b * cur_batch_b_loc_idx + stride_b_loc_s * offs_n_new, mask=offs_n_new < cur_batch_end_index, other=0)
         off_k = k_loc[:, None] * stride_kbs + cur_head * stride_kh + offs_d[None, :] * stride_kd
         k = tl.load(K + off_k, mask=offs_n_new[:, None] < cur_batch_end_index, other=0.0)
         off_ks = k_loc[:, None] * stride_ksbs + cur_head * stride_ksh
@@ -124,7 +127,7 @@ def _fwd_kernel_token_att1_int8(
 
 
 @torch.no_grad()
-def token_att_fwd_int8k(q, k, k_scale, att_out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
+def token_att_fwd_int8k(q, k, k_scale, att_out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len):
     BLOCK = 32
     # shape constraints
     Lq, Lk = q.shape[-1], k.shape[-1]
@@ -132,7 +135,7 @@ def token_att_fwd_int8k(q, k, k_scale, att_out, B_Loc, B_Start_Loc, B_Seqlen, ma
     assert Lk in {16, 32, 64, 128}
     sm_scale = 1.0 / (Lk ** 0.5)
 
-    batch, head_num = B_Loc.shape[0], q.shape[1]
+    batch, head_num = B_Seqlen.shape[0], q.shape[1]
 
     grid = (batch, head_num, triton.cdiv(max_input_len, BLOCK))
 
@@ -140,7 +143,7 @@ def token_att_fwd_int8k(q, k, k_scale, att_out, B_Loc, B_Start_Loc, B_Seqlen, ma
     num_warps = 2
 
     _fwd_kernel_token_att1_int8[grid](
-        q, k, k_scale, sm_scale, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+        q, k, k_scale, sm_scale, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
         att_out,
         B_Loc.stride(0), B_Loc.stride(1),
         q.stride(0), q.stride(1), q.stride(2),
@@ -187,25 +190,25 @@ def test1():
     att_out = torch.empty((H, B * N_CTX), dtype=dtype, device="cuda")
 
     # print(att_out)
+    b_loc_idx = np.random.choice(np.arange(0, B * 10), B, replace=False)
+    b_loc_idx = torch.tensor(b_loc_idx, dtype=torch.int32, device='cuda')
 
-    b_loc = torch.zeros((B, N_CTX), dtype=torch.int32, device="cuda")
+    b_loc = torch.zeros((B * 10 , N_CTX), dtype=torch.int32, device="cuda")
     b_start_loc = torch.zeros((B,), dtype=torch.int32, device="cuda")
     b_seq_len = torch.zeros((B,), dtype=torch.int32, device="cuda")
 
     for i in range(B):
         b_start_loc[i] = i * N_CTX
         b_seq_len[i] = N_CTX
-        b_loc[i] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
-        print(b_loc[i])
-
+        b_loc[b_loc_idx[i]] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
     # Warm up
     for _ in range(10):
-        token_att_fwd(q, k, att_out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd(q, k, att_out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
     run_iter = 1000
     torch.cuda.synchronize()
     t1 = time.time()
     for _ in range(run_iter):
-         token_att_fwd(q, k, att_out, b_loc, b_start_loc, b_seq_len, N_CTX)
+         token_att_fwd(q, k, att_out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
     torch.cuda.synchronize()
     t2 = time.time()
     print("Time cost {}".format((t2 - t1) / run_iter))
@@ -230,23 +233,25 @@ def test2():
 
     att_out = torch.empty((H, B * N_CTX), dtype=dtype, device="cuda")
 
-    b_loc = torch.zeros((B, N_CTX), dtype=torch.int32, device="cuda")
+    b_loc = torch.zeros((B * 10, N_CTX), dtype=torch.int32, device="cuda")
     b_start_loc = torch.zeros((B,), dtype=torch.int32, device="cuda")
     b_seq_len = torch.zeros((B,), dtype=torch.int32, device="cuda")
+    b_loc_idx = np.random.choice(np.arange(0, B * 10), B, replace=False)
+    b_loc_idx = torch.tensor(b_loc_idx, dtype=torch.int32, device='cuda')
 
     for i in range(B):
         b_start_loc[i] = i * N_CTX
         b_seq_len[i] = N_CTX
-        b_loc[i] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
+        b_loc[b_loc_idx[i]] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
 
     # Warm up
     for _ in range(10):
-        token_att_fwd_int8k(q, int_k, k_scale, att_out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd_int8k(q, int_k, k_scale, att_out, b_loc, b_loc_idx,  b_start_loc, b_seq_len, N_CTX)
     run_iter = 1000
     torch.cuda.synchronize()
     t1 = time.time()
     for _ in range(run_iter):
-        token_att_fwd_int8k(q, int_k, k_scale, att_out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd_int8k(q, int_k, k_scale, att_out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
     torch.cuda.synchronize()
     t2 = time.time()
     print("Time cost {}".format((t2 - t1) / run_iter))

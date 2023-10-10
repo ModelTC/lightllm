@@ -1,12 +1,12 @@
 import torch
-
+import numpy as np
 import triton
 import triton.language as tl
 
 
 @triton.jit
 def _fwd_kernel_token_att2(
-    Prob, V, Out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
+    Prob, V, Out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
     stride_b_loc_b, stride_b_loc_s,
     stride_ph, stride_pbs,
     stride_vbs, stride_vh, stride_vd,
@@ -20,11 +20,12 @@ def _fwd_kernel_token_att2(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
-    cur_batch_start_index = max_input_len - cur_batch_seq_len
-    cur_batch_end_index = cur_batch_seq_len
+    cur_batch_start_index = 0 #max_input_len - cur_batch_seq_len
+    cur_batch_end_index = cur_batch_seq_len #cur_batch_seq_len
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
 
-    v_loc_off = cur_batch * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
+    v_loc_off = cur_batch_b_loc_idx * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
     p_offs = cur_head * stride_ph + (cur_batch_in_all_start_index + offs_n) * stride_pbs
     v_offs = cur_head * stride_vh + offs_d[None, :] * stride_vd
 
@@ -44,18 +45,18 @@ def _fwd_kernel_token_att2(
 
 
 @torch.no_grad()
-def token_att_fwd2(prob, v, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
+def token_att_fwd2(prob, v, out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len):
     if triton.__version__ >= "2.1.0":
         BLOCK = 128
     else:
         BLOCK = 64
-    batch, head = B_Loc.shape[0], v.shape[1]
+    batch, head = B_Seqlen.shape[0], v.shape[1]
     grid = (batch, head)
     num_warps = 4
     dim = v.shape[-1]
 
     _fwd_kernel_token_att2[grid](
-        prob, v, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+        prob, v, out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
         B_Loc.stride(0), B_Loc.stride(1),
         prob.stride(0), prob.stride(1),
         v.stride(0), v.stride(1), v.stride(2),
@@ -70,7 +71,7 @@ def token_att_fwd2(prob, v, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
 
 @triton.jit
 def _fwd_kernel_token_att2_int8v(
-    Prob, V, V_scale, Out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
+    Prob, V, V_scale, Out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
     stride_b_loc_b, stride_b_loc_s,
     stride_ph, stride_pbs,
     stride_vbs, stride_vh, stride_vd,
@@ -85,11 +86,12 @@ def _fwd_kernel_token_att2_int8v(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
-    cur_batch_start_index = max_input_len - cur_batch_seq_len
+    cur_batch_start_index = 0 #max_input_len - cur_batch_seq_len
     cur_batch_end_index = cur_batch_seq_len
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
 
-    v_loc_off = cur_batch * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
+    v_loc_off = cur_batch_b_loc_idx * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
     p_offs = cur_head * stride_ph + (cur_batch_in_all_start_index + offs_n) * stride_pbs
     v_offs = cur_head * stride_vh + offs_d[None, :] * stride_vd
     vs_offs = cur_head * stride_vsh
@@ -111,18 +113,18 @@ def _fwd_kernel_token_att2_int8v(
 
 
 @torch.no_grad()
-def token_att_fwd2_int8v(prob, v, v_scale, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
+def token_att_fwd2_int8v(prob, v, v_scale, out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len):
     if max_input_len < 512:
         BLOCK = triton.next_power_of_2(max_input_len)
     else:
         BLOCK = 512
-    batch, head = B_Loc.shape[0], v.shape[1]
+    batch, head = B_Seqlen.shape[0], v.shape[1]
     grid = (batch, head)
     num_warps = 4
     dim = v.shape[-1]
 
     _fwd_kernel_token_att2_int8v[grid](
-        prob, v, v_scale, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+        prob, v, v_scale, out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
         B_Loc.stride(0), B_Loc.stride(1),
         prob.stride(0), prob.stride(1),
         v.stride(0), v.stride(1), v.stride(2),
@@ -157,20 +159,23 @@ def test1():
 
     b_start_loc = torch.zeros((B,), dtype=torch.int32, device="cuda")
     b_seq_len = torch.zeros((B,), dtype=torch.int32, device="cuda")
-    b_loc = torch.zeros((B, N_CTX), dtype=torch.int32, device="cuda")
+    b_loc = torch.zeros((B * 10, N_CTX), dtype=torch.int32, device="cuda")
+    b_loc_idx = np.random.choice(np.arange(0, B * 10), B, replace=False)
+    b_loc_idx = torch.tensor(b_loc_idx, dtype=torch.int32, device='cuda')
+
     for i in range(B):
         b_start_loc[i] = i * N_CTX
         b_seq_len[i] = N_CTX
-        b_loc[i] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
+        b_loc[b_loc_idx[i]] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
 
     # Warm up
     for _ in range(10):
-        token_att_fwd2(Prob, V, Out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd2(Prob, V, Out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
     run_iter = 1000
     torch.cuda.synchronize()
     t1 = time.time()
     for _ in range(run_iter):
-        token_att_fwd2(Prob, V, Out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd2(Prob, V, Out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
     torch.cuda.synchronize()
     t2 = time.time()
     print("Time cost {}".format((t2 - t1) / run_iter))
@@ -197,20 +202,22 @@ def test2():
 
     b_start_loc = torch.zeros((B,), dtype=torch.int32, device="cuda")
     b_seq_len = torch.zeros((B,), dtype=torch.int32, device="cuda")
-    b_loc = torch.zeros((B, N_CTX), dtype=torch.int32, device="cuda")
+    b_loc = torch.zeros((B * 10, N_CTX), dtype=torch.int32, device="cuda")
+    b_loc_idx = np.random.choice(np.arange(0, B * 10), B, replace=False)
+    b_loc_idx = torch.tensor(b_loc_idx, dtype=torch.int32, device='cuda')
     for i in range(B):
         b_start_loc[i] = i * N_CTX
         b_seq_len[i] = N_CTX
         b_loc[i] = i * N_CTX + torch.arange(0, N_CTX, dtype=torch.int32, device="cuda")
 
     for _ in range(10):
-        token_att_fwd2_int8v(Prob, int_V, V_scale, Out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd2_int8v(Prob, int_V, V_scale, Out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
 
     run_iter = 1000
     torch.cuda.synchronize()
     t1 = time.time()
     for _ in range(run_iter):
-        token_att_fwd2_int8v(Prob, int_V, V_scale, Out, b_loc, b_start_loc, b_seq_len, N_CTX)
+        token_att_fwd2_int8v(Prob, int_V, V_scale, Out, b_loc, b_loc_idx, b_start_loc, b_seq_len, N_CTX)
     torch.cuda.synchronize()
     t2 = time.time()
     print("Time cost {}".format((t2 - t1) / run_iter))

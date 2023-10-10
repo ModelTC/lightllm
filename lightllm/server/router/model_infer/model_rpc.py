@@ -103,7 +103,7 @@ class ModelRpcServer(rpyc.Service):
             dtype = torch.float16
         else:
             assert False, "error dtype"
-        batch_data = InferBatch.init_batch(batch_id, reqs, dtype, torch.cuda.current_device(), self.model.mem_manager, self.model.vocab_size)
+        batch_data = InferBatch.init_batch(batch_id, reqs, dtype, torch.cuda.current_device(), self.model.req_manager, self.model.vocab_size)
         self.cache[batch_id] = batch_data
         return
     
@@ -152,7 +152,8 @@ class ModelRpcServer(rpyc.Service):
             "total_token_num": batch.nopad_total_token_num,
             "max_len_in_batch": batch.nopad_max_len_in_batch,
             "input_ids": batch.input_ids,
-            "b_loc": batch.nopad_b_loc,
+            "b_loc": batch.req_manager.b_loc,
+            "b_loc_idx": batch.nopad_b_loc_idx,
             "b_start_loc": batch.nopad_b_start_loc,
             "b_seq_len": batch.nopad_b_seq_len,
             "is_prefill": is_prefill
