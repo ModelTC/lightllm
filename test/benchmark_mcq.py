@@ -33,6 +33,8 @@ from transformers import (AutoTokenizer, PreTrainedTokenizer,
                           PreTrainedTokenizerFast)
 
 QUESTION = {}
+
+
 def get_tokenizer(
     tokenizer_name: str,
     tokenizer_mode: str = "slow",
@@ -61,6 +63,7 @@ def get_tokenizer(
         pass
     return tokenizer
 
+
 # (prompt len, output len, latency)
 REQUEST_LATENCY: List[Tuple[int, int, float]] = []
 
@@ -77,7 +80,11 @@ def sample_requests(
     for question in questions:
         question = json.loads(question.strip())
         file_name = question["file_name"].split(".")[0]
-        data.append((file_name, question['question_id'], question['instruction'], question['answer']))
+        data.append(
+            (file_name,
+             question['question_id'],
+             question['instruction'],
+             question['answer']))
         if file_name not in QUESTION:
             QUESTION[file_name] = {}
         QUESTION[file_name][question["question_id"]] = [question["answer"]]
@@ -110,7 +117,7 @@ async def send_request(
     request_start_time = time.time()
     headers = {'Content-Type': 'application/json'}
     headers = {"User-Agent": "Benchmark Client"}
-    file_name, question_id, inputs, answer = request 
+    file_name, question_id, inputs, answer = request
     prompt = f"<系统> <对话历史> <知识> <最新问题> 用户：给出以下问题的答案:\n{inputs} SenseChat："
     print(prompt)
     # prompt=  "[Round {}]\n\n问：{}\n\n答：".format(1, inputs)
@@ -121,10 +128,10 @@ async def send_request(
             'do_sample': False,
             'ignore_eos': True,
             'max_new_tokens': output_len,
-            # 'do_sample':True, 
+            # 'do_sample':True,
             # 'top_p':0.8,
             # 'temperature':0.8
-             # 'temperature': 0.1,
+            # 'temperature': 0.1,
         }
     }
     timeout = aiohttp.ClientTimeout(total=3 * 3600)
@@ -136,9 +143,11 @@ async def send_request(
                     chunks.append(chunk)
             output = b"".join(chunks).decode("utf-8")
             output = json.loads(output)
-            QUESTION[file_name][question_id].append(output["generated_text"][0])
+            QUESTION[file_name][question_id].append(
+                output["generated_text"][0])
             if "error" not in output:
                 break
+
 
 async def benchmark(
     input_requests: List[Tuple[str, int, int]],
@@ -153,17 +162,18 @@ async def benchmark(
 
 
 def IsOpen(ip, port):
-    s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    index=1
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    index = 1
     try:
-        s.connect((ip,int(port)))
+        s.connect((ip, int(port)))
         s.shutdown(2)
 
         print('successfully launch model')
         return True
-    except:
+    except BaseException:
         time.sleep(10)
         return False
+
 
 def main(args: argparse.Namespace):
     print(args)
@@ -198,7 +208,7 @@ if __name__ == "__main__":
                              "Otherwise, we use Poisson process to synthesize "
                              "the request arrival times.")
     parser.add_argument("--port", type=int, default=8000,
-                    help="port number")
+                        help="port number")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     main(args)

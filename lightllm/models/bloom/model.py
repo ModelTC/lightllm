@@ -11,6 +11,7 @@ from lightllm.common.basemodel import InferStateInfo, TpPartBaseModel
 
 from lightllm.common.build_utils import repair_config
 
+
 class BloomTpPartModel(TpPartBaseModel):
     # weight class
     pre_and_post_weight_class = BloomPreAndPostLayerWeight
@@ -24,20 +25,40 @@ class BloomTpPartModel(TpPartBaseModel):
     # infer state class
     infer_state_class = InferStateInfo
 
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[], weight_dict=None, finetune_config=None):
-        super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode, weight_dict, finetune_config)
+    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num,
+                 load_way="HF", mode=[], weight_dict=None, finetune_config=None):
+        super().__init__(
+            tp_rank,
+            world_size,
+            weight_dir,
+            max_total_token_num,
+            load_way,
+            mode,
+            weight_dict,
+            finetune_config)
         return
 
     def _init_config(self):
         super()._init_config()
         # rename key
         # repair_config()
-        return 
+        return
 
     def _init_weights(self):
-        self.pre_post_weight = self.pre_and_post_weight_class(self.tp_rank_, self.world_size_, torch.float16, network_config=self.config, mode=self.mode)
+        self.pre_post_weight = self.pre_and_post_weight_class(
+            self.tp_rank_,
+            self.world_size_,
+            torch.float16,
+            network_config=self.config,
+            mode=self.mode)
         self.trans_layers_weight = [
-            self.transformer_weight_class(i, self.tp_rank_, self.world_size_, torch.float16, network_config=self.config, mode=self.mode)
+            self.transformer_weight_class(
+                i,
+                self.tp_rank_,
+                self.world_size_,
+                torch.float16,
+                network_config=self.config,
+                mode=self.mode)
             for i in range(self.config["n_layer"])
         ]
         load_hf_weights(
