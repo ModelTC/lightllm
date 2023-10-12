@@ -46,6 +46,7 @@ class Llama2TransformerLayerInfer(LlamaTransformerLayerInfer):
                       infer_state.mem_manager.key_buffer[self.layer_num_],
                       att_m_tensor,
                       infer_state.b_loc,
+                      infer_state.b_loc_idx,
                       infer_state.b_start_loc,
                       infer_state.b_seq_len,
                       infer_state.max_len_in_batch)
@@ -61,6 +62,7 @@ class Llama2TransformerLayerInfer(LlamaTransformerLayerInfer):
                         infer_state.mem_manager.value_buffer[self.layer_num_],
                         o_tensor.view(calcu_shape1),
                         infer_state.b_loc,
+                        infer_state.b_loc_idx,
                         infer_state.b_start_loc,
                         infer_state.b_seq_len,
                         infer_state.max_len_in_batch)
@@ -73,6 +75,7 @@ class Llama2TransformerLayerInfer(LlamaTransformerLayerInfer):
                                       infer_state.mem_manager.value_buffer[self.layer_num_],
                                       o_tensor.view(calcu_shape1),
                                       infer_state.b_loc,
+                                      infer_state.b_loc_idx,
                                       infer_state.b_start_loc,
                                       infer_state.b_seq_len,
                                       infer_state.max_len_in_batch,

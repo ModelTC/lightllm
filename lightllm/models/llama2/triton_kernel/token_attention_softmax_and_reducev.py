@@ -8,7 +8,7 @@ import torch.nn.functional as F
 @triton.jit
 def _fwd_kernel(
     Logics, V, Out,
-    B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+    B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
     stride_logic_h, stride_logic_bs,
     stride_vbs, stride_vh, stride_vd,
     stride_obs, stride_oh, stride_od,
@@ -24,14 +24,14 @@ def _fwd_kernel(
     cur_kv_head = cur_head // kv_group_num
 
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
     cur_batch_start_loc = tl.load(B_Start_Loc + cur_batch)
 
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
 
     off_v = cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
-    off_b_loc = cur_batch * stride_b_loc_b + (max_input_len - cur_batch_seq_len) * stride_b_loc_s
-
+    off_b_loc = cur_batch_b_loc_idx * stride_b_loc_b
     v_ptrs = V + off_v
 
     e_max = float("-inf")
@@ -61,7 +61,7 @@ def _fwd_kernel(
 
 
 @torch.no_grad()
-def token_softmax_reducev_fwd(logics, v, o, b_loc, b_start_loc, b_seq_len, max_input_len, other_kv_index):
+def token_softmax_reducev_fwd(logics, v, o, b_loc, b_loc_idx, b_start_loc, b_seq_len, max_input_len, other_kv_index):
     BLOCK = 64
     batch, head = b_seq_len.shape[0], logics.shape[0]
     grid = (batch, head)
@@ -69,7 +69,7 @@ def token_softmax_reducev_fwd(logics, v, o, b_loc, b_start_loc, b_seq_len, max_i
 
     num_warps = 1
     _fwd_kernel[grid](
-        logics, v, o, b_loc, b_start_loc, b_seq_len, max_input_len,
+        logics, v, o, b_loc, b_loc_idx, b_start_loc, b_seq_len, max_input_len,
         logics.stride(0), logics.stride(1),
         v.stride(0), v.stride(1), v.stride(2),
         o.stride(0), o.stride(1), o.stride(2),

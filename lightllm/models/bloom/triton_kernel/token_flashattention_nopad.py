@@ -10,7 +10,7 @@ from .token_attention_nopad_reduceV import token_att_fwd2
 
 @triton.jit
 def _fwd_kernel(
-    Q, K, V, sm_scale, Alibi, B_Loc, B_Seqlen, max_input_len,
+    Q, K, V, sm_scale, Alibi, B_Loc, B_Loc_idx, B_Seqlen, max_input_len,
     Out,
     stride_qbs, stride_qh, stride_qd,
     stride_kbs, stride_kh, stride_kd,
@@ -24,6 +24,7 @@ def _fwd_kernel(
     cur_head = tl.program_id(1)
 
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
 
     # initialize offsets
     offs_n = tl.arange(0, BLOCK_N)
@@ -32,7 +33,7 @@ def _fwd_kernel(
     off_q = cur_batch * stride_qbs + cur_head * stride_qh + offs_d * stride_qd
     off_k = cur_head * stride_kh + offs_d[None, :] * stride_kd
     off_v = cur_head * stride_vh + offs_d[None, :] * stride_vd
-    off_b_loc = cur_batch * stride_b_loc_b + (max_input_len - cur_batch_seq_len) * stride_b_loc_s
+    off_b_loc = cur_batch_b_loc_idx * stride_b_loc_b
 
     q = tl.load(Q + off_q)
 
@@ -123,7 +124,7 @@ def _fwd_kernel(
 #     return
 
 @torch.no_grad()
-def token_attention_fwd(q, k, v, o, alibi, b_loc, b_start_loc, b_seq_len, max_len_in_batch):
+def token_attention_fwd(q, k, v, o, alibi, b_loc, b_loc_idx, b_start_loc, b_seq_len, max_len_in_batch):
     head_num = k.shape[1]
     batch_size = b_seq_len.shape[0]
     calcu_shape1 = (batch_size, head_num, k.shape[2])
@@ -136,6 +137,7 @@ def token_attention_fwd(q, k, v, o, alibi, b_loc, b_start_loc, b_seq_len, max_le
                   att_m_tensor,
                   alibi,
                   b_loc,
+                  b_loc_idx,
                   b_start_loc,
                   b_seq_len,
                   max_len_in_batch)
@@ -146,6 +148,7 @@ def token_attention_fwd(q, k, v, o, alibi, b_loc, b_start_loc, b_seq_len, max_le
                    v,
                    o.view(calcu_shape1),
                    b_loc,
+                   b_loc_idx,
                    b_start_loc,
                    b_seq_len,
                    max_len_in_batch)

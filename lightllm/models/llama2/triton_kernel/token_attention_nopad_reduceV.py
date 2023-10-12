@@ -6,7 +6,7 @@ import triton.language as tl
 
 @triton.jit
 def _fwd_kernel_token_att2(
-    Prob, V, Out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
+    Prob, V, Out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
     stride_b_loc_b, stride_b_loc_s,
     stride_ph, stride_pbs,
     stride_vbs, stride_vh, stride_vd,
@@ -23,11 +23,11 @@ def _fwd_kernel_token_att2(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
-    cur_batch_start_index = max_input_len - cur_batch_seq_len
-    cur_batch_end_index = cur_batch_seq_len
+    cur_batch_b_loc_idx = tl.load(B_Loc_idx + cur_batch)
+    cur_batch_start_index = 0
     cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
 
-    v_loc_off = cur_batch * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
+    v_loc_off = cur_batch_b_loc_idx * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
     p_offs = cur_head * stride_ph + (cur_batch_in_all_start_index + offs_n) * stride_pbs
     v_offs = cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
 
@@ -47,12 +47,12 @@ def _fwd_kernel_token_att2(
 
 
 @torch.no_grad()
-def token_att_fwd2(prob, v, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
+def token_att_fwd2(prob, v, out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len):
     if triton.__version__ >= "2.1.0":
         BLOCK = 128
     else:
         BLOCK = 64
-    batch, head = B_Loc.shape[0], prob.shape[0]
+    batch, head = B_Seqlen.shape[0], prob.shape[0]
     grid = (batch, head)
     num_warps = 4
     dim = v.shape[-1]
@@ -60,7 +60,7 @@ def token_att_fwd2(prob, v, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
     kv_group_num = prob.shape[0] // v.shape[1]
 
     _fwd_kernel_token_att2[grid](
-        prob, v, out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
+        prob, v, out, B_Loc, B_Loc_idx, B_Start_Loc, B_Seqlen, max_input_len,
         B_Loc.stride(0), B_Loc.stride(1),
         prob.stride(0), prob.stride(1),
         v.stride(0), v.stride(1), v.stride(2),
