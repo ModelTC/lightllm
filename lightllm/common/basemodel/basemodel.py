@@ -9,6 +9,7 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.infer_utils import init_bloc
 from lightllm.common.build_utils import repair_config
+from lightllm.common.basemodel.triton_kernel.destindex_copy_b_loc import destindex_copy_b_loc
 
 
 class TpPartBaseModel:
@@ -180,8 +181,9 @@ class TpPartBaseModel:
             infer_state.decode_mem_index = alloc_mem[0]
             infer_state.decode_mem_start = alloc_mem[1]
             infer_state.decode_mem_end = alloc_mem[2]
-            for i in range(len(b_seq_len)):
-                b_loc[b_loc_idx[i], b_seq_len[i] - 1] = infer_state.decode_mem_index[i]
+            destindex_copy_b_loc(b_loc, b_loc_idx, b_seq_len - 1, infer_state.decode_mem_index)
+            # for i in range(len(b_seq_len)):
+            #     b_loc[b_loc_idx[i], b_seq_len[i] - 1] = infer_state.decode_mem_index[i]
             # b_loc[:, max_len_in_batch - 1] = infer_state.decode_mem_index
         else:
             infer_state.decode_is_contiguous = False
@@ -189,9 +191,10 @@ class TpPartBaseModel:
             infer_state.decode_mem_index = alloc_mem
             infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_k_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
             infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_v_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+            destindex_copy_b_loc(b_loc, b_loc_idx, b_seq_len - 1, infer_state.decode_mem_index)
             # b_loc[:, max_len_in_batch - 1] = infer_state.decode_mem_index
-            for i in range(len(b_seq_len)):
-                b_loc[b_loc_idx[i], b_seq_len[i] - 1] = infer_state.decode_mem_index[i]
+            # for i in range(len(b_seq_len)):
+            #     b_loc[b_loc_idx[i], b_seq_len[i] - 1] = infer_state.decode_mem_index[i]
         infer_state.init_some_extra_state(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_loc, b_start_loc, b_seq_len, False)
         predict_logics = self._token_forward(input_ids, infer_state)
         return predict_logics
