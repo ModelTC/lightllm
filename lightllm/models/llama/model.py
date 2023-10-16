@@ -95,7 +95,7 @@ class LlamaTpPartModel(TpPartBaseModel):
         [weight.verify_load() for weight in self.trans_layers_weight]            
         return 
 
-    def _init_to_get_rotary(self, base=10000):
+    def _init_to_get_rotary(self, default_base=10000):
         if self.config.get("rope_scaling", {}) is None:
             rope_scaling_factor = 1.0
         else:
