@@ -36,6 +36,9 @@ class Req:
                         return True
         return False
 
+    def calcu_used_tokens(self):
+        return self.input_len + len(self.output_ids) - 1
+
     def __repr__(self):
         return (f"request_id(n={self.request_id}, "
                 f"prompt_ids={self.prompt_ids}, ")
@@ -72,16 +75,22 @@ class Batch:
             batch_input_tokens += req.input_len
         return batch_input_tokens
 
+    def output_tokens(self):
+        batch_output_tokens = 0
+        for req in self.reqs:
+            batch_output_tokens += len(req.output_ids) - 1
+        return batch_output_tokens
+
     def calcu_max_tokens(self):
         tokens = 0
         for req in self.reqs:
-            tokens += req.input_len + req.max_output_len
+            tokens += req.input_len + req.max_output_len - 1
         return tokens
     
     def calcu_used_tokens(self):
         tokens = 0
         for req in self.reqs:
-            tokens += req.input_len + len(req.output_ids)
+            tokens += req.input_len + len(req.output_ids) - 1
         return tokens
 
     def mark_finished_req(self, eos_id):
@@ -99,12 +108,15 @@ class Batch:
         return has_new_finish
 
     def filter_finished(self):
-        unfinished_req = []
+        unfinished_req, finished_req = [], []
         for req in self.reqs:
             if not req.has_generate_finished:
                 unfinished_req.append(req)
+            else:
+                finished_req.append(req)
         self.reqs = unfinished_req
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        return finished_req
 
     def is_clear(self):
         return len(self.reqs) == 0
@@ -114,6 +126,15 @@ class Batch:
             self.reqs.append(_req)
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
         return
+
+    def pop(self, request_id):
+        req = None
+        for index, req in enumerate(self.reqs):
+            if req.request_id == request_id:
+                req = self.reqs.pop(index)
+                self.id_to_reqs.pop(request_id)
+                break
+        return req
 
     def __repr__(self):
         return (f"batch_id={self.batch_id}, "
