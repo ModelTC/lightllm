@@ -147,16 +147,7 @@ class ModelRpcServer(rpyc.Service):
     # @calculate_time(show=True, min_cost_ms=150)
     def forward(self, batch_id, is_prefill):
         batch: InferBatch = self.cache.pop(batch_id)
-        kwargs = {
-            "batch_size": len(batch),
-            "total_token_num": batch.nopad_total_token_num,
-            "max_len_in_batch": batch.nopad_max_len_in_batch,
-            "input_ids": batch.input_ids,
-            "b_loc": batch.nopad_b_loc,
-            "b_start_loc": batch.nopad_b_start_loc,
-            "b_seq_len": batch.nopad_b_seq_len,
-            "is_prefill": is_prefill
-        }
+        kwargs = batch.to_forward_kwargs(is_prefill)
 
         # assert False, f"{kwargs}"
 
