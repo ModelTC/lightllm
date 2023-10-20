@@ -17,6 +17,8 @@ class SamplingParams:
         ignore_eos: bool = False,
         max_new_tokens: int = 16,
         stop_sequences: Optional[Union[str, List[str]]] = None,  # 停止句子条件
+        token_healing_top_k: int = 0,
+        unmerge_last_token: bool = False,
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
@@ -34,6 +36,8 @@ class SamplingParams:
         if self.temperature >= 0.0 and self.temperature < _SAMPLING_EPS: # temperature is too slow, change to greedy search
             self.temperature = 1.0
             self.top_k = 1
+        self.token_healing_top_k = token_healing_top_k
+        self.unmerge_last_token = unmerge_last_token
         return
     
     def verify(self):
@@ -49,6 +53,11 @@ class SamplingParams:
             raise ValueError(f"top_k must be -1 (disable), or at least 1, got {self.top_k}.")
         if self.max_new_tokens < 1:
             raise ValueError(f"max_new_tokens must be at least 1 , got {self.max_new_tokens}.")
+        if self.token_healing_top_k < 0:
+            raise ValueError(
+                "token_healing_top_k must be non-negative, "
+                f"got {self.token_healing_top_k}."
+            )
         return
 
     def stop_sentences_to_token_ids(self, tokenizer):
@@ -75,6 +84,7 @@ class SamplingParams:
         ret["temperature"] = self.temperature
         ret["top_p"] = self.top_p
         ret["top_k"] = self.top_k
+        ret["token_healing_top_k"] = self.token_healing_top_k
         # if self.ignore_eos is not None:
         #     ret["ignore_eos"] = self.ignore_eos
         # if self.max_tokens is not None:

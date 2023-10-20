@@ -6,6 +6,7 @@ import uvloop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from ..tokenizer import get_tokenizer
 from ..io_struct import BatchStrOut, AbortReq
+from ...utils.token_healing import build_unmerging_table, hf_tokenizer_to_bytes_vocab
 
 
 class HttpServerManager:
@@ -19,6 +20,7 @@ class HttpServerManager:
         max_req_input_len,
         max_req_total_len,
         trust_remote_code,
+        allow_unmerging_last_token,
     ):
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
@@ -37,8 +39,28 @@ class HttpServerManager:
         self.max_req_input_len = max_req_input_len
         self.max_req_total_len = max_req_total_len
 
+        self.allow_unmerging_last_token = allow_unmerging_last_token
+        if self.allow_unmerging_last_token:
+            self.unmerging_table = build_unmerging_table(
+                hf_tokenizer_to_bytes_vocab(self.tokenizer)
+            )
+
+    def post_tokenization(self, prompt_ids, sampling_params):
+        if (
+            self.allow_unmerging_last_token
+            and sampling_params.unmerge_last_token
+            and prompt_ids[-1] in range(len(self.unmerging_table))
+        ):
+            res = self.unmerging_table[prompt_ids[-1]]
+            if res is not None:
+                prompt_ids[-1:] = list(res)
+
+        return prompt_ids
+
     async def generate(self, prompt, sampling_params, request_id):
-        prompt_ids = self.tokenizer.encode(prompt)
+        prompt_ids = self.post_tokenization(
+            self.tokenizer.encode(prompt), sampling_params
+        )
         prompt_tokens = len(prompt_ids)
         if prompt_tokens > self.max_req_input_len:
             raise ValueError(

@@ -301,7 +301,11 @@ def main():
                         help="disable logging throughput stats.")
     parser.add_argument("--log_stats_interval", type=int, default=10,
                         help="log stats interval in second.")
-    
+    parser.add_argument("--max_token_healing_top_k", type=int, default=0,
+                        help="maximum token healing sampling top k, 0 to disable token healing")
+    parser.add_argument("--allow_unmerging_last_token", action="store_true",
+                        help="allow unmerging last token after tokenization for better token healing")
+
     args = parser.parse_args()
 
     assert args.max_req_input_len < args.max_req_total_len
@@ -333,6 +337,7 @@ def main():
         max_req_input_len=args.max_req_input_len,
         max_req_total_len=args.max_req_total_len,
         trust_remote_code=args.trust_remote_code,
+        allow_unmerging_last_token=args.allow_unmerging_last_token,
     )
     pipe_router_reader, pipe_router_writer = mp.Pipe(duplex=False)
     pipe_detoken_reader, pipe_detoken_writer = mp.Pipe(duplex=False)

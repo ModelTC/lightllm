@@ -20,6 +20,7 @@ class InferSamplingParams:
         top_p: float = 1.0,
         top_k: int = -1,
         vocab_size: int = -1,
+        token_healing_top_k: int = 0,
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
@@ -29,6 +30,7 @@ class InferSamplingParams:
         self.top_k = top_k
         if self.top_k == -1:
             self.top_k = vocab_size
+        self.token_healing_top_k = token_healing_top_k
         return
 
 

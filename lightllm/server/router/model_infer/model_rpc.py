@@ -24,6 +24,7 @@ from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
+from lightllm.utils.token_healing import LightLLMTokenHealingTable
 from lightllm.common.configs.config import setting
 from .post_process import sample
 
@@ -143,10 +144,36 @@ class ModelRpcServer(rpyc.Service):
         del batch
         # torch.cuda.empty_cache()
         return
-    
+
+    @calculate_time(show=True)
+    def exposed_init_token_healing(
+        self,
+        model_weightdir,
+        tokenizer_mode,
+        trust_remote_code,
+        max_token_healing_top_k,
+    ):
+        self.healing_table = LightLLMTokenHealingTable.init_from_model(
+            self.model,
+            model_weightdir,
+            tokenizer_mode,
+            trust_remote_code,
+            max_token_healing_top_k,
+        )
+
     # @calculate_time(show=True, min_cost_ms=150)
     def forward(self, batch_id, is_prefill):
         batch: InferBatch = self.cache.pop(batch_id)
+
+        if (
+            is_prefill
+            and self.healing_table is not None
+            and self.healing_table.need_token_healing(batch)
+        ):
+            output_dict, batch = self.healing_table.infer_rpc_server_batch(self, batch)
+            self.cache[batch.batch_id] = batch
+            return output_dict
+
         kwargs = batch.to_forward_kwargs(is_prefill)
 
         # assert False, f"{kwargs}"
@@ -202,6 +229,7 @@ class ModelRpcClient:
             self._filter_batch = async_wrap(self.model.filter_batch)
             self._merge_batch = async_wrap(self.model.merge_batch)
             self._remove_batch = async_wrap(self.model.remove_batch)
+            self._init_token_healing = async_wrap(self.model.init_token_healing)
         else:
             self._init_model = self.model.exposed_init_model
             self._add_batch = self.model.exposed_add_batch
@@ -210,6 +238,7 @@ class ModelRpcClient:
             self._filter_batch = self.model.exposed_filter_batch
             self._merge_batch = self.model.exposed_merge_batch
             self._remove_batch = self.model.exposed_remove_batch
+            self._init_token_healing = self.model.exposed_init_token_healing
         return
 
     async def init_model(self, rank_id, world_size, weight_dir, max_total_token_num, load_way, mode):
@@ -265,6 +294,22 @@ class ModelRpcClient:
             return
         else:
             return
+
+    async def init_token_healing(
+        self,
+        model_weightdir,
+        tokenizer_mode,
+        trust_remote_code,
+        max_token_healing_top_k,
+    ):
+        ans = self._init_token_healing(
+            model_weightdir,
+            tokenizer_mode,
+            trust_remote_code,
+            max_token_healing_top_k,
+        )
+        if self.use_rpc:
+            await ans
 
 
 def _init_env(port):
