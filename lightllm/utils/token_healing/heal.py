@@ -110,7 +110,7 @@ class TokenHealingBatchState(metaclass=ABCMeta):
             )
 
         cnt_info = feed(pending_input_id)
-        # assert cnt_info is not None
+        assert cnt_info is not None
 
         probs = self.get_reordered_probs(
             batch_idx,

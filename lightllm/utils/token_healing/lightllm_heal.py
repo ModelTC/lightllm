@@ -70,10 +70,10 @@ class LightLLMTokenHealingTable:
         reordered_weights = reorder_post_weights(
             model.pre_post_weight, automaton.get_order()
         )
-        # assert reordered_weights is not None, (
-        #     "token healing has not been implemented for "
-        #     f"{model.pre_and_post_weight_class}"
-        # )
+        assert reordered_weights is not None, (
+            "token healing has not been implemented for "
+            f"{model.pre_and_post_weight_class}"
+        )
 
         return cls(
             max_token_healing_top_k=max_token_healing_top_k,
@@ -82,12 +82,9 @@ class LightLLMTokenHealingTable:
         )
 
     def need_token_healing(self, batch: InferBatch) -> bool:
-        return (
-            sum(
-                min(i.token_healing_top_k, self.max_token_healing_top_k)
-                for i in batch.sampling_param_list
-            )
-            > 0
+        return any(
+            min(i.token_healing_top_k, self.max_token_healing_top_k) > 0
+            for i in batch.sampling_param_list
         )
 
     def infer_rpc_server_batch(

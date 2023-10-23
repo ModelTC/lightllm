@@ -52,7 +52,7 @@ class ReorderedPostLayerWeightMixin(PreAndPostLayerWeight, metaclass=ABCMeta):
         vocab_size = self.get_vocab_size()
         order = list(token_id < vocab_size and token_id or 0 for token_id in order)
 
-        # assert vocab_size % self.world_size_ == 0
+        assert vocab_size % self.world_size_ == 0
         if len(order) < vocab_size:
             order.extend([0] * (vocab_size - len(order)))
         if len(order) % self.world_size_:
@@ -63,7 +63,7 @@ class ReorderedPostLayerWeightMixin(PreAndPostLayerWeight, metaclass=ABCMeta):
         for attr in self.pos_vocab_linear_weight_names():
             weight = getattr(self, attr)
 
-            # assert len(weight) * self.world_size_ == vocab_size
+            assert len(weight) * self.world_size_ == vocab_size
 
             if self.world_size_ > 1:
                 old_weight = weight
