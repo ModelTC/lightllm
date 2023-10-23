@@ -100,11 +100,15 @@ class Batch:
 
     def filter_finished(self):
         unfinished_req = []
+        finished_req_id = []
         for req in self.reqs:
             if not req.has_generate_finished:
                 unfinished_req.append(req)
+            else:
+                finished_req_id.append(req.request_id)
         self.reqs = unfinished_req
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        return finished_req_id
 
     def is_clear(self):
         return len(self.reqs) == 0

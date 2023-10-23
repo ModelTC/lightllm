@@ -170,9 +170,9 @@ class RouterManager:
         await self._handle_finish_req(batch, has_new_finished_req)
         return
 
-    async def _filter_batch(self, batch: Batch):
+    async def _filter_batch(self, batch: Batch, finished_req_id: List):
         req_id_list = [r.request_id for r in batch.reqs]
-        rets = [self.model_rpcs[tp_rank].filter_batch(batch.batch_id, req_id_list) for tp_rank in range(self.world_size)]
+        rets = [self.model_rpcs[tp_rank].filter_batch(batch.batch_id, req_id_list, finished_req_id) for tp_rank in range(self.world_size)]
         await asyncio.gather(*rets)
         return
 
@@ -188,11 +188,11 @@ class RouterManager:
 
     async def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
-            batch.filter_finished()
+            finished_req_id = batch.filter_finished()
             if batch.is_clear():
                 await self._remove_batch(batch)
             else:
-                await self._filter_batch(batch)
+                await self._filter_batch(batch, finished_req_id)
         return
 
     def _filter_runing_batch(self):

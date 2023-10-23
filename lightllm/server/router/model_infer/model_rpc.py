@@ -116,12 +116,12 @@ class ModelRpcServer(rpyc.Service):
         return self.forward(batch_id, is_prefill=False)
 
     # @calculate_time(show=True, min_cost_ms=0.1)
-    def exposed_filter_batch(self, batch_id, req_id_list):
+    def exposed_filter_batch(self, batch_id, req_id_list, finished_req_id_list):
         if self.world_size != 1:
-            batch_id, req_id_list = obtain(batch_id), obtain(req_id_list)
+            batch_id, req_id_list, finished_req_id_list = obtain(batch_id), obtain(req_id_list), obtain(finished_req_id_list)
         # print("filter old size:", len(batch.reqs), "new size:", len(req_id_list))
         batch = self.cache.pop(batch_id)
-        filter_batch = batch.filter(req_id_list)
+        filter_batch = batch.filter(req_id_list, finished_req_id_list)
         del batch
         self.cache[batch_id] = filter_batch
         return
@@ -152,8 +152,8 @@ class ModelRpcServer(rpyc.Service):
             "total_token_num": batch.nopad_total_token_num,
             "max_len_in_batch": batch.nopad_max_len_in_batch,
             "input_ids": batch.input_ids,
-            "b_loc": batch.req_manager.b_loc,
-            "b_loc_idx": batch.nopad_b_loc_idx,
+            "b_loc": batch.req_manager.req_to_token_indexs,
+            "b_loc_idx": batch.nopad_b_req_idx,
             "b_start_loc": batch.nopad_b_start_loc,
             "b_seq_len": batch.nopad_b_seq_len,
             "is_prefill": is_prefill
@@ -167,19 +167,16 @@ class ModelRpcServer(rpyc.Service):
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
         new_input_ids = []        
-        for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)):
-            # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
-            all_input_ids.append(int(next_token_id))
-            # all_input_ids_tensor = None
+        for i, (r, next_token_id, next_token_logprob) in enumerate(zip(batch.request_ids, next_token_ids, next_token_logprobs)):
             new_input_ids.append(next_token_id)
-            batch.all_input_ids[i] = all_input_ids
-            batch.input_lengths[i] += 1
-            batch.out_token_id_counts[i][next_token_id] += 1
+            batch.requests_mapping[r].out_token_id_count[next_token_id] += 1
+            batch.requests_mapping[r].input_id = next_token_id
+            batch.requests_mapping[r].b_seq_len += 1
             metadata = {
                 'id': int(next_token_id),
                 'logprob': float(next_token_logprob),
             }
-            output_dict[r['request_id']] = (int(next_token_id), metadata)
+            output_dict[r] = (int(next_token_id), metadata)
         
         batch.input_ids = torch.tensor(new_input_ids, dtype=torch.long).cuda()
         batch.nopad_b_start_loc = batch.nopad_b_start_loc + torch.arange(0, len(batch), dtype=torch.int32, device="cuda")
@@ -252,8 +249,8 @@ class ModelRpcClient:
         else:
             return ans
 
-    async def filter_batch(self, batch_id, req_id_list):
-        ans = self._filter_batch(batch_id, req_id_list)
+    async def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
+        ans = self._filter_batch(batch_id, req_id_list, finished_req_id_list)
         if self.use_rpc:
             await ans
             return
