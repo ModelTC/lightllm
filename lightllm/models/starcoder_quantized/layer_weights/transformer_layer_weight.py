@@ -75,7 +75,7 @@ class StarcoderTransformerLayerWeightQuantized(BloomTransformerLayerWeight):
             self.k_bias_ = self.qkv_bias_[n_embed : n_embed + head_dim]
             self.v_bias_ = self.qkv_bias_[n_embed + head_dim : n_embed + 2 * head_dim]
  
-            self.qkv_fused_bias = torch.cat(self.q_bias_, self.k_bias_, self.v_bias_, dim=0).cuda()
+            self.qkv_fused_bias = torch.cat((self.q_bias_, self.k_bias_, self.v_bias_), dim=0).cuda()
 
         # attention output dense params
         if f"transformer.h.{self.layer_num_}.attn.c_proj.weight" in weights:

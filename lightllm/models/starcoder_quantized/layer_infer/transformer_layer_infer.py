@@ -39,7 +39,7 @@ class StarcoderTransformerLayerInferINT8(StarcoderTransformerLayerInfer):
         k = qkv_output[:, -2 * self.head_dim: -self.head_dim]
         v = qkv_output[:, -self.head_dim:]
         cache_k = k.view(-1, self.tp_k_head_num_ * self.head_dim_)
-        cache_v = v.view(-1, self.tp_k_head_num_ * self.head_dim_)
+        cache_v = v.view(-1, self.tp_v_head_num_ * self.head_dim_)
         return q, cache_k, cache_v
 
     def _get_qkv_context(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
@@ -49,7 +49,12 @@ class StarcoderTransformerLayerInferINT8(StarcoderTransformerLayerInfer):
         return self._get_qkv(input, infer_state, layer_weight, matmul_quantize_int8)
 
     def _get_o_context(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
-        o_output = layer_weight.o_bias_ + matmul_dequantize_int8(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
+        o_output = layer_weight.o_bias_ / self.world_size_ + matmul_dequantize_int8(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
+                                          layer_weight.o_weight_, layer_weight.o_weight_scale_)
+        return o_output
+
+    def _get_o_decode(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
+        o_output = layer_weight.o_bias_ / self.world_size_ + matmul_quantize_int8(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
                                           layer_weight.o_weight_, layer_weight.o_weight_scale_)
         return o_output
 
