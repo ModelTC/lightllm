@@ -38,8 +38,8 @@ class StarcoderTransformerLayerInferINT8(StarcoderTransformerLayerInfer):
         q = qkv_output[:, : -2 * self.head_dim]
         k = qkv_output[:, -2 * self.head_dim: -self.head_dim]
         v = qkv_output[:, -self.head_dim:]
-        cache_k = k.view(-1, self.tp_k_head_num_ * self.head_dim_)
-        cache_v = v.view(-1, self.tp_v_head_num_ * self.head_dim_)
+        cache_k = k.view(-1, self.tp_k_head_num_, self.head_dim_)
+        cache_v = v.view(-1, self.tp_v_head_num_, self.head_dim_)
         return q, cache_k, cache_v
 
     def _get_qkv_context(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
