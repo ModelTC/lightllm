@@ -1,17 +1,20 @@
 import torch
 import math
 import numpy as np
+from functools import partial
 
 from lightllm.common.basemodel.triton_kernel.quantize_gemm_int8 import quantize_int8
 from lightllm.models.bloom.layer_weights.transformer_layer_weight import BloomTransformerLayerWeight
+from lightllm.common.basemodel.triton_kernel.dequantize_gemm_int4 import quantize_int4
 
 
 class StarcoderTransformerLayerWeightQuantized(BloomTransformerLayerWeight):
-    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[]):
+    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], group_size=128):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode)
         assert network_config["num_attention_heads"] % self.world_size_ == 0
         quantize_func_dict = {
-            'int8weight': quantize_int8
+            'int8weight': quantize_int8,
+            'int4weight': partial(quantize_int4, group_size=group_size)
         }
         self.quantize_weight = None
         for item in mode:

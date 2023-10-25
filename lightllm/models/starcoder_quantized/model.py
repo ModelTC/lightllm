@@ -14,7 +14,7 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.models.bloom.model import BloomTpPartModel
 from lightllm.common.build_utils import repair_config
 from lightllm.models.starcoder.model import StarcoderTpPartModel
-from lightllm.models.starcoder_quantized.layer_infer.transformer_layer_infer import StarcoderTransformerLayerInferINT8
+from lightllm.models.starcoder_quantized.layer_infer.transformer_layer_infer import StarcoderTransformerLayerInferINT8, StarcoderTransformerLayerInferINT4
 from lightllm.models.starcoder_quantized.layer_weights.transformer_layer_weight import \
     StarcoderTransformerLayerWeightQuantized
 
@@ -36,11 +36,16 @@ class StarcoderTpPartModelQuantized(StarcoderTpPartModel):
                          finetune_config)
 
     def init_mode(self, mode):
+        self.q_group_size = 128
+        for _mode in mode:
+            if _mode.startswith('g'):
+                self.q_group_size = int(_mode[1:])
         infer_class_dict = {
-            'int8weight': StarcoderTransformerLayerInferINT8
+            'int4weight': partial(StarcoderTransformerLayerInferINT4, group_size=self.q_group_size),
+            'int8weight': StarcoderTransformerLayerInferINT8,
         }
         for _mode in mode:
             if _mode in infer_class_dict:
                 self.transformer_layer_infer_class = infer_class_dict[_mode]
                 print("Model using mode", _mode)
-        self.transformer_weight_class = partial(StarcoderTransformerLayerWeightQuantized)
+        self.transformer_weight_class = partial(StarcoderTransformerLayerWeightQuantized, group_size=self.q_group_size)
