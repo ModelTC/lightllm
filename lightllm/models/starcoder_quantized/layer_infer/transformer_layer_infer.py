@@ -8,7 +8,6 @@ import numpy as np
 from lightllm.common.basemodel.triton_kernel.dequantize_gemm_int4 import matmul_dequantize_int4_s1, \
     matmul_dequantize_int4_gptq
 from lightllm.common.basemodel.triton_kernel.dequantize_gemm_int8 import matmul_dequantize_int8
-from lightllm.common.basemodel.triton_kernel.quantize_gemm_int8 import matmul_quantize_int8
 from lightllm.models.starcoder_quantized.layer_weights.transformer_layer_weight import \
     StarcoderTransformerLayerWeightQuantized
 from lightllm.utils.infer_utils import mark_cost_time
@@ -48,7 +47,7 @@ class StarcoderTransformerLayerInferINT8(StarcoderTransformerLayerInfer):
         return self._get_qkv(input, infer_state, layer_weight, matmul_dequantize_int8)
 
     def _get_qkv_decode(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
-        return self._get_qkv(input, infer_state, layer_weight, matmul_quantize_int8)
+        return self._get_qkv(input, infer_state, layer_weight, matmul_dequantize_int8)
 
     def _get_o_context(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
         o_output = layer_weight.o_bias_ / self.world_size_ + matmul_dequantize_int8(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
@@ -56,7 +55,7 @@ class StarcoderTransformerLayerInferINT8(StarcoderTransformerLayerInfer):
         return o_output
 
     def _get_o_decode(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
-        o_output = layer_weight.o_bias_ / self.world_size_ + matmul_quantize_int8(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
+        o_output = layer_weight.o_bias_ / self.world_size_ + matmul_dequantize_int8(input.view(-1, self.tp_o_head_num_ * self.head_dim_),
                                           layer_weight.o_weight_, layer_weight.o_weight_scale_)
         return o_output
 
@@ -73,7 +72,7 @@ class StarcoderTransformerLayerInferINT8(StarcoderTransformerLayerInfer):
         return self._ffn(input, infer_state, layer_weight, matmul_dequantize_int8)
 
     def _ffn_decode(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
-        return self._ffn(input, infer_state, layer_weight, matmul_quantize_int8)
+        return self._ffn(input, infer_state, layer_weight, matmul_dequantize_int8)
 
     @mark_cost_time("trans context flash forward time cost")
     def _context_attention(self, input_embding, infer_state: StarcoderInferStateInfo, layer_weight):
