@@ -7,7 +7,24 @@ from dataclasses import dataclass, field
 from typing import List, Dict
 from lightllm.common.req_manager import ReqManager
 from lightllm.utils.infer_utils import mark_start, mark_end
+import time
 
+
+import time
+from functools import wraps
+ 
+# 装饰器函数
+def print_info(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        duration_time = end_time - start_time
+        print("execute time running %s: %s seconds" % (func.__name__, duration_time))
+        return result
+ 
+    return wrapper
 
 class InferSamplingParams:
 
@@ -63,7 +80,7 @@ class InferBatch:
     nopad_b_start_loc: torch.Tensor
     nopad_b_seq_len: torch.Tensor
     req_manager: ReqManager
-
+    
     @classmethod
     @torch.no_grad()
     def init_batch(cls, batch_id, requests, dtype: torch.dtype, device: torch.device, req_manager:ReqManager, vocab_size: int):
@@ -119,11 +136,13 @@ class InferBatch:
             req_manager=req_manager,
         )
     
+    @print_info
     @torch.no_grad()
     def free_self(self):
         self.req_manager.free(self.nopad_b_req_idx, self.nopad_b_seq_len - 1)
         return
-        
+    
+    @print_info
     @torch.no_grad()
     def filter(self, request_ids: List[str], finished_request_ids: List[str]):
         if len(self.requests_mapping) == 0:
@@ -215,10 +234,10 @@ class InferBatch:
         self.request_ids += restore_request_ids
         return self
 
-
     @classmethod
     @torch.no_grad()
     def merge(cls, batch1, batch2):
+        start_time = time.time()
         request_ids = batch1.request_ids + batch2.request_ids
         batch1.requests_mapping.update(batch2.requests_mapping)
         new_batch_size = len(batch1) + len(batch2)
@@ -231,6 +250,9 @@ class InferBatch:
         nopad_b_seq_len = torch.cat([batch1.nopad_b_seq_len, batch2.nopad_b_seq_len], dim=0)
         input_ids = torch.cat([batch1.input_ids, batch2.input_ids], dim=0)
         nopad_b_start_loc = torch.cat([batch1.nopad_b_start_loc, batch2.nopad_b_start_loc + batch1.nopad_total_token_num], dim=0)
+        end_time = time.time()
+        duration_time = end_time - start_time
+        print("execute time running %s: %s seconds" % ("merge", duration_time))
 
         return InferBatch(
             batch_id=batch1.batch_id,
