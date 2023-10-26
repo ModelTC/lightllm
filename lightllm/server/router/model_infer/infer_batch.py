@@ -12,7 +12,8 @@ import time
 
 import time
 from functools import wraps
- 
+requests_mapping = {}
+
 # 装饰器函数
 def print_info(func):
     @wraps(func)
@@ -71,7 +72,6 @@ class InferReq:
 class InferBatch:
     batch_id: int
     request_ids: List
-    requests_mapping: Dict[int, int]
     input_ids: torch.Tensor
 
     nopad_total_token_num: int
@@ -87,8 +87,6 @@ class InferBatch:
 
         request_ids = []
         all_input_ids = []
-        requests_mapping = {}
-        
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
         b_start_loc = 0
@@ -128,7 +126,6 @@ class InferBatch:
         return cls(
             batch_id=batch_id,
             request_ids=request_ids,
-            requests_mapping=requests_mapping,
             input_ids=input_ids,
             nopad_total_token_num=nopad_total_token_num,
             nopad_max_len_in_batch=nopad_max_len_in_batch,
@@ -141,16 +138,16 @@ class InferBatch:
     @torch.no_grad()
     def free_self(self):
         self.req_manager.free(self.nopad_b_req_idx, self.nopad_b_seq_len - 1)
+        requests_mapping.clear()
         return
     
     @torch.no_grad()
     def filter(self, request_ids: List[str], finished_request_ids: List[str]):
-        if len(self.requests_mapping) == 0:
+        if len(requests_mapping) == 0:
             raise ValueError("Batch must have at least one request")
         if len(request_ids) == len(self) or len(request_ids) == 0:
             return self
         
-        requests_mapping = {}
         b_start_loc = 0
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
@@ -159,18 +156,24 @@ class InferBatch:
         nopad_b_req_idx = []
         nopad_b_seq_len = []
         for request_id in request_ids:
-            req = self.requests_mapping[request_id]
+            req = requests_mapping[request_id]
             input_ids.append(req.input_id)
             nopad_b_start_loc.append(b_start_loc)
             nopad_b_req_idx.append(req.b_req_idx)
             nopad_b_seq_len.append(req.b_seq_len)
             nopad_total_token_num += req.b_seq_len
             nopad_max_len_in_batch = max(req.b_seq_len, nopad_max_len_in_batch)
-            requests_mapping[request_id] = req
             b_start_loc += req.b_seq_len
+        free_req_index = []
+        free_token_index = []
         for request_id in finished_request_ids:
-            req = self.requests_mapping[request_id]
-            self.req_manager.free_req(req.b_req_idx, req.b_seq_len - 1)
+            req = requests_mapping.pop(request_id)
+            free_req_index.append(req.b_req_idx)
+            free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.b_seq_len - 1])
+        
+        free_token_index = torch.cat(free_token_index, dim=-1)
+        self.req_manager.free_req(free_req_index, free_token_index)
+    
         input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
         nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device="cuda")
         nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device="cuda")
@@ -179,7 +182,6 @@ class InferBatch:
         return InferBatch(
             batch_id=self.batch_id,
             request_ids=request_ids,
-            requests_mapping=requests_mapping,
             input_ids=input_ids,
             nopad_total_token_num=nopad_total_token_num,
             nopad_max_len_in_batch=nopad_max_len_in_batch,
@@ -192,7 +194,7 @@ class InferBatch:
     @torch.no_grad()
     def stop_reqs(self, stop_request_ids: List[str]):
         stop_request_ids_set = set(stop_request_ids)
-        request_ids = [i for i in self.requests_mapping.keys() if i not in stop_request_ids_set]
+        request_ids = [i for i in self.request_ids if i not in stop_request_ids_set]
         b_start_loc = 0
         self.nopad_total_token_num = 0
         self.nopad_max_len_in_batch = 0
@@ -202,7 +204,7 @@ class InferBatch:
         self.nopad_b_seq_len = torch.zeros(len(request_ids), dtype=torch.int32, device='cuda')
         self.request_ids = request_ids
         for i, request_id in enumerate(request_ids):
-            req = self.requests_mapping[request_id]
+            req = requests_mapping[request_id]
             self.input_ids[i] =req.input_id
             self.nopad_b_seq_len[i] = req.b_seq_len
             self.nopad_b_req_idx[i] = req.b_req_idx
@@ -224,7 +226,7 @@ class InferBatch:
         b_start_loc = self.nopad_total_token_num
         cur_bs = len(self)
         for i, request_id in enumerate(restore_request_ids):
-            req = self.requests_mapping[request_id]
+            req = requests_mapping[request_id]
             self.input_ids[cur_bs] =req.input_id
             self.nopad_b_seq_len[cur_bs] = req.b_seq_len
             self.nopad_b_req_idx[cur_bs] = req.b_req_idx
@@ -240,7 +242,6 @@ class InferBatch:
     def merge(cls, batch1, batch2):
         start_time = time.time()
         request_ids = batch1.request_ids + batch2.request_ids
-        batch1.requests_mapping.update(batch2.requests_mapping)
         new_batch_size = len(batch1) + len(batch2)
 
         cumulative_batch_size = 0
@@ -255,7 +256,6 @@ class InferBatch:
         return InferBatch(
             batch_id=batch1.batch_id,
             request_ids=request_ids,
-            requests_mapping=batch1.requests_mapping,
             input_ids=input_ids,
             nopad_total_token_num=nopad_total_token_num,
             nopad_max_len_in_batch=nopad_max_len_in_batch,
@@ -280,8 +280,8 @@ class InferBatch:
         p_seq_len: List[int] = [0,]
         p_max_len_in_batch: int = 0
         for i, request_id in enumerate(self.request_ids):
-            id_to_count = self.requests_mapping[request_id].out_token_id_count
-            sample_param = self.requests_mapping[request_id].sampling_param
+            id_to_count = requests_mapping[request_id].out_token_id_count
+            sample_param = requests_mapping[request_id].sampling_param
             presence_penalties.append(sample_param.presence_penalty)
             frequency_penalties.append(sample_param.frequency_penalty)
             temperatures.append(sample_param.temperature)

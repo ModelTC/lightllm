@@ -16,12 +16,12 @@ class ReqManager:
         self.can_use_req_size -= len(select_index)
         return select_index
     
-    def free_req(self, free_index, free_seq_len):
-        self.can_use_req_size += 1
-        self.req_state[free_index] = 0
+    def free_req(self, free_req_index, free_token_index):
+        self.can_use_req_size += len(free_req_index)
+        self.req_state[free_req_index] = 0
         if self.can_use_req_size == len(self.req_state):
             print(f"freed all request size {self.can_use_req_size}")
-        self.mem_manager.free(self.req_to_token_indexs[free_index][:free_seq_len])
+        self.mem_manager.free(free_token_index)
     
     def free(self, free_index, free_seq_len):
         """_summary_

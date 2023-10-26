@@ -26,6 +26,7 @@ from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.common.configs.config import setting
 from .post_process import sample
+from .infer_batch import requests_mapping
 
 class ModelRpcServer(rpyc.Service):
 
@@ -169,9 +170,9 @@ class ModelRpcServer(rpyc.Service):
         new_input_ids = []        
         for i, (r, next_token_id, next_token_logprob) in enumerate(zip(batch.request_ids, next_token_ids, next_token_logprobs)):
             new_input_ids.append(next_token_id)
-            batch.requests_mapping[r].out_token_id_count[next_token_id] += 1
-            batch.requests_mapping[r].input_id = next_token_id
-            batch.requests_mapping[r].b_seq_len += 1
+            requests_mapping[r].out_token_id_count[next_token_id] += 1
+            requests_mapping[r].input_id = next_token_id
+            requests_mapping[r].b_seq_len += 1
             metadata = {
                 'id': int(next_token_id),
                 'logprob': float(next_token_logprob),
