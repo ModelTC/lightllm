@@ -26,7 +26,7 @@ class Sfj(Strategy):
         super().__init__()
 
     def _order(self, req: Req):
-        return req.max_output_len
+        return req.max_output_len - len(req.output_ids)
 
 class Hrnn(Strategy):
 
@@ -34,7 +34,7 @@ class Hrnn(Strategy):
         super().__init__()
 
     def _order(self, req: Req):
-        return (req.input_len + req.max_output_len) / req.input_len
+        return (req.input_len + req.max_output_len - len(req.output_ids)) / req.input_len
 
 class SelectionManager:
     selections = {}
