@@ -59,12 +59,18 @@ class InferReq:
         sampling_param=None,
         b_req_idx=-1,
         b_seq_len=0,
+        prompt_len=0,
+        prompt_token_ids=[],
+        offload=False,
     ) -> None:
         self.input_id = input_id
         self.out_token_id_count = out_token_id_count
         self.sampling_param = sampling_param
         self.b_req_idx = b_req_idx
         self.b_seq_len = b_seq_len
+        self.prompt_len = prompt_len
+        self.prompt_token_ids=prompt_token_ids
+        self.offload = offload
         return
 
 
@@ -72,13 +78,6 @@ class InferReq:
 class InferBatch:
     batch_id: int
     request_ids: List
-    input_ids: torch.Tensor
-
-    nopad_total_token_num: int
-    nopad_max_len_in_batch: int
-    nopad_b_req_idx: torch.Tensor
-    nopad_b_start_loc: torch.Tensor
-    nopad_b_seq_len: torch.Tensor
     req_manager: ReqManager
     
     @classmethod
@@ -86,58 +85,38 @@ class InferBatch:
     def init_batch(cls, batch_id, requests, dtype: torch.dtype, device: torch.device, req_manager:ReqManager, vocab_size: int):
 
         request_ids = []
-        all_input_ids = []
-        nopad_total_token_num = 0
-        nopad_max_len_in_batch = 0
-        b_start_loc = 0
         nopad_b_req_idx = req_manager.alloc(len(requests))
-        nopad_b_start_loc = []
-        nopad_b_seq_len = []
 
         for i, r in enumerate(requests):
             # request id -> idx in list mapping
-
             tokenized_input = r['input_id']
             input_length = len(tokenized_input)
-            all_input_ids.append(tokenized_input)
             request_ids.append(r['request_id'])
             # postprocessor
             sampling_param = r["sampling_param"]
             sampling_param["vocab_size"] = vocab_size
-            nopad_total_token_num += input_length
-            nopad_max_len_in_batch = max(nopad_max_len_in_batch, input_length)  
-
-            requests_mapping[r['request_id']] = InferReq(input_id=tokenized_input, out_token_id_count=collections.defaultdict(int), sampling_param=InferSamplingParams(**sampling_param), b_req_idx=nopad_b_req_idx[i].item(), b_seq_len=input_length)
-            
-            nopad_b_seq_len.append(input_length)
-            nopad_b_start_loc.append(b_start_loc)
-            b_start_loc += input_length
-
-        if len(requests) > 1:
-            input_ids = np.concatenate(all_input_ids, dtype=np.int64)
-        else:
-            input_ids = all_input_ids[0]
-
-        # Create tensors on device
-        input_ids = torch.tensor(input_ids, dtype=torch.int64, device=device)
-        nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device=device)
-        nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device=device)
+            if not r["offload"]:
+                requests_mapping[r['request_id']] = InferReq(input_id=tokenized_input, out_token_id_count=collections.defaultdict(int), sampling_param=InferSamplingParams(**sampling_param), b_req_idx=nopad_b_req_idx[i].item(), b_seq_len=input_length, prompt_len=input_length, prompt_token_ids=tokenized_input)
+            else:
+                requests_mappingr['request_id'].offload = True
+                self.req_manager.free_req(nopad_b_req_idx[i])
 
         return cls(
             batch_id=batch_id,
             request_ids=request_ids,
-            input_ids=input_ids,
-            nopad_total_token_num=nopad_total_token_num,
-            nopad_max_len_in_batch=nopad_max_len_in_batch,
-            nopad_b_req_idx=nopad_b_req_idx,
-            nopad_b_start_loc=nopad_b_start_loc,
-            nopad_b_seq_len=nopad_b_seq_len,
             req_manager=req_manager,
         )
     
     @torch.no_grad()
     def free_self(self):
-        self.req_manager.free(self.nopad_b_req_idx, self.nopad_b_seq_len - 1)
+        free_req_index = []
+        free_token_index = []
+        for request_id in self.request_ids:
+            req = requests_mapping.pop(request_id)
+            free_req_index.append(req.b_req_idx)
+            free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.b_seq_len - 1])
+        free_token_index = torch.cat(free_token_index, dim=-1)
+        self.req_manager.free(free_req_index, free_token_index)
         requests_mapping.clear()
         return
     
@@ -148,120 +127,51 @@ class InferBatch:
         if len(request_ids) == len(self) or len(request_ids) == 0:
             return self
         
-        b_start_loc = 0
-        nopad_total_token_num = 0
-        nopad_max_len_in_batch = 0
-        input_ids = []
-        nopad_b_start_loc = []
-        nopad_b_req_idx = []
-        nopad_b_seq_len = []
-        for request_id in request_ids:
-            req = requests_mapping[request_id]
-            input_ids.append(req.input_id)
-            nopad_b_start_loc.append(b_start_loc)
-            nopad_b_req_idx.append(req.b_req_idx)
-            nopad_b_seq_len.append(req.b_seq_len)
-            nopad_total_token_num += req.b_seq_len
-            nopad_max_len_in_batch = max(req.b_seq_len, nopad_max_len_in_batch)
-            b_start_loc += req.b_seq_len
         free_req_index = []
         free_token_index = []
         for request_id in finished_request_ids:
             req = requests_mapping.pop(request_id)
             free_req_index.append(req.b_req_idx)
             free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.b_seq_len - 1])
-        
         free_token_index = torch.cat(free_token_index, dim=-1)
-        self.req_manager.free_req(free_req_index, free_token_index)
+        self.req_manager.free(free_req_index, free_token_index)
     
-        input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
-        nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device="cuda")
-        nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device="cuda")
-        nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device="cuda")
         
         return InferBatch(
             batch_id=self.batch_id,
             request_ids=request_ids,
-            input_ids=input_ids,
-            nopad_total_token_num=nopad_total_token_num,
-            nopad_max_len_in_batch=nopad_max_len_in_batch,
-            nopad_b_req_idx=nopad_b_req_idx,
-            nopad_b_start_loc=nopad_b_start_loc,
-            nopad_b_seq_len=nopad_b_seq_len,
             req_manager=self.req_manager,
         )
 
     @torch.no_grad()
     def stop_reqs(self, stop_request_ids: List[str]):
         stop_request_ids_set = set(stop_request_ids)
-        request_ids = [i for i in self.request_ids if i not in stop_request_ids_set]
-        b_start_loc = 0
-        self.nopad_total_token_num = 0
-        self.nopad_max_len_in_batch = 0
-        self.input_ids = torch.zeros(len(request_ids), dtype=torch.int64, device='cuda')
-        self.nopad_b_start_loc = torch.zeros(len(request_ids), dtype=torch.int32, device='cuda')
-        self.nopad_b_req_idx = torch.zeros(len(request_ids), dtype=torch.int32, device='cuda')
-        self.nopad_b_seq_len = torch.zeros(len(request_ids), dtype=torch.int32, device='cuda')
-        self.request_ids = request_ids
-        for i, request_id in enumerate(request_ids):
-            req = requests_mapping[request_id]
-            self.input_ids[i] =req.input_id
-            self.nopad_b_seq_len[i] = req.b_seq_len
-            self.nopad_b_req_idx[i] = req.b_req_idx
-            self.nopad_total_token_num += req.b_seq_len
-            self.nopad_max_len_in_batch = max(req.b_seq_len, self.nopad_max_len_in_batch)
-            self.nopad_b_start_loc[i] = b_start_loc
-            b_start_loc += req.b_seq_len
+        self.request_ids = [i for i in self.request_ids if i not in stop_request_ids_set]
         return self
 
     @torch.no_grad()
     def restore_reqs(self, restore_request_ids: List[str]):
-        restore_batch = InferBatch.merge(self, self.stop_son_batch)
-        del self.stop_son_batch
-        self.stop_son_batch = None
-        self.input_ids = torch.zeros(len(self) + len(restore_request_ids), dtype=torch.int64, device='cuda')
-        self.nopad_b_start_loc = torch.zeros(len(self) + len(restore_request_ids), dtype=torch.int32, device='cuda')
-        self.nopad_b_req_idx = torch.zeros(len(self) + len(restore_request_ids), dtype=torch.int32, device='cuda')
-        self.nopad_b_seq_len = torch.zeros(len(self) + len(restore_request_ids), dtype=torch.int32, device='cuda')
-        b_start_loc = self.nopad_total_token_num
-        cur_bs = len(self)
-        for i, request_id in enumerate(restore_request_ids):
-            req = requests_mapping[request_id]
-            self.input_ids[cur_bs] =req.input_id
-            self.nopad_b_seq_len[cur_bs] = req.b_seq_len
-            self.nopad_b_req_idx[cur_bs] = req.b_req_idx
-            self.nopad_total_token_num += req.b_seq_len
-            self.nopad_max_len_in_batch = max(req.b_seq_len, self.nopad_max_len_in_batch)
-            self.nopad_b_start_loc[cur_bs] = b_start_loc
-            b_start_loc += req.b_seq_len
         self.request_ids += restore_request_ids
         return self
 
+    @torch.no_grad()
+    def free_prefill(self, free_request_ids):
+        free_token_index = []
+        for request_id in free_request_ids:
+            req = requests_mapping[request_id]
+            free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.prompt_len])
+        free_token_index = torch.cat(free_token_index, dim=-1)
+        self.req_manager.free_token(free_token_index)
+    
     @classmethod
     @torch.no_grad()
     def merge(cls, batch1, batch2):
         start_time = time.time()
         request_ids = batch1.request_ids + batch2.request_ids
-        new_batch_size = len(batch1) + len(batch2)
-
-        cumulative_batch_size = 0
-        nopad_total_token_num = batch1.nopad_total_token_num + batch2.nopad_total_token_num
-        nopad_max_len_in_batch = max(batch1.nopad_max_len_in_batch, batch2.nopad_max_len_in_batch)
         
-        nopad_b_req_idx = torch.cat([batch1.nopad_b_req_idx, batch2.nopad_b_req_idx], dim=0)
-        nopad_b_seq_len = torch.cat([batch1.nopad_b_seq_len, batch2.nopad_b_seq_len], dim=0)
-        input_ids = torch.cat([batch1.input_ids, batch2.input_ids], dim=0)
-        nopad_b_start_loc = torch.cat([batch1.nopad_b_start_loc, batch2.nopad_b_start_loc + batch1.nopad_total_token_num], dim=0)
-
         return InferBatch(
             batch_id=batch1.batch_id,
             request_ids=request_ids,
-            input_ids=input_ids,
-            nopad_total_token_num=nopad_total_token_num,
-            nopad_max_len_in_batch=nopad_max_len_in_batch,
-            nopad_b_req_idx=nopad_b_req_idx,
-            nopad_b_start_loc=nopad_b_start_loc,
-            nopad_b_seq_len=nopad_b_seq_len,
             req_manager=batch1.req_manager,
         )
 

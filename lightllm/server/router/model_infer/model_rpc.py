@@ -1,8 +1,8 @@
 import asyncio
-import numpy
 import rpyc
 import torch
 import traceback
+import numpy as np
 from datetime import timedelta
 from typing import Dict, List, Tuple
 from transformers.configuration_utils import PretrainedConfig
@@ -145,22 +145,53 @@ class ModelRpcServer(rpyc.Service):
         # torch.cuda.empty_cache()
         return
     
+    def prepare_inputs(self, batch, is_prefill):
+        nopad_total_token_num = 0
+        nopad_max_len_in_batch = 0
+        b_start_loc = 0
+        input_ids = []
+        nopad_b_req_idx = []
+        nopad_b_start_loc = []
+        nopad_b_seq_len = []
+        for request_id in batch.request_ids:
+            req = requests_mapping[request_id]
+            nopad_total_token_num += req.b_seq_len
+            nopad_max_len_in_batch = max(nopad_max_len_in_batch, req.b_seq_len)
+            nopad_b_req_idx.append(req.b_req_idx)
+            nopad_b_start_loc.append(b_start_loc)
+            if req.offload:
+                nopad_b_seq_len.append(req.prompt_len)
+                input_ids.append(req.prompt_token_ids)
+            else:
+                nopad_b_seq_len.append(req.b_seq_len)
+                input_ids.append(req.input_id)
+            b_start_loc += req.b_seq_len
+        if is_prefill:
+            if len(input_ids) > 1:
+                input_ids = np.concatenate(input_ids, dtype=np.int64)
+            else:
+                input_ids = input_ids[0]
+        input_ids = torch.tensor(input_ids, dtype=torch.int64, device='cuda')
+        nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device='cuda')
+        nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device='cuda')
+        nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device='cuda')
+        kwargs = {
+            "batch_size": len(batch),
+            "total_token_num": nopad_total_token_num,
+            "max_len_in_batch": nopad_max_len_in_batch,
+            "input_ids": input_ids,
+            "b_loc": batch.req_manager.req_to_token_indexs,
+            "b_loc_idx": nopad_b_req_idx,
+            "b_start_loc": nopad_b_start_loc,
+            "b_seq_len": nopad_b_seq_len,
+            "is_prefill": is_prefill            
+        }
+        return kwargs
+
     # @calculate_time(show=True, min_cost_ms=150)
     def forward(self, batch_id, is_prefill):
         batch: InferBatch = self.cache.pop(batch_id)
-        kwargs = {
-            "batch_size": len(batch),
-            "total_token_num": batch.nopad_total_token_num,
-            "max_len_in_batch": batch.nopad_max_len_in_batch,
-            "input_ids": batch.input_ids,
-            "b_loc": batch.req_manager.req_to_token_indexs,
-            "b_loc_idx": batch.nopad_b_req_idx,
-            "b_start_loc": batch.nopad_b_start_loc,
-            "b_seq_len": batch.nopad_b_seq_len,
-            "is_prefill": is_prefill
-        }
-
-        # assert False, f"{kwargs}"
+        kwargs = self.prepare_inputs(batch, is_prefill)
 
         logits = self.model.forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, batch)
@@ -171,19 +202,17 @@ class ModelRpcServer(rpyc.Service):
         for i, (r, next_token_id, next_token_logprob) in enumerate(zip(batch.request_ids, next_token_ids, next_token_logprobs)):
             new_input_ids.append(next_token_id)
             requests_mapping[r].out_token_id_count[next_token_id] += 1
-            requests_mapping[r].input_id = next_token_id
-            requests_mapping[r].b_seq_len += 1
+            if not requests_mapping[r].offload:
+                requests_mapping[r].input_id = next_token_id
+                requests_mapping[r].b_seq_len += 1
+            else:
+                requests_mapping[r].offload = False
             metadata = {
                 'id': int(next_token_id),
                 'logprob': float(next_token_logprob),
             }
             output_dict[r] = (int(next_token_id), metadata)
         
-        batch.input_ids = torch.tensor(new_input_ids, dtype=torch.long).cuda()
-        batch.nopad_b_start_loc = batch.nopad_b_start_loc + torch.arange(0, len(batch), dtype=torch.int32, device="cuda")
-        batch.nopad_total_token_num += len(batch)
-        batch.nopad_max_len_in_batch += 1
-        batch.nopad_b_seq_len += 1
         self.cache[batch.batch_id] = batch
         return output_dict
 
