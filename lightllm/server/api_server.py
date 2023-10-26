@@ -288,12 +288,8 @@ def main():
                         help="token ratio to control router dispatch")
     parser.add_argument("--allow_finish_percent", type=float, default=1.,
                         help="the allow finished request percent in current batch, default is 1.0")
-    parser.add_argument("--init_max_new_token_len", type=float, default=1024,
-                        help="the init max new token len for req")
-    parser.add_argument("--max_new_token_decay", type=float, default=0.98,
-                        help="the token ratio to control request runing")
-    parser.add_argument("--moving_max_new_tokens", action='store_true',
-                        help="whether to use moving max new tokens num")
+    parser.add_argument("--max_new_token_len", type=float, default=1024,
+                        help="the request max new token len for router")
     parser.add_argument("--offload", action='store_true',
                         help="whether to offload the request memory when pause it")
     parser.add_argument("--strategy",  type=str, default="fcfs", choices=["fcfs", "hrnn", "sfj"],

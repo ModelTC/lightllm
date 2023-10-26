@@ -10,7 +10,6 @@ from ..io_struct import Req, Batch
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import ReqQueue
 from .strategy import SelectionManager
-from .ema import EmaStatistical
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from ..io_struct import BatchTokenIdOut, AbortReq
@@ -18,16 +17,15 @@ from .stats import Stats
 
 class RouterManager:
 
-    def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, token_ratio, init_max_new_token_len, max_new_token_decay,
-                 moving_max_new_tokens, allow_finish_percent, reserve_token_num, offload, strategy, router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
+    def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, token_ratio, max_new_token_len, 
+                 allow_finish_percent, reserve_token_num, offload, strategy, router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
         self.model_weightdir = weightdir
         self.world_size = world_size
         self.load_way = load_way
         self.mode = mode
         self.max_total_token_num = max_total_token_num
         self.router_max_total_token_num = self.max_total_token_num - reserve_token_num
-        self.ema = EmaStatistical(init_max_new_token_len,  token_ratio, max_new_token_decay, moving_max_new_tokens)
-        self.req_queue = ReqQueue(self.router_max_total_token_num, allow_finish_percent, batch_max_tokens, running_max_req_size, self.ema, token_ratio)
+        self.req_queue = ReqQueue(self.router_max_total_token_num, allow_finish_percent, batch_max_tokens, running_max_req_size, max_new_token_len, token_ratio)
         self.selector = SelectionManager.getSelection(strategy, self.req_queue, self.router_max_total_token_num, offload=offload)
         self.token_traio = token_ratio
         self.running_batch: Batch = None
@@ -232,7 +230,6 @@ class RouterManager:
     async def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
             finished_req = batch.filter_finished()
-            self._update_statistics(finished_req)
             finished_req_id = [req.request_id for req in finished_req]
             if batch.is_clear() and not self.req_queue.has_pending_reqs():
                 await self._remove_batch(batch)
@@ -264,10 +261,6 @@ class RouterManager:
     def _can_decode(self, batch: Batch):
         remaining_tokens = self.router_max_total_token_num - batch.calcu_used_tokens() - self.req_queue.calcu_stopd_tokens()
         return len(batch.reqs) <= remaining_tokens
-
-    def _update_statistics(self, reqs: List[Req]):
-        for req in reqs:
-            self.ema.udpate(len(req.output_ids))
 
     async def loop_for_netio_req(self):
         while True:
@@ -301,9 +294,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             running_max_req_size=args.running_max_req_size,
             eos_id=args.eos_id,
             token_ratio=args.token_ratio,
-            init_max_new_token_len=args.init_max_new_token_len,
-            max_new_token_decay=args.max_new_token_decay,
-            moving_max_new_tokens=args.moving_max_new_tokens,
+            max_new_token_len=args.max_new_token_len,
             allow_finish_percent=args.allow_finish_percent,
             reserve_token_num=args.reserve_token_num,
             offload=args.offload,
