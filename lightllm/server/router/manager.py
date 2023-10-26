@@ -9,6 +9,8 @@ from ..sampling_params import SamplingParams
 from ..io_struct import Req, Batch
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import ReqQueue
+from .strategy import SelectionManager
+from .ema import EmaStatistical
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from ..io_struct import BatchTokenIdOut, AbortReq
@@ -16,20 +18,23 @@ from .stats import Stats
 
 class RouterManager:
 
-    def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, 
-                 router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
+    def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, token_ratio, init_max_new_token_len, max_new_token_decay,
+                 moving_max_new_tokens, allow_finish_percent, reserve_token_num, offload, strategy, router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
         self.model_weightdir = weightdir
         self.world_size = world_size
         self.load_way = load_way
         self.mode = mode
         self.max_total_token_num = max_total_token_num
-
-        self.req_queue = ReqQueue(max_total_token_num, batch_max_tokens, running_max_req_size)
-
+        self.router_max_total_token_num = self.max_total_token_num - reserve_token_num
+        self.ema = EmaStatistical(init_max_new_token_len,  token_ratio, max_new_token_decay, moving_max_new_tokens)
+        self.req_queue = ReqQueue(self.router_max_total_token_num, allow_finish_percent, batch_max_tokens, running_max_req_size, self.ema, token_ratio)
+        self.selector = SelectionManager.getSelection(strategy, self.req_queue, self.router_max_total_token_num, offload=offload)
+        self.token_traio = token_ratio
         self.running_batch: Batch = None
         self.eos_id = eos_id
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
+        self.toal_req_num = 0
         
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
@@ -40,7 +45,6 @@ class RouterManager:
         self.model_rpc_ports = model_rpc_ports
 
         self.stats_tool = Stats(log_stats, log_stats_interval)
-
 
     async def wait_to_model_ready(self):
         self.model_rpcs: List[ModelRpcClient] = []
@@ -68,8 +72,9 @@ class RouterManager:
         sampling_params: SamplingParams,
         request_id: str
     ):
-        req = Req(request_id, prompt_ids, sampling_params)
+        req = Req(request_id, prompt_ids, sampling_params, self.toal_req_num)
         self.req_queue.append(req)
+        self.toal_req_num += 1
         self.send_to_detokenization.send_pyobj(req.to_req_detokenization_state())
         return
 
@@ -92,10 +97,11 @@ class RouterManager:
             counter_count += 1
             if self.running_batch is not None:
                 if counter_count % 50 == 0:
-                    print("current batch size:", len(self.running_batch.reqs), "token used ratio:", self.running_batch.calcu_used_tokens() / self.max_total_token_num)
+                    print("current batch size:", len(self.running_batch.reqs), "token used ratio:", (self.req_queue.calcu_stopd_tokens() / self.router_max_total_token_num,
+                          (self.running_batch.calcu_used_tokens() + self.req_queue.calcu_stopd_tokens()) / self.router_max_total_token_num))
                     pass
                 self.stats_tool.print_stats()
-                
+
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
 
@@ -105,7 +111,7 @@ class RouterManager:
         """
         # 删除所有已经 finished 的 req
         if self.running_batch is None:
-            new_batch = self.req_queue.generate_new_batch(self.running_batch)
+            _, new_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
@@ -113,28 +119,42 @@ class RouterManager:
                 self._filter_runing_batch()
                 self.has_wait_tokens = 0
             return
-
+        token_ratio = (self.running_batch.calcu_used_tokens() + self.req_queue.calcu_stopd_tokens()) / self.router_max_total_token_num
         if self.has_wait_tokens < self.max_wait_tokens:
+            if not self._can_decode(self.running_batch):
+                await self._selection_batch()
+                if self.running_batch.is_clear():
+                    self.has_wait_tokens = self.max_wait_tokens
+                    return
             self.stats_tool.count_output_tokens(self.running_batch)
             await self._decode_batch(self.running_batch)
             self._filter_runing_batch()
             self.has_wait_tokens += 1
             return
         else:
-            new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
-            if new_mini_batch is not None:
-                self.stats_tool.count_prompt_tokens(new_mini_batch)
-                await self._prefill_batch(new_mini_batch)
-                if not new_mini_batch.is_clear():
-                    await self._merge_batch(self.running_batch, new_mini_batch)
-                    self.running_batch.merge(new_mini_batch)
-                self.has_wait_tokens = 0
-            else:
-                self.stats_tool.count_output_tokens(self.running_batch)
-                await self._decode_batch(self.running_batch)
-                self._filter_runing_batch()
-                self.has_wait_tokens += 1
-        
+            if not self.req_queue.is_waiting_list_empty():
+                restore, new_mini_batch = self.req_queue.generate_new_batch(self.running_batch, token_ratio)
+                if new_mini_batch is not None:
+                    if restore:
+                        await self._restore_batch(self.running_batch, new_mini_batch)
+                        self.running_batch.merge(new_mini_batch)
+                    else:
+                        self.stats_tool.count_prompt_tokens(new_mini_batch)
+                        await self._prefill_batch(new_mini_batch)
+                        if not new_mini_batch.is_clear():
+                            await self._merge_batch(self.running_batch, new_mini_batch)
+                            self.running_batch.merge(new_mini_batch)
+                        self._filter_runing_batch()
+                    self.has_wait_tokens = 0
+                    return
+            if not self._can_decode(self.running_batch):
+                await self._selection_batch()
+                if self.running_batch.is_clear():
+                    return
+            self.stats_tool.count_output_tokens(self.running_batch)
+            await self._decode_batch(self.running_batch)
+            self._filter_runing_batch()
+            self.has_wait_tokens += 1
         return
 
     async def _init_batch(self, batch: Batch):
@@ -170,6 +190,29 @@ class RouterManager:
         await self._handle_finish_req(batch, has_new_finished_req)
         return
 
+    async def _selection_batch(self):
+        while True:
+            pause_reqs = self.selector.select_reqs(self.running_batch)
+            if pause_reqs:
+                await self._pause_reqs(self.running_batch, pause_reqs)
+            token_ratio = (self.running_batch.calcu_used_tokens() + self.req_queue.calcu_stopd_tokens()) / self.router_max_total_token_num
+            if self.running_batch.is_clear() or token_ratio <= self.token_traio:
+                break
+            self.stats_tool.count_output_tokens(self.running_batch)
+            await self._decode_batch(self.running_batch)
+        return
+
+    async def _pause_reqs(self, batch: Batch, req_id_list):
+        rets = [self.model_rpcs[tp_rank].stop_reqs(batch.batch_id, req_id_list) for tp_rank in range(self.world_size)]
+        await asyncio.gather(*rets)
+        return
+
+    async def _restore_batch(self, batch1: Batch, batch2: Batch):
+        req_ids = [r.request_id for r in batch2.reqs]
+        rets = [self.model_rpcs[tp_rank].restore_reqs(batch1.batch_id, req_ids) for tp_rank in range(self.world_size)]
+        await asyncio.gather(*rets)
+        return
+
     async def _filter_batch(self, batch: Batch, finished_req_id: List):
         req_id_list = [r.request_id for r in batch.reqs]
         rets = [self.model_rpcs[tp_rank].filter_batch(batch.batch_id, req_id_list, finished_req_id) for tp_rank in range(self.world_size)]
@@ -188,8 +231,10 @@ class RouterManager:
 
     async def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
-            finished_req_id = batch.filter_finished()
-            if batch.is_clear():
+            finished_req = batch.filter_finished()
+            self._update_statistics(finished_req)
+            finished_req_id = [req.request_id for req in finished_req]
+            if batch.is_clear() and not self.req_queue.has_pending_reqs():
                 await self._remove_batch(batch)
             else:
                 await self._filter_batch(batch, finished_req_id)
@@ -215,6 +260,14 @@ class RouterManager:
     
         self.send_to_detokenization.send_pyobj(batch_out)
         return
+
+    def _can_decode(self, batch: Batch):
+        remaining_tokens = self.router_max_total_token_num - batch.calcu_used_tokens() - self.req_queue.calcu_stopd_tokens()
+        return len(batch.reqs) <= remaining_tokens
+
+    def _update_statistics(self, reqs: List[Req]):
+        for req in reqs:
+            self.ema.udpate(len(req.output_ids))
 
     async def loop_for_netio_req(self):
         while True:
@@ -247,6 +300,14 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             batch_max_tokens=args.batch_max_tokens,
             running_max_req_size=args.running_max_req_size,
             eos_id=args.eos_id,
+            token_ratio=args.token_ratio,
+            init_max_new_token_len=args.init_max_new_token_len,
+            max_new_token_decay=args.max_new_token_decay,
+            moving_max_new_tokens=args.moving_max_new_tokens,
+            allow_finish_percent=args.allow_finish_percent,
+            reserve_token_num=args.reserve_token_num,
+            offload=args.offload,
+            strategy=args.strategy,
             router_port=router_port,
             detokenization_port=detokenization_port,
             model_rpc_ports=model_rpc_ports,

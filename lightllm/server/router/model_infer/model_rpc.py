@@ -127,6 +127,24 @@ class ModelRpcServer(rpyc.Service):
         self.cache[batch_id] = filter_batch
         return
 
+    def exposed_restore_reqs(self, batch_id, req_id_list):
+        if self.world_size != 1:
+            batch_id, req_id_list = obtain(batch_id), obtain(req_id_list)
+        batch1 = self.cache.pop(batch_id)
+        batch2 = batch1.restore_reqs(req_id_list)
+        self.cache[batch_id] = batch2
+        del batch1
+        return
+
+    def exposed_stop_reqs(self, batch_id, req_id_list):
+        if self.world_size != 1:
+            batch_id, req_id_list = obtain(batch_id), obtain(req_id_list)
+        batch1 = self.cache.pop(batch_id)
+        batch2 = batch1.stop_reqs(req_id_list)
+        self.cache[batch_id] = batch2
+        del batch1
+        return
+
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_merge_batch(self, batch_id1, batch_id2):
         batch1 = self.cache.pop(batch_id1)
@@ -198,8 +216,11 @@ class ModelRpcServer(rpyc.Service):
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
-        new_input_ids = []        
-        for i, (r, next_token_id, next_token_logprob) in enumerate(zip(batch.request_ids, next_token_ids, next_token_logprobs)):
+        new_input_ids = []    
+        for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)):
+            # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
+            all_input_ids.append(int(next_token_id))
+            # all_input_ids_tensor = None
             new_input_ids.append(next_token_id)
             requests_mapping[r].out_token_id_count[next_token_id] += 1
             if not requests_mapping[r].offload:
@@ -236,6 +257,8 @@ class ModelRpcClient:
             self._add_batch = async_wrap(self.model.add_batch)
             self._prefill_batch = async_wrap(self.model.prefill_batch)
             self._decode_batch = async_wrap(self.model.decode_batch)
+            self._stop_reqs = async_wrap(self.model.stop_reqs)
+            self._restore_reqs = async_wrap(self.model.restore_reqs)
             self._filter_batch = async_wrap(self.model.filter_batch)
             self._merge_batch = async_wrap(self.model.merge_batch)
             self._remove_batch = async_wrap(self.model.remove_batch)
@@ -244,6 +267,8 @@ class ModelRpcClient:
             self._add_batch = self.model.exposed_add_batch
             self._prefill_batch = self.model.exposed_prefill_batch
             self._decode_batch = self.model.exposed_decode_batch
+            self._stop_reqs = self.model.exposed_stop_reqs
+            self._restore_reqs = self.model.exposed_restore_reqs
             self._filter_batch = self.model.exposed_filter_batch
             self._merge_batch = self.model.exposed_merge_batch
             self._remove_batch = self.model.exposed_remove_batch
@@ -286,6 +311,22 @@ class ModelRpcClient:
             return
         else:
             return 
+
+    async def stop_reqs(self, batch_id, req_id_list):
+        ans = self._stop_reqs(batch_id, req_id_list)
+        if self.use_rpc:
+            await ans
+            return
+        else:
+            return
+
+    async def restore_reqs(self, batch_id, req_id_list):
+        ans = self._restore_reqs(batch_id, req_id_list)
+        if self.use_rpc:
+            await ans
+            return
+        else:
+            return
 
     async def merge_batch(self, batch_id1, batch_id2):
         ans = self._merge_batch(batch_id1, batch_id2)
