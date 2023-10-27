@@ -21,6 +21,7 @@ class Req:
         return {"request_id": self.request_id,
                 "input_id": self.prompt_ids,
                 "output_len": self.max_output_len,
+                "offload": self.offload,
                 "sampling_param": self.sample_params.to_dict() }
 
     def to_req_detokenization_state(self):
