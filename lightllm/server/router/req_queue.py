@@ -2,15 +2,14 @@ import uuid
 import asyncio
 import numpy as np
 from typing import List
-from ..io_struct import Batch, Req
+from ..io_struct import Batch, Req, RunStatus
 from lightllm.utils.infer_utils import  calculate_time
 
 
 class ReqQueue:
 
-    def __init__(self, max_total_tokens, allow_finish_percent, batch_max_tokens, running_max_req_size, max_new_token_len, token_ratio) -> None:
+    def __init__(self, max_total_tokens, batch_max_tokens, running_max_req_size, max_new_token_len, token_ratio) -> None:
         self.max_total_tokens = max_total_tokens
-        self.allow_finish_percent = allow_finish_percent
         assert batch_max_tokens is not None
         self.batch_max_tokens = batch_max_tokens
         self.running_max_req_size = running_max_req_size
@@ -23,25 +22,24 @@ class ReqQueue:
         self.waiting_req_list.append(req)
         return
 
-    def _init_cache_list(self, current_batch:Batch):
+    def _init_cache_list(self, current_batch:Batch, token_ratio=0.):
+        self.cache_empty = None
         if current_batch is not None:
-            self.cache_len_list = [(req.input_len + len(req.output_ids) - 1, max(1, self.max_new_token_len - len(req.output_ids))) for req in current_batch.reqs]
+            self.cache_len_list = [(req.input_len + len(req.output_ids) - 1, max(1, self.calcu_max_new_token(req, token_ratio) - len(req.output_ids))) for req in current_batch.reqs]
+            self.cache_empty = True if len(self.cache_len_list) == 0 else False
         else:
             self.cache_len_list = []
 
     def _can_add_new_req(self, req, token_ratio=0.):
-        self.cache_len_list.append((req.calcu_need_tokens(), max(1, self.max_new_token_len - len(req.output_ids) - 1))) # hard to analysis
+        self.cache_len_list.append((req.calcu_need_tokens(), max(1, self.calcu_max_new_token(req, token_ratio) - len(req.output_ids) - 1))) # hard to analysis
         self.cache_len_list.sort(key=lambda x: -x[1])
-
         left_out_len_array = np.array([e[1] for e in self.cache_len_list])
         # assert left_out_len_array.min() >= 0
         has_run_len_array = np.array([e[0] for e in self.cache_len_list])
         cum_run_len_array = np.cumsum(has_run_len_array)
         size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
-        percent = self.allow_finish_percent if token_ratio <= self.token_ratio else 1
-        ensure_num = min(int(len(self.cache_len_list) * (1 - percent)), len(self.cache_len_list) - 1)
-        need_max_token_num = (left_out_len_array * size_array + cum_run_len_array)[ensure_num:].max()
-        if need_max_token_num < self.max_total_tokens and len(self.cache_len_list) <= self.running_max_req_size:
+        need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
+        if need_max_token_num <= (self.max_total_tokens - self.stoped_token_num) and len(self.cache_len_list) <= self.running_max_req_size or self.cache_empty:
             return True
         else:
             return False
@@ -49,12 +47,13 @@ class ReqQueue:
     def generate_new_batch(self, current_batch:Batch, token_ratio=0.):
         if current_batch is not None and len(current_batch.reqs) >= self.running_max_req_size:
             return None
-        
-        self._init_cache_list(current_batch)
+
+        self._init_cache_list(current_batch, token_ratio)
         can_run_list = []
         new_batch_total_tokens = 0
         aborted_count = 0
-        restore = True if self.pending_count > 0 else False
+        restore = False
+        self.stoped_token_num = self.calcu_stopd_tokens()
         for req in self.waiting_req_list:
             if req.aborted:
                 aborted_count += 1
@@ -62,9 +61,9 @@ class ReqQueue:
             if restore and self.pending_count == 0:
                 break
             if self._can_add_new_req(req, token_ratio) and new_batch_total_tokens + req.input_len <= self.batch_max_tokens:
-                if restore:
+                if self.pending_count > 0:
+                    restore = True if req.runstatus == RunStatus.PAUSED else False
                     self.pending_count -= 1
-                    req.offload = False
                 can_run_list.append(req)
                 new_batch_total_tokens += req.input_len
             else:
@@ -94,3 +93,8 @@ class ReqQueue:
         if self.pending_count > 0:
             return True
         return False
+
+    def calcu_max_new_token(self, req, token_ratio):
+        if req.max_output_len < self.max_new_token_len or token_ratio > self.token_ratio:
+            return req.max_output_len
+        return self.max_new_token_len

@@ -284,17 +284,15 @@ def main():
                         help="eos stop token id")
     parser.add_argument("--running_max_req_size", type=int, default=1000,
                         help="the max size for forward requests in the same time")
-    parser.add_argument("--token_ratio", type=float, default=1.,
+    parser.add_argument("--token_ratio", type=float, default=0.9,
                         help="token ratio to control router dispatch")
-    parser.add_argument("--allow_finish_percent", type=float, default=1.,
-                        help="the allow finished request percent in current batch, default is 1.0")
     parser.add_argument("--max_new_token_len", type=float, default=1024,
                         help="the request max new token len for router")
-    parser.add_argument("--offload", action='store_true',
-                        help="whether to offload the request memory when pause it")
+    parser.add_argument("--not_offload", action='store_true',
+                        help="whether to offload the request memory when pause it, default is offload")
     parser.add_argument("--strategy",  type=str, default="fcfs", choices=["fcfs", "hrnn", "sfj"],
                         help="strategy to handle request if there are need to pending reuqest")
-    parser.add_argument("--reserve_token_num", type=int, default=4096,
+    parser.add_argument("--reserve_token_num", type=int, default=2048,
                         help="reserved token numbers to prevent out of memory")
     parser.add_argument("--tp", type=int, default=1,
                         help="model tp parral size, the default is 1")

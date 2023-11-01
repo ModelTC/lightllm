@@ -98,8 +98,7 @@ class InferBatch:
             if not r["offload"]:
                 requests_mapping[r['request_id']] = InferReq(input_id=tokenized_input, out_token_id_count=collections.defaultdict(int), sampling_param=InferSamplingParams(**sampling_param), b_req_idx=nopad_b_req_idx[i].item(), b_seq_len=input_length, prompt_len=input_length, prompt_token_ids=tokenized_input)
             else:
-                requests_mappingr['request_id'].offload = True
-                self.req_manager.free_req(nopad_b_req_idx[i])
+                requests_mapping[r['request_id']].offload = True
 
         return cls(
             batch_id=batch_id,
@@ -117,16 +116,23 @@ class InferBatch:
             free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.b_seq_len - 1])
         free_token_index = torch.cat(free_token_index, dim=-1)
         self.req_manager.free(free_req_index, free_token_index)
-        requests_mapping.clear()
+        if len(requests_mapping) == 0:
+            requests_mapping.clear()
         return
     
     @torch.no_grad()
     def filter(self, request_ids: List[str], finished_request_ids: List[str]):
         if len(requests_mapping) == 0:
             raise ValueError("Batch must have at least one request")
-        if len(request_ids) == len(self) or len(request_ids) == 0:
+        if len(request_ids) == len(self):
             return self
-        
+        if len(request_ids) == 0:
+            self.free_self()
+            return InferBatch(
+                batch_id=self.batch_id,
+                request_ids=[],
+                req_manager=self.req_manager
+            )
         free_req_index = []
         free_token_index = []
         for request_id in finished_request_ids:
@@ -135,7 +141,6 @@ class InferBatch:
             free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.b_seq_len - 1])
         free_token_index = torch.cat(free_token_index, dim=-1)
         self.req_manager.free(free_req_index, free_token_index)
-    
         
         return InferBatch(
             batch_id=self.batch_id,
@@ -144,9 +149,13 @@ class InferBatch:
         )
 
     @torch.no_grad()
-    def stop_reqs(self, stop_request_ids: List[str]):
-        stop_request_ids_set = set(stop_request_ids)
-        self.request_ids = [i for i in self.request_ids if i not in stop_request_ids_set]
+    def pause_reqs(self, stop_request: List[str]):
+        for request_id, offload in stop_request:
+            req = requests_mapping[request_id]
+            requests_mapping[request_id].offload = offload
+            self.request_ids.remove(request_id)
+            if offload:
+                self.req_manager.free_token(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.prompt_len])
         return self
 
     @torch.no_grad()
@@ -154,15 +163,6 @@ class InferBatch:
         self.request_ids += restore_request_ids
         return self
 
-    @torch.no_grad()
-    def free_prefill(self, free_request_ids):
-        free_token_index = []
-        for request_id in free_request_ids:
-            req = requests_mapping[request_id]
-            free_token_index.append(self.req_manager.req_to_token_indexs[req.b_req_idx][:req.prompt_len])
-        free_token_index = torch.cat(free_token_index, dim=-1)
-        self.req_manager.free_token(free_token_index)
-    
     @classmethod
     @torch.no_grad()
     def merge(cls, batch1, batch2):

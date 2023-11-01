@@ -1,10 +1,15 @@
 from .sampling_params import SamplingParams
 from typing import Dict, List, Optional, Tuple
 import asyncio
+import enum
 
+class RunStatus(enum.Enum):
+    NORMAL = 0
+    PAUSED = 1
+    OFFLOAD = 2
 
 class Req:
-    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, rank=None):
+    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams):
         self.request_id = request_id
         self.prompt_ids = prompt_ids
         self.input_len = len(prompt_ids)
@@ -14,14 +19,13 @@ class Req:
         self.output_metadata_list = []
         self.has_generate_finished = False
         self.aborted = False
-        self.offload = False
-        self.rank = rank
+        self.runstatus = RunStatus.NORMAL
 
     def to_rpc_obj(self):
         return {"request_id": self.request_id,
                 "input_id": self.prompt_ids,
                 "output_len": self.max_output_len,
-                "offload": self.offload,
+                "offload": True if self.runstatus == RunStatus.OFFLOAD else False,
                 "sampling_param": self.sample_params.to_dict() }
 
     def to_req_detokenization_state(self):
@@ -40,12 +44,12 @@ class Req:
         return False
 
     def calcu_used_tokens(self):
-        if self.offload:
+        if self.runstatus == RunStatus.OFFLOAD:
             return len(self.output_ids) - 1
         return self.input_len + len(self.output_ids) - 1
 
     def calcu_need_tokens(self):
-        if self.offload:
+        if self.runstatus == RunStatus.PAUSED:
             return 0
         return self.input_len
 
@@ -143,6 +147,7 @@ class Batch:
             if req.request_id == request_id:
                 req = self.reqs.pop(index)
                 self.id_to_reqs.pop(request_id)
+                req.runstatus = RunStatus.PAUSED
                 break
         return req
 
@@ -152,9 +157,14 @@ class Batch:
             if req.request_id == request_id:
                 req = self.reqs.pop(index)
                 self.id_to_reqs.pop(request_id)
-                req.offload = True
+                req.runstatus = RunStatus.OFFLOAD
                 break
         return req
+
+    def update_run_status(self, runstatus: RunStatus):
+        for req in self.reqs:
+            req.runstatus = runstatus
+        return
 
     def __repr__(self):
         return (f"batch_id={self.batch_id}, "

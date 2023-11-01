@@ -136,11 +136,11 @@ class ModelRpcServer(rpyc.Service):
         del batch1
         return
 
-    def exposed_stop_reqs(self, batch_id, req_id_list):
+    def exposed_pause_reqs(self, batch_id, req_list):
         if self.world_size != 1:
-            batch_id, req_id_list = obtain(batch_id), obtain(req_id_list)
+            batch_id, req_list = obtain(batch_id), obtain(req_list)
         batch1 = self.cache.pop(batch_id)
-        batch2 = batch1.stop_reqs(req_id_list)
+        batch2 = batch1.pause_reqs(req_list)
         self.cache[batch_id] = batch2
         del batch1
         return
@@ -173,22 +173,21 @@ class ModelRpcServer(rpyc.Service):
         nopad_b_seq_len = []
         for request_id in batch.request_ids:
             req = requests_mapping[request_id]
-            nopad_total_token_num += req.b_seq_len
-            nopad_max_len_in_batch = max(nopad_max_len_in_batch, req.b_seq_len)
             nopad_b_req_idx.append(req.b_req_idx)
             nopad_b_start_loc.append(b_start_loc)
-            if req.offload:
-                nopad_b_seq_len.append(req.prompt_len)
-                input_ids.append(req.prompt_token_ids)
-            else:
-                nopad_b_seq_len.append(req.b_seq_len)
-                input_ids.append(req.input_id)
-            b_start_loc += req.b_seq_len
+            seq_len = req.prompt_len if req.offload else req.b_seq_len
+            input_id = req.prompt_token_ids if req.offload else req.input_id
+            nopad_b_seq_len.append(seq_len)
+            input_ids.append(input_id)
+            nopad_total_token_num += seq_len
+            nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
+            b_start_loc += seq_len
         if is_prefill:
             if len(input_ids) > 1:
                 input_ids = np.concatenate(input_ids, dtype=np.int64)
             else:
                 input_ids = input_ids[0]
+
         input_ids = torch.tensor(input_ids, dtype=torch.int64, device='cuda')
         nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device='cuda')
         nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device='cuda')
@@ -216,22 +215,20 @@ class ModelRpcServer(rpyc.Service):
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
-        new_input_ids = []    
-        for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)):
-            # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
-            all_input_ids.append(int(next_token_id))
-            # all_input_ids_tensor = None
+        new_input_ids = []
+        for i, (r, next_token_id, next_token_logprob) in enumerate(zip(batch.request_ids, next_token_ids, next_token_logprobs)):
             new_input_ids.append(next_token_id)
             requests_mapping[r].out_token_id_count[next_token_id] += 1
+            metadata = {
+                'id': int(next_token_id),
+                'offload': requests_mapping[r].offload,
+                'logprob': float(next_token_logprob),
+            }
             if not requests_mapping[r].offload:
                 requests_mapping[r].input_id = next_token_id
                 requests_mapping[r].b_seq_len += 1
             else:
                 requests_mapping[r].offload = False
-            metadata = {
-                'id': int(next_token_id),
-                'logprob': float(next_token_logprob),
-            }
             output_dict[r] = (int(next_token_id), metadata)
         
         self.cache[batch.batch_id] = batch
@@ -267,7 +264,7 @@ class ModelRpcClient:
             self._add_batch = self.model.exposed_add_batch
             self._prefill_batch = self.model.exposed_prefill_batch
             self._decode_batch = self.model.exposed_decode_batch
-            self._stop_reqs = self.model.exposed_stop_reqs
+            self._pause_reqs = self.model.exposed_pause_reqs
             self._restore_reqs = self.model.exposed_restore_reqs
             self._filter_batch = self.model.exposed_filter_batch
             self._merge_batch = self.model.exposed_merge_batch
@@ -312,8 +309,8 @@ class ModelRpcClient:
         else:
             return 
 
-    async def stop_reqs(self, batch_id, req_id_list):
-        ans = self._stop_reqs(batch_id, req_id_list)
+    async def pause_reqs(self, batch_id, reqs_list):
+        ans = self._pause_reqs(batch_id, reqs_list)
         if self.use_rpc:
             await ans
             return

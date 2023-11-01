@@ -6,10 +6,10 @@ import zmq
 import zmq.asyncio
 from typing import Dict, List, Optional
 from ..sampling_params import SamplingParams
-from ..io_struct import Req, Batch
+from ..io_struct import Req, Batch, RunStatus
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import ReqQueue
-from .strategy import SelectionManager
+from .selection import SelectionManager
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from ..io_struct import BatchTokenIdOut, AbortReq
@@ -18,21 +18,21 @@ from .stats import Stats
 class RouterManager:
 
     def __init__(self, weightdir, load_way, world_size, max_total_token_num, batch_max_tokens, running_max_req_size, eos_id, token_ratio, max_new_token_len, 
-                 allow_finish_percent, reserve_token_num, offload, strategy, router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
+                 reserve_token_num, offload, strategy, router_port, detokenization_port, model_rpc_ports, mode=[], log_stats=True, log_stats_interval=10):
         self.model_weightdir = weightdir
         self.world_size = world_size
         self.load_way = load_way
         self.mode = mode
         self.max_total_token_num = max_total_token_num
         self.router_max_total_token_num = self.max_total_token_num - reserve_token_num
-        self.req_queue = ReqQueue(self.router_max_total_token_num, allow_finish_percent, batch_max_tokens, running_max_req_size, max_new_token_len, token_ratio)
+        self.req_queue = ReqQueue(self.router_max_total_token_num, batch_max_tokens, running_max_req_size, max_new_token_len, token_ratio)
         self.selector = SelectionManager.getSelection(strategy, self.req_queue, self.router_max_total_token_num, offload=offload)
         self.token_traio = token_ratio
         self.running_batch: Batch = None
         self.eos_id = eos_id
+        self.offload = offload
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
-        self.toal_req_num = 0
         
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
@@ -70,9 +70,8 @@ class RouterManager:
         sampling_params: SamplingParams,
         request_id: str
     ):
-        req = Req(request_id, prompt_ids, sampling_params, self.toal_req_num)
+        req = Req(request_id, prompt_ids, sampling_params)
         self.req_queue.append(req)
-        self.toal_req_num += 1
         self.send_to_detokenization.send_pyobj(req.to_req_detokenization_state())
         return
 
@@ -170,6 +169,7 @@ class RouterManager:
         else:
             req_to_out_token_id = ans[0]
         self._add_token_id_to_req(batch, req_to_out_token_id)
+        batch.update_run_status(RunStatus.NORMAL)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
         self._send_to_detokenization_proc(batch, req_to_out_token_id)
         await self._handle_finish_req(batch, has_new_finished_req)
@@ -201,7 +201,8 @@ class RouterManager:
         return
 
     async def _pause_reqs(self, batch: Batch, req_id_list):
-        rets = [self.model_rpcs[tp_rank].stop_reqs(batch.batch_id, req_id_list) for tp_rank in range(self.world_size)]
+        req_objs = [(req_id, self.offload) for req_id in req_id_list]
+        rets = [self.model_rpcs[tp_rank].pause_reqs(batch.batch_id, req_objs) for tp_rank in range(self.world_size)]
         await asyncio.gather(*rets)
         return
 
@@ -209,6 +210,7 @@ class RouterManager:
         req_ids = [r.request_id for r in batch2.reqs]
         rets = [self.model_rpcs[tp_rank].restore_reqs(batch1.batch_id, req_ids) for tp_rank in range(self.world_size)]
         await asyncio.gather(*rets)
+        batch2.update_run_status(RunStatus.NORMAL)
         return
 
     async def _filter_batch(self, batch: Batch, finished_req_id: List):
@@ -245,6 +247,8 @@ class RouterManager:
     def _add_token_id_to_req(self, batch: Batch, req_ans):
         for req_id, (new_token_id, new_gen_metadata) in req_ans.items():
             req = batch.id_to_reqs[req_id]
+            if new_gen_metadata.pop('offload'):
+                continue
             req.output_ids.append(new_token_id)
             req.output_metadata_list.append(new_gen_metadata)
         return
@@ -295,9 +299,8 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             eos_id=args.eos_id,
             token_ratio=args.token_ratio,
             max_new_token_len=args.max_new_token_len,
-            allow_finish_percent=args.allow_finish_percent,
             reserve_token_num=args.reserve_token_num,
-            offload=args.offload,
+            offload=not args.not_offload,
             strategy=args.strategy,
             router_port=router_port,
             detokenization_port=detokenization_port,

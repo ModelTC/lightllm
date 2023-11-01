@@ -18,7 +18,7 @@ class Fcfs(Strategy):
         super().__init__()
 
     def _order(self, req: Req):
-        return req.rank
+        return req.request_id
 
 class Sfj(Strategy):
 
@@ -47,7 +47,7 @@ class SelectionManager:
             scheduler = Sfj()
         else:
             scheduler = Fcfs()
-        return cls.selections["Selection"](scheduler, req_queue, max_total_token_num, args, kwargs)
+        return cls.selections["Selection"](scheduler, req_queue, max_total_token_num, *args, **kwargs)
 
 class Meta(type):
     def __new__(meta, name, bases, attrs):
