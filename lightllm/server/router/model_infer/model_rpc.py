@@ -254,7 +254,7 @@ class ModelRpcClient:
             self._add_batch = async_wrap(self.model.add_batch)
             self._prefill_batch = async_wrap(self.model.prefill_batch)
             self._decode_batch = async_wrap(self.model.decode_batch)
-            self._stop_reqs = async_wrap(self.model.stop_reqs)
+            self._pause_reqs = async_wrap(self.model.pause_reqs)
             self._restore_reqs = async_wrap(self.model.restore_reqs)
             self._filter_batch = async_wrap(self.model.filter_batch)
             self._merge_batch = async_wrap(self.model.merge_batch)
