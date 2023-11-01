@@ -1,5 +1,4 @@
 import torch
-
 import triton
 import triton.language as tl
 import torch.nn.functional as F
@@ -14,11 +13,14 @@ def _fwd_kernel(
     stride_obs, stride_oh, stride_od,
     stride_b_loc_b, stride_b_loc_s,
     other_kv_index, # 避免读取到nan的数据
+    kv_group_num,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_head = tl.program_id(1)
+
+    cur_kv_head = cur_head // kv_group_num
 
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
     cur_batch_start_loc = tl.load(B_Start_Loc + cur_batch)
@@ -26,7 +28,7 @@ def _fwd_kernel(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
 
-    off_v = cur_head * stride_vh + offs_d[None, :] * stride_vd
+    off_v = cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
     off_b_loc = cur_batch * stride_b_loc_b + (max_input_len - cur_batch_seq_len) * stride_b_loc_s
 
     v_ptrs = V + off_v
@@ -62,6 +64,8 @@ def token_softmax_reducev_fwd(logics, v, o, b_loc, b_start_loc, b_seq_len, max_i
     BLOCK = 64
     batch, head = b_seq_len.shape[0], logics.shape[0]
     grid = (batch, head)
+    kv_group_num = logics.shape[0] // v.shape[1]
+
     num_warps = 1
     _fwd_kernel[grid](
         logics, v, o, b_loc, b_start_loc, b_seq_len, max_input_len,
@@ -70,6 +74,7 @@ def token_softmax_reducev_fwd(logics, v, o, b_loc, b_start_loc, b_seq_len, max_i
         o.stride(0), o.stride(1), o.stride(2),
         b_loc.stride(0), b_loc.stride(1),
         other_kv_index,
+        kv_group_num,
         BLOCK_DMODEL=v.shape[-1],
         BLOCK_N=BLOCK,
         num_warps=num_warps,

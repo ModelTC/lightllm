@@ -10,10 +10,10 @@ from lightllm.models.starcoder.layer_weights.transformer_layer_weight import Sta
 
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv, destindex_copy_quantize_kv
 from lightllm.models.bloom.triton_kernel.layernorm import layernorm_forward
-from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import context_attention_fwd
-from lightllm.models.llama2.triton_kernel.token_attention_nopad_att1 import token_att_fwd
-from lightllm.models.llama2.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
-from lightllm.models.llama2.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2
+from lightllm.models.llama.triton_kernel.context_flashattention_nopad import context_attention_fwd
+from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd
+from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
+from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2
 
 
 class StarcoderTransformerLayerInfer(BloomTransformerLayerInfer):

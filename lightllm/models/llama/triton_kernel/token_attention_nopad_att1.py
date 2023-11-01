@@ -13,13 +13,15 @@ def _fwd_kernel_token_att1(
     stride_qbs, stride_qh, stride_qd,
     stride_kbs, stride_kh, stride_kd,
     att_stride_h, att_stride_bs,
-
+    kv_group_num,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr
 ):
     cur_batch = tl.program_id(0)
     cur_head = tl.program_id(1)
     start_n = tl.program_id(2)
+    
+    cur_kv_head = cur_head // kv_group_num
 
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
@@ -39,7 +41,7 @@ def _fwd_kernel_token_att1(
         q = tl.load(Q + off_q + start_mark)
         offs_n_new = cur_batch_start_index + offs_n
         k_loc = tl.load(B_Loc + stride_b_loc_b * cur_batch + stride_b_loc_s * offs_n_new, mask=offs_n_new < cur_batch_end_index, other=0)
-        off_k = k_loc[:, None] * stride_kbs + cur_head * stride_kh + offs_d[None, :] * stride_kd
+        off_k = k_loc[:, None] * stride_kbs + cur_kv_head * stride_kh + offs_d[None, :] * stride_kd
         k = tl.load(K + off_k, mask=offs_n_new[:, None] < cur_batch_end_index, other=0.0)
         att_value = tl.sum(q[None, :] * k, 1)
         att_value *= sm_scale
@@ -60,9 +62,13 @@ def token_att_fwd(q, k, att_out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
     batch, head_num = B_Loc.shape[0], q.shape[1]
 
     grid = (batch, head_num, triton.cdiv(max_input_len, BLOCK))
-
-    num_warps = 4
+    kv_group_num = q.shape[1] // k.shape[1]
     
+    if kv_group_num == 1:
+        num_warps = 4
+    else:
+        num_warps = 2
+
     _fwd_kernel_token_att1[grid](
         q, k, sm_scale, B_Loc, B_Start_Loc, B_Seqlen, max_input_len,
         att_out,
@@ -70,6 +76,7 @@ def token_att_fwd(q, k, att_out, B_Loc, B_Start_Loc, B_Seqlen, max_input_len):
         q.stride(0), q.stride(1), q.stride(2),
         k.stride(0), k.stride(1), k.stride(2),
         att_out.stride(0), att_out.stride(1),
+        kv_group_num=kv_group_num,
         BLOCK_DMODEL=Lk,
         BLOCK_N=BLOCK,
         num_warps=num_warps,
