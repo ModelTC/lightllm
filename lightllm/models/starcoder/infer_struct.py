@@ -23,4 +23,5 @@ class StarcoderInferStateInfo(InferStateInfo):
                                             for i in range(len(b_seq_len_numpy))], axis=0)).cuda()
         else:
             self.position_ids = b_seq_len - 1
+            self.other_kv_index = b_loc[0, max_len_in_batch - 1].item()
         return

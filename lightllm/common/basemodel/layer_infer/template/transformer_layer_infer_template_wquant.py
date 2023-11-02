@@ -7,7 +7,7 @@ from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_
 from typing import Tuple
 
 
-class TransformerLayerInferTpl(TransformerLayerInfer):
+class TransformerLayerInferWeightQuantTpl(TransformerLayerInfer):
     """
     """
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode):
@@ -22,6 +22,18 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         self.embed_dim_ = -1
         return
     
+    def _wquant_matmul_for_qkv(self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False):
+        raise Exception("need to impl")
+    
+    def _wquant_matmul_for_o(self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False):
+        raise Exception("need to impl")
+    
+    def _wquant_matmul_for_ffn_up(self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False):
+        raise Exception("need to impl")
+    
+    def _wquant_matmul_for_ffn_down(self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False):
+        raise Exception("need to impl")
+    
     def _att_norm(self, input, infer_state:InferStateInfo, layer_weight)->torch.Tensor:
         raise Exception("need to impl")
     
@@ -29,23 +41,18 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         raise Exception("need to impl")
     
     def _pre_cache_kv(self, infer_state:InferStateInfo, layer_weight)->Tuple[torch.Tensor, torch.Tensor]:
-        # prefill cache_k cache_v
+        '''
+        Release kv buffer to save memory, since we allocate while kv projection. 
+        '''
         if infer_state.is_prefill:
-            cache_k = infer_state.prefill_key_buffer
-            cache_v = infer_state.prefill_value_buffer
-            return cache_k, cache_v
-        # decode cache_k cache_v
+            infer_state.prefill_key_buffer = None
+            infer_state.prefill_value_buffer = None
         else:
-            if infer_state.decode_is_contiguous:
-                cache_k = infer_state.mem_manager.key_buffer[self.layer_num_][infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
-                cache_v = infer_state.mem_manager.value_buffer[self.layer_num_][infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
-            else:
-                cache_k = infer_state.decode_key_buffer
-                cache_v = infer_state.decode_value_buffer
-            return cache_k, cache_v
-        return
+            infer_state.decode_key_buffer = None
+            infer_state.decode_value_buffer = None
+        return None, None
 
-    def _get_qkv(self, input, cache_k, cache_v, infer_state:InferStateInfo, layer_weight)->torch.Tensor:
+    def _get_qkv(self, input, cache_k, cache_v, infer_state:InferStateInfo, layer_weight)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise Exception("need to impl")
     
     def _post_cache_kv(self, cache_k, cache_v, infer_state:InferStateInfo, layer_weight):
@@ -81,7 +88,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     def _context_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
         input1 = self._att_norm(input_embding, infer_state, layer_weight)
         cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
-        q = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
+        q, cache_k, cache_v = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
         input1 = None
         self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
         o = self._context_attention_kernel(q, cache_k, cache_v, infer_state, layer_weight)
@@ -106,7 +113,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     def _token_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
         input1 = self._att_norm(input_embding, infer_state, layer_weight)
         cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
-        q = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
+        q, cache_k, cache_v = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
         input1 = None
         self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
         o = self._token_attention_kernel(q, infer_state, layer_weight)

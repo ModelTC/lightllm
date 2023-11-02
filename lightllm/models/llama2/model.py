@@ -4,9 +4,8 @@ import torch
 
 from lightllm.models.llama2.layer_infer.transformer_layer_infer import Llama2TransformerLayerInfer
 from lightllm.models.llama2.layer_weights.transformer_layer_weight import Llama2TransformerLayerWeight
-
-from lightllm.common.mem_manager import MemoryManager
 from lightllm.models.llama.model import LlamaTpPartModel
+from lightllm.common.mem_utils import select_mem_manager_class
 
 
 class Llama2TpPartModel(LlamaTpPartModel):
@@ -33,7 +32,7 @@ class Llama2TpPartModel(LlamaTpPartModel):
         return
 
     def _init_mem_manager(self):
-        self.mem_manager = self.memory_manager_class(self.max_total_token_num, 
+        self.mem_manager = select_mem_manager_class(self.mode)(self.max_total_token_num, 
                                                      dtype=torch.float16,
                                                      head_num=self.config["num_key_value_heads"] // self.world_size_,
                                                      head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],

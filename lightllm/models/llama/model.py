@@ -10,9 +10,8 @@ from lightllm.models.llama.layer_weights.ds_load_utils import load_ds_weights
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
 
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
-from lightllm.common.mem_manager import MemoryManager
-from lightllm.common.int8kv_mem_manager import INT8KVMemoryManager
 from lightllm.common.basemodel import TpPartBaseModel
+from lightllm.common.mem_utils import select_mem_manager_class
 
 
 class LlamaTpPartModel(TpPartBaseModel):
@@ -27,9 +26,6 @@ class LlamaTpPartModel(TpPartBaseModel):
 
     # infer state class
     infer_state_class = LlamaInferStateInfo
-    
-    # Mem manager class
-    memory_manager_class = MemoryManager
 
     def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[], weight_dict=None, finetune_config=None):
         super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode, weight_dict, finetune_config)
@@ -46,18 +42,12 @@ class LlamaTpPartModel(TpPartBaseModel):
         return
     
     def _init_mem_manager(self):
-        mem_dict = {
-            "int8kv" : INT8KVMemoryManager
-        }
-        for _mode in self.mode:
-            if _mode in mem_dict:
-                print("Model using mode", _mode)
-                self.memory_manager_class = mem_dict[_mode]
-        self.mem_manager = self.memory_manager_class(self.max_total_token_num, 
+        self.mem_manager = select_mem_manager_class(self.mode)(self.max_total_token_num, 
                                                      dtype=torch.float16,
                                                      head_num=self.config["num_attention_heads"] // self.world_size_,
                                                      head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
                                                      layer_num=self.config["num_hidden_layers"])
+        return
 
     def _init_custom(self):
         """

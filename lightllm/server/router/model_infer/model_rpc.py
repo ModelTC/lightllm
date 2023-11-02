@@ -11,13 +11,10 @@ from rpyc.utils.classic import obtain
 
 from lightllm.models.bloom.model import BloomTpPartModel
 from lightllm.models.llama.model import LlamaTpPartModel
-from lightllm.models.llama_quantized.model import LlamaTpPartModelQuantized
-from lightllm.models.llama_ppl.model import LlamaPPlTpPartModel
-from lightllm.models.llama2_ppl.model import Llama2PPlTpPartModel
+from lightllm.models.llama_wquant.model import LlamaTpPartModelWQuant
 from lightllm.models.llama2.model import Llama2TpPartModel
 from lightllm.models.starcoder.model import StarcoderTpPartModel
-from lightllm.models.starcoder_quantized.model import StarcoderTpPartModelQuantized
-from lightllm.models.starcoder_ppl.model import StarcoderPPlTpPartModel
+from lightllm.models.starcoder_wquant.model import StarcoderTpPartModelWQuant
 from lightllm.models.qwen.model import QWenTpPartModel
 from lightllm.models.baichuan7b.model import Baichuan7bTpPartModel
 from lightllm.models.baichuan13b.model import Baichuan13bTpPartModel
@@ -57,18 +54,12 @@ class ModelRpcServer(rpyc.Service):
                 self.model = BloomTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "llama":
                 if "num_key_value_heads" in model_cfg.keys():
-                    if "ppl" not in mode:
-                        self.model = Llama2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
-                    else:
-                        self.model = Llama2PPlTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                    self.model = Llama2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
                 else:
-                    if "ppl" not in mode:
-                        if 'int8weight' in mode or 'int4weight' in mode:
-                            self.model = LlamaTpPartModelQuantized(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
-                        else:
-                            self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                    if 'int8weight' in mode or 'int4weight' in mode:
+                        self.model = LlamaTpPartModelWQuant(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
                     else:
-                        self.model = LlamaPPlTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                        self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "qwen":
                 self.model = QWenTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "baichuan":
@@ -82,13 +73,10 @@ class ModelRpcServer(rpyc.Service):
                 else:
                     raise Exception('can not support baichuan format')
             elif self.model_type == 'gpt_bigcode':
-                if "ppl" not in mode:
-                    if 'int8weight' in mode or 'int4weight' in mode:
-                        self.model = StarcoderTpPartModelQuantized(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
-                    else:
-                        self.model = StarcoderTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                if 'int8weight' in mode or 'int4weight' in mode:
+                    self.model = StarcoderTpPartModelWQuant(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
                 else:
-                    self.model = StarcoderPPlTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                    self.model = StarcoderTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == 'chatglm':
                 self.model = ChatGlm2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == 'internlm':
@@ -98,6 +86,8 @@ class ModelRpcServer(rpyc.Service):
         except Exception as e:
             print("#" * 16)
             print("load model error:", str(e), e, type(e))
+            # import traceback
+            # traceback.print_exc()
             raise e
         
         set_random_seed(2147483647)

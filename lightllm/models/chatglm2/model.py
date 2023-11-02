@@ -5,8 +5,6 @@ import torch
 from lightllm.models.chatglm2.layer_infer.transformer_layer_infer import ChatGLM2TransformerLayerInfer
 from lightllm.models.chatglm2.layer_weights.transformer_layer_weight import ChatGLM2TransformerLayerWeight
 from lightllm.models.chatglm2.layer_weights.pre_and_post_layer_weight import ChatGLM2PreAndPostLayerWeight
-
-from lightllm.common.mem_manager import MemoryManager
 from lightllm.models.llama2.model import Llama2TpPartModel
 from lightllm.common.build_utils import repair_config
 
@@ -34,19 +32,7 @@ class ChatGlm2TpPartModel(Llama2TpPartModel):
     
     def _verify_params(self):
         assert self.load_way == "HF", "chatGLM2 only support HF format to load Now!"
-
-    def _init_mem_manager(self):
-        self.mem_manager = MemoryManager(self.max_total_token_num, 
-                                         dtype=torch.float16,
-                                         head_num=self.config["multi_query_group_num"],
-                                         head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
-                                         layer_num=self.config["num_hidden_layers"])
-        return
-
-    def _init_some_value(self):
-        super()._init_some_value()
-        self.tp_key_head_num_ = self.config["multi_query_group_num"]
-        self.tp_value_head_num_ = self.config["multi_query_group_num"]
+        assert self.world_size_ == 1, "chatglm2 7b only can run in tp == 1"
 
     def _init_to_get_rotary(self, base=10000):
         if self.config.get("rope_scaling", {}) is None:

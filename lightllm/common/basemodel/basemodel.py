@@ -9,6 +9,7 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.infer_utils import init_bloc
 from lightllm.common.build_utils import repair_config
 
+torch.backends.cudnn.enabled = True
 
 class TpPartBaseModel:
     # weight class
