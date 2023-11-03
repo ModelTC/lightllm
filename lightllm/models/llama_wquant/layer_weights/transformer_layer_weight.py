@@ -48,31 +48,33 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
             self.att_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
 
         n_embed = self.network_config_["hidden_size"]
-        split_n_embed = n_embed // self.world_size_
+        q_split_n_embed = n_embed // self.world_size_
+        kv_split_n_embed = n_embed // self.network_config_["num_attention_heads"] * self.network_config_["num_key_value_heads"] // self.world_size_
+        
         if getattr(self, "qkv_weight_", None) is None:
-            self.qkv_weight_ = torch.empty(n_embed, split_n_embed * 3, dtype=self.data_type_, device='cpu')
+            self.qkv_weight_ = torch.empty(n_embed, q_split_n_embed + 2 * kv_split_n_embed, dtype=self.data_type_, device='cpu')
             self.qkv_step_ = 0
         
         # q k v weights for llama
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
-            q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"][split_n_embed *
-                                                                                           self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
+            q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
+            q_weight_ = q_weight_[q_split_n_embed * self.tp_rank_: q_split_n_embed * (self.tp_rank_ + 1), :]
             q_weight_ = q_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, :split_n_embed] = q_weight_
+            self.qkv_weight_[:, :q_split_n_embed] = q_weight_
             self.qkv_step_ += 1
 
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
-            k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"][split_n_embed *
-                                                                                           self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
+            k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
+            k_weight_ = k_weight_[kv_split_n_embed *  self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
             k_weight_ = k_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, split_n_embed:split_n_embed * 2] = k_weight_
+            self.qkv_weight_[:, q_split_n_embed: (q_split_n_embed + kv_split_n_embed)] = k_weight_
             self.qkv_step_ += 1
 
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
-            v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"][split_n_embed *
-                                                                                           self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
+            v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
+            v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
             v_weight_ = v_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, split_n_embed * 2:split_n_embed * 3] = v_weight_
+            self.qkv_weight_[:, (q_split_n_embed + kv_split_n_embed):(q_split_n_embed + 2 * kv_split_n_embed)] = v_weight_
             self.qkv_step_ += 1
         
         if self.qkv_step_ == 3:
@@ -81,8 +83,8 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
-            self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][:,
-                                                                                                split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
+            self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
+            self.o_weight_ = self.o_weight_[:, q_split_n_embed * self.tp_rank_: q_split_n_embed * (self.tp_rank_ + 1)]
             self.o_weight_ = self.quantize_weight(self.o_weight_.transpose(0, 1))
         
         return

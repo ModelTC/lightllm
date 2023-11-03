@@ -26,8 +26,8 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.eps_ = network_config["rms_norm_eps"]
         self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
-        self.tp_k_head_num_ = self.tp_q_head_num_
-        self.tp_v_head_num_ = self.tp_q_head_num_
+        self.tp_k_head_num_ = network_config["num_key_value_heads"] // self.world_size_
+        self.tp_v_head_num_ = network_config["num_key_value_heads"] // self.world_size_
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.head_dim_ = network_config["hidden_size"] // network_config["num_attention_heads"]
         self.embed_dim_ = network_config["hidden_size"]
@@ -77,11 +77,12 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         qkv_output = self._wquant_matmul_for_qkv(input.view(-1, self.embed_dim_), 
                                                     quant_weight_params=layer_weight.qkv_weight_,
                                                     is_prefill=infer_state.is_prefill)
+        
+        tp_k_head_dim = self.tp_k_head_num_ * self.head_dim_
+        q = qkv_output[:, : -2 * tp_k_head_dim]
+        k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim]
+        v = qkv_output[:, -tp_k_head_dim :]
 
-        tp_hidden_dim = self.embed_dim_ // self.world_size_
-        q = qkv_output[:, : tp_hidden_dim]
-        k = qkv_output[:, tp_hidden_dim : tp_hidden_dim * 2]
-        v = qkv_output[:, tp_hidden_dim * 2 :]
         rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
         cache_k_ = k.view(-1, self.tp_k_head_num_, self.head_dim_)
         rotary_emb_fwd(cache_k_, infer_state.position_cos, infer_state.position_sin)

@@ -73,9 +73,11 @@ class StarcoderTransformerLayerInferWQuant(TransformerLayerInferWeightQuantTpl):
                                                  layer_weight.qkv_weight_, 
                                                  infer_state.is_prefill,
                                                  bias=layer_weight.qkv_bias_)
-        q = qkv_output[:, : -2 * self.head_dim_]
-        k = qkv_output[:, -2 * self.head_dim_: -self.head_dim_]
-        v = qkv_output[:, -self.head_dim_:]
+        tp_k_head_dim = self.tp_k_head_num_ * self.head_dim_
+        q = qkv_output[:, : -2 * tp_k_head_dim]
+        k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim]
+        v = qkv_output[:, -tp_k_head_dim :]
+        
         cache_k = k.view(-1, self.tp_k_head_num_, self.head_dim_)
         cache_v = v.view(-1, self.tp_v_head_num_, self.head_dim_)
         return q, cache_k, cache_v

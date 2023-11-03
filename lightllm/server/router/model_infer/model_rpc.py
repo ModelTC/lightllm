@@ -12,7 +12,6 @@ from rpyc.utils.classic import obtain
 from lightllm.models.bloom.model import BloomTpPartModel
 from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.models.llama_wquant.model import LlamaTpPartModelWQuant
-from lightllm.models.llama2.model import Llama2TpPartModel
 from lightllm.models.starcoder.model import StarcoderTpPartModel
 from lightllm.models.starcoder_wquant.model import StarcoderTpPartModelWQuant
 from lightllm.models.qwen.model import QWenTpPartModel
@@ -53,13 +52,10 @@ class ModelRpcServer(rpyc.Service):
             if self.model_type == "bloom":
                 self.model = BloomTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "llama":
-                if "num_key_value_heads" in model_cfg.keys():
-                    self.model = Llama2TpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                if 'int8weight' in mode or 'int4weight' in mode:
+                    self.model = LlamaTpPartModelWQuant(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
                 else:
-                    if 'int8weight' in mode or 'int4weight' in mode:
-                        self.model = LlamaTpPartModelWQuant(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
-                    else:
-                        self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
+                    self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "qwen":
                 self.model = QWenTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "baichuan":
@@ -86,8 +82,8 @@ class ModelRpcServer(rpyc.Service):
         except Exception as e:
             print("#" * 16)
             print("load model error:", str(e), e, type(e))
-            # import traceback
-            # traceback.print_exc()
+            import traceback
+            traceback.print_exc()
             raise e
         
         set_random_seed(2147483647)

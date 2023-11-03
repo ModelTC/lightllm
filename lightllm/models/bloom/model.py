@@ -32,6 +32,11 @@ class BloomTpPartModel(TpPartBaseModel):
         super()._init_config()
         # rename key
         # repair_config()
+        self._reset_num_key_value_heads()
+        return
+
+    def _reset_num_key_value_heads(self):
+        self.config["num_key_value_heads"] = self.config["num_attention_heads"]
         return 
 
     def _init_weights(self):

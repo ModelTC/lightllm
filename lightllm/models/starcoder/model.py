@@ -31,8 +31,12 @@ class StarcoderTpPartModel(TpPartBaseModel):
         # rename key
         # repair_config()
         repair_config(self.config, same_names=["rms_norm_eps", "layer_norm_epsilon"])
-        self.config['num_key_value_heads'] = 1
+        self._reset_num_key_value_heads()
         return
+    
+    def _reset_num_key_value_heads(self):
+        self.config["num_key_value_heads"] = 1
+        return 
     
     def _verify_params(self):
         assert self.load_way == "HF", "StarCoder only support HF format to load Now!"
