@@ -15,9 +15,9 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
         self.init_quant_mode()
     
     def init_quant_mode(self):
-        if "int8weight" in self.mode:
+        if "triton_int8weight" in self.mode:
             self.quantize_weight = partial(quantize_int8, tp_rank=self.tp_rank_)
-        if "int4weight" in self.mode:
+        if "triton_int4weight" in self.mode:
             self.int4_q_group_size = 128
             for _mode in self.mode:
                 if _mode.startswith('g'):

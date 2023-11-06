@@ -52,7 +52,7 @@ class ModelRpcServer(rpyc.Service):
             if self.model_type == "bloom":
                 self.model = BloomTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
             elif self.model_type == "llama":
-                if 'int8weight' in mode or 'int4weight' in mode:
+                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
                     self.model = LlamaTpPartModelWQuant(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
                 else:
                     self.model = LlamaTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
@@ -69,7 +69,7 @@ class ModelRpcServer(rpyc.Service):
                 else:
                     raise Exception('can not support baichuan format')
             elif self.model_type == 'gpt_bigcode':
-                if 'int8weight' in mode or 'int4weight' in mode:
+                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
                     self.model = StarcoderTpPartModelWQuant(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)
                 else:
                     self.model = StarcoderTpPartModel(rank_id, world_size, weight_dir, max_total_token_num, load_way, mode)

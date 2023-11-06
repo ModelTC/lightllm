@@ -36,12 +36,12 @@ class StarcoderTransformerLayerInferWQuant(TransformerLayerInferWeightQuantTpl):
     def _bind_func(self):
         self._att_norm = partial(BloomTransformerLayerInfer._att_norm, self)
         self._ffn_norm = partial(BloomTransformerLayerInfer._ffn_norm, self)
-        if "int8weight" in self.mode:
+        if "triton_int8weight" in self.mode:
             self._wquant_matmul_for_qkv = self._wquant_matmul_triton_int8weight_only_quant
             self._wquant_matmul_for_o = self._wquant_matmul_triton_int8weight_only_quant
             self._wquant_matmul_for_ffn_up = self._wquant_matmul_triton_int8weight_only_quant
             self._wquant_matmul_for_ffn_down = self._wquant_matmul_triton_int8weight_only_quant
-        elif "int4weight" in self.mode:
+        elif "triton_int4weight" in self.mode:
             self._wquant_matmul_for_qkv = self._wquant_matmul_triton_int4weight_only_quant
             self._wquant_matmul_for_o = self._wquant_matmul_triton_int4weight_only_quant
             self._wquant_matmul_for_ffn_up = self._wquant_matmul_triton_int4weight_only_quant
@@ -54,13 +54,13 @@ class StarcoderTransformerLayerInferWQuant(TransformerLayerInferWeightQuantTpl):
     
     def _bind_attention(self):
         self._context_attention_kernel = partial(LlamaTransformerLayerInfer._context_attention_kernel, self)
-        if "ppl" in self.mode and "int8kv" in self.mode:
+        if "ppl_int8kv" in self.mode:
             self._token_attention_kernel = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_ppl_int8kv, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_ppl_int8kv, self)
-        elif "int8kv" in self.mode:
+        elif "triton_int8kv" in self.mode:
             self._token_attention_kernel = partial(LlamaTransformerLayerInfer._token_decode_attention_int8kv, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_int8kv, self)
-        elif "flashdecoding" in self.mode:
+        elif "triton_flashdecoding" in self.mode:
             self._token_attention_kernel = partial(LlamaTransformerLayerInfer._token_decode_attention_flashdecoding, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)   
         else:
