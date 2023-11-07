@@ -1,7 +1,13 @@
 from .sampling_params import SamplingParams
 from typing import Dict, List, Optional, Tuple
 import asyncio
+import enum
 
+class ReqRunStatus(enum.Enum):
+    RUNNING = 1 # 正在运行
+    PAUSED_AND_KVKEEP = 2 # 暂停保留KV
+    PAUSED_AND_OFFLOAD = 3 # 暂停卸载KV
+    RERUNNING_FROM_OFFLOAD = 4 # 从卸载KV中恢复
 
 class Req:
     def __init__(self, request_id, prompt_ids, sample_params: SamplingParams):
@@ -99,12 +105,15 @@ class Batch:
         return has_new_finish
 
     def filter_finished(self):
-        unfinished_req = []
+        unfinished_req, finished_req_ids = [], []
         for req in self.reqs:
             if not req.has_generate_finished:
                 unfinished_req.append(req)
+            else:
+                finished_req_ids.append(req.request_id)
         self.reqs = unfinished_req
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        return finished_req_ids
 
     def is_clear(self):
         return len(self.reqs) == 0

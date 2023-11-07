@@ -127,7 +127,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         token_att_fwd(q.view(calcu_shape1),
                       infer_state.mem_manager.key_buffer[self.layer_num_],
                       att_m_tensor,
-                      infer_state.b_loc,
+                      infer_state.req_manager.req_to_token_indexs,
+                      infer_state.b_req_idx,
                       infer_state.b_start_loc,
                       infer_state.b_seq_len,
                       infer_state.max_len_in_batch)
@@ -142,7 +143,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             token_att_fwd2(prob,
                         infer_state.mem_manager.value_buffer[self.layer_num_],
                         o_tensor.view(calcu_shape1),
-                        infer_state.b_loc,
+                        infer_state.req_manager.req_to_token_indexs,
+                        infer_state.b_req_idx,
                         infer_state.b_start_loc,
                         infer_state.b_seq_len,
                         infer_state.max_len_in_batch)
@@ -154,10 +156,10 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             token_softmax_reducev_fwd(att_m_tensor, 
                                       infer_state.mem_manager.value_buffer[self.layer_num_],
                                       o_tensor.view(calcu_shape1),
-                                      infer_state.b_loc,
+                                      infer_state.req_manager.req_to_token_indexs,
+                                      infer_state.b_req_idx,
                                       infer_state.b_start_loc,
                                       infer_state.b_seq_len,
-                                      infer_state.max_len_in_batch,
                                       infer_state.other_kv_index)
             return o_tensor
         else:
@@ -172,7 +174,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                             infer_state.mem_manager.key_buffer[self.layer_num_],
                             infer_state.mem_manager.key_scale_buffer[self.layer_num_],
                             att_m_tensor,
-                            infer_state.b_loc,
+                            infer_state.req_manager.req_to_token_indexs,
+                            infer_state.b_req_idx,
                             infer_state.b_start_loc,
                             infer_state.b_seq_len,
                             infer_state.max_len_in_batch)
@@ -186,7 +189,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                                 infer_state.mem_manager.value_buffer[self.layer_num_],
                                 infer_state.mem_manager.value_scale_buffer[self.layer_num_],
                                 o_tensor.view(calcu_shape1),
-                                infer_state.b_loc,
+                                infer_state.req_manager.req_to_token_indexs,
+                                infer_state.b_req_idx,
                                 infer_state.b_start_loc,
                                 infer_state.b_seq_len,
                                 infer_state.max_len_in_batch)
@@ -212,7 +216,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                                                           infer_state.mem_manager.key_scale_buffer[self.layer_num_],
                                                           infer_state.mem_manager.value_buffer[self.layer_num_],
                                                           infer_state.mem_manager.value_scale_buffer[self.layer_num_],
-                                                          infer_state.b_loc,
+                                                          infer_state.req_manager.req_to_token_indexs,
+                                                          infer_state.b_req_idx,
                                                           infer_state.b_seq_len,
                                                           infer_state.max_len_in_batch)
            

@@ -14,5 +14,5 @@ class Baichuan2_7bTpPartModel(Baichuan7bTpPartModel):
     # infer class
     transformer_layer_infer_class = Baichuan2_7bTransformerLayerInfer
 
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[]):
-        super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode)
+    def __init__(self, kvargs):
+        super().__init__(kvargs)

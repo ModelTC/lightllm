@@ -18,9 +18,8 @@ class StarcoderTpPartModelWQuant(StarcoderTpPartModel):
     # infer class
     transformer_layer_infer_class = StarcoderTransformerLayerInferWQuant
 
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[], weight_dict=None,
-                 finetune_config=None):
-        super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode, weight_dict, finetune_config)
+    def __init__(self, kvargs):
+        super().__init__(kvargs)
 
     def _verify_params(self):
         assert self.load_way in ["HF", "DS"], "llama only supports HF and DS format to load Now!"

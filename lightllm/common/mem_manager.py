@@ -59,10 +59,9 @@ class MemoryManager:
             free_index (torch.Tensor): _description_
         """
         self.can_use_mem_size += free_index.shape[0]
-        self.mem_state[free_index] = 1
+        self.mem_state[free_index.long()] = 1
         if self.can_use_mem_size == len(self.mem_state):
             print(f"freed all gpu mem size {self.can_use_mem_size}")
-        # print(f"free state {self.can_use_mem_size} all {len(self.mem_state)}")
         return
     
     @torch.no_grad()

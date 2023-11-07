@@ -39,6 +39,7 @@ from .sampling_params import SamplingParams
 from .httpserver.manager import HttpServerManager
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
+from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
 from lightllm.common.configs.config import setting
@@ -55,6 +56,7 @@ from .api_models import (
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
 
+g_id_gen = ReqIDGenerator()
 app = FastAPI()
 
 isFirst = True
@@ -83,8 +85,8 @@ async def generate(request: Request) -> Response:
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
-
-    request_id = uuid.uuid4().hex
+    
+    request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id)
 
     # Non-streaming case
@@ -127,7 +129,7 @@ async def generate_stream(request: Request) -> Response:
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
 
-    request_id = uuid.uuid4().hex
+    request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id)
 
     # Streaming case

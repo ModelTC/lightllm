@@ -50,14 +50,15 @@ class RouterManager:
 
         init_model_ret = []
         for rank_id in range(self.world_size):  # async init model process
-            init_model_ret.append(
-                self.model_rpcs[rank_id].init_model(
-                    rank_id,
-                    self.world_size,
-                    self.model_weightdir,
-                    self.max_total_token_num,
-                    self.load_way,
-                    self.mode))
+            kvargs = {
+                "rank_id" : rank_id,
+                "world_size" : self.world_size,
+                "weight_dir" : self.model_weightdir,
+                "load_way" : self.load_way,
+                "max_total_token_num" : self.max_total_token_num,
+                "mode" : self.mode
+            }
+            init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
         await asyncio.gather(*init_model_ret)
         return
@@ -170,9 +171,9 @@ class RouterManager:
         await self._handle_finish_req(batch, has_new_finished_req)
         return
 
-    async def _filter_batch(self, batch: Batch):
+    async def _filter_batch(self, batch: Batch, finished_req_ids: List):
         req_id_list = [r.request_id for r in batch.reqs]
-        rets = [self.model_rpcs[tp_rank].filter_batch(batch.batch_id, req_id_list) for tp_rank in range(self.world_size)]
+        rets = [self.model_rpcs[tp_rank].filter_batch(batch.batch_id, req_id_list, finished_req_ids) for tp_rank in range(self.world_size)]
         await asyncio.gather(*rets)
         return
 
@@ -188,11 +189,11 @@ class RouterManager:
 
     async def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
-            batch.filter_finished()
+            finished_req_ids = batch.filter_finished()
             if batch.is_clear():
                 await self._remove_batch(batch)
             else:
-                await self._filter_batch(batch)
+                await self._filter_batch(batch, finished_req_ids)
         return
 
     def _filter_runing_batch(self):
