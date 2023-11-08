@@ -2,8 +2,9 @@ import torch
 import numpy as np
 from .infer_batch import requests_mapping, InferReq, InferBatch
 from lightllm.server.io_struct import ReqRunStatus
+from lightllm.utils.infer_utils import calculate_time
 
-
+#@calculate_time(show=True, min_cost_ms=1)
 def prepare_prefill_inputs(batch:InferBatch):
     run_req_ids, not_run_req_ids = [], []
     nopad_total_token_num = 0
@@ -61,7 +62,7 @@ def prepare_prefill_inputs(batch:InferBatch):
     else:
         return {}, run_req_ids, not_run_req_ids
     
-
+#@calculate_time(show=True, min_cost_ms=1)
 def prepare_decode_inputs(batch:InferBatch):
     run_req_ids, not_run_req_ids = [], []
     nopad_total_token_num = 0

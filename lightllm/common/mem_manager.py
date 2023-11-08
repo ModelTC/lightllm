@@ -3,12 +3,18 @@ import torch
 
 class MemoryManager:
     def __init__(self, size, dtype, head_num, head_dim, layer_num, always_copy=False):
+        self.size = size        
+        self.dtype = dtype
+        self.head_num = head_num
+        self.head_dim = head_dim
+        self.layer_num = layer_num
+        self.always_copy = always_copy
+
         self.mem_state = torch.ones((size,), dtype=torch.bool, device="cuda")
         self._mem_cum_sum = torch.empty((size,), dtype=torch.int32, device="cuda")
         self.indexes = torch.arange(0, size, dtype=torch.long, device="cuda")
         self.can_use_mem_size = size
         self._init_buffers(size, dtype, head_num, head_dim, layer_num)
-        self.always_copy = always_copy
     
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
         self.key_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)]
@@ -69,4 +75,21 @@ class MemoryManager:
         self.can_use_mem_size = len(self.mem_state)
         self.mem_state[:] = 1
     
-    
+    @torch.no_grad()
+    def resize_mem(self, new_size):
+        """
+        just for test code
+        """
+        size = new_size        
+        dtype = self.dtype
+        head_num = self.head_num
+        head_dim = self.head_dim
+        layer_num = self.layer_num
+        always_copy = self.always_copy
+
+        self.mem_state = torch.ones((size,), dtype=torch.bool, device="cuda")
+        self._mem_cum_sum = torch.empty((size,), dtype=torch.int32, device="cuda")
+        self.indexes = torch.arange(0, size, dtype=torch.long, device="cuda")
+        self.can_use_mem_size = size
+        self._init_buffers(size, dtype, head_num, head_dim, layer_num)
+        return

@@ -59,7 +59,8 @@ class ReqQueue:
             return True
         else:
             return False
-
+    
+    #@calculate_time(show=True, min_cost_ms=10)
     def generate_new_batch(self, current_batch:Batch):
         # 如果当前已经被调度的请求数量超过了上限，直接不调度新的请求了。
         if current_batch is not None and len(current_batch.reqs) + len(self.pause_req_dict) >= self.running_max_req_size:
