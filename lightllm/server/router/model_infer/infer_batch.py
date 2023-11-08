@@ -95,10 +95,10 @@ class InferBatch:
             else:
                 if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                     requests_mapping[r_id].req_status = ReqRunStatus.RERUNNING_FROM_OFFLOAD
-                if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
+                elif requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
                     requests_mapping[r_id].req_status = ReqRunStatus.RERUNNING_FROM_KVKEEP
                 else:
-                    assert False, "should not exist"
+                    assert False, f"should not exist {requests_mapping[r_id].req_status}"
             
             request_ids.append(r_id)
             

@@ -38,7 +38,7 @@ class Hrnn(Strategy):
         return sorted(reqs, key=lambda req: (req.input_len + req.max_output_len - len(req.output_ids)) / req.input_len, reverse=True)
 
 
-def pause_reqs(batch: Batch, strategy: Strategy, req_queue: ReqQueue, max_total_token_num):
+def select_paused_reqs(batch: Batch, strategy: Strategy, req_queue: ReqQueue, max_total_token_num):
     reqs = strategy.ordering_reqs(batch)
     pause_req : Req = reqs[0]
     batch.pop_req(pause_req.request_id)

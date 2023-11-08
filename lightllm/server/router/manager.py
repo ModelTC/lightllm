@@ -13,7 +13,7 @@ from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from ..io_struct import BatchTokenIdOut, AbortReq, ReqRunStatus
 from .stats import Stats
-from .pause_strategy import Fcfs, pause_reqs
+from .pause_strategy import Fcfs, select_paused_reqs
 
 
 class RouterManager:
@@ -104,7 +104,8 @@ class RouterManager:
             counter_count += 1
             if self.running_batch is not None:
                 if counter_count % 50 == 0:
-                    print("current batch size:", len(self.running_batch.reqs), "token used ratio:", self.running_batch.calcu_used_tokens() / self.max_total_token_num)
+                    token_ratio = (self.running_batch.batch_used_tokens + self.req_queue.pause_req_used_tokens) / self.max_total_token_num
+                    print("current batch size:", len(self.running_batch.reqs), "paused req num:", len(self.req_queue.pause_req_dict), "token used ratio:", token_ratio)
                     pass
                 self.stats_tool.print_stats()
                 
@@ -149,8 +150,9 @@ class RouterManager:
             return
         else:
             # pause strategy
-            pause_reqs = pause_reqs(self.running_batch, self.pause_strategy, self.req_queue, self.max_total_token_num)
-            await self._pause_reqs(self.running_batch, pause_reqs)
+            paused_reqs = select_paused_reqs(self.running_batch, self.pause_strategy, self.req_queue, self.max_total_token_num)
+            await self._pause_reqs(self.running_batch, paused_reqs)
+            print("pasued req num:", len(self.req_queue.pause_req_dict))
             self.has_wait_tokens = 0
             return
         return

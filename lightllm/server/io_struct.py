@@ -132,12 +132,6 @@ class Batch:
         for req in self.reqs:
             tokens += req.input_len + req.max_output_len
         return tokens
-    
-    def calcu_used_tokens(self):
-        tokens = 0
-        for req in self.reqs:
-            tokens += req.input_len + len(req.output_ids)
-        return tokens
 
     def mark_and_get_finished_req(self, eos_id):
         finished_reqs, unfinished_req = [], []
