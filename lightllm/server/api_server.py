@@ -42,7 +42,7 @@ from .router.manager import start_router_process
 from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
-from lightllm.common.configs.config import setting
+
 from .api_models import (
     ChatCompletionRequest,
     UsageInfo,
@@ -309,12 +309,14 @@ def main():
                         help="disable logging throughput stats.")
     parser.add_argument("--log_stats_interval", type=int, default=10,
                         help="log stats interval in second.")
+    parser.add_argument("--router_token_ratio", type=float, default=0.0,
+                        help="token ratio to control router dispatch")
+    parser.add_argument("--router_max_new_token_len", type=float, default=1024,
+                        help="the request max new token len for router")
     
     args = parser.parse_args()
 
     assert args.max_req_input_len < args.max_req_total_len
-    setting["max_req_total_len"] = args.max_req_total_len
-    setting["nccl_port"] = args.nccl_port
 
     if args.batch_max_tokens is None:
         batch_max_tokens = int(1 / 6 * args.max_total_token_num)
@@ -351,7 +353,6 @@ def main():
             router_port,
             detokenization_port,
             model_rpc_ports,
-            args.mode,
             pipe_router_writer,
         ),
     )
@@ -363,7 +364,6 @@ def main():
             detokenization_port,
             httpserver_port,
             pipe_detoken_writer,
-            args.trust_remote_code,
         ),
     )
     proc_detoken.start()

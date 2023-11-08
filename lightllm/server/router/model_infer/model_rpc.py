@@ -22,7 +22,7 @@ from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.common.configs.config import setting
+from .pre_process import prepare_decode_inputs, prepare_prefill_inputs
 from .post_process import sample
 from .infer_batch import requests_mapping
 from .infer_batch import InferReq
@@ -47,7 +47,7 @@ class ModelRpcServer(rpyc.Service):
         weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
 
-        dist.init_process_group('nccl', init_method=f'tcp://127.0.0.1:{setting["nccl_port"]}', rank=self.tp_rank, world_size=world_size)
+        dist.init_process_group('nccl', init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=self.tp_rank, world_size=world_size)
         torch.cuda.set_device(self.tp_rank)
 
         model_cfg, _ = PretrainedConfig.get_config_dict(
@@ -106,6 +106,7 @@ class ModelRpcServer(rpyc.Service):
         
         set_random_seed(2147483647)
         return
+    
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_add_batch(self, batch_id, reqs, dtype):
         if self.world_size != 1:
@@ -137,15 +138,6 @@ class ModelRpcServer(rpyc.Service):
         del batch
         self.cache[batch_id] = filter_batch
         return
-    
-    def exposed_restore_reqs(self, batch_id, req_id_list):
-        if self.world_size != 1:
-            batch_id, req_id_list = obtain(batch_id), obtain(req_id_list)
-        batch1 = self.cache.pop(batch_id)
-        batch2 = batch1.restore_reqs(req_id_list)
-        self.cache[batch_id] = batch2
-        del batch1
-        return
 
     def exposed_pause_reqs(self, batch_id, req_list):
         if self.world_size != 1:
@@ -155,57 +147,6 @@ class ModelRpcServer(rpyc.Service):
         self.cache[batch_id] = batch2
         del batch1
         return
-    
-    def prepare_inputs(self, batch, is_prefill):
-        nopad_total_token_num = 0
-        nopad_max_len_in_batch = 0
-        start_loc = 0
-        input_ids = []
-        nopad_b_req_idx = []
-        nopad_b_start_loc = []
-        nopad_b_seq_len = []
-        for request_id in batch.request_ids:
-            req = requests_mapping[request_id]
-            nopad_b_req_idx.append(req.req_idx)
-            nopad_b_start_loc.append(start_loc)
-            if is_prefill and req.req_status == ReqRunStatus.RERUNNING_FROM_OFFLOAD:
-                seq_len = req.offload_kv_len
-                input_id = req.input_token_ids[0 : req.offload_kv_len]
-            elif is_prefill:
-                seq_len = req.seq_len
-                input_id = req.input_token_ids
-            else:
-                assert req.req_status == ReqRunStatus.RUNNING
-                seq_len = req.seq_len
-                input_id = req.input_token_ids[-1]
-            
-            nopad_b_seq_len.append(seq_len)
-            input_ids.append(input_id)
-            nopad_total_token_num += seq_len
-            nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
-            start_loc += seq_len
-        
-        if is_prefill:
-            if len(input_ids) > 1:
-                input_ids = np.concatenate(input_ids, dtype=np.int64)
-            else:
-                input_ids = input_ids[0]
-
-        input_ids = torch.tensor(input_ids, dtype=torch.int64, device='cuda')
-        nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device='cuda')
-        nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device='cuda')
-        nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device='cuda')
-        kwargs = {
-            "batch_size": len(batch),
-            "total_token_num": nopad_total_token_num,
-            "max_len_in_batch": nopad_max_len_in_batch,
-            "input_ids": input_ids,
-            "b_req_idx": nopad_b_req_idx,
-            "b_start_loc": nopad_b_start_loc,
-            "b_seq_len": nopad_b_seq_len,
-            "is_prefill": is_prefill            
-        }
-        return kwargs
 
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_merge_batch(self, batch_id1, batch_id2):
@@ -227,34 +168,49 @@ class ModelRpcServer(rpyc.Service):
     
     # @calculate_time(show=True, min_cost_ms=150)
     def forward(self, batch_id, is_prefill):
-        batch: InferBatch = self.cache.pop(batch_id)
-        kwargs = self.prepare_inputs(batch, is_prefill)
-    
-        logits = self.model.forward(**kwargs)
-        next_token_ids, next_token_probs = sample(logits, batch)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
+        batch: InferBatch = self.cache.pop(batch_id)
+        if is_prefill:
+            kwargs, run_req_ids, not_run_req_ids = prepare_prefill_inputs(batch)
+        else:
+            kwargs, run_req_ids, not_run_req_ids = prepare_decode_inputs(batch)
+        
+        if len(run_req_ids) >= 1:
+            logits = self.model.forward(**kwargs)
+            next_token_ids, next_token_probs = sample(logits, run_req_ids)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        for r_id, next_token_id, next_token_logprob in zip(batch.request_ids, next_token_ids, next_token_logprobs):
+            for r_id, next_token_id, next_token_logprob in zip(run_req_ids, next_token_ids, next_token_logprobs):
+
+                req_obj:InferReq = requests_mapping[r_id]
+                if is_prefill and req_obj.req_status == ReqRunStatus.RERUNNING_FROM_OFFLOAD: 
+                    # prefill 阶段可能有部分offload的请求重新prefill，代码需要保证所有的请求prefill之后 请求状态都回归为 RUNNING
+                    if req_obj.offload_kv_len < req_obj.seq_len:
+                        req_obj.req_status = ReqRunStatus.RUNNING
+                        req_obj.offload_kv_len = None
+                        continue # 恢复正常状态, recompute 如果 offload 长度不是全部长度，则不输出下一个token，因为以前已经输出过了
+                    else:
+                        req_obj.req_status = ReqRunStatus.RUNNING
+                        req_obj.offload_kv_len = None
+                elif req_obj.req_status != ReqRunStatus.RUNNING:
+                    assert False, "error req status"
+                
+                req_obj.input_token_ids.append(next_token_id)
+                req_obj.seq_len += 1
+                req_obj.out_token_id_count[next_token_id] += 1
+                metadata = {
+                    'id': int(next_token_id),
+                    'logprob': float(next_token_logprob),
+                }
+                output_dict[r_id] = (int(next_token_id), metadata)
+
+        for r_id in not_run_req_ids:
             req_obj:InferReq = requests_mapping[r_id]
-            if is_prefill and req_obj.req_status == ReqRunStatus.RERUNNING_FROM_OFFLOAD:
-                if req_obj.offload_kv_len < req_obj.seq_len:
-                    req_obj.req_status = ReqRunStatus.RUNNING
-                    req_obj.offload_kv_len = None
-                    continue # 恢复正常状态, recompute 如果 offload 长度不是全部长度，则不输出下一个token，因为以前已经输出过了
-                else:
-                    req_obj.req_status = ReqRunStatus.RUNNING
-                    req_obj.offload_kv_len = None
-            
-            req_obj.input_token_ids.append(next_token_id)
-            req_obj.seq_len += 1
-            req_obj.out_token_id_count[next_token_id] += 1
-            metadata = {
-                'id': int(next_token_id),
-                'logprob': float(next_token_logprob),
-            }
-            output_dict[r_id] = (int(next_token_id), metadata)
+            if is_prefill and req_obj.req_status == ReqRunStatus.RERUNNING_FROM_KVKEEP:
+                req_obj.req_status = ReqRunStatus.RUNNING # 恢复正常RUNNING状态
+            else:
+                assert False, "error req status"
         
         self.cache[batch.batch_id] = batch
         return output_dict
@@ -280,7 +236,6 @@ class ModelRpcClient:
             self._prefill_batch = async_wrap(self.model.prefill_batch)
             self._decode_batch = async_wrap(self.model.decode_batch)
             self._pause_reqs = async_wrap(self.model.pause_reqs)
-            self._restore_reqs = async_wrap(self.model.restore_reqs)
             self._filter_batch = async_wrap(self.model.filter_batch)
             self._merge_batch = async_wrap(self.model.merge_batch)
             self._remove_batch = async_wrap(self.model.remove_batch)
@@ -290,7 +245,6 @@ class ModelRpcClient:
             self._prefill_batch = self.model.exposed_prefill_batch
             self._decode_batch = self.model.exposed_decode_batch
             self._pause_reqs = self.model.exposed_pause_reqs
-            self._restore_reqs = self.model.exposed_restore_reqs
             self._filter_batch = self.model.exposed_filter_batch
             self._merge_batch = self.model.exposed_merge_batch
             self._remove_batch = self.model.exposed_remove_batch
@@ -341,14 +295,6 @@ class ModelRpcClient:
             return
         else:
             return
-
-    async def restore_reqs(self, batch_id, req_id_list):
-        ans = self._restore_reqs(batch_id, req_id_list)
-        if self.use_rpc:
-            await ans
-            return
-        else:
-            return 
 
     async def merge_batch(self, batch_id1, batch_id2):
         ans = self._merge_batch(batch_id1, batch_id2)

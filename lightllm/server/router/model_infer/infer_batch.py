@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import collections
 
-from lightllm.common.configs.config import setting
 from dataclasses import dataclass, field
 from typing import List, Dict
 from lightllm.common.req_manager import ReqManager
@@ -92,14 +91,17 @@ class InferBatch:
                                                     seq_len=input_length,
                                                     prompt_len=input_length,
                                                     req_status=ReqRunStatus.RUNNING)
+                index += 1
             else:
                 if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                     requests_mapping[r_id].req_status = ReqRunStatus.RERUNNING_FROM_OFFLOAD
+                if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
+                    requests_mapping[r_id].req_status = ReqRunStatus.RERUNNING_FROM_KVKEEP
                 else:
                     assert False, "should not exist"
             
             request_ids.append(r_id)
-            index += 1
+            
 
         return cls(
             batch_id=batch_id,
@@ -161,15 +163,6 @@ class InferBatch:
                 req.offload_kv_len = offload_kv_len
         return self
 
-    @torch.no_grad()
-    def restore_reqs(self, restore_request_ids: List[str]):
-        for req_id in restore_request_ids:
-            req_obj = requests_mapping[req_id]
-            assert req_obj.req_status == ReqRunStatus.PAUSED_AND_KVKEEP
-            req_obj.req_status = ReqRunStatus.RUNNING
-            self.request_ids.append(req_id)
-        return self
-
     @classmethod
     @torch.no_grad()
     def merge(cls, batch1, batch2):
@@ -184,39 +177,3 @@ class InferBatch:
     def __len__(self):
         return len(self.request_ids)
     
-    
-    def get_post_sample_tensors(self):
-        presence_penalties: List[float] = []
-        frequency_penalties: List[float] = []
-        temperatures: List[float] = []
-        top_ps: List[float] = []
-        top_ks: List[int] = []
-        p_token_ids: List[int] = []
-        p_token_counts: List[int] = []
-        p_seq_len: List[int] = [0,]
-        p_max_len_in_batch: int = 0
-        for i, request_id in enumerate(self.request_ids):
-            id_to_count = requests_mapping[request_id].out_token_id_count
-            sample_param = requests_mapping[request_id].sampling_param
-            presence_penalties.append(sample_param.presence_penalty)
-            frequency_penalties.append(sample_param.frequency_penalty)
-            temperatures.append(sample_param.temperature)
-            top_ps.append(sample_param.top_p)
-            top_ks.append(sample_param.top_k)
-            
-            for token_id, count in id_to_count.items():
-                p_token_ids.append(token_id)
-                p_token_counts.append(count)
-            p_seq_len.append(len(id_to_count))
-            p_max_len_in_batch = max(p_max_len_in_batch, len(id_to_count))
-        
-        presence_penalties = torch.tensor(presence_penalties, dtype=torch.float, device="cuda")
-        frequency_penalties = torch.tensor(frequency_penalties, dtype=torch.float, device="cuda")
-        temperatures = torch.tensor(temperatures, dtype=torch.float, device="cuda")
-        top_ps = torch.tensor(top_ps, dtype=torch.float, device="cuda")
-        top_ks = torch.tensor(top_ks, dtype=torch.int32, device="cuda")
-        p_token_ids = torch.tensor(p_token_ids, dtype=torch.int32, device="cuda")
-        p_token_counts = torch.tensor(p_token_counts, dtype=torch.int32, device="cuda")
-        p_seq_len = torch.tensor(p_seq_len, dtype=torch.int32, device="cuda")
-        p_cumsum_seq_len = torch.cumsum(p_seq_len, dim=0, dtype=torch.int32)
-        return presence_penalties, frequency_penalties, temperatures, top_ps, top_ks, p_token_ids, p_token_counts, p_cumsum_seq_len, p_max_len_in_batch
