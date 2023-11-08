@@ -317,6 +317,7 @@ def main():
     args = parser.parse_args()
 
     assert args.max_req_input_len < args.max_req_total_len
+    assert args.max_req_total_len <= args.max_total_token_num
 
     if args.batch_max_tokens is None:
         batch_max_tokens = int(1 / 6 * args.max_total_token_num)
