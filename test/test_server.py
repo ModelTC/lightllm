@@ -19,12 +19,12 @@ class RequestThread(threading.Thread):
             print('Error:', response.status_code, response.text)
 
 
-url = 'http://localhost:8008/generate'
+url = 'http://localhost:8000/generate'
 headers = {'Content-Type': 'application/json'}
 
 for i in range(1):
     data = {
-        'inputs': '中国', #'what is AI?',
+        'inputs': 'San Francisco is a',
         # 'temperature': 0.1,
         'parameters' : {
             'do_sample': False,

@@ -149,7 +149,7 @@ async def send_request(
         'inputs': prompt,
         'parameters': {
             'do_sample': False,
-            'ignore_eos': False,
+            'ignore_eos': True,
             'max_new_tokens': output_len,
              # 'temperature': 0.1,
         }
