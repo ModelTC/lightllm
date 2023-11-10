@@ -10,6 +10,9 @@ from lightllm.common.build_utils import repair_config
 
 
 class ChatGlm2TpPartModel(LlamaTpPartModel):
+    # Please use the fast tokenizer from:
+    # [THUDM/chatglm3-6b PR #12](https://huggingface.co/THUDM/chatglm3-6b/discussions/12).
+
     # weight class
     pre_and_post_weight_class = ChatGLM2PreAndPostLayerWeight
     transformer_weight_class = ChatGLM2TransformerLayerWeight
