@@ -27,6 +27,7 @@ class ChatGlm2TpPartModel(LlamaTpPartModel):
         repair_config(self.config, same_names=["num_hidden_layers", "n_layer", "num_layers"])
         repair_config(self.config, same_names=["vocab_size", "padded_vocab_size"])
         repair_config(self.config, same_names=["rms_norm_eps", "layernorm_epsilon"])
+        repair_config(self.config, same_names=["seq_length", "max_sequence_length"])
         return
     
     def _reset_num_key_value_heads(self):
@@ -34,8 +35,8 @@ class ChatGlm2TpPartModel(LlamaTpPartModel):
         return
     
     def _verify_params(self):
-        assert self.load_way == "HF", "chatGLM2 only support HF format to load Now!"
-        assert self.world_size_ in [1, 2], "chatglm2 7b only can run in tp == 1 or 2"
+        assert self.load_way == "HF", "ChatGLM only support HF format for now"
+        assert self.world_size_ in [1, 2], "ChatGLM can only run in tp=1 or tp=2 for now"
 
     def _init_to_get_rotary(self, base=10000):
         if self.config.get("rope_scaling", {}) is None:
@@ -46,7 +47,8 @@ class ChatGlm2TpPartModel(LlamaTpPartModel):
             max_seq_len = self.config["max_sequence_length"]
         else:
             max_seq_len = self.config.get("max_position_embeddings", 2048) * rope_scaling_factor
-        base = float(base)
+
+        base = float(base) * self.config.get("rope_ratio", 1.0)
 
         # NTK
         try:
