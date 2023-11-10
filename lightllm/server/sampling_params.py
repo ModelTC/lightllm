@@ -16,7 +16,8 @@ class SamplingParams:
         top_k: int = -1,  # -1 is for all 
         ignore_eos: bool = False,
         max_new_tokens: int = 16,
-        stop_sequences: Optional[Union[str, List[str]]] = None  # 停止句子条件
+        stop_sequences: Optional[Union[str, List[str]]] = None,  # 停止句子条件
+        image_path: str = "",
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
@@ -27,6 +28,7 @@ class SamplingParams:
         self.ignore_eos = ignore_eos
         self.max_new_tokens = max_new_tokens
         self.stop_sequences = stop_sequences
+        self.image_path = image_path
         if self.do_sample == False:
             self.temperature = 1.0
             self.top_p = 1.0
@@ -75,6 +77,7 @@ class SamplingParams:
         ret["temperature"] = self.temperature
         ret["top_p"] = self.top_p
         ret["top_k"] = self.top_k
+        ret["image_path"] = self.image_path
         # if self.ignore_eos is not None:
         #     ret["ignore_eos"] = self.ignore_eos
         # if self.max_tokens is not None:

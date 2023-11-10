@@ -38,7 +38,13 @@ class HttpServerManager:
         self.max_req_total_len = max_req_total_len
 
     async def generate(self, prompt, sampling_params, request_id):
-        prompt_ids = self.tokenizer.encode(prompt)
+        # TODO: it is not graceful here
+        if "llava" in self.tokenizer.name_or_path:
+            from ...models.llava.utils import tokenizer_image_token
+            from ...models.llava.model import LLAVA_IMAGE_TOKEN_ID, LLAVA_IMAGE_TOKEN
+            prompt_ids = tokenizer_image_token(prompt, self.tokenizer, LLAVA_IMAGE_TOKEN, LLAVA_IMAGE_TOKEN_ID)
+        else:
+            prompt_ids = self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)
         if prompt_tokens > self.max_req_input_len:
             raise ValueError(

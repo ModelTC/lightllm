@@ -46,6 +46,7 @@ class InferReq:
         seq_len=0,
         prompt_len=0,
         req_status:ReqRunStatus=ReqRunStatus.RUNNING,
+        multimodal_input={},
     ) -> None:
         self.out_token_id_count = out_token_id_count
         self.sampling_param = sampling_param
@@ -55,6 +56,7 @@ class InferReq:
         self.offload_kv_len = None
         self.input_token_ids = input_token_ids
         self.req_status = req_status
+        self.multimodal_input = multimodal_input
         return
 
 
@@ -63,10 +65,10 @@ class InferBatch:
     batch_id: int
     request_ids: List
     req_manager: ReqManager
-    
+
     @classmethod
     @torch.no_grad()
-    def init_batch(cls, batch_id, requests, dtype: torch.dtype, device: torch.device, req_manager:ReqManager, vocab_size: int):
+    def init_batch(cls, batch_id, requests, dtype: torch.dtype, device: torch.device, req_manager:ReqManager, vocab_size: int, multimodal=None):
 
         request_ids = []
         need_alloc_size = len([r for r in requests if r['request_id'] not in requests_mapping])
@@ -80,6 +82,13 @@ class InferBatch:
 
             if r_id not in requests_mapping.keys():
                 tokenized_input = r['input_id']
+
+                # for multimodal input
+                multimodal_input = {'offset': 0, 'image_path': r['sampling_param'].pop('image_path')}
+                if multimodal is not None:
+                    tokenized_input, offset = multimodal.pad_input_ids(tokenized_input)
+                    multimodal_input['offset'] = offset
+
                 input_length = len(tokenized_input)
                 # postprocessor
                 sampling_param = r["sampling_param"]
@@ -90,7 +99,8 @@ class InferBatch:
                                                     req_idx=nopad_b_req_idx[index], 
                                                     seq_len=input_length,
                                                     prompt_len=input_length,
-                                                    req_status=ReqRunStatus.RUNNING)
+                                                    req_status=ReqRunStatus.RUNNING,
+                                                    multimodal_input=multimodal_input)
                 index += 1
             else:
                 if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:

@@ -21,6 +21,7 @@ from lightllm.models.baichuan2_7b.model import Baichuan2_7bTpPartModel
 from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.yi.model import YiTpPartModel
+from lightllm.models.llava.model import LlavaTpPartMulitModal
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from .pre_process import prepare_decode_inputs, prepare_prefill_inputs
@@ -44,6 +45,7 @@ class ModelRpcServer(rpyc.Service):
         self.load_way = kvargs["load_way"]
         self.mode = kvargs["mode"]
         self.cache = {}
+        self.multimodal = None
 
         weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
@@ -98,6 +100,9 @@ class ModelRpcServer(rpyc.Service):
                 self.model = InternlmTpPartModel(model_kvargs)
             elif self.model_type == "Yi":
                 self.model = YiTpPartModel(model_kvargs)
+            elif self.model_type == 'llava':
+                self.model = LlavaTpPartMulitModal(model_kvargs)
+                self.multimodal = self.model
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
@@ -119,7 +124,7 @@ class ModelRpcServer(rpyc.Service):
             dtype = torch.float16
         else:
             assert False, "error dtype"
-        batch_data = InferBatch.init_batch(batch_id, reqs, dtype, torch.cuda.current_device(), self.model.req_manager, self.model.vocab_size)
+        batch_data = InferBatch.init_batch(batch_id, reqs, dtype, torch.cuda.current_device(), self.model.req_manager, self.model.vocab_size, self.multimodal)
         self.cache[batch_id] = batch_data
         return
     
@@ -175,6 +180,8 @@ class ModelRpcServer(rpyc.Service):
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
             kwargs, run_req_ids, not_run_req_ids = prepare_prefill_inputs(batch)
+            if self.multimodal is None:
+                kwargs.pop("multimodal_inputs")
         else:
             kwargs, run_req_ids, not_run_req_ids = prepare_decode_inputs(batch)
         

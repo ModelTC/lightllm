@@ -14,6 +14,7 @@ def prepare_prefill_inputs(batch:InferBatch):
     nopad_b_req_idx = []
     nopad_b_start_loc = []
     nopad_b_seq_len = []
+    multimodal_inputs = []
     for request_id in batch.request_ids:
         req : InferReq = requests_mapping[request_id]
         assert req.req_status in [ReqRunStatus.RUNNING, ReqRunStatus.RERUNNING_FROM_OFFLOAD, ReqRunStatus.RERUNNING_FROM_KVKEEP]
@@ -23,6 +24,7 @@ def prepare_prefill_inputs(batch:InferBatch):
             continue
         
         run_req_ids.append(request_id)
+        multimodal_inputs.append(req.multimodal_input)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
         if req.req_status == ReqRunStatus.RERUNNING_FROM_OFFLOAD:
@@ -56,7 +58,8 @@ def prepare_prefill_inputs(batch:InferBatch):
             "b_req_idx": nopad_b_req_idx,
             "b_start_loc": nopad_b_start_loc,
             "b_seq_len": nopad_b_seq_len,
-            "is_prefill": True            
+            "is_prefill": True,
+            "multimodal_inputs": multimodal_inputs,
         }
         return kwargs, run_req_ids, not_run_req_ids
     else:
