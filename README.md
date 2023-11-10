@@ -39,6 +39,7 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 - [Baichuan2-7b](https://github.com/baichuan-inc/Baichuan2)  
 - [Baichuan-13b](https://github.com/baichuan-inc/Baichuan-13B)
 - [InternLM-7b](https://github.com/InternLM/InternLM)
+- [Llava-7b](https://huggingface.co/liuhaotian/llava-v1.5-7b), [Llava-13b](https://huggingface.co/liuhaotian/llava-v1.5-13b)
 
 > When you start Qwen-7b, you need to set the parameter '--eos_id 151643 --trust_remote_code'.
 
@@ -160,6 +161,43 @@ if response.status_code == 200:
 else:
     print('Error:', response.status_code, response.text)
 ~~~
+
+### RUN LLava
+Launch the server:
+
+~~~shell
+python -m lightllm.server.api_server --model_dir /path/llava-v1.5-7b\
+                                     --host 0.0.0.0                 \
+                                     --port 8080                    \
+                                     --tp 1                         \
+                                     --max_total_token_num 12000
+~~~
+
+To query from Python:
+
+~~~python
+import time
+import requests
+import json
+url = 'http://localhost:8000/generate'
+headers = {'Content-Type': 'application/json'}
+data = {
+    'inputs': "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nDescribe this picture ASSISTANT:",
+    "parameters": {
+        'do_sample': False,
+        'ignore_eos': False,
+        'max_new_tokens': 1024,
+        'image_path': "url/of/image",
+    }
+}
+response = requests.post(url, headers=headers, data=json.dumps(data))
+if response.status_code == 200:
+    print(response.json())
+else:
+    print('Error:', response.status_code, response.text)
+~~~
+
+> When query llava models, the `<image>` token in `inputs` and the `image_path` field in `parameters` are required.
 
 ## Performance
 
