@@ -16,6 +16,7 @@ from lightllm.common.basemodel.triton_kernel.quantize_gemm_int8 import matmul_qu
 from lightllm.common.basemodel.triton_kernel.dequantize_gemm_int8 import matmul_dequantize_int8
 from lightllm.common.basemodel.triton_kernel.dequantize_gemm_int4 import matmul_dequantize_int4_s1, matmul_dequantize_int4_s2, matmul_dequantize_int4_gptq
 from lightllm.common.basemodel.cuda_kernel.lmdeploy_wquant import matmul_dequantize_int4_lmdeploy
+from lightllm.common.basemodel.cuda_kernel.ppl_wquant import matmul_dequantize_int4_ppl
 from lightllm.utils.infer_utils import mark_cost_time
 
  
@@ -56,6 +57,11 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             self._wquant_matmul_for_o = self._wquant_matmul_lmdeploy_int4weight_only_quant
             self._wquant_matmul_for_ffn_up = self._wquant_matmul_lmdeploy_int4weight_only_quant
             self._wquant_matmul_for_ffn_down = self._wquant_matmul_lmdeploy_int4weight_only_quant
+        elif "ppl_int4weight" in self.mode:
+            self._wquant_matmul_for_qkv = self._wquant_matmul_ppl_int4weight_only_quant
+            self._wquant_matmul_for_o = self._wquant_matmul_ppl_int4weight_only_quant
+            self._wquant_matmul_for_ffn_up = self._wquant_matmul_ppl_int4weight_only_quant
+            self._wquant_matmul_for_ffn_down = self._wquant_matmul_ppl_int4weight_only_quant
         else:
             raise Exception(f"error mode {self.mode}")
         
@@ -142,3 +148,12 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         else:
             qweight, scale_zeros, int4_q_group_size = quant_weight_params
             return matmul_dequantize_int4_lmdeploy(input, qweight, scale_zeros, int4_q_group_size)
+
+    def _wquant_matmul_ppl_int4weight_only_quant(self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False):
+        assert bias is None and has_act == False
+        if is_prefill:
+            qweight, scale_zeros, int4_q_group_size = quant_weight_params
+            return matmul_dequantize_int4_ppl(input, qweight, scale_zeros, int4_q_group_size)
+        else:
+            qweight, scale_zeros, int4_q_group_size = quant_weight_params
+            return matmul_dequantize_int4_ppl(input, qweight, scale_zeros, int4_q_group_size)
