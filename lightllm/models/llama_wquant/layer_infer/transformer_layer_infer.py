@@ -80,7 +80,7 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             self._wquant_matmul_for_ffn_up = func
             self._wquant_matmul_for_ffn_down = func
             if self.tp_rank_ == 0 and self.layer_num_ == 0:
-                print("model use lmdeploy_int4weight kernel")
+                print("model use ppl_int4weight kernel")
         else:
             raise Exception(f"error mode {self.mode}")
         return
