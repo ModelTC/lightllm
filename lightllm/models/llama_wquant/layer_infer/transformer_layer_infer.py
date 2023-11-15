@@ -182,7 +182,7 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             return out
 
     def _wquant_matmul_ppl_int4weight_only_quant(self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False):
-        assert bias is None and has_act == False
+        assert has_act == False
         if is_prefill:
             qweight, qscale = quant_weight_params
             out = matmul_dequantize_int4_ppl(input, qweight, qscale)
