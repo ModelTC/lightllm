@@ -5,13 +5,14 @@ import torch
 from lightllm.models.chatglm2.layer_infer.transformer_layer_infer import ChatGLM2TransformerLayerInfer
 from lightllm.models.chatglm2.layer_weights.transformer_layer_weight import ChatGLM2TransformerLayerWeight
 from lightllm.models.chatglm2.layer_weights.pre_and_post_layer_weight import ChatGLM2PreAndPostLayerWeight
-
-from lightllm.common.mem_manager import MemoryManager
-from lightllm.models.llama2.model import Llama2TpPartModel
+from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.common.build_utils import repair_config
 
 
-class ChatGlm2TpPartModel(Llama2TpPartModel):
+class ChatGlm2TpPartModel(LlamaTpPartModel):
+    # Please use the fast tokenizer from:
+    # [THUDM/chatglm3-6b PR #12](https://huggingface.co/THUDM/chatglm3-6b/discussions/12).
+
     # weight class
     pre_and_post_weight_class = ChatGLM2PreAndPostLayerWeight
     transformer_weight_class = ChatGLM2TransformerLayerWeight
@@ -19,8 +20,8 @@ class ChatGlm2TpPartModel(Llama2TpPartModel):
     # infer class
     transformer_layer_infer_class = ChatGLM2TransformerLayerInfer
 
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[], weight_dict=None, finetune_config=None):
-        super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode, weight_dict, finetune_config)
+    def __init__(self, kvargs):
+        super().__init__(kvargs)
     
     def _init_config(self):
         super()._init_config()
@@ -29,24 +30,16 @@ class ChatGlm2TpPartModel(Llama2TpPartModel):
         repair_config(self.config, same_names=["num_hidden_layers", "n_layer", "num_layers"])
         repair_config(self.config, same_names=["vocab_size", "padded_vocab_size"])
         repair_config(self.config, same_names=["rms_norm_eps", "layernorm_epsilon"])
-        repair_config(self.config, same_names=["multi_query_group_num", "num_key_value_heads"])
-        return 
+        repair_config(self.config, same_names=["seq_length", "max_sequence_length"])
+        return
+    
+    def _reset_num_key_value_heads(self):
+        self.config["num_key_value_heads"] = self.config["multi_query_group_num"]
+        return
     
     def _verify_params(self):
-        assert self.load_way == "HF", "chatGLM2 only support HF format to load Now!"
-
-    def _init_mem_manager(self):
-        self.mem_manager = MemoryManager(self.max_total_token_num, 
-                                         dtype=torch.float16,
-                                         head_num=self.config["multi_query_group_num"],
-                                         head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
-                                         layer_num=self.config["num_hidden_layers"])
-        return
-
-    def _init_some_value(self):
-        super()._init_some_value()
-        self.tp_key_head_num_ = self.config["multi_query_group_num"]
-        self.tp_value_head_num_ = self.config["multi_query_group_num"]
+        assert self.load_way == "HF", "ChatGLM only support HF format for now"
+        assert self.world_size_ in [1, 2], "ChatGLM can only run in tp=1 or tp=2 for now"
 
     def _init_to_get_rotary(self, base=10000):
         if self.config.get("rope_scaling", {}) is None:
@@ -57,7 +50,8 @@ class ChatGlm2TpPartModel(Llama2TpPartModel):
             max_seq_len = self.config["max_sequence_length"]
         else:
             max_seq_len = self.config.get("max_position_embeddings", 2048) * rope_scaling_factor
-        base = float(base)
+
+        base = float(base) * self.config.get("rope_ratio", 1.0)
 
         # NTK
         try:
