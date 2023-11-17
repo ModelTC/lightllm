@@ -89,7 +89,10 @@ class ModelRpcServer(rpyc.Service):
                     else:
                         self.model = Baichuan7bTpPartModel(model_kvargs)
                 elif model_cfg["hidden_size"] == 5120:
-                    self.model = Baichuan13bTpPartModel(model_kvargs)
+                    if model_cfg['architectures'][0] == 'BaichuanForCausalLM':
+                        self.model = Baichuan2_13bTpPartModel(model_kvargs)
+                    else:
+                        self.model = Baichuan13bTpPartModel(model_kvargs)
                 else:
                     raise Exception('can not support baichuan format')
             elif self.model_type == 'gpt_bigcode':

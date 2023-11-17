@@ -13,8 +13,9 @@ class Baichuan2_13bTpPartModel(LlamaTpPartModel):
     # infer state class
     infer_state_class = InferStateInfo
 
-    def __init__(self, tp_rank, world_size, weight_dir, max_total_token_num, load_way="HF", mode=[]):
-        super().__init__(tp_rank, world_size, weight_dir, max_total_token_num, load_way, mode)
+    def __init__(self, kvargs):
+        super().__init__(kvargs)
+        return
     
     def _init_config(self):
         super()._init_config()
