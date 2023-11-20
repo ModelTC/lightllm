@@ -20,8 +20,13 @@ class InMemoryCache(CacheManager):
         self._md5_to_record = dict()
 
     def add_item(self, data: bytes, id: uuid.UUID=None) -> uuid.UUID:
-        id = uuid.uuid1()
         md5sum = hashlib.md5(data).hexdigest()
+        id = self.query_item_uuid(md5sum)
+        if id is not None:
+            # this data already exists in cache.
+            return id
+        # data doesn't exist, insert it and return id.
+        id = uuid.uuid1()
         record = Record(id=id, data=data, md5sum=md5sum, embed=None)
         self._records[id] = record
         self._md5_to_record[md5sum] = record
