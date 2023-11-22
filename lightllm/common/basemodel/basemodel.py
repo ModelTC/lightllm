@@ -2,6 +2,7 @@ import os
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import json
 import torch
+import uuid
 from typing import final
 
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
@@ -15,6 +16,7 @@ from lightllm.common.basemodel.triton_kernel.copy_kv_index_to_req import copy_kv
 from lightllm.common.basemodel.triton_kernel.splitfuse_copy_kv_index_to_req import splitfuse_copy_kv_index_to_req
 
 torch.backends.cudnn.enabled = True
+
 
 class TpPartBaseModel:
     # weight class
@@ -141,14 +143,15 @@ class TpPartBaseModel:
             b_req_idx : torch.Tensor,
             b_start_loc : torch.Tensor,
             b_seq_len : torch.Tensor,
+            multimodal_params=None,
             is_prefill=True):
         if is_prefill:
-            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len)
+            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params)
         else:
             return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len)
 
     
-    def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len):
+    def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
         infer_state.return_all_prompt_logprobs = self.return_all_prompt_logprobs
@@ -160,6 +163,7 @@ class TpPartBaseModel:
         infer_state.b_req_idx = b_req_idx
         infer_state.b_start_loc = b_start_loc
         infer_state.b_seq_len = b_seq_len
+        infer_state.multimodal_params = multimodal_params
 
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager

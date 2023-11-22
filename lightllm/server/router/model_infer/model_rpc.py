@@ -26,6 +26,7 @@ from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.internlm_wquant.model import InternlmTpPartModelWQuant
 from lightllm.models.yi.model import YiTpPartModel
 from lightllm.models.mistral.model import MistralTpPartModel
+from lightllm.models.llava.model import LlavaTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from .pre_process import prepare_decode_inputs, prepare_prefill_inputs, splitfuse_prepare_decode_inputs
@@ -46,6 +47,7 @@ class ModelRpcServer(rpyc.Service):
             kvargs = obtain(kvargs)
             world_size = kvargs["world_size"]
 
+        self.is_multimodal = False
         self.tp_rank = kvargs["rank_id"]
         self.world_size = kvargs["world_size"]
         self.load_way = kvargs["load_way"]
@@ -124,6 +126,9 @@ class ModelRpcServer(rpyc.Service):
                 self.model = YiTpPartModel(model_kvargs)
             elif self.model_type == "mistral":
                 self.model = MistralTpPartModel(model_kvargs)
+            elif self.model_type == "llava":
+                self.model = LlavaTpPartModel(model_kvargs)
+                self.is_multimodal = True
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
@@ -213,6 +218,8 @@ class ModelRpcServer(rpyc.Service):
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
             kwargs, run_reqs, not_run_reqs = prepare_prefill_inputs(batch)
+            if not self.is_multimodal:
+                kwargs.pop("multimodal_params")
         else:
             kwargs, run_reqs, not_run_reqs = prepare_decode_inputs(batch)
         

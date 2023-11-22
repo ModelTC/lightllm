@@ -26,6 +26,7 @@ from transformers.configuration_utils import PretrainedConfig
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
+from ..models.llava.model import LlavaTokenizer
 
 
 # A fast LLaMA tokenizer with the pre-processed `tokenizer.json` file.
@@ -65,6 +66,9 @@ def get_tokenizer(
         kwargs["use_fast"] = False
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=trust_remote_code, *args,
                                                   **kwargs)
+
+    if "llava" in tokenizer_name.lower():
+        tokenizer = LlavaTokenizer(tokenizer)
 
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
         logger.info(

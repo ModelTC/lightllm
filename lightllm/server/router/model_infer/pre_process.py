@@ -14,6 +14,7 @@ def prepare_prefill_inputs(batch:InferBatch):
     nopad_b_req_idx = []
     nopad_b_start_loc = []
     nopad_b_seq_len = []
+    batch_multimodal_params = []
     for request_id in batch.request_ids:
         req : InferReq = requests_mapping[request_id]
         assert req.req_status == ReqRunStatus.RUNNING
@@ -24,6 +25,7 @@ def prepare_prefill_inputs(batch:InferBatch):
             continue
         
         run_reqs.append(req)
+        batch_multimodal_params.append(req.multimodal_params)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
         
@@ -52,7 +54,8 @@ def prepare_prefill_inputs(batch:InferBatch):
             "b_req_idx": nopad_b_req_idx,
             "b_start_loc": nopad_b_start_loc,
             "b_seq_len": nopad_b_seq_len,
-            "is_prefill": True            
+            "is_prefill": True,
+            "multimodal_params": batch_multimodal_params,
         }
         return kwargs, run_reqs, not_run_reqs
     else:

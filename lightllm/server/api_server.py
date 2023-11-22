@@ -36,6 +36,10 @@ from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 import uvicorn
 from .sampling_params import SamplingParams
+from .multimodal_params import MultimodalParams
+from .httpserver.manager import HttpServerManager
+from .detokenization.manager import start_detokenization_process
+from .router.manager import start_router_process
 from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
@@ -82,9 +86,11 @@ async def generate(request: Request) -> Response:
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
-    
+    multimodal_params_dict = request_dict.get("multimodal_params", {})
+    multimodal_params = MultimodalParams(**multimodal_params_dict)
+
     request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id)
+    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
 
     # Non-streaming case
     final_output = []
@@ -144,9 +150,11 @@ async def generate_stream(request: Request) -> Response:
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
+    multimodal_params_dict = request_dict.get("multimodal_params", {})
+    multimodal_params = MultimodalParams(**multimodal_params_dict)
 
     request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id)
+    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
@@ -219,9 +227,10 @@ async def chat_completions(
         stop_sequences=request.stop
     )
     sampling_params.verify()
+    multimodal_params = MultimodalParams(images=[])
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id)
+    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
 
     # Non-streaming case
     if not request.stream:
