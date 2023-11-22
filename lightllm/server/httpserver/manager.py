@@ -61,8 +61,14 @@ class HttpServerManager:
                     break
         return prompt_cache_len, prompt_cache_req_id
     
-    async def generate(self, prompt, sampling_params, request_id):
+    async def generate(self, prompt, sampling_params, request_id, multimodal_params):
         prompt_ids = self.tokenizer.encode(prompt)
+        # special tokenizer for multimodal_params
+        if isinstance(prompt_ids, dict):
+            image_offsets = prompt_ids.pop("offsets")
+            image_lengths = prompt_ids.pop("lengths")
+            prompt_ids = prompt_ids["input_ids"]
+            multimodal_params.fill_offset_length_for_images(image_offsets, image_lengths)
         prompt_tokens = len(prompt_ids)
 
         if prompt_tokens > self.max_req_input_len:
@@ -100,7 +106,7 @@ class HttpServerManager:
         # 寻找是否有可用的prompt cache 可用
         prompt_cache_len, prompt_cache_req_id = self._find_prompt_cache_req(prompt_ids)
 
-        self.send_to_router.send_pyobj((prompt_ids, sampling_params, request_id, prompt_cache_len, prompt_cache_req_id))
+        self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
   
         while True:
             try:
