@@ -27,6 +27,7 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 from ..models.llava.model import LlavaTokenizer
+from ..models.qwen_vl.model import QWenVLTokenizer
 
 
 # A fast LLaMA tokenizer with the pre-processed `tokenizer.json` file.
@@ -69,6 +70,8 @@ def get_tokenizer(
 
     if "llava" in tokenizer_name.lower():
         tokenizer = LlavaTokenizer(tokenizer)
+    elif 'qwen-vl' in tokenizer_name.lower():
+        tokenizer = QWenVLTokenizer(tokenizer)
 
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
         logger.info(

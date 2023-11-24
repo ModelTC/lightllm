@@ -27,6 +27,7 @@ from lightllm.models.internlm_wquant.model import InternlmTpPartModelWQuant
 from lightllm.models.yi.model import YiTpPartModel
 from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.models.llava.model import LlavaTpPartModel
+from lightllm.models.qwen_vl.model import QWenVLTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from .pre_process import prepare_decode_inputs, prepare_prefill_inputs, splitfuse_prepare_decode_inputs
@@ -93,7 +94,10 @@ class ModelRpcServer(rpyc.Service):
                 else:
                     self.model = LlamaTpPartModel(model_kvargs)
             elif self.model_type == "qwen":
-                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
+                if "visual" in model_cfg:
+                    self.model = QWenVLTpPartModel(model_kvargs)
+                    self.is_multimodal = True
+                elif any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
                     self.model = QWenTpPartModelWQuant(model_kvargs)
                 else:
                     self.model = QWenTpPartModel(model_kvargs)

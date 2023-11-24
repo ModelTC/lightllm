@@ -1,17 +1,15 @@
 import json
 from lightllm.models.llama.model import LlamaTpPartModel
 
-LLAVA_IMAGE_TOKEN = "<image>"
-LLAVA_IMAGE_LENGTH = 576 # (image_size // patch_size) ** 2: (336 // 14) ** 2
-
 
 # Warp of the origal tokenizer
 class LlavaTokenizer:
 
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
-        self.image_token = LLAVA_IMAGE_TOKEN
-        self.image_length = LLAVA_IMAGE_LENGTH
+        self.image_token = "<image>"
+        # (image_size // patch_size) ** 2: (336 // 14) ** 2
+        self.image_length = 576
 
     # only change the impl of the encode func:
     def encode(self, prompt):
@@ -44,6 +42,4 @@ class LlavaTpPartModel(LlamaTpPartModel):
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
-        self.image_token = LLAVA_IMAGE_TOKEN
-        self.image_length = LLAVA_IMAGE_LENGTH
         return
