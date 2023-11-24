@@ -64,11 +64,7 @@ class HttpServerManager:
     async def generate(self, prompt, sampling_params, request_id, multimodal_params):
         prompt_ids = self.tokenizer.encode(prompt)
         # special tokenizer for multimodal_params
-        if isinstance(prompt_ids, dict):
-            image_offsets = prompt_ids.pop("offsets")
-            image_lengths = prompt_ids.pop("lengths")
-            prompt_ids = prompt_ids["input_ids"]
-            multimodal_params.fill_offset_length_for_images(image_offsets, image_lengths)
+        prompt_ids = multimodal_params.after_tokenize(prompt_ids)
         prompt_tokens = len(prompt_ids)
 
         if prompt_tokens > self.max_req_input_len:

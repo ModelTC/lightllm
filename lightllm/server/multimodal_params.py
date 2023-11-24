@@ -64,13 +64,19 @@ class MultimodalParams:
         self.images = [ImageItem(**i) for i in images]
         return
 
-    def fill_offset_length_for_images(self, offsets, lengths):
+    def after_tokenize(self, prompt_ids):
+        if not isinstance(prompt_ids, dict):
+            return prompt_ids
+        # fill offsets and lengths for images
+        offsets = prompt_ids.pop("offsets")
+        lengths = prompt_ids.pop("lengths")
         i_num, o_num, l_num = len(self.images), len(offsets), len(lengths)
         assert i_num == o_num, "Invalid image offsets: {} vs {}".format(i_num, o_num)
         assert i_num == l_num, "Invalid image lengths: {} vs {}".format(i_num, l_num)
         for i, o, l in zip(self.images, offsets, lengths):
             i.offset = o
-            i.length = l 
+            i.length = l
+        return prompt_ids["input_ids"]
     
     def verify(self):
         return
