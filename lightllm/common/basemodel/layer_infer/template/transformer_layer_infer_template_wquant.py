@@ -34,9 +34,3 @@ class TransformerLayerInferWeightQuantTpl(TransformerLayerInferTpl):
         infer_state.key_buffer = None
         infer_state.value_buffer = None
         return None, None
-
-        self._splitfuse_attention(input_embdings,
-                            infer_state,
-                            layer_weight=layer_weight)
-        self._splitfuse_ffn(input_embdings, infer_state, layer_weight)
-        return input_embdings
