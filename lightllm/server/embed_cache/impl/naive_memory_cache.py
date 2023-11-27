@@ -47,6 +47,8 @@ class InMemoryCache(CacheManager):
 
     def get_item_embed(self, id: uuid.UUID) -> bytes:
         record = self._records[id]
+        if not record:
+            return None
         return record.embed
 
     def recycle_item(self, id: uuid.UUID):

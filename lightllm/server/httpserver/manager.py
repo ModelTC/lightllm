@@ -10,14 +10,25 @@ from ..io_struct import BatchStrOut, AbortReq
 class HttpServerManager:
     def __init__(
         self,
+<<<<<<< HEAD
         args,
         router_port,
         httpserver_port
+=======
+        model_weightdir,
+        tokenizor_mode,
+        visual_port,
+        httpserver_port,
+        total_token_num,
+        max_req_input_len,
+        max_req_total_len,
+        trust_remote_code,
+>>>>>>> add visual model and connect the http, visual, router
     ):
         self.args = args
         context = zmq.asyncio.Context(2)
-        self.send_to_router = context.socket(zmq.PUSH)
-        self.send_to_router.connect(f"tcp://127.0.0.1:{router_port}")
+        self.send_to_visual = context.socket(zmq.PUSH)
+        self.send_to_visual.connect(f"tcp://127.0.0.1:{visual_port}")
 
         self.recv_from_detokenization = context.socket(zmq.PULL)
         self.recv_from_detokenization.bind(f"tcp://127.0.0.1:{httpserver_port}")
@@ -89,7 +100,7 @@ class HttpServerManager:
         # 寻找是否有可用的prompt cache 可用
         prompt_cache_len, prompt_cache_req_id = self._find_prompt_cache_req(prompt_ids)
 
-        self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
+        self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
   
         while True:
             try:
@@ -117,7 +128,7 @@ class HttpServerManager:
 
     async def abort(self, request_id):
         abort_req = AbortReq(req_id=request_id)
-        self.send_to_router.send_pyobj(abort_req)
+        self.send_to_visual.send_pyobj(abort_req)
         try:
             del self.req_id_to_out_inf[request_id]
         except:
