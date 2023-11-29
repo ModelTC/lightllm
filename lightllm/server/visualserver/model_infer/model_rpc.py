@@ -8,9 +8,8 @@ from typing import Dict, List, Tuple
 from transformers.configuration_utils import PretrainedConfig
 from lightllm.server.router.model_infer.infer_batch import InferBatch
 from rpyc.utils.classic import obtain
-
-
 from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
+from lightllm.models.llava.llava_visual import LlavaVisionModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 
@@ -34,6 +33,10 @@ class VisualModelRpcServer(rpyc.Service):
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
                 self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
+                self.model.load_model(weight_dir)
+                self.model = self.model.cuda()
+            if self.model_type == "llava":
+                self.model = LlavaVisionModel()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
             else:
