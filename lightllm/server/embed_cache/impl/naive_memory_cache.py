@@ -7,10 +7,10 @@ import hashlib
 
 @dataclasses.dataclass
 class Record(object):
-    id: uuid.UUID
+    id: int
     data: bytes
     md5sum: str
-    embed: torch.Tensor
+    embed: bytes
 
 @CacheManagerFactory.register("naive")
 class InMemoryCache(CacheManager):
@@ -19,7 +19,7 @@ class InMemoryCache(CacheManager):
         self._records = dict()
         self._md5_to_record = dict()
 
-    def add_item(self, data: bytes, id: uuid.UUID=None) -> uuid.UUID:
+    def add_item(self, data: bytes, id: int=None) -> int:
         md5sum = hashlib.md5(data).hexdigest()
         id = self.query_item_uuid(md5sum)
         if id is not None:
@@ -27,31 +27,32 @@ class InMemoryCache(CacheManager):
             return id
         # data doesn't exist, insert it and return id.
         id = uuid.uuid1()
+        id = id.int
         record = Record(id=id, data=data, md5sum=md5sum, embed=None)
         self._records[id] = record
         self._md5_to_record[md5sum] = record
         return id
 
-    def query_item_uuid(self, md5sum) -> Union[uuid.UUID, None]:
+    def query_item_uuid(self, md5sum) -> Union[int, None]:
         record = self._md5_to_record.get(md5sum, None)
         if record is None:
             return None
         return record.id
 
-    def get_item_data(self, id: uuid.UUID) -> bytes:
+    def get_item_data(self, id: int) -> bytes:
         return self._records[id].data
 
-    def set_item_embed(self, id: uuid.UUID, embed: bytes):
+    def set_item_embed(self, id: int, embed: bytes):
         record = self._records[id]
         record.embed = embed
 
-    def get_item_embed(self, id: uuid.UUID) -> bytes:
+    def get_item_embed(self, id: int) -> bytes:
         record = self._records[id]
         if not record:
             return None
         return record.embed
 
-    def recycle_item(self, id: uuid.UUID):
+    def recycle_item(self, id: int):
         record = self._records.get(id, None)
         if record is None:
             return

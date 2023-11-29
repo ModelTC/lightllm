@@ -89,7 +89,7 @@ async def generate(request: Request) -> Response:
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
     multimodal_params_dict = request_dict.get("multimodal_params", {})
-    multimodal_params = MultimodalParams(**multimodal_params_dict)
+    multimodal_params = MultimodalParams(cache_port, **multimodal_params_dict)
 
     request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
@@ -153,7 +153,7 @@ async def generate_stream(request: Request) -> Response:
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
     multimodal_params_dict = request_dict.get("multimodal_params", {})
-    multimodal_params = MultimodalParams(**multimodal_params_dict)
+    multimodal_params = MultimodalParams(cache_port, **multimodal_params_dict)
 
     request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
@@ -229,7 +229,7 @@ async def chat_completions(
         stop_sequences=request.stop
     )
     sampling_params.verify()
-    multimodal_params = MultimodalParams(images=[])
+    multimodal_params = MultimodalParams(cache_port, images=[])
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
@@ -356,6 +356,8 @@ def main():
                     help="splitfuse block size")    
     parser.add_argument("--prompt_cache_strs", type=str, default=[], nargs='+',
                         help="""prompt cache strs""")
+    parser.add_argument("--enable_multimodal", action='store_true',
+                        help="Whether or not to allow to load additional multimodal models.")
     
     parser.add_argument("--return_all_prompt_logprobs", action="store_true",
                         help="return all prompt tokens logprobs")
@@ -390,7 +392,8 @@ def main():
     can_use_ports = alloc_can_use_network_port(
         num=5 + args.tp, used_nccl_port=args.nccl_port
     )
-    router_port, detokenization_port, httpserver_port, visual_port, imgcache_port = can_use_ports[0:5]
+    global cache_port
+    router_port, detokenization_port, httpserver_port, visual_port, cache_port = can_use_ports[0:5]
     model_rpc_ports = can_use_ports[5:]
 
     from .httpserver.manager import HttpServerManager
@@ -398,15 +401,13 @@ def main():
     httpserver_manager = HttpServerManager(
         args,
         router_port=router_port,
-        httpserver_port=httpserver_port
+        visual_port=visual_port,
+        httpserver_port=httpserver_port,
+        enable_multimodal=args.enable_multimodal,
     )
-    start_cache_manager(imgcache_port)
 
     pipe_router_reader, pipe_router_writer = mp.Pipe(duplex=False)
     pipe_detoken_reader, pipe_detoken_writer = mp.Pipe(duplex=False)
-
-    from .router.manager import start_router_process
-    pipe_visual_reader, pipe_visual_writer = mp.Pipe(duplex=False)
     proc_router = mp.Process(
         target=start_router_process,
         args=(
@@ -430,30 +431,17 @@ def main():
         ),
     )
     proc_detoken.start()
-    proc_visual = mp.Process(
-        target=start_visual_process,
-        args=(
-            args,
-            router_port,
-            visual_port,
-            imgcache_port,
-            pipe_visual_writer
-        ),
-    )
-    proc_visual.start()
 
     # wait load model ready
     router_init_state = pipe_router_reader.recv()
     detoken_init_state = pipe_detoken_reader.recv()
-    visual_init_state = pipe_visual_reader.recv()
 
     from lightllm.utils.log_utils import init_logger
     logger = init_logger(__name__)
 
-    if router_init_state != "init ok" or detoken_init_state != "init ok" or visual_init_state != "init ok":
+    if router_init_state != "init ok" or detoken_init_state != "init ok":
         proc_router.kill()
         proc_detoken.kill()
-        proc_visual.kill()
         print(
             "router init state:",
             router_init_state,
@@ -462,7 +450,51 @@ def main():
         )
         sys.exit(1)
 
-    assert proc_router.is_alive() and proc_detoken.is_alive() and proc_visual.is_alive()
+    assert proc_router.is_alive() and proc_detoken.is_alive()
+
+    if args.enable_multimodal:
+        pipe_cache_reader, pipe_cache_writer = mp.Pipe(duplex=False)
+        proc_cache = mp.Process(
+            target=start_cache_manager,
+            args=(
+                cache_port,
+                pipe_cache_writer,
+            ),
+        )
+        proc_cache.start()
+        # wait embed cache init ready
+        cache_init_state = pipe_cache_reader.recv()
+        if cache_init_state != 'init ok':
+            proc_cache.kill()
+            print(
+                "cache init state:",
+                cache_init_state,
+            )
+            sys.exit(1)
+
+        pipe_visual_reader, pipe_visual_writer = mp.Pipe(duplex=False)
+        proc_visual = mp.Process(
+            target=start_visual_process,
+            args=(
+                args,
+                router_port,
+                visual_port,
+                cache_port,
+                pipe_visual_writer
+            ),
+        )
+        proc_visual.start()
+        visual_init_state = pipe_visual_reader.recv()
+
+        if visual_init_state != "init ok":
+            proc_visual.kill()
+            print(
+                "visual init state:",
+                visual_init_state,
+            )
+            sys.exit(1)
+
+        assert proc_visual.is_alive()
 
     uvicorn.run(
         app,

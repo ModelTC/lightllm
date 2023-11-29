@@ -5,9 +5,12 @@ import uvloop
 import rpyc
 from transformers import AutoConfig
 from ..io_struct import AbortReq
+from ..embed_cache.utils import tensor2bytes
 from rpyc.utils.classic import obtain
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from .model_infer.model_rpc import start_model_process, VisualModelRpcClient
+from io import BytesIO
+from PIL import Image
 
 
 class VisualManager:
@@ -44,7 +47,8 @@ class VisualManager:
         for rank_id in range(self.world_size):  # async init model process
             kvargs = {
                 "weight_dir" : self.model_weightdir,
-                "trust_remote_code" : self.trust_remote_code
+                "trust_remote_code" : self.trust_remote_code,
+                "rank_id": rank_id,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
         await asyncio.gather(*init_model_ret)
@@ -55,16 +59,25 @@ class VisualManager:
         self.send_to_router.send_pyobj(abort_req)
         return
 
-    async def infer_imgs(self, uuids, image_paths):
-        await self._init_batch(batch)
-        rets = [self.model_rpcs[tp_rank].encode(image_paths) for tp_rank in range(self.world_size)]
+    async def infer_imgs(self, uuids):
+        if len(uuids) == 0:
+            return
+        # uuids -> PIL Images
+        images = []
+        for uid in uuids:
+            image_data = self.cache_client.root.get_item_data(uid)
+            images.append(Image.open(BytesIO(image_data)))
+            print(" + got pil image:", images[-1].size, images[-1].mode)
+        rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]
         ans = await asyncio.gather(*rets)
         if self.world_size != 1:
             img_embed = obtain(ans[0])
         else:
             img_embed = ans[0]
         for i in range(len(uuids)):
-            self.cache_client.root.set_item_embed(uuids[i], img_embed[i])
+            print(" + set_item_embed:", uuids[i], img_embed[i].shape)
+            cur_embed_bytes = tensor2bytes(img_embed[i])
+            self.cache_client.root.set_item_embed(uuids[i], cur_embed_bytes)
         return
 
     async def loop_for_fwd(self):
@@ -73,32 +86,32 @@ class VisualManager:
                 await asyncio.sleep(0.01)  # 10ms
             else:
                 cur_batch_size = 0
-                processing_req = []
-                unprocessed_uuids = []
-                unprocessed_imgs = []
+                reqs_need_infer = []
+                uuids_need_infer = []
                 while cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
                     req = self.waiting_reqs.pop(0)
-                    has_unprocessed_imgs = True
-                    for img in req.multimodal_params.images:
-                        uuid = img.uuid
-                        if self.cache_client.root.get_item_embed(uuid) is None:
-                            has_unprocessed_imgs=False
+                    _, _, _, multimodal_params = req
+                    need_infer = False
+                    for img in multimodal_params.images:
+                        if self.cache_client.root.get_item_embed(img.uuid) is None:
+                            need_infer = True
                             cur_batch_size += 1
-                            unprocessed_uuids.append(uuid)
-                            unprocessed_imgs.append(img)
-                    if not has_unprocessed_imgs:
-                        self.send_to_router.send_pyobj(req)
+                            uuids_need_infer.append(img.uuid)
+                    if need_infer:
+                        reqs_need_infer.append(req)
                     else:
-                        processing_req.append(req)
-                await self.infer_imgs(unprocessed_uuids, unprocessed_imgs)
-                for req in processing_req:
+                        print(" + no need need infer, send to router...")
+                        self.send_to_router.send_pyobj(req)
+
+                await self.infer_imgs(uuids_need_infer)
+                for req in reqs_need_infer:
+                    print(" + after infer_imgs, send to router...")
                     self.send_to_router.send_pyobj(req)
 
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
             if isinstance(recv_req, tuple) and len(recv_req) == 4:
-                prompt_ids, sampling_params, request_id, multimodal_params = recv_req
                 self.waiting_reqs.append(recv_req)
             elif isinstance(recv_req, AbortReq):
                 abort_req = recv_req

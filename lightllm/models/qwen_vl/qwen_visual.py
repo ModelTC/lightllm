@@ -9,7 +9,7 @@ import requests
 from io import BytesIO
 from functools import partial
 from PIL import Image
-from typing import Callable, Optional, Sequence, Tuple, List
+from typing import Callable, Optional, Sequence, Tuple, List, Union
 import numpy as np
 
 import torch
@@ -394,6 +394,7 @@ class QWenVisionTransformer(nn.Module):
             dtype=self.transformer.get_cast_dtype(),
             device=self.transformer.get_cast_device(),
         )
+        print(" + visual forward input:", x.shape, x.dtype, x.device)
         # to patches
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
@@ -410,16 +411,19 @@ class QWenVisionTransformer(nn.Module):
         x = self.attn_pool(x)
         x = self.ln_post(x)
         x = x @ self.proj
+        print(" + visual forward output:", x.shape, x.dtype, x.device)
 
         return x
           
-    def encode(self, image_paths: List[str]):
+    def encode(self, image_items: List[Union[str, Image.Image]]):
         images = []
-        for image_path in image_paths:
-            if image_path.startswith("http://") or image_path.startswith("https://"):
-                image = Image.open(requests.get(image_path, stream=True).raw)
+        for item in image_items:
+            if isinstance(item, Image.Image):
+                image = item
+            elif item.startswith("http://") or item.startswith("https://"):
+                image = Image.open(requests.get(item, stream=True).raw)
             else:
-                image = Image.open(image_path)
+                image = Image.open(item)
             image = image.convert("RGB")
             images.append(self.image_transform(image))
         images = torch.stack(images, dim=0)
