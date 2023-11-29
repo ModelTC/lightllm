@@ -1,5 +1,6 @@
 import json
 from lightllm.models.llama.model import LlamaTpPartModel
+from lightllm.models.qwen_vl.layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
 
 
 # Warp of the origal tokenizer
@@ -39,6 +40,9 @@ class LlavaTokenizer:
 
 
 class LlavaTpPartModel(LlamaTpPartModel):
+
+    # infer class
+    pre_layer_infer_class = LlamaMultimodalPreLayerInfer
 
     def __init__(self, kvargs):
         super().__init__(kvargs)

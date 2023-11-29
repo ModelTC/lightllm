@@ -5,18 +5,16 @@ import requests
 from io import BytesIO
 from PIL import Image
 import base64
-# import hashlib
-# import rpyc
-import uuid
+import rpyc
 
 
 class ImageItem:
 
-    def __init__(self, **kwargs):
+    def __init__(self, cache_port, **kwargs):
         _type, _data = kwargs["type"], kwargs["data"]
         img_data = self.read(_type, _data)
         # the unique id for the image 
-        self.uuid = self.uuid(img_data)
+        self.uuid = self.get_uuid(cache_port, img_data)
         # where should the image fill into the text embeds
         self.offset = -1
         # the length of the image embeds
@@ -41,10 +39,9 @@ class ImageItem:
         except Exception as e:
             raise ValueError(f"Failed to read image type={_type}, data[:100]={_data[:100]}: {e}!")
 
-    def uuid(self, img_data):
-        # client = rpyc.connect("localhost", 2233)
-        # image_uuid = client.root.add_item(img_data)
-        image_uuid = uuid.uuid1()
+    def get_uuid(self, cache_port, img_data):
+        client = rpyc.connect("localhost", cache_port)
+        image_uuid = client.root.add_item(img_data)
         return image_uuid
 
     def to_dict(self):
@@ -59,10 +56,15 @@ class MultimodalParams:
 
     def __init__(
         self,
+        cache_port,
         images: List[dict] = [],
     ) -> None:
-        self.images = [ImageItem(**i) for i in images]
+        self.cache_port = cache_port
+        self.images = [ImageItem(cache_port, **i) for i in images]
         return
+
+    def should_process(self):
+        return len(self.images) > 0
 
     def after_tokenize(self, prompt_ids):
         if not isinstance(prompt_ids, dict):
@@ -84,4 +86,5 @@ class MultimodalParams:
     def to_dict(self):
         ret = {}
         ret["images"] = [i.to_dict() for i in self.images]
+        ret["cache_port"] = self.cache_port
         return ret

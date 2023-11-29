@@ -1,4 +1,3 @@
-import uuid
 from typing import Union
 
 class CacheManager(object):
@@ -7,24 +6,24 @@ class CacheManager(object):
     def __init__(self) -> None:
         pass
 
-    def add_item(self, data: bytes) -> uuid.UUID:
+    def add_item(self, data: bytes) -> int:
         pass
 
-    def query_item_uuid(self, md5sum) -> Union[uuid.UUID, None]:
+    def query_item_uuid(self, md5sum) -> Union[int, None]:
         ''' Query the uuid of certain data with its md5sum, if not exists, return None.
         '''
         pass
 
-    def get_item_data(self, id: uuid.UUID) -> bytes:
+    def get_item_data(self, id: int) -> bytes:
         pass
 
-    def set_item_embed(self, id: uuid.UUID, embed: bytes):
+    def set_item_embed(self, id: int, embed: bytes):
         pass
 
-    def get_item_embed(self, id: uuid.UUID) -> bytes:
+    def get_item_embed(self, id: int) -> bytes:
         pass
 
-    def recycle_item(self, id: uuid.UUID):
+    def recycle_item(self, id: int):
         pass
 
 class CacheManagerFactory(object):

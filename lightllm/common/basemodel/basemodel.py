@@ -2,7 +2,6 @@ import os
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import json
 import torch
-import uuid
 from typing import final
 
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
@@ -148,7 +147,7 @@ class TpPartBaseModel:
         if is_prefill:
             return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params)
         else:
-            return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len)
+            return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params)
 
     
     def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params):
@@ -189,7 +188,7 @@ class TpPartBaseModel:
         predict_logics = self._context_forward(input_ids, infer_state)
         return predict_logics
     
-    def _decode(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len):
+    def _decode(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = False
         infer_state.batch_size = batch_size
@@ -199,6 +198,7 @@ class TpPartBaseModel:
         infer_state.b_req_idx = b_req_idx
         infer_state.b_start_loc = b_start_loc
         infer_state.b_seq_len = b_seq_len
+        infer_state.multimodal_params = multimodal_params
         
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager

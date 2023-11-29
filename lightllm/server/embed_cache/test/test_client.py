@@ -1,8 +1,11 @@
 import rpyc
 import os
 import PIL
+import torch
+from lightllm.server.embed_cache.utils import tensor2bytes, bytes2tensor
 
-client = rpyc.connect("localhost", 2233)
+
+client = rpyc.connect("localhost", 10004)
 
 dirname = os.path.dirname(__file__)
 data = open(os.path.join(dirname, "AthensAcropolis.jpg"), "rb").read()
@@ -20,10 +23,17 @@ data_retrive = client.root.get_item_data(id)
 assert data_retrive == data, "the data retrived is different from inserted"
 
 # insert embed
-import torch
 embed = torch.rand(32, 10240).to(torch.float32)
-client.root.set_item_embed(id, embed)
+print(embed)
+embed_bytes = tensor2bytes(embed)
+
+client.root.set_item_embed(id, embed_bytes)
+print("set", id, embed.shape, embed.dtype, embed.device)
 
 # get embed and check embed is the same.
 embed_retrived = client.root.get_item_embed(id)
+embed_retrived = bytes2tensor(embed_retrived)
 assert torch.allclose(embed, embed_retrived), "the embed retrived is different from inserted"
+# print("end with sleep 100")
+# import time
+# time.sleep(20)

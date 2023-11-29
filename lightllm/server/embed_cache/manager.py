@@ -23,36 +23,37 @@ class CacheServer(rpyc.Service):
         # (to finalize the service, if needed)
         pass
 
-    def exposed_add_item(self, data: bytes) -> uuid.UUID:
+    def exposed_add_item(self, data: bytes) -> int:
         id = self._impl.add_item(data)
-        assert isinstance(id, uuid.UUID)
+        assert isinstance(id, int)
         return id
 
-    def exposed_query_item_uuid(self, md5sum) -> Union[uuid.UUID, None]:
+    def exposed_query_item_uuid(self, md5sum) -> Union[int, None]:
         id = self._impl.query_item_uuid(md5sum)
         print(id)
-        assert isinstance(id, uuid.UUID)
+        assert isinstance(id, int)
         return id
 
-    def exposed_get_item_data(self, id: uuid.UUID) -> bytes:
+    def exposed_get_item_data(self, id: int) -> bytes:
         return self._impl.get_item_data(id=id)
 
-    def exposed_set_item_embed(self, id: uuid.UUID, embed: bytes):
+    def exposed_set_item_embed(self, id: int, embed: bytes):
         return self._impl.set_item_embed(id=id, embed=embed)
 
-    def exposed_get_item_embed(self, id: uuid.UUID) -> bytes:
+    def exposed_get_item_embed(self, id: int) -> bytes:
         return self._impl.get_item_embed(id=id)
 
-    def exposed_recycle_item(self, id: uuid.UUID):
+    def exposed_recycle_item(self, id: int):
         return self._impl.recycle_item(id)
 
-def start_cache_manager(port: int):
+def start_cache_manager(port: int, pipe_writer):
     from .interface import CacheManagerFactory
     manager_cls = CacheManagerFactory.get_impl("naive")
     manager = manager_cls()
     service = CacheServer(manager)
     from rpyc.utils.server import ThreadedServer
     t = ThreadedServer(service, port=port)
+    pipe_writer.send('init ok')
     t.start()
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import json
 import unicodedata
 from lightllm.models.qwen.model import QWenTpPartModel
+from .layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
 
 
 # Warp of the origal tokenizer
@@ -73,6 +74,9 @@ class QWenVLTokenizer:
 
 
 class QWenVLTpPartModel(QWenTpPartModel):
+
+    # infer class
+    pre_layer_infer_class = LlamaMultimodalPreLayerInfer
 
     def __init__(self, kvargs):
         super().__init__(kvargs)

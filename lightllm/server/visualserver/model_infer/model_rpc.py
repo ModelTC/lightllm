@@ -10,7 +10,7 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch
 from rpyc.utils.classic import obtain
 
 
-from lightllm.visual_model.qwen_visual import QWenVisionTransformer
+from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 
@@ -33,7 +33,9 @@ class VisualModelRpcServer(rpyc.Service):
         try:
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
-                self.model = QWenVisionTransformer(**model_cfg.visual)
+                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
+                self.model.load_model(weight_dir)
+                self.model = self.model.cuda()
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
@@ -47,12 +49,12 @@ class VisualModelRpcServer(rpyc.Service):
         return
     
     # @calculate_time(show=True, min_cost_ms=150)
-    def forward(self, image_paths):
-        return self.model.encode(image_paths)
+    def forward(self, images):
+        return self.model.encode(images)
 
     # @calculate_time(show=False, min_cost_ms=300)
-    def exposed_encode(self, image_paths):
-        return self.forward(image_paths)
+    def exposed_encode(self, images):
+        return self.forward(images)
 
 class VisualModelRpcClient:
     def __init__(self, model_rpc, world_size, rpc_server_process=None):
@@ -84,8 +86,8 @@ class VisualModelRpcClient:
         else:
             return
 
-    async def encode(self, image_paths):
-        ans = self._encode(image_paths)
+    async def encode(self, images):
+        ans = self._encode(images)
         if self.use_rpc:
             return await ans
         else:
@@ -94,4 +96,4 @@ class VisualModelRpcClient:
 async def start_model_process(world_size):
     if world_size == 1:
         return VisualModelRpcClient(VisualModelRpcServer(), world_size)
-    
+
