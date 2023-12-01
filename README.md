@@ -41,6 +41,9 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 - [Baichuan-13b](https://github.com/baichuan-inc/Baichuan-13B)
 - [InternLM-7b](https://github.com/InternLM/InternLM)
 - [Yi-34b](https://huggingface.co/01-ai/Yi-34B)  
+- [Qwen-VL](https://huggingface.co/Qwen/Qwen-VL)
+- [Llava-7b](https://huggingface.co/liuhaotian/llava-v1.5-7b)
+- [Llava-13b](https://huggingface.co/liuhaotian/llava-v1.5-13b)
 
 > When you start Qwen-7b, you need to set the parameter '--eos_id 151643 --trust_remote_code'.
 
@@ -163,6 +166,110 @@ if response.status_code == 200:
 else:
     print('Error:', response.status_code, response.text)
 ~~~
+
+### RUN Multimodal Models
+
+##### Run QWen-VL
+~~~shell
+python -m lightllm.server.api_server \
+    --host 0.0.0.0                 \
+    --port 8080                    \
+    --tp 1                         \
+    --max_total_token_num 12000    \
+    --trust_remote_code            \
+    --enable_multimodal            \
+    --model_dir /path/of/Qwen-VL
+~~~
+
+##### Run Llava
+~~~shell
+python -m lightllm.server.api_server \
+    --host 0.0.0.0                 \
+    --port 8080                    \
+    --tp 1                         \
+    --max_total_token_num 12000    \
+    --trust_remote_code            \
+    --enable_multimodal            \
+    --model_dir /path/of/llava-v1.5-7b or /path/of/llava-v1.5-13b
+~~~
+
+##### Query From QWen-VL
+~~~python
+import time
+import requests
+import json
+import base64
+
+url = 'http://localhost:8080/generate'
+headers = {'Content-Type': 'application/json'}
+
+uri = "/local/path/of/image" # or "/http/path/of/image"
+if uri.startswith("http"):
+    images = [{"type": "url", "data": uri}]
+else:
+    with open(uri, 'rb') as fin:
+        b64 = base64.b64encode(fin.read()).decode("utf-8")
+    images=[{'type': "base64", "data": b64}]
+
+data = {
+    "inputs": "<img></img>Generate the caption in English with grounding:",
+    "parameters": {
+        "max_new_tokens": 200,
+        # The space before <|endoftext|> is important, the server will remove the first bos_token_id, but QWen tokenizer does not has bos_token_id
+        "stop_sequences": [" <|endoftext|>"],
+    },
+    "multimodal_params": {
+        "images": images,
+    }
+}
+
+response = requests.post(url, headers=headers, data=json.dumps(data))
+if response.status_code == 200:
+    print(response.json())
+else:
+    print('Error:', response.status_code, response.text)
+~~~
+
+##### Query From Llava
+~~~python
+import time
+import requests
+import json
+import base64
+
+url = 'http://localhost:8080/generate'
+headers = {'Content-Type': 'application/json'}
+
+uri = "/local/path/of/image" # or "/http/path/of/image"
+if uri.startswith("http"):
+    images = [{"type": "url", "data": uri}]
+else:
+    with open(uri, 'rb') as fin:
+        b64 = base64.b64encode(fin.read()).decode("utf-8")
+    images=[{'type': "base64", "data": b64}]
+
+data = {
+    "inputs": "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nPlease explain the picture. ASSISTANT:",
+    "parameters": {
+        "max_new_tokens": 200,
+    },
+    "multimodal_params": {
+        "images": images,
+    }
+}
+
+response = requests.post(url, headers=headers, data=json.dumps(data))
+if response.status_code == 200:
+    print(response.json())
+else:
+    print('Error:', response.status_code, response.text)
+~~~
+
+> Additional lanuch parameters: `--enable_multimodal`
+
+> The special image tag for Qwen-VL is `<img></img>` (`<image>` for Llava), the length of `data["multimodal_params"]["images"]` should be the same as the count of tags, The number can be 0, 1, 2, ...
+
+> Input images format: list for dist like `{'type': 'url'/'base64', 'data': xxx}`
 
 ## Performance
 
