@@ -127,7 +127,9 @@ class HttpServerManager:
 
     async def abort(self, request_id):
         abort_req = AbortReq(req_id=request_id)
-        self.send_to_visual.send_pyobj(abort_req)
+        self.send_to_router.send_pyobj(abort_req)
+        if self.enable_multimodal:
+            self.send_to_visual.send_pyobj(abort_req)
         try:
             del self.req_id_to_out_inf[request_id]
         except:
