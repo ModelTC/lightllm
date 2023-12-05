@@ -267,9 +267,11 @@ else:
 
 > Additional lanuch parameters: `--enable_multimodal`
 
+> Only support `--tp 1`
+
 > The special image tag for Qwen-VL is `<img></img>` (`<image>` for Llava), the length of `data["multimodal_params"]["images"]` should be the same as the count of tags, The number can be 0, 1, 2, ...
 
-> Input images format: list for dist like `{'type': 'url'/'base64', 'data': xxx}`
+> Input images format: list for dict like `{'type': 'url'/'base64', 'data': xxx}`
 
 ## Performance
 

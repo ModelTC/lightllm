@@ -35,7 +35,7 @@ class VisualModelRpcServer(rpyc.Service):
                 self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
-            if self.model_type == "llava":
+            elif self.model_type == "llava":
                 self.model = LlavaVisionModel()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
