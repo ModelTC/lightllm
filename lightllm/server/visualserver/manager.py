@@ -11,6 +11,9 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from .model_infer.model_rpc import start_model_process, VisualModelRpcClient
 from io import BytesIO
 from PIL import Image
+import time
+import torch
+import multiprocessing.shared_memory as shm
 
 
 class VisualManager:
@@ -66,6 +69,8 @@ class VisualManager:
         images = []
         for uid in uuids:
             image_data = self.cache_client.root.get_item_data(uid)
+            # print(id(ImageCache))
+            # image_data = ImageCache.get_item_data(uid)
             images.append(Image.open(BytesIO(image_data)))
             print(" + got pil image:", images[-1].size, images[-1].mode)
         rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]
@@ -74,10 +79,21 @@ class VisualManager:
             img_embed = obtain(ans[0])
         else:
             img_embed = ans[0]
+        torch.cuda.synchronize()
+        b = time.time()
         for i in range(len(uuids)):
             print(" + set_item_embed:", uuids[i], img_embed[i].shape)
+            # torch.cuda.synchronize()
+            # b1 = time.time()
             cur_embed_bytes = tensor2bytes(img_embed[i])
-            self.cache_client.root.set_item_embed(uuids[i], cur_embed_bytes)
+            # torch.cuda.synchronize()
+            # e1 = time.time()
+            # print(e1 - b1)
+            if not self.cache_client.root.get_item_embed(uuids[i]):
+                shared_memory = shm.SharedMemory(name=str(uuids[i]), create=True, size=len(cur_embed_bytes))
+                mem_view = shared_memory.buf
+                mem_view[:len(cur_embed_bytes)] = cur_embed_bytes
+                self.cache_client.root.set_item_embed(uuids[i])
         return
 
     async def loop_for_fwd(self):
@@ -93,7 +109,7 @@ class VisualManager:
                     _, _, _, multimodal_params = req
                     need_infer = False
                     for img in multimodal_params.images:
-                        if self.cache_client.root.get_item_embed(img.uuid) is None:
+                        if not self.cache_client.root.get_item_embed(img.uuid):
                             need_infer = True
                             cur_batch_size += 1
                             uuids_need_infer.append(img.uuid)

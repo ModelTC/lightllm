@@ -7,6 +7,8 @@ import uuid
 from typing import Union
 
 from .interface import CacheManager
+from rpyc.utils.classic import obtain
+
 
 class CacheServer(rpyc.Service):
     def __init__(self, manager_impl: CacheManager) -> None:
@@ -24,26 +26,31 @@ class CacheServer(rpyc.Service):
         pass
 
     def exposed_add_item(self, data: bytes) -> int:
+        data = obtain(data)
         id = self._impl.add_item(data)
         assert isinstance(id, int)
         return id
 
     def exposed_query_item_uuid(self, md5sum) -> Union[int, None]:
+        md5sum = obtain(md5sum)
         id = self._impl.query_item_uuid(md5sum)
-        print(id)
         assert isinstance(id, int)
         return id
 
     def exposed_get_item_data(self, id: int) -> bytes:
+        id = obtain(id)
         return self._impl.get_item_data(id=id)
 
-    def exposed_set_item_embed(self, id: int, embed: bytes):
-        return self._impl.set_item_embed(id=id, embed=embed)
+    def exposed_set_item_embed(self, id: int):
+        id = obtain(id)
+        return self._impl.set_item_embed(id=id)
 
-    def exposed_get_item_embed(self, id: int) -> bytes:
+    def exposed_get_item_embed(self, id: int, debug=False) -> bytes:
+        id = obtain(id)
         return self._impl.get_item_embed(id=id)
 
     def exposed_recycle_item(self, id: int):
+        id = obtain(id)
         return self._impl.recycle_item(id)
 
 def start_cache_manager(port: int, pipe_writer):

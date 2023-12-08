@@ -1,7 +1,8 @@
 from lightllm.common.basemodel.infer_struct import InferStateInfo
 from lightllm.server.embed_cache.utils import bytes2tensor
 import rpyc
-
+import torch
+import multiprocessing.shared_memory as shm
 
 """
 infer_state.multimodal_params: batch list of MultimodalParams-dict like:
@@ -25,10 +26,11 @@ def prepare_multimodal_embeds(input_embs, infer_state: InferStateInfo):
         client = rpyc.connect("localhost", p["cache_port"])
         for img in p["images"]:
             uid, offset, length = img["uuid"], img["offset"], img["length"]
-
             # pull the img_embeds by uid from cache server
             if isinstance(uid, int):
-                img_embeds = bytes2tensor(client.root.get_item_embed(uid))
+                # img_embeds = bytes2tensor(client.root.get_item_embed(uid))
+                shared_memory = shm.SharedMemory(name=str(uid))
+                img_embeds = bytes2tensor(shared_memory.buf).reshape(576, 4096)
             elif isinstance(uid, torch.Tensor):
                 img_embeds = uid
             else:
