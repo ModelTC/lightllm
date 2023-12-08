@@ -17,10 +17,10 @@ class CacheManager(object):
     def get_item_data(self, id: int) -> bytes:
         pass
 
-    def set_item_embed(self, id: int, embed: bytes):
+    def set_item_embed(self, id: int):
         pass
 
-    def get_item_embed(self, id: int) -> bytes:
+    def get_item_embed(self, id: int, debug=False) -> bool:
         pass
 
     def recycle_item(self, id: int):
