@@ -12,7 +12,7 @@ class HttpServerManager:
         self,
         args,
         router_port,
-        httpserver_port
+        httpserver_port,
         visual_port,
         enable_multimodal,
     ):

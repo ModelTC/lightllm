@@ -23,7 +23,7 @@ class VisualManager:
         router_port,
         visual_port,
         client_port,
-        infer_batch_size=4,
+        infer_batch_size=8,
     ):
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
@@ -106,7 +106,7 @@ class VisualManager:
                 uuids_need_infer = []
                 while cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
                     req = self.waiting_reqs.pop(0)
-                    _, _, _, multimodal_params = req
+                    _, _, multimodal_params, _, _, _ = req
                     need_infer = False
                     for img in multimodal_params.images:
                         if not self.cache_client.root.get_item_embed(img.uuid):
@@ -127,7 +127,7 @@ class VisualManager:
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
-            if isinstance(recv_req, tuple) and len(recv_req) == 4:
+            if isinstance(recv_req, tuple) and len(recv_req) == 6:
                 self.waiting_reqs.append(recv_req)
             elif isinstance(recv_req, AbortReq):
                 abort_req = recv_req
