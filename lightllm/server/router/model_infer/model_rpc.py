@@ -23,6 +23,7 @@ from lightllm.models.baichuan2_13b.model import Baichuan2_13bTpPartModel
 from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.yi.model import YiTpPartModel
+from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from .pre_process import prepare_decode_inputs, prepare_prefill_inputs, splitfuse_prepare_decode_inputs
@@ -109,6 +110,8 @@ class ModelRpcServer(rpyc.Service):
                 self.model = InternlmTpPartModel(model_kvargs)
             elif self.model_type == "Yi":
                 self.model = YiTpPartModel(model_kvargs)
+            elif self.model_type == "mistral":
+                self.model = MistralTpPartModel(model_kvargs)
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
