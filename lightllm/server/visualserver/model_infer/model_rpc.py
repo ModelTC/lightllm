@@ -32,11 +32,11 @@ class VisualModelRpcServer(rpyc.Service):
         try:
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
-                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
+                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().half()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
             elif self.model_type == "llava":
-                self.model = LlavaVisionModel()
+                self.model = LlavaVisionModel().eval()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
             else:
@@ -52,6 +52,7 @@ class VisualModelRpcServer(rpyc.Service):
         return
     
     # @calculate_time(show=True, min_cost_ms=150)
+    @torch.no_grad()
     def forward(self, images):
         return self.model.encode(images)
 
