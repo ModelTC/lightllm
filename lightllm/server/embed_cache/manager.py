@@ -45,13 +45,19 @@ class CacheServer(rpyc.Service):
         id = obtain(id)
         return self._impl.set_item_embed(id=id)
 
-    def exposed_get_item_embed(self, id: int, debug=False) -> bytes:
+    def exposed_query_available_size(self):
+        return self._impl.query_available_size()
+    
+    def exposed_free_item(self, id: int):
+        id = obtain(id)
+        return self._impl.free_item(id)
+
+    def exposed_get_item_embed(self, id: int) -> bytes:
         id = obtain(id)
         return self._impl.get_item_embed(id=id)
 
-    def exposed_recycle_item(self, id: int):
-        id = obtain(id)
-        return self._impl.recycle_item(id)
+    def exposed_recycle_item(self):
+        return self._impl.recycle_item()
 
 def start_cache_manager(port: int, pipe_writer):
     from .interface import CacheManagerFactory

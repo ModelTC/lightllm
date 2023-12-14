@@ -23,7 +23,7 @@ class VisualManager:
         router_port,
         visual_port,
         client_port,
-        infer_batch_size=8,
+        infer_batch_size=4,
     ):
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
@@ -83,17 +83,13 @@ class VisualManager:
         b = time.time()
         for i in range(len(uuids)):
             print(" + set_item_embed:", uuids[i], img_embed[i].shape)
-            # torch.cuda.synchronize()
-            # b1 = time.time()
             cur_embed_bytes = tensor2bytes(img_embed[i])
-            # torch.cuda.synchronize()
-            # e1 = time.time()
-            # print(e1 - b1)
             if not self.cache_client.root.get_item_embed(uuids[i]):
                 shared_memory = shm.SharedMemory(name=str(uuids[i]), create=True, size=len(cur_embed_bytes))
                 mem_view = shared_memory.buf
                 mem_view[:len(cur_embed_bytes)] = cur_embed_bytes
-                self.cache_client.root.set_item_embed(uuids[i])
+            self.cache_client.root.set_item_embed(uuids[i])
+        self.cache_client.root.recycle_item()
         return
 
     async def loop_for_fwd(self):
@@ -104,7 +100,8 @@ class VisualManager:
                 cur_batch_size = 0
                 reqs_need_infer = []
                 uuids_need_infer = []
-                while cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
+                available_size = self.cache_client.root.query_available_size()
+                while cur_batch_size < available_size and cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
                     req = self.waiting_reqs.pop(0)
                     _, _, multimodal_params, _, _, _ = req
                     need_infer = False

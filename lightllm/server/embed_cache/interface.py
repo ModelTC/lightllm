@@ -20,10 +20,16 @@ class CacheManager(object):
     def set_item_embed(self, id: int):
         pass
 
-    def get_item_embed(self, id: int, debug=False) -> bool:
+    def query_available_size(self):
         pass
 
-    def recycle_item(self, id: int):
+    def free_item(self, id: int):
+        pass
+
+    def get_item_embed(self, id: int) -> bool:
+        pass
+
+    def recycle_item(self):
         pass
 
 class CacheManagerFactory(object):

@@ -30,7 +30,8 @@ def prepare_multimodal_embeds(input_embs, infer_state: InferStateInfo):
             if isinstance(uid, int):
                 # img_embeds = bytes2tensor(client.root.get_item_embed(uid))
                 shared_memory = shm.SharedMemory(name=str(uid))
-                img_embeds = bytes2tensor(shared_memory.buf).reshape(576, 4096)
+                img_embeds = bytes2tensor(shared_memory.buf).reshape(img["length"], -1)
+                client.root.free_item(uid)
             elif isinstance(uid, torch.Tensor):
                 img_embeds = uid
             else:
