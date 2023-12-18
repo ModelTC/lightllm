@@ -31,6 +31,9 @@ from .post_process import sample
 from .infer_batch import requests_mapping
 from .infer_batch import InferReq
 from lightllm.server.io_struct import ReqRunStatus
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 class ModelRpcServer(rpyc.Service):
 
@@ -116,8 +119,9 @@ class ModelRpcServer(rpyc.Service):
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
-            print("#" * 16)
-            print("load model error:", str(e), e, type(e))
+            #print("#" * 16)
+            logger.error("load model error:", str(e), e, type(e))
+            # print("load model error:", str(e), e, type(e))
             import traceback
             traceback.print_exc()
             raise e

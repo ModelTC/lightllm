@@ -17,6 +17,10 @@ from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
 from ..tokenizer import get_tokenizer
 
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
+
 
 class RouterManager:
 
@@ -144,7 +148,8 @@ class RouterManager:
                 if counter_count % 50 == 0:
                     total_used_tokens = self.prompt_cache_used_tokens + self.running_batch.batch_used_tokens + self.req_queue.pause_req_used_tokens
                     token_ratio = total_used_tokens / self.max_total_token_num
-                    print("current batch size:", len(self.running_batch.reqs), "paused req num:", len(self.req_queue.pause_req_dict), "token used ratio:", token_ratio)
+                    logger.debug("current batch size:", len(self.running_batch.reqs), "paused req num:", len(self.req_queue.pause_req_dict), "token used ratio:", token_ratio)
+                    # print("current batch size:", len(self.running_batch.reqs), "paused req num:", len(self.req_queue.pause_req_dict), "token used ratio:", token_ratio)
                     pass
                 self.stats_tool.print_stats()
                 
@@ -191,7 +196,8 @@ class RouterManager:
             # pause strategy
             paused_reqs = select_paused_reqs(self.running_batch, self.pause_strategy, self.req_queue, self.max_total_token_num)
             await self._pause_reqs(self.running_batch, paused_reqs)
-            print("pasued req num:", len(self.req_queue.pause_req_dict))
+            logger.debug("pasued req num:", len(self.req_queue.pause_req_dict))
+            # print("pasued req num:", len(self.req_queue.pause_req_dict))
             self.has_wait_tokens = 0
             return
         return

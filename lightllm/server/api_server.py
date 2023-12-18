@@ -42,6 +42,9 @@ from .router.manager import start_router_process
 from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 from .api_models import (
     ChatCompletionRequest,
@@ -398,7 +401,7 @@ def main():
     if router_init_state != "init ok" or detoken_init_state != "init ok":
         proc_router.kill()
         proc_detoken.kill()
-        print(
+        logger.debug(
             "router init state:",
             router_init_state,
             "detoken init state:",

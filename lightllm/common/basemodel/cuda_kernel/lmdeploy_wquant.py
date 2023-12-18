@@ -1,4 +1,7 @@
 import torch
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 @torch.no_grad()
 def quantize_int4_lmdeploy(weight, group_size=128, tp_rank=0, pack_order=[0, 2, 4, 6, 1, 3, 5, 7]):
@@ -11,7 +14,8 @@ def quantize_int4_lmdeploy(weight, group_size=128, tp_rank=0, pack_order=[0, 2, 
     """
     K, N = weight.shape
     weight = weight.transpose(1, 0)
-    print("tp_rank: {} quantize_int4_lmdeploy for K={} N={} ...".format(tp_rank, K, N))
+    logger.debug("tp_rank: {} quantize_int4_lmdeploy for K={} N={} ...".format(tp_rank, K, N))
+    # print("tp_rank: {} quantize_int4_lmdeploy for K={} N={} ...".format(tp_rank, K, N))
     assert K % 8 == 0 and N % 8 == 0, "K={} N={}".format(K, N)
     assert K % group_size == 0, "K={} N={}".format(K, N)
 

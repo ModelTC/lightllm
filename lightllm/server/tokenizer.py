@@ -23,6 +23,9 @@ from transformers import (AutoTokenizer, PreTrainedTokenizer,
 from transformers.convert_slow_tokenizer import convert_slow_tokenizer
 from transformers import LlamaTokenizer
 from transformers.configuration_utils import PretrainedConfig
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 # A fast LLaMA tokenizer with the pre-processed `tokenizer.json` file.
@@ -44,11 +47,17 @@ def get_tokenizer(
         kwargs["use_fast"] = False
 
     if "llama" in tokenizer_name.lower() and kwargs.get("use_fast", True):
+        logger.info("For some LLaMA-based models, initializing the fast tokenizer may "
+            "take a long time. To eliminate the initialization time, consider "
+            f"using '{_FAST_LLAMA_TOKENIZER}' instead of the original "
+            "tokenizer.")
+        """
         print(
             "For some LLaMA-based models, initializing the fast tokenizer may "
             "take a long time. To eliminate the initialization time, consider "
             f"using '{_FAST_LLAMA_TOKENIZER}' instead of the original "
             "tokenizer.")
+        """
         # tokenizer = LlamaTokenizer.from_pretrained(tokenizer_name)
         # tokenizer = convert_slow_tokenizer(tokenizer)
         # return tokenizer
@@ -64,8 +73,13 @@ def get_tokenizer(
                                                   **kwargs)
 
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
+        logger.info(
+            "Using a slow tokenizer. This might cause a significant "
+            "slowdown. Consider using a fast tokenizer instead.")
+        """
         print(
             "Using a slow tokenizer. This might cause a significant "
             "slowdown. Consider using a fast tokenizer instead.")
+        """
     return tokenizer
         

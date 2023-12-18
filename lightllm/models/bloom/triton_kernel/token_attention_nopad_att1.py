@@ -4,6 +4,10 @@ import triton
 import triton.language as tl
 import math
 
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
+
 
 @triton.jit
 def _fwd_kernel_token_att1(
@@ -89,7 +93,8 @@ def torch_att(xq, xk, bs, seqlen, num_head, head_dim):
     xq = xq.transpose(1, 2)
     keys = keys.transpose(1, 2)
     scores = (torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)).squeeze().transpose(0, 1).reshape(num_head, -1)
-    print("s  ", scores.shape)
+    logger.debug("s  ", scores.shape)
+    # print("s  ", scores.shape)
     return scores
 
 

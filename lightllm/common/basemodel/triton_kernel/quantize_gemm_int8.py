@@ -4,6 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
+
 
 @triton.autotune(
     configs=[
@@ -237,20 +241,20 @@ def test_correct_int8(M=32, N=4096, K=4096):
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     int_a, scale_a = quantize_int8_perrow(a)
     cos = torch.nn.CosineSimilarity(0)
-    print("Quantization cos", cos((int_a * scale_a.unsqueeze(1)).flatten().to(torch.float32), a.flatten().to(torch.float32)))
+    logger.debug("Quantization cos", cos((int_a * scale_a.unsqueeze(1)).flatten().to(torch.float32), a.flatten().to(torch.float32)))
     int_b, scale_b = quantize_int8(b, axis=0)
     triton_output = matmul_int8(int_a, scale_a, int_b, scale_b)
     torch_output = torch.matmul(a, b)
-    print(f"triton_output={triton_output}")
-    print(f"torch_output={torch_output}")
+    logger.debug(f"triton_output={triton_output}")
+    logger.debug(f"torch_output={torch_output}")
     cos = torch.nn.CosineSimilarity(0)
-    print("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
+    logger.debug("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
 
 
 def test_int8(M, K, N):
     import time
 
-    print("M: {} K: {} N: {}".format(M, K, N))
+    logger.debug("M: {} K: {} N: {}".format(M, K, N))
     torch.manual_seed(0)
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16).contiguous()
@@ -275,7 +279,7 @@ def test_int8(M, K, N):
     triton_time = t2 - qt2
     triton_tflops = 2 * M * N * K * 1e-12 / (triton_time / iters)
     quant_bandwith = 2 * M * K * 1e-9 / (quant_time / iters)
-    print("Triton time cost: {} (tflops {}) + quant: {} (bandwidth {})".format(
+    logger.debug("Triton time cost: {} (tflops {}) + quant: {} (bandwidth {})".format(
         triton_time, triton_tflops, quant_time, quant_bandwith))
     for _ in range(10):
         torch_output = torch.matmul(a, b)
@@ -288,7 +292,7 @@ def test_int8(M, K, N):
     t2 = time.time()
     torch_time = t2 - t1
     torch_tflops = 2 * M * N * K * 1e-12 / (torch_time / iters)
-    print("Torch time cost: {} (tflops {})".format(t2 - t1, torch_tflops))
+    logger.debug("Torch time cost: {} (tflops {})".format(t2 - t1, torch_tflops))
     return triton_time, torch_time, quant_time
 
 
@@ -359,7 +363,7 @@ def test_model_layer(bs, sqe_len, hidden, inter, tp):
     st1 += t1
     st2 += t2
     st3 += t3
-    print("Triton time {} Torch time {} Quant time {}".format(st1, st2, st3))
+    logger.debug("Triton time {} Torch time {} Quant time {}".format(st1, st2, st3))
 
 
 if __name__ == "__main__":

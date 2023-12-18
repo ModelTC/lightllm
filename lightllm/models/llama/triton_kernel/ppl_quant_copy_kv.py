@@ -2,7 +2,9 @@ import torch
 
 import triton
 import triton.language as tl
+from lightllm.utils.log_utils import init_logger
 
+logger = init_logger(__name__)
 
 @triton.jit
 def _fwd_kernel_destindex_copy_quantize_kv(
@@ -84,13 +86,17 @@ def test2():
     torch.cuda.synchronize()
     t2 = time.time()
 
-    print("Time cost ", t2 - t1)
+    logger.debug("Time cost ", t2 - t1)
+    # print("Time cost ", t2 - t1)
     value_dest = value_dest.view((B * N_CTX, H, D // 8, 8))
     scale_dest = scale_dest.view((B * N_CTX, H, D // 8, 1))
-    print("max ", torch.max(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src)))
-    print("mean ", torch.mean(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src)))
+    logger.debug("max ", torch.max(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src)))
+    logger.debug("mean ", torch.mean(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src)))
+    # print("max ", torch.max(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src)))
+    # print("mean ", torch.mean(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src)))
     cos = torch.nn.CosineSimilarity(0)
-    print("cos ", cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32)))
+    logger.debug("cos ", cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32)))
+    # print("cos ", cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32)))
 
 
 if __name__ == '__main__':
