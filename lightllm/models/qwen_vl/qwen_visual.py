@@ -411,6 +411,7 @@ class QWenVisionTransformer(nn.Module):
         x = self.attn_pool(x)
         x = self.ln_post(x)
         x = x @ self.proj
+        x = x.to(dtype=torch.float16)
         print(" + visual forward output:", x.shape, x.dtype, x.device)
 
         return x

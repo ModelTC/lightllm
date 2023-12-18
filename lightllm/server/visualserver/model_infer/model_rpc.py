@@ -32,11 +32,11 @@ class VisualModelRpcServer(rpyc.Service):
         try:
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
-                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().half()
+                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
             elif self.model_type == "llava":
-                self.model = LlavaVisionModel().eval()
+                self.model = LlavaVisionModel()
                 self.model.load_model(weight_dir)
                 self.model = self.model.cuda()
             else:
