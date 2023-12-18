@@ -8,7 +8,7 @@ import os
 _FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
 
-_LOG_LEVEL = os.environ.get("LIGHTLLM_LOG_LEVEL", "info")
+_LOG_LEVEL = os.environ.get("LIGHTLLM_LOG_LEVEL", "debug")
 _LOG_LEVEL = getattr(logging, _LOG_LEVEL.upper(), None)
 _LOG_DIR = os.environ.get("LIGHTLLM_LOG_DIR", None)
 
@@ -42,25 +42,17 @@ def _setup_logger():
         _default_handler.flush = sys.stdout.flush  # type: ignore
         _default_handler.setLevel(_LOG_LEVEL)
         _root_logger.addHandler(_default_handler)
-
+    
     if _file_handler is None and _LOG_DIR is not None:
-        if not os.path.exists(_LOG_DIR):
-            try:
-                with open(_LOG_DIR, "w") as files:
-                    print("Log file '{_LOG_DIR}' has been created.")
-            except Exception as e:
-                print(f"Error creating log file '{_LOG_DIR}': {e}")
-
         _file_handler = logging.FileHandler(_LOG_DIR)
         _file_handler.setLevel(_LOG_LEVEL)
         _file_handler.setFormatter(fmt)
         _root_logger.addHandler(_file_handler)
-    
+
     _default_handler.setFormatter(fmt)
     # Setting this will avoid the message
     # being propagated to the parent logger.
     _root_logger.propagate = False
-
 
 # The logger is initialized when the module is imported.
 # This is thread-safe as the module is only imported once,
@@ -69,11 +61,12 @@ _setup_logger()
 
 
 def init_logger(name: str):
+    # print(_LOG_DIR)
     # Use the same settings as above for root logger
     logger = logging.getLogger(name)
     logger.setLevel(_LOG_LEVEL)
     logger.addHandler(_default_handler)
-    if _LOG_DIR is not None:
+    if _file_handler is not None:
         logger.addHandler(_file_handler)
     logger.propagate = False
     return logger
