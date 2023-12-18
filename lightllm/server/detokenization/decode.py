@@ -13,7 +13,8 @@ def decode_token(
     spaces_between_special_tokens: bool,
 ) -> str:
     new_token = tokenizer.convert_ids_to_tokens(
-        new_token_id, skip_special_tokens=skip_special_tokens)
+        new_token_id, skip_special_tokens=skip_special_tokens
+    )
 
     req.output_tokens.append(new_token)
 

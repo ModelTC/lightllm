@@ -28,15 +28,15 @@ def _layer_norm_fwd_fused(
     _mean = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        a = tl.load(X + cols, mask=cols < N, other=0.).to(tl.float32)
+        a = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
         _mean += a
     mean = tl.sum(_mean, axis=0) / N
     # Compute variance
     _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        x = tl.load(X + cols, mask=cols < N, other=0.).to(tl.float32)
-        x = tl.where(cols < N, x - mean, 0.)
+        x = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
+        x = tl.where(cols < N, x - mean, 0.0)
         _var += x * x
     var = tl.sum(_var, axis=0) / N
     rstd = 1 / tl.sqrt(var + eps)
@@ -46,7 +46,7 @@ def _layer_norm_fwd_fused(
         mask = cols < N
         w = tl.load(W + cols, mask=mask).to(tl.float32)
         b = tl.load(B + cols, mask=mask).to(tl.float32)
-        x = tl.load(X + cols, mask=mask, other=0.).to(tl.float32)
+        x = tl.load(X + cols, mask=mask, other=0.0).to(tl.float32)
         x_hat = (x - mean) * rstd
         y = x_hat * w + b
         # Write output
@@ -76,6 +76,7 @@ def _layer_norm_fwd_fused(
 #                                 BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
 #     return y
 
+
 def layernorm_forward(x, weight, bias, eps):
     return torch.layer_norm(x, (x.shape[-1],), weight, bias, eps)
 
@@ -83,7 +84,7 @@ def layernorm_forward(x, weight, bias, eps):
 def test_layer_norm(M, N, dtype, eps=1e-5, device='cuda'):
     # create data
     x_shape = (M, N)
-    w_shape = (x_shape[-1], )
+    w_shape = (x_shape[-1],)
     weight = torch.rand(w_shape, dtype=dtype, device='cuda')
     bias = torch.rand(w_shape, dtype=dtype, device='cuda')
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device='cuda')

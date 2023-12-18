@@ -10,13 +10,29 @@ from .token_attention_nopad_reduceV import token_att_fwd2
 
 @triton.jit
 def _fwd_kernel(
-    Q, K, V, sm_scale, Alibi, B_Loc, B_Seqlen, max_input_len,
+    Q,
+    K,
+    V,
+    sm_scale,
+    Alibi,
+    B_Loc,
+    B_Seqlen,
+    max_input_len,
     Out,
-    stride_qbs, stride_qh, stride_qd,
-    stride_kbs, stride_kh, stride_kd,
-    stride_vbs, stride_vh, stride_vd,
-    stride_obs, stride_oh, stride_od,
-    stride_b_loc_b, stride_b_loc_s,
+    stride_qbs,
+    stride_qh,
+    stride_qd,
+    stride_kbs,
+    stride_kh,
+    stride_kd,
+    stride_vbs,
+    stride_vh,
+    stride_vd,
+    stride_obs,
+    stride_oh,
+    stride_od,
+    stride_b_loc_b,
+    stride_b_loc_s,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -32,7 +48,10 @@ def _fwd_kernel(
     off_q = cur_batch * stride_qbs + cur_head * stride_qh + offs_d * stride_qd
     off_k = cur_head * stride_kh + offs_d[None, :] * stride_kd
     off_v = cur_head * stride_vh + offs_d[None, :] * stride_vd
-    off_b_loc = cur_batch * stride_b_loc_b + (max_input_len - cur_batch_seq_len) * stride_b_loc_s
+    off_b_loc = (
+        cur_batch * stride_b_loc_b
+        + (max_input_len - cur_batch_seq_len) * stride_b_loc_s
+    )
 
     q = tl.load(Q + off_q)
 
@@ -48,10 +67,23 @@ def _fwd_kernel(
     for start_n in range(0, cur_batch_seq_len, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        k_index = tl.load(B_Loc + off_b_loc + (start_n + offs_n) * stride_b_loc_s, mask=(start_n + offs_n) < cur_batch_seq_len, other=0)
-        k = tl.load(k_ptrs + k_index[:, None] * stride_kbs, mask=(start_n + offs_n[:, None]) < cur_batch_seq_len, other=0.0)
+        k_index = tl.load(
+            B_Loc + off_b_loc + (start_n + offs_n) * stride_b_loc_s,
+            mask=(start_n + offs_n) < cur_batch_seq_len,
+            other=0,
+        )
+        k = tl.load(
+            k_ptrs + k_index[:, None] * stride_kbs,
+            mask=(start_n + offs_n[:, None]) < cur_batch_seq_len,
+            other=0.0,
+        )
 
-        qk = tl.zeros([BLOCK_N,], dtype=tl.float32)
+        qk = tl.zeros(
+            [
+                BLOCK_N,
+            ],
+            dtype=tl.float32,
+        )
         qk += tl.sum(q[None, :] * k, 1)
         qk *= sm_scale
 
@@ -77,7 +109,11 @@ def _fwd_kernel(
         acc = acc * acc_scale
         # update acc
         v_index = k_index
-        v = tl.load(v_ptrs + v_index[:, None] * stride_vbs, mask=(start_n + offs_n[:, None]) < cur_batch_seq_len, other=0.0)
+        v = tl.load(
+            v_ptrs + v_index[:, None] * stride_vbs,
+            mask=(start_n + offs_n[:, None]) < cur_batch_seq_len,
+            other=0.0,
+        )
         # print(p)
         acc += tl.sum(p[:, None] * v, 0)
 
@@ -122,33 +158,46 @@ def _fwd_kernel(
 #     )
 #     return
 
+
 @torch.no_grad()
-def token_attention_fwd(q, k, v, o, alibi, req_to_tokens, b_req_idx, b_start_loc, b_seq_len, max_len_in_batch, total_token_num):
+def token_attention_fwd(
+    q,
+    k,
+    v,
+    o,
+    alibi,
+    req_to_tokens,
+    b_req_idx,
+    b_start_loc,
+    b_seq_len,
+    max_len_in_batch,
+    total_token_num,
+):
     head_num = k.shape[1]
     batch_size = b_seq_len.shape[0]
     calcu_shape1 = (batch_size, head_num, k.shape[2])
 
-    att_m_tensor = torch.empty((head_num, total_token_num), dtype=q.dtype, device="cuda")
+    att_m_tensor = torch.empty(
+        (head_num, total_token_num), dtype=q.dtype, device="cuda"
+    )
 
-    token_att_fwd(q.view(calcu_shape1),
-                  k,
-                  att_m_tensor,
-                  alibi,
-                  req_to_tokens, 
-                  b_req_idx,
-                  b_start_loc,
-                  b_seq_len,
-                  max_len_in_batch)
+    token_att_fwd(
+        q.view(calcu_shape1),
+        k,
+        att_m_tensor,
+        alibi,
+        req_to_tokens,
+        b_req_idx,
+        b_start_loc,
+        b_seq_len,
+        max_len_in_batch,
+    )
     prob = torch.empty_like(att_m_tensor)
     token_softmax_fwd(att_m_tensor, b_start_loc, b_seq_len, prob, max_len_in_batch)
     att_m_tensor = None
-    token_att_fwd2(prob,
-                   v,
-                   o.view(calcu_shape1),
-                   req_to_tokens, 
-                   b_req_idx,
-                   b_start_loc,
-                   b_seq_len)
+    token_att_fwd2(
+        prob, v, o.view(calcu_shape1), req_to_tokens, b_req_idx, b_start_loc, b_seq_len
+    )
     prob = None
     return
 

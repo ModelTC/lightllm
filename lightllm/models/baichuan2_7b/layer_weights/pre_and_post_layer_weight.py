@@ -5,7 +5,6 @@ from torch import nn
 
 
 class Baichuan2_7bPreAndPostLayerWeight(PreAndPostLayerWeight):
-
     def __init__(self, tp_rank, world_size, data_type, network_config, mode):
         super().__init__(tp_rank, world_size, data_type, network_config, mode)
         return
@@ -17,12 +16,18 @@ class Baichuan2_7bPreAndPostLayerWeight(PreAndPostLayerWeight):
         if "model.embed_tokens.weight" in weights:
             # print(weights['model.embed_tokens.weight'].shape)
             self.wte_weight_ = self._cuda(
-                weights['model.embed_tokens.weight'][split_vob_size * self.tp_rank_:split_vob_size *
-                                                     (self.tp_rank_ + 1), :])
+                weights['model.embed_tokens.weight'][
+                    split_vob_size
+                    * self.tp_rank_ : split_vob_size
+                    * (self.tp_rank_ + 1),
+                    :,
+                ]
+            )
         if 'lm_head.weight' in weights:
             # print(weights['lm_head.weight'].shape)
-            self.lm_head_weight_ = nn.functional.normalize(weights['lm_head.weight'].to(
-                torch.float16).cuda())[split_vob_size * self.tp_rank_:split_vob_size * (self.tp_rank_ + 1), :]
+            self.lm_head_weight_ = nn.functional.normalize(
+                weights['lm_head.weight'].to(torch.float16).cuda()
+            )[split_vob_size * self.tp_rank_ : split_vob_size * (self.tp_rank_ + 1), :]
         if 'model.norm.weight' in weights:
             self.final_norm_weight_ = self._cuda(weights['model.norm.weight'])
 

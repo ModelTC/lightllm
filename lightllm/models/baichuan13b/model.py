@@ -7,6 +7,7 @@ from .layer_infer.transformer_layer_infer import Baichuan13bTransformerLayerInfe
 from lightllm.common.basemodel.infer_struct import InferStateInfo
 from lightllm.models.llama.model import LlamaTpPartModel
 
+
 class Baichuan13bTpPartModel(LlamaTpPartModel):
     # weight class
     transformer_weight_class = BaiChuan13bTransformerLayerWeight
@@ -19,7 +20,7 @@ class Baichuan13bTpPartModel(LlamaTpPartModel):
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
-    
+
     def _verify_params(self):
         super()._verify_params()
         assert self.mode == [], "baichuan13b only support normal mode"

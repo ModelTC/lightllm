@@ -62,7 +62,9 @@ def calculate_time(show=False, min_cost_ms=0.0):
             if show:
                 cost_time = (time.time() - start_time) * 1000
                 if cost_time > min_cost_ms:
-                    logger.debug(f"Function {func.__name__} took {cost_time} ms to run.")
+                    logger.debug(
+                        f"Function {func.__name__} took {cost_time} ms to run."
+                    )
                     # print(f"Function {func.__name__} took {cost_time} ms to run.")
             return result
 

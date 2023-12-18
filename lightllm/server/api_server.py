@@ -45,6 +45,7 @@ from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
 import lightllm.utils.log_utils
+
 # from lightllm.utils.log_utils import _LOG_DIR
 
 from .api_models import (
@@ -75,6 +76,7 @@ def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse
 def healthcheck():
     return "OK"
 
+
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     global isFirst
@@ -89,7 +91,7 @@ async def generate(request: Request) -> Response:
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
-    
+
     request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id)
 
@@ -144,11 +146,11 @@ async def generate_stream(request: Request) -> Response:
                     "id": metadata.get("id", None),
                     "text": request_output,
                     "logprob": metadata.get("logprob", None),
-                    "special": False
+                    "special": False,
                 },
                 "generated_text": None,
                 "finished": finished,
-                "details": None
+                "details": None,
             }
 
             yield ("data:" + json.dumps(ret, ensure_ascii=False) + f"\n\n").encode(
@@ -204,7 +206,7 @@ async def chat_completions(
         top_k=request.top_k,
         ignore_eos=request.ignore_eos,
         max_new_tokens=request.max_tokens,
-        stop_sequences=request.stop
+        stop_sequences=request.stop,
     )
     sampling_params.verify()
 
@@ -229,7 +231,7 @@ async def chat_completions(
         usage = UsageInfo(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens
+            total_tokens=prompt_tokens + completion_tokens,
         )
         chat_message = ChatMessage(role="assistant", content="".join(final_output))
         choice = ChatCompletionResponseChoice(index=0, message=chat_message)
@@ -238,7 +240,7 @@ async def chat_completions(
             created=created_time,
             model=request.model,
             choices=[choice],
-            usage=usage
+            usage=usage,
         )
         return resp
 
@@ -257,7 +259,9 @@ async def chat_completions(
                 model=request.model,
                 choices=[stream_choice],
             )
-            yield ("data: " + stream_resp.json(ensure_ascii=False) + f"\n\n").encode("utf-8")
+            yield ("data: " + stream_resp.json(ensure_ascii=False) + f"\n\n").encode(
+                "utf-8"
+            )
 
     async def abort_request() -> None:
         await httpserver_manager.abort(request_id)
@@ -276,31 +280,71 @@ def main():
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
 
-    parser.add_argument("--model_dir", type=str, default=None,
-                        help="the model weight dir path, the app will load config, weights and tokenizer from this dir")
-    parser.add_argument("--tokenizer_mode", type=str, default="slow",
-                        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is good for debug and test, 
-                        when you want to get best performance, try auto mode""")
-    parser.add_argument("--load_way", type=str, default="HF",
-                        help="the way of loading model weights, the default is HF(Huggingface format), llama also supports DS(Deepspeed)")
-    parser.add_argument("--max_total_token_num", type=int, default=6000,
-                        help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)")
-    parser.add_argument("--batch_max_tokens", type=int, default=None,
-                        help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM")
-    parser.add_argument("--eos_id", type=int, default=2,
-                        help="eos stop token id")
-    parser.add_argument("--running_max_req_size", type=int, default=1000,
-                        help="the max size for forward requests in the same time")
-    parser.add_argument("--tp", type=int, default=1,
-                        help="model tp parral size, the default is 1")
-    parser.add_argument("--max_req_input_len", type=int, default=2048,
-                        help="the max value for req input tokens num")
-    parser.add_argument("--max_req_total_len", type=int, default=2048 + 1024,
-                        help="the max value for req_input_len + req_output_len")
-    parser.add_argument("--nccl_port", type=int, default=28765,
-                        help="the nccl_port to build a distributed environment for PyTorch")
-    parser.add_argument("--mode", type=str, default=[], nargs='+',
-                        help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding 
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default=None,
+        help="the model weight dir path, the app will load config, weights and tokenizer from this dir",
+    )
+    parser.add_argument(
+        "--tokenizer_mode",
+        type=str,
+        default="slow",
+        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is good for debug and test, 
+                        when you want to get best performance, try auto mode""",
+    )
+    parser.add_argument(
+        "--load_way",
+        type=str,
+        default="HF",
+        help="the way of loading model weights, the default is HF(Huggingface format), llama also supports DS(Deepspeed)",
+    )
+    parser.add_argument(
+        "--max_total_token_num",
+        type=int,
+        default=6000,
+        help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
+    )
+    parser.add_argument(
+        "--batch_max_tokens",
+        type=int,
+        default=None,
+        help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM",
+    )
+    parser.add_argument("--eos_id", type=int, default=2, help="eos stop token id")
+    parser.add_argument(
+        "--running_max_req_size",
+        type=int,
+        default=1000,
+        help="the max size for forward requests in the same time",
+    )
+    parser.add_argument(
+        "--tp", type=int, default=1, help="model tp parral size, the default is 1"
+    )
+    parser.add_argument(
+        "--max_req_input_len",
+        type=int,
+        default=2048,
+        help="the max value for req input tokens num",
+    )
+    parser.add_argument(
+        "--max_req_total_len",
+        type=int,
+        default=2048 + 1024,
+        help="the max value for req_input_len + req_output_len",
+    )
+    parser.add_argument(
+        "--nccl_port",
+        type=int,
+        default=28765,
+        help="the nccl_port to build a distributed environment for PyTorch",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default=[],
+        nargs='+',
+        help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding 
                         | triton_gqa_attention | triton_gqa_flashdecoding] 
                         [triton_int8weight | triton_int4weight | lmdeploy_int4weight | ppl_int4weight], 
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
@@ -309,30 +353,67 @@ def main():
                         ppl_int8kv mode use int8 to store kv cache, and use ppl fast kernel;
                         ppl_fp16 mode use ppl fast fp16 decode attention kernel;
                         triton_int8weight and triton_int4weight and lmdeploy_int4weight or ppl_int4weight mode use int8 and int4 to store weights;
-                        you need to read source code to make sure the supported detail mode for all models""")
-    parser.add_argument("--trust_remote_code", action='store_true',
-                        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.")
-    parser.add_argument("--disable_log_stats", action='store_true',
-                        help="disable logging throughput stats.")
-    parser.add_argument("--log_stats_interval", type=int, default=10,
-                        help="log stats interval in second.")
-    parser.add_argument("--router_token_ratio", type=float, default=0.0,
-                        help="token ratio to control router dispatch")
-    parser.add_argument("--router_max_new_token_len", type=int, default=1024,
-                        help="the request max new token len for router")
-    parser.add_argument("--no_skipping_special_tokens", action="store_true",
-                        help="whether to skip special tokens when decoding")
-    parser.add_argument("--no_spaces_between_special_tokens", action="store_true",
-                        help="whether to add spaces between special tokens when decoding")
-    
-    parser.add_argument("--splitfuse_mode", action='store_true',
-                    help="use splitfuse mode")
-    parser.add_argument("--splitfuse_block_size", type=int, default=256,
-                    help="splitfuse block size")    
-    parser.add_argument("--prompt_cache_strs", type=str, default=[], nargs='+',
-                        help="""prompt cache strs""")
-    parser.add_argument("--lightllm_log_dir", type=str, default=None, help="specify the log file of lightllm")
-    
+                        you need to read source code to make sure the supported detail mode for all models""",
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action='store_true',
+        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+    )
+    parser.add_argument(
+        "--disable_log_stats",
+        action='store_true',
+        help="disable logging throughput stats.",
+    )
+    parser.add_argument(
+        "--log_stats_interval",
+        type=int,
+        default=10,
+        help="log stats interval in second.",
+    )
+    parser.add_argument(
+        "--router_token_ratio",
+        type=float,
+        default=0.0,
+        help="token ratio to control router dispatch",
+    )
+    parser.add_argument(
+        "--router_max_new_token_len",
+        type=int,
+        default=1024,
+        help="the request max new token len for router",
+    )
+    parser.add_argument(
+        "--no_skipping_special_tokens",
+        action="store_true",
+        help="whether to skip special tokens when decoding",
+    )
+    parser.add_argument(
+        "--no_spaces_between_special_tokens",
+        action="store_true",
+        help="whether to add spaces between special tokens when decoding",
+    )
+
+    parser.add_argument(
+        "--splitfuse_mode", action='store_true', help="use splitfuse mode"
+    )
+    parser.add_argument(
+        "--splitfuse_block_size", type=int, default=256, help="splitfuse block size"
+    )
+    parser.add_argument(
+        "--prompt_cache_strs",
+        type=str,
+        default=[],
+        nargs='+',
+        help="""prompt cache strs""",
+    )
+    parser.add_argument(
+        "--lightllm_log_dir",
+        type=str,
+        default=None,
+        help="specify the log file of lightllm",
+    )
+
     args = parser.parse_args()
 
     if args.lightllm_log_dir is not None:
@@ -345,7 +426,7 @@ def main():
 
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num
-    
+
     if not args.splitfuse_mode:
         # 普通模式下
         if args.batch_max_tokens is None:
@@ -372,9 +453,7 @@ def main():
 
     global httpserver_manager
     httpserver_manager = HttpServerManager(
-        args,
-        router_port=router_port,
-        httpserver_port=httpserver_port
+        args, router_port=router_port, httpserver_port=httpserver_port
     )
     pipe_router_reader, pipe_router_writer = mp.Pipe(duplex=False)
     pipe_detoken_reader, pipe_detoken_writer = mp.Pipe(duplex=False)
@@ -408,10 +487,10 @@ def main():
         proc_router.kill()
         proc_detoken.kill()
         logger.debug(
-            "router init state: " + 
-            str(router_init_state) + 
-            " detoken init state: " + 
-            str(detoken_init_state)
+            "router init state: "
+            + str(router_init_state)
+            + " detoken init state: "
+            + str(detoken_init_state)
         )
         sys.exit(1)
 
@@ -428,5 +507,7 @@ def main():
 
 
 if __name__ == "__main__":
-    torch.multiprocessing.set_start_method('spawn'), # this code will not be ok for settings to fork to subprocess
+    torch.multiprocessing.set_start_method(
+        'spawn'
+    ),  # this code will not be ok for settings to fork to subprocess
     main()

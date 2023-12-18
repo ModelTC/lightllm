@@ -4,7 +4,15 @@ setup(
     name="lightllm",
     version="2.0.0",
     packages=find_packages(
-        exclude=("build", "include", "test", "dist", "docs", "benchmarks", "lightllm.egg-info")
+        exclude=(
+            "build",
+            "include",
+            "test",
+            "dist",
+            "docs",
+            "benchmarks",
+            "lightllm.egg-info",
+        )
     ),
     author="model toolchain",
     author_email="",
@@ -27,6 +35,6 @@ setup(
         "rpyc",
         "ninja",
         "safetensors",
-        "triton"
+        "triton",
     ],
 )

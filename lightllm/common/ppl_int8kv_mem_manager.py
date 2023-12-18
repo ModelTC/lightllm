@@ -9,11 +9,31 @@ class PPLINT8KVMemoryManager(MemoryManager):
 
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
         group_quant_size = 8
-        self.key_buffer = [torch.empty((size, head_num, head_dim), dtype=torch.int8, device="cuda") for _ in range(layer_num)]
-        self.value_buffer = [torch.empty((size, head_num, head_dim), dtype=torch.int8, device="cuda") for _ in range(layer_num)]
-        self.key_scale_buffer = [torch.empty((size, head_num, head_dim // group_quant_size), dtype=dtype, device="cuda") for _ in range(layer_num)]
-        self.value_scale_buffer = [torch.empty((size, head_num, head_dim // group_quant_size), dtype=dtype, device="cuda") for _ in range(layer_num)]
-    
+        self.key_buffer = [
+            torch.empty((size, head_num, head_dim), dtype=torch.int8, device="cuda")
+            for _ in range(layer_num)
+        ]
+        self.value_buffer = [
+            torch.empty((size, head_num, head_dim), dtype=torch.int8, device="cuda")
+            for _ in range(layer_num)
+        ]
+        self.key_scale_buffer = [
+            torch.empty(
+                (size, head_num, head_dim // group_quant_size),
+                dtype=dtype,
+                device="cuda",
+            )
+            for _ in range(layer_num)
+        ]
+        self.value_scale_buffer = [
+            torch.empty(
+                (size, head_num, head_dim // group_quant_size),
+                dtype=dtype,
+                device="cuda",
+            )
+            for _ in range(layer_num)
+        ]
+
     def _free_buffers(self):
         self.key_buffer = None
         self.value_buffer = None

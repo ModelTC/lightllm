@@ -27,7 +27,11 @@ from lightllm.models.yi.model import YiTpPartModel
 from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from .pre_process import prepare_decode_inputs, prepare_prefill_inputs, splitfuse_prepare_decode_inputs
+from .pre_process import (
+    prepare_decode_inputs,
+    prepare_prefill_inputs,
+    splitfuse_prepare_decode_inputs,
+)
 from .post_process import sample
 from .infer_batch import requests_mapping
 from .infer_batch import InferReq
@@ -36,11 +40,12 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
-class ModelRpcServer(rpyc.Service):
 
+class ModelRpcServer(rpyc.Service):
     def exposed_init_model(self, kvargs):
         import torch
         import torch.distributed as dist
+
         world_size = kvargs["world_size"]
         if world_size != 1:
             kvargs = obtain(kvargs)
@@ -58,12 +63,15 @@ class ModelRpcServer(rpyc.Service):
         weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
 
-        dist.init_process_group('nccl', init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=self.tp_rank, world_size=world_size)
+        dist.init_process_group(
+            'nccl',
+            init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}',
+            rank=self.tp_rank,
+            world_size=world_size,
+        )
         torch.cuda.set_device(self.tp_rank)
 
-        model_cfg, _ = PretrainedConfig.get_config_dict(
-            weight_dir
-        )
+        model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
 
         model_kvargs = {
             "tp_rank": self.tp_rank,
@@ -73,7 +81,7 @@ class ModelRpcServer(rpyc.Service):
             "load_way": self.load_way,
             "mode": self.mode,
             "max_req_num": kvargs.get("max_req_num", 1000),
-            "max_seq_length": kvargs.get("max_seq_length", 1024 * 5)
+            "max_seq_length": kvargs.get("max_seq_length", 1024 * 5),
         }
 
         try:
@@ -81,12 +89,18 @@ class ModelRpcServer(rpyc.Service):
             if self.model_type == "bloom":
                 self.model = BloomTpPartModel(model_kvargs)
             elif self.model_type == "llama":
-                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
+                if any(
+                    'int8weight' in mode_ or 'int4weight' in mode_
+                    for mode_ in self.mode
+                ):
                     self.model = LlamaTpPartModelWQuant(model_kvargs)
                 else:
                     self.model = LlamaTpPartModel(model_kvargs)
             elif self.model_type == "qwen":
-                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
+                if any(
+                    'int8weight' in mode_ or 'int4weight' in mode_
+                    for mode_ in self.mode
+                ):
                     self.model = QWenTpPartModelWQuant(model_kvargs)
                 else:
                     self.model = QWenTpPartModel(model_kvargs)
@@ -104,14 +118,20 @@ class ModelRpcServer(rpyc.Service):
                 else:
                     raise Exception('can not support baichuan format')
             elif self.model_type == 'gpt_bigcode':
-                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
+                if any(
+                    'int8weight' in mode_ or 'int4weight' in mode_
+                    for mode_ in self.mode
+                ):
                     self.model = StarcoderTpPartModelWQuant(model_kvargs)
                 else:
                     self.model = StarcoderTpPartModel(model_kvargs)
             elif self.model_type == 'chatglm':
                 self.model = ChatGlm2TpPartModel(model_kvargs)
             elif self.model_type == 'internlm':
-                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
+                if any(
+                    'int8weight' in mode_ or 'int4weight' in mode_
+                    for mode_ in self.mode
+                ):
                     self.model = InternlmTpPartModelWQuant(model_kvargs)
                 else:
                     self.model = InternlmTpPartModel(model_kvargs)
@@ -122,35 +142,44 @@ class ModelRpcServer(rpyc.Service):
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
-            #print("#" * 16)
-            logger.error("load model error:", str(e), e, type(e))
+            # print("#" * 16)
+            logger.error("load model error: {} {} {}".format(str(e), e, type(e)))
             # print("load model error:", str(e), e, type(e))
             import traceback
+
             traceback.print_exc()
             raise e
-        
+
         set_random_seed(2147483647)
         return
-    
+
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_add_batch(self, batch_id, reqs, dtype):
         if self.world_size != 1:
             batch_id, reqs, dtype = obtain(batch_id), obtain(reqs), obtain(dtype)
         import torch
+
         if dtype == "fp16":
             dtype = torch.float16
         else:
             assert False, "error dtype"
-        batch_data = InferBatch.init_batch(batch_id, reqs, dtype, torch.cuda.current_device(), self.model.req_manager, self.model.vocab_size)
+        batch_data = InferBatch.init_batch(
+            batch_id,
+            reqs,
+            dtype,
+            torch.cuda.current_device(),
+            self.model.req_manager,
+            self.model.vocab_size,
+        )
         self.cache[batch_id] = batch_data
 
         # 将更新后的状态返回给调用方用于router中请求的状态
         ans = {}
         for req_id in batch_data.request_ids:
-            req_obj : InferReq  = requests_mapping[req_id]
+            req_obj: InferReq = requests_mapping[req_id]
             ans[req_id] = (req_obj.req_status, req_obj.cur_kv_len)
         return ans
-    
+
     @calculate_time(show=False, min_cost_ms=300)
     def exposed_prefill_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=True)
@@ -165,7 +194,11 @@ class ModelRpcServer(rpyc.Service):
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_filter_batch(self, batch_id, req_id_list, finished_req_id_list):
         if self.world_size != 1:
-            batch_id, req_id_list, finished_req_id_list = obtain(batch_id), obtain(req_id_list), obtain(finished_req_id_list)
+            batch_id, req_id_list, finished_req_id_list = (
+                obtain(batch_id),
+                obtain(req_id_list),
+                obtain(finished_req_id_list),
+            )
         # print("filter old size:", len(batch.reqs), "new size:", len(req_id_list))
         batch = self.cache.pop(batch_id)
         filter_batch = batch.filter(req_id_list, finished_req_id_list)
@@ -199,7 +232,7 @@ class ModelRpcServer(rpyc.Service):
         del batch
         # torch.cuda.empty_cache()
         return
-    
+
     # @calculate_time(show=True, min_cost_ms=150)
     def forward(self, batch_id, is_prefill):
         output_dict = {}
@@ -208,14 +241,16 @@ class ModelRpcServer(rpyc.Service):
             kwargs, run_reqs, not_run_reqs = prepare_prefill_inputs(batch)
         else:
             kwargs, run_reqs, not_run_reqs = prepare_decode_inputs(batch)
-        
+
         if len(run_reqs) >= 1:
             logits = self.model.forward(**kwargs)
             next_token_ids, next_token_probs = sample(logits, run_reqs)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-            for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
+            for req_obj, next_token_id, next_token_logprob in zip(
+                run_reqs, next_token_ids, next_token_logprobs
+            ):
                 # prefill and decode is same
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
@@ -224,19 +259,31 @@ class ModelRpcServer(rpyc.Service):
                     'id': int(next_token_id),
                     'logprob': float(next_token_logprob),
                 }
-                output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata) # 状态， cur_kv_len, token_id, metadata
+                output_dict[req_obj.r_id] = (
+                    req_obj.req_status,
+                    req_obj.cur_kv_len,
+                    int(next_token_id),
+                    metadata,
+                )  # 状态， cur_kv_len, token_id, metadata
 
         for req_obj in not_run_reqs:
-            output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, None, None) # 状态， cur_kv_len, token_id, metadata
+            output_dict[req_obj.r_id] = (
+                req_obj.req_status,
+                req_obj.cur_kv_len,
+                None,
+                None,
+            )  # 状态， cur_kv_len, token_id, metadata
 
         self.cache[batch.batch_id] = batch
         return output_dict
-    
+
     # @calculate_time(show=True, min_cost_ms=200)
     def splitfuse_forward(self, batch_id):
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
-        kwargs, decode_reqs, prefill_reqs = splitfuse_prepare_decode_inputs(batch, self.splitfuse_block_size)
+        kwargs, decode_reqs, prefill_reqs = splitfuse_prepare_decode_inputs(
+            batch, self.splitfuse_block_size
+        )
         decode_req_num = len(decode_reqs)
         all_reqs = decode_reqs
         all_reqs.extend(prefill_reqs)
@@ -245,9 +292,11 @@ class ModelRpcServer(rpyc.Service):
         next_token_ids, next_token_probs = sample(logits, all_reqs)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-        
+
         index = 0
-        for req_obj, next_token_id, next_token_logprob in zip(all_reqs, next_token_ids, next_token_logprobs):
+        for req_obj, next_token_id, next_token_logprob in zip(
+            all_reqs, next_token_ids, next_token_logprobs
+        ):
             if index < decode_req_num:
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
@@ -256,10 +305,17 @@ class ModelRpcServer(rpyc.Service):
                     'id': int(next_token_id),
                     'logprob': float(next_token_logprob),
                 }
-                output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata) # 状态， cur_kv_len, token_id, metadata
+                output_dict[req_obj.r_id] = (
+                    req_obj.req_status,
+                    req_obj.cur_kv_len,
+                    int(next_token_id),
+                    metadata,
+                )  # 状态， cur_kv_len, token_id, metadata
             else:
                 old_input_token_size = len(req_obj.input_token_ids)
-                split_len = min(old_input_token_size - req_obj.cur_kv_len, self.splitfuse_block_size)
+                split_len = min(
+                    old_input_token_size - req_obj.cur_kv_len, self.splitfuse_block_size
+                )
                 if req_obj.cur_kv_len + split_len == old_input_token_size:
                     # 有输出
                     req_obj.cur_kv_len = old_input_token_size
@@ -269,17 +325,28 @@ class ModelRpcServer(rpyc.Service):
                         'id': int(next_token_id),
                         'logprob': float(next_token_logprob),
                     }
-                    output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata)
+                    output_dict[req_obj.r_id] = (
+                        req_obj.req_status,
+                        req_obj.cur_kv_len,
+                        int(next_token_id),
+                        metadata,
+                    )
                 elif req_obj.cur_kv_len + split_len < old_input_token_size:
                     # 没输出
                     req_obj.cur_kv_len = req_obj.cur_kv_len + split_len
-                    output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, None, None)
+                    output_dict[req_obj.r_id] = (
+                        req_obj.req_status,
+                        req_obj.cur_kv_len,
+                        None,
+                        None,
+                    )
                 else:
                     assert False, "error state"
-            index += 1    
+            index += 1
 
         self.cache[batch.batch_id] = batch
         return output_dict
+
 
 class ModelRpcClient:
     def __init__(self, model_rpc, world_size, rpc_server_process=None):
@@ -288,14 +355,18 @@ class ModelRpcClient:
         self.rpc_server_process = rpc_server_process
         self.use_rpc = self.world_size != 1
         if self.use_rpc:
+
             def async_wrap(f):
                 f = rpyc.async_(f)
+
                 async def _func(*args, **kwargs):
                     ans = f(*args, **kwargs)
                     await asyncio.to_thread(ans.wait)
                     # raise if exception
                     return ans.value
+
                 return _func
+
             self._init_model = async_wrap(self.model.init_model)
             self._add_batch = async_wrap(self.model.add_batch)
             self._prefill_batch = async_wrap(self.model.prefill_batch)
@@ -316,7 +387,7 @@ class ModelRpcClient:
         return
 
     async def init_model(self, kvargs):
-        ans : rpyc.AsyncResult = self._init_model(kvargs)
+        ans: rpyc.AsyncResult = self._init_model(kvargs)
         if self.use_rpc:
             await ans
             return
@@ -350,7 +421,7 @@ class ModelRpcClient:
             await ans
             return
         else:
-            return 
+            return
 
     async def pause_reqs(self, batch_id, reqs_list):
         ans = self._pause_reqs(batch_id, reqs_list)
@@ -379,7 +450,10 @@ class ModelRpcClient:
 
 def _init_env(port):
     from rpyc.utils.server import ThreadedServer
-    t = ThreadedServer(ModelRpcServer(), port=port, protocol_config={"allow_pickle": True})
+
+    t = ThreadedServer(
+        ModelRpcServer(), port=port, protocol_config={"allow_pickle": True}
+    )
     t.start()
     return
 
@@ -388,8 +462,9 @@ async def start_model_process(port, world_size):
     # 单卡时不使用 rpc
     if world_size == 1:
         return ModelRpcClient(ModelRpcServer(), world_size)
-    
+
     import multiprocessing
+
     proc = multiprocessing.Process(target=_init_env, args=(port,))
     proc.start()
     await asyncio.sleep(2)

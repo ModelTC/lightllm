@@ -25,27 +25,29 @@ class QWenTpPartModel(LlamaTpPartModel):
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
-    
+
     def _init_config(self):
         super()._init_config()
         # rename key
         # repair_config()
         repair_config(self.config, same_names=["ffn_hidden_size", "intermediate_size"])
         repair_config(self.config, same_names=["rms_norm_eps", "layer_norm_epsilon"])
-        return 
-    
+        return
+
     def _init_custom(self):
         """
         init qwen dynamic_ntk and logn_attn
         """
-        if self.config.get("use_dynamic_ntk", False) and self.config.get("use_logn_attn", False):
+        if self.config.get("use_dynamic_ntk", False) and self.config.get(
+            "use_logn_attn", False
+        ):
             self._init_qwen_dynamic_ntk()
             self._init_qwen_logn_attn()
         else:
             super()._init_custom()
             self.logn_tensor = None
         return
-    
+
     def _init_qwen_dynamic_ntk(self):
         total_seq_len_supported = self.config.get("max_position_embeddings", 8 * 1024)
         seq_len = self.config.get("seq_length", 2048)
@@ -65,13 +67,15 @@ class QWenTpPartModel(LlamaTpPartModel):
             )
         )
 
-        t = torch.arange(total_seq_len_supported + 64 * 1024, device="cpu", dtype=torch.float32)
+        t = torch.arange(
+            total_seq_len_supported + 64 * 1024, device="cpu", dtype=torch.float32
+        )
         freqs = torch.outer(t, inv_freq)
 
         self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
         self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
         return
-    
+
     def _init_qwen_logn_attn(self):
         total_seq_len_supported = self.config.get("max_position_embeddings", 8 * 1024)
         seq_len = self.config.get("seq_length", 2048)

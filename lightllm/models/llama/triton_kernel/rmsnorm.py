@@ -6,6 +6,7 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
+
 @triton.jit
 def _rms_norm_fwd_fused(
     X,  # pointer to the input
@@ -24,7 +25,7 @@ def _rms_norm_fwd_fused(
     _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        x = tl.load(X + cols, mask=cols < N, other=0.).to(tl.float32)
+        x = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
         _var += x * x
     var = tl.sum(_var, axis=0) / N
     rstd = 1 / tl.sqrt(var + eps)
@@ -33,7 +34,7 @@ def _rms_norm_fwd_fused(
         cols = off + tl.arange(0, BLOCK_SIZE)
         mask = cols < N
         w = tl.load(W + cols, mask=mask).to(tl.float32)
-        x = tl.load(X + cols, mask=mask, other=0.).to(tl.float32)
+        x = tl.load(X + cols, mask=mask, other=0.0).to(tl.float32)
         x_hat = x * rstd
         y = x_hat * w
         # Write output
@@ -58,9 +59,16 @@ def rmsnorm_forward(x, weight, eps):
     BLOCK_SIZE = 128 * 2 * 2 * 2 * 2 * 2 * 2 * 2
     num_warps = 8
     # enqueue kernel
-    _rms_norm_fwd_fused[(M,)](x_arg, y, weight,
-                              x_arg.stride(0), N, eps,
-                              BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
+    _rms_norm_fwd_fused[(M,)](
+        x_arg,
+        y,
+        weight,
+        x_arg.stride(0),
+        N,
+        eps,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=num_warps,
+    )
     return y
 
 
@@ -71,7 +79,7 @@ def torch_rms_norm(x, weight, eps):
 def test_rms_norm(M, N, dtype, eps=1e-5, device='cuda'):
     # create data
     x_shape = (M, N)
-    w_shape = (x_shape[-1], )
+    w_shape = (x_shape[-1],)
     weight = torch.rand(w_shape, dtype=dtype, device='cuda')
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device='cuda')
     # forward pass
