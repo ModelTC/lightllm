@@ -38,15 +38,11 @@ from fastapi.responses import Response, StreamingResponse, JSONResponse
 from importlib import reload
 import uvicorn
 from .sampling_params import SamplingParams
-from .httpserver.manager import HttpServerManager
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
 from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
-import lightllm.utils.log_utils
-
-# from lightllm.utils.log_utils import _LOG_DIR
 
 from .api_models import (
     ChatCompletionRequest,
@@ -451,6 +447,7 @@ def main():
     router_port, detokenization_port, httpserver_port = can_use_ports[0:3]
     model_rpc_ports = can_use_ports[3:]
 
+    from .httpserver.manager import HttpServerManager
     global httpserver_manager
     httpserver_manager = HttpServerManager(
         args, router_port=router_port, httpserver_port=httpserver_port

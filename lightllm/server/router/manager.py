@@ -177,7 +177,9 @@ class RouterManager:
                         + "token used ratio:"
                         + str(token_ratio)
                     )
-                    # print("current batch size:", len(self.running_batch.reqs), "paused req num:", len(self.req_queue.pause_req_dict), "token used ratio:", token_ratio)
+                    # print("current batch size:", len(self.running_batch.reqs), 
+                    #       "paused req num:", len(self.req_queue.pause_req_dict), 
+                    #       "token used ratio:", token_ratio)
                     pass
                 self.stats_tool.print_stats()
 
