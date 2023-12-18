@@ -480,6 +480,9 @@ def main():
     router_init_state = pipe_router_reader.recv()
     detoken_init_state = pipe_detoken_reader.recv()
 
+    import lightllm.utils.log_utils
+    logger = lightllm.utils.log_utils.init_logger(__name__)
+
     if router_init_state != "init ok" or detoken_init_state != "init ok":
         proc_router.kill()
         proc_detoken.kill()
