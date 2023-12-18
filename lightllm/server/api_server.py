@@ -408,10 +408,10 @@ def main():
         proc_router.kill()
         proc_detoken.kill()
         logger.debug(
-            "router init state:",
-            router_init_state,
-            "detoken init state:",
-            detoken_init_state,
+            "router init state: " + 
+            str(router_init_state) + 
+            " detoken init state: " + 
+            str(detoken_init_state)
         )
         sys.exit(1)
 

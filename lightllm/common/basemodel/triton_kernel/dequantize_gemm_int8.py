@@ -117,7 +117,7 @@ def test_int8(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     triton_time = t2 - t1
-    logger.debug("Triton time cost", (t2 - t1))
+    logger.debug(f"Triton time cost {(t2 - t1)}")
     for _ in range(10):
         torch_output = torch.matmul(a, b)
     torch.cuda.synchronize()
@@ -128,7 +128,7 @@ def test_int8(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     torch_time = t2 - t1
-    logger.debug("Torch time cost", (t2 - t1))
+    logger.debug(f"Torch time cost {(t2 - t1)}")
     return triton_time, torch_time
 
 
@@ -143,7 +143,7 @@ def test_correct_int8(M=512, K=4096, N=4096):
     torch_output = torch.matmul(a, b)
     logger.debug(f"triton_output={triton_output}")        
     logger.debug(f"torch_output={torch_output}")
-    logger.debug("Output cos ", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
+    logger.debug(f"Output cos {cos(triton_output.flatten().to(torch.float32))} {torch_output.flatten().to(torch.float32)}")
 
 
 @triton.testing.perf_report(

@@ -77,8 +77,8 @@ def test1():
 
     torch_out = Logics.reshape(H * B, -1).softmax(-1).reshape(H, B * N_CTX)
     o = ProbOut
-    logger.debug("max ", torch.max(torch.abs(torch_out - o)))
-    logger.debug("mean ", torch.mean(torch.abs(torch_out - o)))
+    logger.debug(f"max {torch.max(torch.abs(torch_out - o))}")
+    logger.debug(f"mean {torch.mean(torch.abs(torch_out - o))}")
     # print("max ", torch.max(torch.abs(torch_out - o)))
     # print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
