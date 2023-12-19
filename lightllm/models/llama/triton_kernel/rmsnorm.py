@@ -79,7 +79,7 @@ def test_rms_norm(M, N, dtype, eps=1e-5, device='cuda'):
     y_ref = torch_rms_norm(x.to(torch.float32), weight.to(torch.float32), eps).to(dtype)
 
     # compare
-    logger.debug(f"type: {y_tri.dtype} {y_ref.dtype}")
-    logger.debug(f"max delta: {torch.max(torch.abs(y_tri - y_ref))}")
+    print(f"type: {y_tri.dtype} {y_ref.dtype}")
+    print(f"max delta: {torch.max(torch.abs(y_tri - y_ref))}")
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)
     return

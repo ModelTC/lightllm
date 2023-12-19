@@ -4,9 +4,6 @@ import torch
 
 import triton
 import triton.language as tl
-from lightllm.utils.log_utils import init_logger
-
-logger = init_logger(__name__)
 
 
 @triton.autotune(
@@ -498,7 +495,7 @@ def unpack_int4(weight, scale, zp):
 def test_int4(M, K, N):
     import time
 
-    logger.debug("M: {} K: {} N: {}".format(M, K, N))
+    print("M: {} K: {} N: {}".format(M, K, N))
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     int_b, b_scale, b_zero_point, _ = quantize_int4(b)
@@ -512,7 +509,7 @@ def test_int4(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     triton_time = t2 - t1
-    logger.info("Triton time cost {}".format((t2 - t1)))
+    print("Triton time cost {}".format((t2 - t1)))
     for _ in range(10):
         torch_output = torch.matmul(a, b)
     torch.cuda.synchronize()
@@ -523,7 +520,7 @@ def test_int4(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     torch_time = t2 - t1
-    logger.info("Torch time cost {}".format((t2 - t1)))
+    print("Torch time cost {}".format((t2 - t1)))
     return triton_time, torch_time
 
 
@@ -534,12 +531,12 @@ def test_correct_int4_s1(M=32, K=4096, N=4096):
     int_b, b_scale, b_zero_point, _ = quantize_int4(b, group_size=group_size)
     cos = torch.nn.CosineSimilarity(0)
     fp_weight = dequantize_int4(int_b, b_scale, b_zero_point, a.device, a.dtype, group_size)
-    logger.debug("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
+    print("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
     triton_output = matmul_dequantize_int4_s1(a, int_b, b_scale, b_zero_point, group_size)
     torch_output = torch.matmul(a, b)
-    logger.debug(f"triton_output={triton_output}")
-    logger.debug(f"torch_output={torch_output}")
-    logger.debug("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
+    print(f"triton_output={triton_output}")
+    print(f"torch_output={torch_output}")
+    print("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
 
 
 def test_correct_int4_s2(M=32, K=4096, N=4096):
@@ -549,12 +546,12 @@ def test_correct_int4_s2(M=32, K=4096, N=4096):
     int_b, b_scale, b_zero_point, _ = quantize_int4(b, group_size=group_size)
     cos = torch.nn.CosineSimilarity(0)
     fp_weight = unpack_int4(int_b, b_scale, b_zero_point)
-    logger.debug("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
+    print("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
     triton_output = matmul_dequantize_int4_s2(a, int_b, b_scale, b_zero_point, group_size)
     torch_output = torch.matmul(a, b)
-    logger.debug(f"triton_output={triton_output}")
-    logger.debug(f"torch_output={torch_output}")
-    logger.debug("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
+    print(f"triton_output={triton_output}")
+    print(f"torch_output={torch_output}")
+    print("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
 
 
 def test_correct_int4_gptq(M=32, K=4096, N=4096):
@@ -564,12 +561,12 @@ def test_correct_int4_gptq(M=32, K=4096, N=4096):
     int_b, b_scale, b_zero_point, _ = quantize_int4(b, group_size=group_size)
     cos = torch.nn.CosineSimilarity(0)
     fp_weight = unpack_int4(int_b, b_scale, b_zero_point)
-    logger.debug("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
+    print("Quantize cos", cos(fp_weight.flatten().to(torch.float32), b.flatten().to(torch.float32)))
     triton_output = matmul_dequantize_int4_gptq(a, int_b, b_scale, b_zero_point, group_size)
     torch_output = torch.matmul(a, b)
-    logger.debug(f"triton_output={triton_output}")
-    logger.debug(f"torch_output={torch_output}")
-    logger.debug("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
+    print(f"triton_output={triton_output}")
+    print(f"torch_output={torch_output}")
+    print("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
 
 
 @triton.testing.perf_report(
@@ -633,7 +630,7 @@ def test_model_layer(bs, sqe_len, hidden, inter, tp):
     t1, t2 = test_int4(bs * sqe_len, inter // tp, hidden)
     st1 += t1
     st2 += t2
-    logger.debug("Triton time {} Torch time {}".format(st1, st2))
+    print("Triton time {} Torch time {}".format(st1, st2))
 
 
 if __name__ == "__main__":

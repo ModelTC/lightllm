@@ -3,10 +3,6 @@ import torch
 import triton
 import triton.language as tl
 
-from lightllm.utils.log_utils import init_logger
-
-logger = init_logger(__name__)
-
 
 @triton.jit
 def _layer_norm_fwd_fused(
@@ -92,6 +88,6 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device='cuda'):
     y_ref = torch.nn.functional.layer_norm(x, w_shape, weight, bias, eps).to(dtype)
 
     # compare
-    logger.debug("type: {} {}".format(y_tri.dtype, y_ref.dtype))
-    logger.debug("max delta: {}".format(torch.max(torch.abs(y_tri - y_ref))))
+    print("type: {} {}".format(y_tri.dtype, y_ref.dtype))
+    print("max delta: {}".format(torch.max(torch.abs(y_tri - y_ref))))
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)

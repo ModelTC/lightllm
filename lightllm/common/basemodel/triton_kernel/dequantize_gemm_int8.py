@@ -3,10 +3,6 @@ import torch
 import triton
 import triton.language as tl
 
-from lightllm.utils.log_utils import init_logger
-
-logger = init_logger(__name__)
-
 
 @triton.autotune(
     configs=[
@@ -102,7 +98,7 @@ def quantize_int8(weight, axis=0):
 def test_int8(M, K, N):
     import time
 
-    logger.debug("M: {} K: {} N: {}".format(M, K, N))
+    printg("M: {} K: {} N: {}".format(M, K, N))
     torch.manual_seed(0)
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
@@ -117,7 +113,7 @@ def test_int8(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     triton_time = t2 - t1
-    logger.debug(f"Triton time cost {(t2 - t1)}")
+    print(f"Triton time cost {(t2 - t1)}")
     for _ in range(10):
         torch_output = torch.matmul(a, b)
     torch.cuda.synchronize()
@@ -128,7 +124,7 @@ def test_int8(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     torch_time = t2 - t1
-    logger.debug(f"Torch time cost {(t2 - t1)}")
+    print(f"Torch time cost {(t2 - t1)}")
     return triton_time, torch_time
 
 
@@ -141,9 +137,9 @@ def test_correct_int8(M=512, K=4096, N=4096):
     cos = torch.nn.CosineSimilarity(0)
     triton_output = matmul_dequantize_int8(a, int_b, b_scale)
     torch_output = torch.matmul(a, b)
-    logger.debug(f"triton_output={triton_output}")        
-    logger.debug(f"torch_output={torch_output}")
-    logger.debug(f"Output cos {cos(triton_output.flatten().to(torch.float32))} {torch_output.flatten().to(torch.float32)}")
+    print(f"triton_output={triton_output}")        
+    print(f"torch_output={torch_output}")
+    print(f"Output cos {cos(triton_output.flatten().to(torch.float32))} {torch_output.flatten().to(torch.float32)}")
 
 
 @triton.testing.perf_report(
@@ -196,7 +192,7 @@ def test_model_layer(bs, sqe_len, hidden, inter, tp):
     t1, t2 = test_int8(bs * sqe_len, inter // tp, hidden)
     st1 += t1
     st2 += t2
-    logger.debug("Triton time {} Torch time {}".format(st1, st2))
+    print("Triton time {} Torch time {}".format(st1, st2))
 
 
 if __name__ == "__main__":

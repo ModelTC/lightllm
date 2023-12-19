@@ -86,13 +86,13 @@ def test2():
     torch.cuda.synchronize()
     t2 = time.time()
 
-    logger.debug(f"Time cost {t2 - t1}")
+    print(f"Time cost {t2 - t1}")
     value_dest = value_dest.view((B * N_CTX, H, D // 8, 8))
     scale_dest = scale_dest.view((B * N_CTX, H, D // 8, 1))
-    logger.debug("max {}".format(torch.max(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src))))
-    logger.debug("mean {}".format(torch.mean(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src))))
+    print("max {}".format(torch.max(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src))))
+    print("mean {}".format(torch.mean(torch.abs((value_dest * scale_dest).view(B * N_CTX, H, D) - src))))
     cos = torch.nn.CosineSimilarity(0)
-    logger.debug("cos {} {}".format(cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32))))
+    print("cos {} {}".format(cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32))))
 
 
 if __name__ == '__main__':

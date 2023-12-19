@@ -100,6 +100,6 @@ def test_rotary_emb(SEQ_LEN, H, D, dtype, eps=1e-5, device='cuda'):
     y_ref = x
 
     # compare
-    logger.debug(f"type: {y_tri.dtype}, {y_ref.dtype}")
-    logger.debug(f"max delta: {torch.max(torch.abs(y_tri - y_ref))}")
+    print(f"type: {y_tri.dtype}, {y_ref.dtype}")
+    print(f"max delta: {torch.max(torch.abs(y_tri - y_ref))}")
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)
