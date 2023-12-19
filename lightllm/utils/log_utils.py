@@ -68,9 +68,6 @@ _setup_logger()
 
 
 def init_logger(name: str, pid: Optional[int]=None):
-    global _inference_log_file_handler
-    global _default_file_handler
-    global _default_handler
     # Use the same settings as above for root logger
     logger = logging.getLogger(name)
     logger.setLevel(_LOG_LEVEL)

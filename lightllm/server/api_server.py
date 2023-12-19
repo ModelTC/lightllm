@@ -38,8 +38,6 @@ from fastapi.responses import Response, StreamingResponse, JSONResponse
 from importlib import reload
 import uvicorn
 from .sampling_params import SamplingParams
-from .detokenization.manager import start_detokenization_process
-from .router.manager import start_router_process
 from .req_id_generator import ReqIDGenerator
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
@@ -357,9 +355,10 @@ def main():
     
     args = parser.parse_args()
 
+    import lightllm.utils.log_utils
     if args.lightllm_log_dir is not None:
         os.environ["LIGHTLLM_LOG_DIR"] = args.lightllm_log_dir
-        # reload(lightllm.utils.log_utils)
+        reload(lightllm.utils.log_utils)
 
     # 非splitfuse 模式，不支持 prompt cache 特性
     if not args.splitfuse_mode:
@@ -401,6 +400,8 @@ def main():
     )
     pipe_router_reader, pipe_router_writer = mp.Pipe(duplex=False)
     pipe_detoken_reader, pipe_detoken_writer = mp.Pipe(duplex=False)
+
+    from .router.manager import start_router_process
     proc_router = mp.Process(
         target=start_router_process,
         args=(
@@ -412,6 +413,8 @@ def main():
         ),
     )
     proc_router.start()
+    
+    from .detokenization.manager import start_detokenization_process
     proc_detoken = mp.Process(
         target=start_detokenization_process,
         args=(
@@ -427,13 +430,12 @@ def main():
     router_init_state = pipe_router_reader.recv()
     detoken_init_state = pipe_detoken_reader.recv()
 
-    import lightllm.utils.log_utils
     logger = lightllm.utils.log_utils.init_logger(__name__)
 
     if router_init_state != "init ok" or detoken_init_state != "init ok":
         proc_router.kill()
         proc_detoken.kill()
-        logger.debug(
+        logger.error(
             "router init state: " + 
             str(router_init_state) + 
             " detoken init state: " + 

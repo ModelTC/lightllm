@@ -1,4 +1,5 @@
 import asyncio
+import os
 import numpy as np
 import rpyc
 import torch
@@ -54,7 +55,7 @@ class ModelRpcServer(rpyc.Service):
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
 
         self.cache = {}
-        self.logger = init_logger(__name__, self.tp_rank)
+        self.logger = init_logger(__name__, os.getpid())
 
         weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
