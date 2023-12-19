@@ -1,3 +1,4 @@
+import os
 from typing import Tuple
 
 import numpy as np
@@ -46,7 +47,7 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         return
     
     def _bind_matmul(self):
-        logger = init_logger(__name__, self.tp_rank_)
+        logger = init_logger(__name__ + str(os.getpid()), os.getpid())
         if "triton_int8weight" in self.mode:
             func = partial(LlamaTransformerLayerInferWquant._wquant_matmul_triton_int8weight_only_quant, self)
             self._wquant_matmul_for_qkv = func
