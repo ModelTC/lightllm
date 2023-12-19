@@ -98,7 +98,7 @@ def quantize_int8(weight, axis=0):
 def test_int8(M, K, N):
     import time
 
-    printg("M: {} K: {} N: {}".format(M, K, N))
+    print("M: {} K: {} N: {}".format(M, K, N))
     torch.manual_seed(0)
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
