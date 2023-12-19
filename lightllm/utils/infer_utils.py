@@ -5,12 +5,10 @@ import time
 
 from lightllm.utils.log_utils import init_logger
 
-logger = init_logger(__name__)
-
 is_show_cost_time = False
 
 
-def mark_cost_time(func_name):
+def mark_cost_time(func_name, logger=init_logger(__name__)):
     def inner_func(func):
         def time_func(*args, **kwargs):
             if dist.get_rank() in [0, 1] and is_show_cost_time:
@@ -41,7 +39,7 @@ def mark_start(key):
     return
 
 
-def mark_end(key, print_min_cost=0.0):
+def mark_end(key, print_min_cost=0.0, logger=init_logger(__name__)):
     torch.cuda.synchronize()
     global time_mark
     cost_time = (time.time() - time_mark[key]) * 1000
@@ -49,7 +47,7 @@ def mark_end(key, print_min_cost=0.0):
         logger.debug(f"cost {key}: {cost_time}")
 
 
-def calculate_time(show=False, min_cost_ms=0.0):
+def calculate_time(show=False, min_cost_ms=0.0, logger=init_logger(__name__)):
     def wrapper(func):
         def inner_func(*args, **kwargs):
             torch.cuda.synchronize()

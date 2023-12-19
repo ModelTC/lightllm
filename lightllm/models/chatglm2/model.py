@@ -9,7 +9,6 @@ from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.common.build_utils import repair_config
 from lightllm.utils.log_utils import init_logger
 
-logger = init_logger(__name__)
 
 class ChatGlm2TpPartModel(LlamaTpPartModel):
     # Please use the fast tokenizer from:
@@ -60,6 +59,7 @@ class ChatGlm2TpPartModel(LlamaTpPartModel):
             ntk_alpha = float(os.environ.get("LIGHTLLM_NTK_ALPHA", 1))
             assert ntk_alpha >= 1
             if ntk_alpha > 1:
+                logger = init_logger(__name__, self.tp_rank_)
                 logger.info(f"Note: NTK enabled, alpha set to {ntk_alpha}")
 
             max_seq_len *= ntk_alpha

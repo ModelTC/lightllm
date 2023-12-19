@@ -4,10 +4,6 @@ import triton
 import triton.language as tl
 import math
 
-from lightllm.utils.log_utils import init_logger
-
-logger = init_logger(__name__)
-
 
 @triton.jit
 def _fwd_kernel_token_att1(

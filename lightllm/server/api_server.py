@@ -349,7 +349,8 @@ def main():
                     help="splitfuse block size")    
     parser.add_argument("--prompt_cache_strs", type=str, default=[], nargs='+',
                         help="""prompt cache strs""")
-    parser.add_argument("--lightllm_log_dir", type=str, default=None, help="specify the log file of lightllm")
+    parser.add_argument("--lightllm_log_dir", type=str, default=None, 
+                        help="specify the log file of lightllm")
     
     parser.add_argument("--return_all_prompt_logprobs", action="store_true",
                         help="return all prompt tokens logprobs")

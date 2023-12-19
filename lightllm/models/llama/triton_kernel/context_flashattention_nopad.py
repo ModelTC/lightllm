@@ -4,9 +4,7 @@ import triton
 import triton.language as tl
 import math
 import torch.nn.functional as F
-from lightllm.utils.log_utils import init_logger
 
-logger = init_logger(__name__)
 
 if triton.__version__ >= "2.1.0":
     @triton.jit
