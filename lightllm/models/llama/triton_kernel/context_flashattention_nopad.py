@@ -309,10 +309,7 @@ def test():
     torch_out = torch.cat(torch_out, dim=0)
     context_attention_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len)
     logger.debug("{} {}".format(o.shape, torch_out.shape))
-    # print(o.shape, torch_out.shape)
 
     logger.debug(f"max {torch.max(torch.abs(torch_out - o))}")
     logger.debug(f"mean {torch.mean(torch.abs(torch_out - o))}")
-    # print("max ", torch.max(torch.abs(torch_out - o)))
-    # print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)

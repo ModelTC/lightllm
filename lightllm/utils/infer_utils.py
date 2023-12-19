@@ -18,8 +18,7 @@ def mark_cost_time(func_name):
                 start_time = time.time()
                 ans = func(*args, **kwargs)
                 torch.cuda.synchronize()
-                logger.debug(func_name, "cost time:", (time.time() - start_time) * 1000)
-                # print(func_name, "cost time:", (time.time() - start_time) * 1000)
+                logger.debug(f"{func_name} cost time: {(time.time() - start_time) * 1000}")
                 return ans
             else:
                 torch.cuda.synchronize()
@@ -47,8 +46,7 @@ def mark_end(key, print_min_cost=0.0):
     global time_mark
     cost_time = (time.time() - time_mark[key]) * 1000
     if cost_time > print_min_cost:
-        logger.debug(f"cost {key}:", cost_time)
-        # print(f"cost {key}:", cost_time)
+        logger.debug(f"cost {key}: {cost_time}")
 
 
 def calculate_time(show=False, min_cost_ms=0.0):
@@ -63,7 +61,6 @@ def calculate_time(show=False, min_cost_ms=0.0):
                 cost_time = (time.time() - start_time) * 1000
                 if cost_time > min_cost_ms:
                     logger.debug(f"Function {func.__name__} took {cost_time} ms to run.")
-                    # print(f"Function {func.__name__} took {cost_time} ms to run.")
             return result
 
         return inner_func

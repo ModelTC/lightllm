@@ -61,7 +61,7 @@ class ChatGlm2TpPartModel(LlamaTpPartModel):
             assert ntk_alpha >= 1
             if ntk_alpha > 1:
                 logger.info(f"Note: NTK enabled, alpha set to {ntk_alpha}")
-                # print(f"Note: NTK enabled, alpha set to {ntk_alpha}")
+
             max_seq_len *= ntk_alpha
             base = base * (ntk_alpha ** (self.head_dim_ / (self.head_dim_-2))) #Base change formula
         except:

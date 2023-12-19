@@ -13,7 +13,6 @@ class ReqManager:
     def alloc(self, need_size):
         if need_size > self.can_use_req_size:
             logger.error(f'Insufficient requested capacity, remaining {self.can_use_req_size}')
-            # print(f'Insufficient requested capacity, remaining {self.can_use_req_size}')
             return None
         select_index = torch.nonzero(self.req_state==0).reshape(-1)[:need_size]
         self.req_state[select_index] = 1
@@ -25,7 +24,6 @@ class ReqManager:
         self.req_state[free_req_index] = 0
         if self.can_use_req_size == len(self.req_state):
             logger.debug(f"freed all request size {self.can_use_req_size}")
-            # print(f"freed all request size {self.can_use_req_size}")
         self.mem_manager.free(free_token_index)
     
     def free_req(self, free_req_index):

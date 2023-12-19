@@ -122,9 +122,7 @@ class ModelRpcServer(rpyc.Service):
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
-            #print("#" * 16)
-            logger.error("load model error:", str(e), e, type(e))
-            # print("load model error:", str(e), e, type(e))
+            logger.error(f"load model error: {str(e)} {e} {type(e)}")
             import traceback
             traceback.print_exc()
             raise e

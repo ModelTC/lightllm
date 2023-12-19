@@ -499,7 +499,6 @@ def test_int4(M, K, N):
     import time
 
     logger.debug("M: {} K: {} N: {}".format(M, K, N))
-    # print("M: {} K: {} N: {}".format(M, K, N))
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     int_b, b_scale, b_zero_point, _ = quantize_int4(b)
@@ -513,8 +512,7 @@ def test_int4(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     triton_time = t2 - t1
-    logger.info("Triton time cost", (t2 - t1))
-    # print("Triton time cost", (t2 - t1))
+    logger.info("Triton time cost {}".format((t2 - t1)))
     for _ in range(10):
         torch_output = torch.matmul(a, b)
     torch.cuda.synchronize()
@@ -525,8 +523,7 @@ def test_int4(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     torch_time = t2 - t1
-    logger.info("Torch time cost", (t2 - t1))
-    # print("Torch time cost", (t2 - t1))
+    logger.info("Torch time cost {}".format((t2 - t1)))
     return triton_time, torch_time
 
 

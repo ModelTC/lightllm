@@ -94,6 +94,4 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device='cuda'):
     # compare
     logger.debug("type: {} {}".format(y_tri.dtype, y_ref.dtype))
     logger.debug("max delta: {}".format(torch.max(torch.abs(y_tri - y_ref))))
-    # print("type:", y_tri.dtype, y_ref.dtype)
-    # print("max delta:", torch.max(torch.abs(y_tri - y_ref)))
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)

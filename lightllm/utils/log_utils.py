@@ -61,7 +61,6 @@ _setup_logger()
 
 
 def init_logger(name: str):
-    # print(_LOG_DIR)
     # Use the same settings as above for root logger
     logger = logging.getLogger(name)
     logger.setLevel(_LOG_LEVEL)

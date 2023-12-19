@@ -82,7 +82,6 @@ class DeTokenizationManager:
                     self.send_to_httpserver.send_pyobj(new_batch_str_out)
             except Exception as e:
                 logger.error(f"detoken process has exception {str(e)}")
-                # print(f"detoken process has exception {str(e)}")
                 traceback.print_exc()
                 pass
 

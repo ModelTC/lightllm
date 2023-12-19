@@ -56,7 +56,6 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             self._wquant_matmul_for_ffn_down = func
             if self.tp_rank_ == 0 and self.layer_num_ == 0:
                 logger.info("model use triton_int8weight kernel")
-                # print("model use triton_int8weight kernel")
         elif "triton_int4weight" in self.mode:
             func = partial(LlamaTransformerLayerInferWquant._wquant_matmul_triton_int4weight_only_quant, self)
             self._wquant_matmul_for_qkv = func
@@ -65,7 +64,6 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             self._wquant_matmul_for_ffn_down = func
             if self.tp_rank_ == 0 and self.layer_num_ == 0:
                 logger.info("model use triton_int4weight kernel")
-                # print("model use triton_int4weight kernel")
         elif "lmdeploy_int4weight" in self.mode:
             func = partial(LlamaTransformerLayerInferWquant._wquant_matmul_lmdeploy_int4weight_only_quant, self)
             self._wquant_matmul_for_qkv = func
@@ -74,7 +72,6 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             self._wquant_matmul_for_ffn_down = func
             if self.tp_rank_ == 0 and self.layer_num_ == 0:
                 logger.info("model use lmdeploy_int4weight kernel")
-                # print("model use lmdeploy_int4weight kernel")
         elif "ppl_int4weight" in self.mode:
             func = partial(LlamaTransformerLayerInferWquant._wquant_matmul_ppl_int4weight_only_quant, self)
             self._wquant_matmul_for_qkv = func
@@ -83,7 +80,6 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             self._wquant_matmul_for_ffn_down = func
             if self.tp_rank_ == 0 and self.layer_num_ == 0:
                 logger.info("model use ppl_int4weight kernel")
-                # print("model use ppl_int4weight kernel")
         else:
             raise Exception(f"error mode {self.mode}")
         return
