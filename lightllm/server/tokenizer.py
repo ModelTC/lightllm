@@ -18,7 +18,8 @@
 
 from typing import List, Tuple, Union
 
-from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import (AutoTokenizer, PreTrainedTokenizer,
+                          PreTrainedTokenizerFast)
 from transformers.convert_slow_tokenizer import convert_slow_tokenizer
 from transformers import LlamaTokenizer
 from transformers.configuration_utils import PretrainedConfig
@@ -41,16 +42,15 @@ def get_tokenizer(
     """Gets a tokenizer for the given model name via Huggingface."""
     if tokenizer_mode == "slow":
         if kwargs.get("use_fast", False):
-            raise ValueError("Cannot use the fast tokenizer in slow tokenizer mode.")
+            raise ValueError(
+                "Cannot use the fast tokenizer in slow tokenizer mode.")
         kwargs["use_fast"] = False
 
     if "llama" in tokenizer_name.lower() and kwargs.get("use_fast", True):
-        logger.info(
-            "For some LLaMA-based models, initializing the fast tokenizer may "
+        logger.info("For some LLaMA-based models, initializing the fast tokenizer may "
             "take a long time. To eliminate the initialization time, consider "
             f"using '{_FAST_LLAMA_TOKENIZER}' instead of the original "
-            "tokenizer."
-        )
+            "tokenizer.")
         """
         print(
             "For some LLaMA-based models, initializing the fast tokenizer may "
@@ -63,25 +63,23 @@ def get_tokenizer(
         # return tokenizer
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_name, trust_remote_code=trust_remote_code, *args, **kwargs
-        )
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=trust_remote_code, *args,
+                                                  **kwargs)
     except TypeError as e:
         # The LLaMA tokenizer causes a protobuf error in some environments, using slow mode.
-        # you can try pip install protobuf==3.20.0 to try repair
+        # you can try pip install protobuf==3.20.0 to try repair 
         kwargs["use_fast"] = False
-        tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_name, trust_remote_code=trust_remote_code, *args, **kwargs
-        )
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=trust_remote_code, *args,
+                                                  **kwargs)
 
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
         logger.info(
             "Using a slow tokenizer. This might cause a significant "
-            "slowdown. Consider using a fast tokenizer instead."
-        )
+            "slowdown. Consider using a fast tokenizer instead.")
         """
         print(
             "Using a slow tokenizer. This might cause a significant "
             "slowdown. Consider using a fast tokenizer instead.")
         """
     return tokenizer
+        

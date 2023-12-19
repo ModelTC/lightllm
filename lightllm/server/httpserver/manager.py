@@ -7,9 +7,13 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from ..tokenizer import get_tokenizer
 from ..io_struct import BatchStrOut, AbortReq
 
-
 class HttpServerManager:
-    def __init__(self, args, router_port, httpserver_port):
+    def __init__(
+        self,
+        args,
+        router_port,
+        httpserver_port
+    ):
         self.args = args
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
@@ -17,11 +21,9 @@ class HttpServerManager:
 
         self.recv_from_detokenization = context.socket(zmq.PULL)
         self.recv_from_detokenization.bind(f"tcp://127.0.0.1:{httpserver_port}")
-
+        
         self.tokenizer = get_tokenizer(
-            args.model_dir,
-            args.tokenizer_mode,
-            trust_remote_code=args.trust_remote_code,
+            args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code
         )
 
         self.req_id_to_out_inf = {}  # value type (out_str, metadata, finished, event)
@@ -32,7 +34,7 @@ class HttpServerManager:
 
         self._init_prompt_cache()
         return
-
+    
     def _init_prompt_cache(self):
         """
         初始化 prompt cache 特性, 这个地方的id 分配要于 router 中 的id 分配对齐
@@ -40,25 +42,25 @@ class HttpServerManager:
         self.prompt_cache_reqs = []
         # 初始化 prompt cahce， 然后初始化请求队列
         if self.args.splitfuse_mode:
-            id = -1  # id 从 -1， -2， .... 避免和正常的 id 占用
+            id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
             for prompt_cache_str in self.args.prompt_cache_strs:
                 prompt_ids = self.tokenizer.encode(prompt_cache_str)
                 self.prompt_cache_reqs.append((id, prompt_ids))
                 id -= 1
         return
-
+    
     def _find_prompt_cache_req(self, token_ids):
         prompt_cache_len = 0
         prompt_cache_req_id = None
-        for req_id, prompt_ids in self.prompt_cache_reqs:
+        for (req_id, prompt_ids) in self.prompt_cache_reqs:
             prompt_len = len(prompt_ids)
             if len(token_ids) > prompt_len:
-                if token_ids[0:prompt_len] == prompt_ids:
+                if token_ids[0 : prompt_len] == prompt_ids:
                     prompt_cache_len = prompt_len
                     prompt_cache_req_id = req_id
                     break
         return prompt_cache_len, prompt_cache_req_id
-
+    
     async def generate(self, prompt, sampling_params, request_id):
         prompt_ids = self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)
@@ -75,7 +77,7 @@ class HttpServerManager:
             raise ValueError(
                 f"the req token total len + 1 (input len + output len + 1) is too long > max_total_token_num:{self.total_token_num}"
             )
-
+        
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
         req_status = ReqStatus(request_id)
@@ -85,16 +87,8 @@ class HttpServerManager:
         # 寻找是否有可用的prompt cache 可用
         prompt_cache_len, prompt_cache_req_id = self._find_prompt_cache_req(prompt_ids)
 
-        self.send_to_router.send_pyobj(
-            (
-                prompt_ids,
-                sampling_params,
-                request_id,
-                prompt_cache_len,
-                prompt_cache_req_id,
-            )
-        )
-
+        self.send_to_router.send_pyobj((prompt_ids, sampling_params, request_id, prompt_cache_len, prompt_cache_req_id))
+  
         while True:
             try:
                 await asyncio.wait_for(event.wait(), timeout=5)
@@ -137,18 +131,15 @@ class HttpServerManager:
             for req_id, text, metadata, finished, abort in recv_ans.reqs_infs:
                 try:
                     if not abort:
-                        req_status: ReqStatus = self.req_id_to_out_inf[req_id]
-                        async with req_status.lock:
-                            req_status.out_token_info_list.append(
-                                (text, metadata, finished)
-                            )
+                        req_status : ReqStatus = self.req_id_to_out_inf[req_id]
+                        async with req_status.lock: 
+                            req_status.out_token_info_list.append((text, metadata, finished))
                             req_status.event.set()
                     else:
                         del self.req_id_to_out_inf[req_id]
                 except:
                     pass
         return
-
 
 class ReqStatus:
     def __init__(self, req_id) -> None:

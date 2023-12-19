@@ -5,7 +5,6 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
-
 def select_mem_manager_class(mode):
     logger.debug(f"mode setting params: {mode}")
     # print(f"mode setting params: {mode}")

@@ -12,9 +12,7 @@ class RequestThread(threading.Thread):
         self.data = data
 
     def run(self):
-        response = requests.post(
-            self.url, headers=self.headers, data=json.dumps(self.data)
-        )
+        response = requests.post(self.url, headers=self.headers, data=json.dumps(self.data))
         if response.status_code == 200:
             print(response.json())
         else:
@@ -28,9 +26,9 @@ for i in range(1):
     data = {
         'inputs': 'San Francisco is a',
         # 'temperature': 0.1,
-        'parameters': {
+        'parameters' : {
             'do_sample': False,
-        },
+        }
     }
     thread = RequestThread(url, headers, data)
     thread.start()
@@ -44,7 +42,7 @@ for i in range(20):
             'do_sample': False,
             'ignore_eos': True,
             'max_new_tokens': 200,
-        },
+        }
     }
     thread = RequestThread(url, headers, data)
     thread.start()

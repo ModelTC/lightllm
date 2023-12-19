@@ -1,3 +1,4 @@
+
 def repair_config(config, same_names):
     find_value = None
     for name in same_names:

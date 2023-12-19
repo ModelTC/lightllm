@@ -4,16 +4,9 @@ import gc
 from safetensors import safe_open
 
 
-def load_func(
-    file_,
-    use_safetensors=False,
-    pre_post_layer=None,
-    transformer_layer_list=None,
-    weight_dir=None,
-):
+def load_func(file_, use_safetensors=False, pre_post_layer=None, transformer_layer_list=None, weight_dir=None):
     # fix bug for 多线程加载的时候，每个线程内部的cuda device 会切回 0， 修改后来保证不会出现bug
-    import torch.distributed as dist
-
+    import torch.distributed as dist    
     tp_rank = dist.get_rank()
     torch.cuda.set_device(tp_rank)
 
@@ -32,13 +25,7 @@ def load_func(
     gc.collect()
 
 
-def load_hf_weights(
-    data_type,
-    weight_dir,
-    pre_post_layer=None,
-    transformer_layer_list=None,
-    weight_dict=None,
-):
+def load_hf_weights(data_type, weight_dir, pre_post_layer=None, transformer_layer_list=None, weight_dict=None):
     data_type = torch.float16 if data_type == 'fp16' else torch.float32
     if pre_post_layer is not None:
         assert pre_post_layer.data_type_ == data_type, "type is not right"
@@ -54,23 +41,14 @@ def load_hf_weights(
         return
     use_safetensors = True
     files = os.listdir(weight_dir)
-    candidate_files = list(filter(lambda x: x.endswith('.safetensors'), files))
+    candidate_files = list(filter(lambda x : x.endswith('.safetensors'), files))
     if len(candidate_files) == 0:
         use_safetensors = False
-        candidate_files = list(filter(lambda x: x.endswith('.bin'), files))
-    assert (
-        len(candidate_files) != 0
-    ), "can only support pytorch tensor and safetensors format for weights."
+        candidate_files = list(filter(lambda x : x.endswith('.bin'), files))
+    assert len(candidate_files) != 0, "can only support pytorch tensor and safetensors format for weights."
     from functools import partial
     from multiprocessing.pool import ThreadPool as Pool
-
-    partial_func = partial(
-        load_func,
-        use_safetensors=use_safetensors,
-        pre_post_layer=pre_post_layer,
-        transformer_layer_list=transformer_layer_list,
-        weight_dir=weight_dir,
-    )  # noqa
+    partial_func = partial(load_func, use_safetensors=use_safetensors, pre_post_layer=pre_post_layer, transformer_layer_list=transformer_layer_list, weight_dir=weight_dir)  # noqa
     worker = int(os.environ.get('LOADWORKER', 1))
     with Pool(worker) as p:
         _ = p.map(partial_func, candidate_files)
