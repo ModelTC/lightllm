@@ -5,7 +5,6 @@ import triton.language as tl
 import math
 import torch.nn.functional as F
 
-
 if triton.__version__ >= "2.1.0":
     @triton.jit
     def _fwd_kernel(
@@ -304,8 +303,8 @@ def test():
         torch_out.append(torch_o)
     torch_out = torch.cat(torch_out, dim=0)
     context_attention_fwd(q, k, v, o, alibi, b_start_loc, b_seq_len, max_input_len)
-    print("{} {}".format(o.shape, torch_out.shape))
+    print(o.shape, torch_out.shape)
 
-    print("max {}".format(torch.max(torch.abs(torch_out - o))))
-    print("mean {}".format(torch.mean(torch.abs(torch_out - o))))
+    print("max ", torch.max(torch.abs(torch_out - o)))
+    print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)

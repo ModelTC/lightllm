@@ -6,7 +6,7 @@ from lightllm.utils.log_utils import init_logger
 logger = init_logger(__name__)
 
 def select_mem_manager_class(mode):
-    logger.debug(f"mode setting params: {mode}")
+    logger.info(f"mode setting params: {mode}")
     if "ppl_int8kv" in mode:
         memory_manager_class = PPLINT8KVMemoryManager
         logger.info("Model kv cache using mode ppl int8kv")

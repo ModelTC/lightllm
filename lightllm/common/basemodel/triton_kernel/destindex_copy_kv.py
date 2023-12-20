@@ -118,9 +118,9 @@ def test1():
     torch.cuda.synchronize()
     t2 = time.time()
 
-    print("Time cost {}".format(t2 - t1))
-    print("max {}".format(torch.max(torch.abs(dest - src))))
-    print("mean {}".format(torch.mean(torch.abs(dest - src))))
+    print("Time cost ", t2 - t1)
+    print("max ", torch.max(torch.abs(dest - src)))
+    print("mean ", torch.mean(torch.abs(dest - src)))
     assert torch.allclose(src, dest, atol=1e-2, rtol=0)
 
 
@@ -142,11 +142,11 @@ def test2():
     torch.cuda.synchronize()
     t2 = time.time()
 
-    print("Time cost {}".format(t2 - t1))
+    print("Time cost ", t2 - t1)
     print("max ", torch.max(torch.abs(value_dest * scale_dest - src)))
     print("mean ", torch.mean(torch.abs(value_dest * scale_dest - src)))
     cos = torch.nn.CosineSimilarity(0)
-    print("cos {} {}".format(cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32))))
+    print("cos ", cos(src.flatten().to(torch.float32), (value_dest * scale_dest).flatten().to(torch.float32)))
 
 
 if __name__ == '__main__':

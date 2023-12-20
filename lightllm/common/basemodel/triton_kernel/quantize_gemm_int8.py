@@ -237,14 +237,14 @@ def test_correct_int8(M=32, N=4096, K=4096):
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     int_a, scale_a = quantize_int8_perrow(a)
     cos = torch.nn.CosineSimilarity(0)
-    print("Quantization cos {} {}".format(cos((int_a * scale_a.unsqueeze(1)).flatten().to(torch.float32), a.flatten().to(torch.float32))))
+    print("Quantization cos", cos((int_a * scale_a.unsqueeze(1)).flatten().to(torch.float32), a.flatten().to(torch.float32)))
     int_b, scale_b = quantize_int8(b, axis=0)
     triton_output = matmul_int8(int_a, scale_a, int_b, scale_b)
     torch_output = torch.matmul(a, b)
     print(f"triton_output={triton_output}")
     print(f"torch_output={torch_output}")
     cos = torch.nn.CosineSimilarity(0)
-    print("Output cos {} {}".format(cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32))))
+    print("Output cos", cos(triton_output.flatten().to(torch.float32), torch_output.flatten().to(torch.float32)))
 
 
 def test_int8(M, K, N):

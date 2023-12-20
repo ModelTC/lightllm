@@ -47,7 +47,8 @@ def get_tokenizer(
         kwargs["use_fast"] = False
 
     if "llama" in tokenizer_name.lower() and kwargs.get("use_fast", True):
-        logger.info("For some LLaMA-based models, initializing the fast tokenizer may "
+        logger.info(
+            "For some LLaMA-based models, initializing the fast tokenizer may "
             "take a long time. To eliminate the initialization time, consider "
             f"using '{_FAST_LLAMA_TOKENIZER}' instead of the original "
             "tokenizer.")

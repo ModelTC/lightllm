@@ -21,7 +21,6 @@ import time
 import torch
 import uvloop
 import sys
-import os
 
 from .build_prompt import build_prompt
 
@@ -35,7 +34,6 @@ from typing import AsyncGenerator
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import Response, StreamingResponse, JSONResponse
-from importlib import reload
 import uvicorn
 from .sampling_params import SamplingParams
 from .req_id_generator import ReqIDGenerator
@@ -347,18 +345,11 @@ def main():
                     help="splitfuse block size")    
     parser.add_argument("--prompt_cache_strs", type=str, default=[], nargs='+',
                         help="""prompt cache strs""")
-    parser.add_argument("--lightllm_log_dir", type=str, default=None, 
-                        help="specify the log file of lightllm")
     
     parser.add_argument("--return_all_prompt_logprobs", action="store_true",
                         help="return all prompt tokens logprobs")
     
     args = parser.parse_args()
-
-    import lightllm.utils.log_utils
-    if args.lightllm_log_dir is not None:
-        os.environ["LIGHTLLM_LOG_DIR"] = args.lightllm_log_dir
-        reload(lightllm.utils.log_utils)
 
     # 非splitfuse 模式，不支持 prompt cache 特性
     if not args.splitfuse_mode:

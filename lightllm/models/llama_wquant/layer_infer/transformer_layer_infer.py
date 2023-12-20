@@ -1,4 +1,3 @@
-import os
 from typing import Tuple
 
 import numpy as np
@@ -21,6 +20,7 @@ from lightllm.common.basemodel.cuda_kernel.ppl_wquant import matmul_dequantize_i
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.utils.log_utils import init_logger
 
+logger = init_logger(__name__)
  
 class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
     """
@@ -47,7 +47,6 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         return
     
     def _bind_matmul(self):
-        logger = init_logger(__name__ + str(os.getpid()), os.getpid())
         if "triton_int8weight" in self.mode:
             func = partial(LlamaTransformerLayerInferWquant._wquant_matmul_triton_int8weight_only_quant, self)
             self._wquant_matmul_for_qkv = func

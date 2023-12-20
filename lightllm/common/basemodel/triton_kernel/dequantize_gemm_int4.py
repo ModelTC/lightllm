@@ -509,7 +509,7 @@ def test_int4(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     triton_time = t2 - t1
-    print("Triton time cost {}".format((t2 - t1)))
+    print("Triton time cost", (t2 - t1))
     for _ in range(10):
         torch_output = torch.matmul(a, b)
     torch.cuda.synchronize()
@@ -520,7 +520,7 @@ def test_int4(M, K, N):
     torch.cuda.synchronize()
     t2 = time.time()
     torch_time = t2 - t1
-    print("Torch time cost {}".format((t2 - t1)))
+    print("Torch time cost", (t2 - t1))
     return triton_time, torch_time
 
 

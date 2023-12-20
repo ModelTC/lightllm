@@ -89,7 +89,7 @@ def torch_att(xq, xk, bs, seqlen, num_head, head_dim):
     xq = xq.transpose(1, 2)
     keys = keys.transpose(1, 2)
     scores = (torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)).squeeze().transpose(0, 1).reshape(num_head, -1)
-    print("s  {}".format(scores.shape))
+    print("s  ", scores.shape)
     return scores
 
 

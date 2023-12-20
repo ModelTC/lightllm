@@ -67,7 +67,8 @@ def _setup_logger():
 _setup_logger()
 
 
-def init_logger(name: str, pid: Optional[int]=None):
+def init_logger(name: str):
+    pid = os.getpid()
     # Use the same settings as above for root logger
     logger = logging.getLogger(name)
     logger.setLevel(_LOG_LEVEL)
