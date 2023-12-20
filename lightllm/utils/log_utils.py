@@ -84,7 +84,7 @@ def init_logger(name: str):
                     os.makedirs(_LOG_DIR)
                 except OSError as e:
                     _root_logger.warn(f"Error creating directory {_LOG_DIR} : {e}")
-            _inference_log_file_handler[pid] = logging.FileHandler(_LOG_DIR + f"/model.{pid}.log")
+            _inference_log_file_handler[pid] = logging.FileHandler(_LOG_DIR + f"/process.{pid}.log")
             _inference_log_file_handler[pid].setLevel(_LOG_LEVEL)
             _inference_log_file_handler[pid].setFormatter(NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT))
             _root_logger.addHandler(_inference_log_file_handler[pid])
