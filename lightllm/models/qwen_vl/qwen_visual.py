@@ -394,7 +394,6 @@ class QWenVisionTransformer(nn.Module):
             dtype=self.transformer.get_cast_dtype(),
             device=self.transformer.get_cast_device(),
         )
-        print(" + visual forward input:", x.shape, x.dtype, x.device)
         # to patches
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
@@ -412,7 +411,6 @@ class QWenVisionTransformer(nn.Module):
         x = self.ln_post(x)
         x = x @ self.proj
         x = x.to(dtype=torch.float16)
-        print(" + visual forward output:", x.shape, x.dtype, x.device)
 
         return x
           

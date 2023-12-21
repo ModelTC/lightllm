@@ -25,39 +25,36 @@ class CacheServer(rpyc.Service):
         # (to finalize the service, if needed)
         pass
 
-    def exposed_add_item(self, data: bytes) -> int:
-        data = obtain(data)
-        id = self._impl.add_item(data)
-        assert isinstance(id, int)
-        return id
-
-    def exposed_query_item_uuid(self, md5sum) -> Union[int, None]:
+    def exposed_add_item(self, md5sum: str, ref: int) -> int:
         md5sum = obtain(md5sum)
-        id = self._impl.query_item_uuid(md5sum)
+        ref = obtain(ref)
+        id = self._impl.add_item(md5sum, ref)
         assert isinstance(id, int)
         return id
 
-    def exposed_get_item_data(self, id: int) -> bytes:
+    def exposed_set_item_data(self, id: int) -> None:
+        id = obtain(id)
+        return self._impl.set_item_data(id=id)
+
+    def exposed_get_item_data(self, id: int) -> bool:
         id = obtain(id)
         return self._impl.get_item_data(id=id)
 
-    def exposed_set_item_embed(self, id: int):
+    def exposed_set_item_embed(self, id: int) -> None:
         id = obtain(id)
         return self._impl.set_item_embed(id=id)
 
-    def exposed_query_available_size(self):
-        return self._impl.query_available_size()
-    
-    def exposed_free_item(self, id: int):
-        id = obtain(id)
-        return self._impl.free_item(id)
-
-    def exposed_get_item_embed(self, id: int) -> bytes:
+    def exposed_get_item_embed(self, id: int) -> bool:
         id = obtain(id)
         return self._impl.get_item_embed(id=id)
 
-    def exposed_recycle_item(self):
-        return self._impl.recycle_item()
+    def exposed_free_item(self, id: int) -> None:
+        id = obtain(id)
+        return self._impl.free_item(id)
+
+    def exposed_recycle_item(self, ratio: float):
+        ratio = obtain(ratio)
+        return self._impl.recycle_item(ratio)
 
 def start_cache_manager(port: int, pipe_writer):
     from .interface import CacheManagerFactory

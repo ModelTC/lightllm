@@ -7,16 +7,16 @@ import torch
 import hashlib
 from collections import deque
 import multiprocessing.shared_memory as shm
+from ..utils import get_shm_name_data, get_shm_name_embed, free_shm
 
 
 @dataclasses.dataclass
 class Record(object):
     id: int
-    data: bytes
     md5sum: str
+    ref: int
+    data: bool
     embed: bool
-    embed_cnt: int
-    # data_cnt: int
 
 @CacheManagerFactory.register("naive")
 class InMemoryCache(CacheManager):
@@ -28,68 +28,54 @@ class InMemoryCache(CacheManager):
         self.pool_size = 0
         self.lock = threading.Lock()
 
-    def add_item(self, data: bytes, id: int=None) -> int:
-        md5sum = hashlib.md5(data).hexdigest()
-        id = self.query_item_uuid(md5sum)
-        if id is not None:
-            # this data already exists in cache.
-            # with self.lock:
-                # self._records[id].data_cnt += 1
-                # self._records[id].embed_cnt += 1
-            return id
-        # data doesn't exist, insert it and return id.
-        id = uuid.uuid1()
-        id = id.int
-        record = Record(id=id, data=data, md5sum=md5sum, embed=False, embed_cnt=0)
-        self._records[id] = record
-        self._md5_to_record[md5sum] = record
-        return id
-
-    def query_item_uuid(self, md5sum) -> Union[int, None]:
+    def add_item(self, md5sum: str, ref: int) -> int:
         with self.lock:
-            record = self._md5_to_record.get(md5sum, None)
-            if record is None:
-                return None
-            self._records[record.id].embed_cnt += 1
-            return record.id
-    
-    def get_item_data(self, id: int) -> bytes:
-        # with self.lock:
+            if md5sum not in self._md5_to_record:
+                id = uuid.uuid1()
+                id = id.int
+                record = Record(id=id, md5sum=md5sum, ref=ref, data=False, embed=False)
+                self._records[id] = record
+                self._md5_to_record[md5sum] = record
+                self.pool_size += 1
+                return id
+            else:
+                record = self._md5_to_record[md5sum]
+                record.ref += ref
+                return record.id
+
+    def set_item_data(self, id: int) -> None:
+        self._records[id].data = True
+
+    def get_item_data(self, id: int) -> bool:
         return self._records[id].data
 
-    def query_available_size(self):
-        # with self.lock:
-        return self.max_pool_size - self.pool_size
-
-    def free_item(self, id: int):
-        with self.lock:
-            self._records[id].embed_cnt -= 1    
-            # print("free: ", id, self._records[id].embed_cnt) 
-            return self.pool_size
-
-    def set_item_embed(self, id: int):
-        with self.lock:
-            self._records[id].embed = True
-            self._records[id].embed_cnt += 1
-            # self._records[id].data_cnt -= 1
-            self.pool_size += 1 
+    def set_item_embed(self, id: int) -> None:
+        self._records[id].embed = True
 
     def get_item_embed(self, id: int) -> bool:
-        # with self.lock:
-        if id not in self._records:
-            return False
         return self._records[id].embed
 
-    def recycle_item(self):
+    def free_item(self, id: int) -> None:
+        with self.lock:
+            self._records[id].ref -= 1
+
+    def recycle_item(self, ratio: float) -> None:
+        reserved_size = max(0, int(self.max_pool_size * ratio))
+        target_delete_size = max(1, self.pool_size - reserved_size)
         with self.lock:
             if self.pool_size >= self.max_pool_size:
-                old_keys = list(self._records.keys())
-                for id in old_keys:
-                    if self._records[id].embed_cnt == 0 and self._records[id].embed: #and self._records[id].data_cnt ==0:
-                        if self._records[id].embed:
-                            shared_memory = shm.SharedMemory(name=str(id))
-                            shared_memory.close()
-                            shared_memory.unlink()    
-                        del self._md5_to_record[self._records[id].md5sum]
+                deleted = 0
+                keys = list(self._records.keys())
+                for id in keys:
+                    record = self._records[id]
+                    if record.ref <= 0:
+                        if record.data:
+                            free_shm(get_shm_name_data(id))
+                        if record.embed:
+                            free_shm(get_shm_name_embed(id))
+                        del self._md5_to_record[record.md5sum]
                         del self._records[id] 
-                    self.pool_size -= 1
+                        self.pool_size -= 1
+                        deleted += 1
+                        if deleted >= target_delete_size:
+                            break
