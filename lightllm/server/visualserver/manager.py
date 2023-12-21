@@ -5,7 +5,7 @@ import uvloop
 import rpyc
 from transformers import AutoConfig
 from ..io_struct import AbortReq
-from ..embed_cache.utils import tensor2bytes
+from ..embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from rpyc.utils.classic import obtain
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from .model_infer.model_rpc import start_model_process, VisualModelRpcClient
@@ -13,7 +13,6 @@ from io import BytesIO
 from PIL import Image
 import time
 import torch
-import multiprocessing.shared_memory as shm
 
 
 class VisualManager:
@@ -34,7 +33,8 @@ class VisualManager:
         self.cache_client = rpyc.connect("localhost", client_port)
         self.waiting_reqs = [] 
         self.model_weightdir = args.model_dir
-        self.world_size = args.tp
+        self.tp_world_size = args.tp
+        self.world_size = 1
         self.infer_batch_size = infer_batch_size
         self.trust_remote_code=args.trust_remote_code
         self.args = args
@@ -68,11 +68,9 @@ class VisualManager:
         # uuids -> PIL Images
         images = []
         for uid in uuids:
-            image_data = self.cache_client.root.get_item_data(uid)
-            # print(id(ImageCache))
-            # image_data = ImageCache.get_item_data(uid)
+            image_data = read_shm(get_shm_name_data(uid))
             images.append(Image.open(BytesIO(image_data)))
-            print(" + got pil image:", images[-1].size, images[-1].mode)
+            # print(" + got pil image:", images[-1].size, images[-1].mode)
         rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]
         ans = await asyncio.gather(*rets)
         if self.world_size != 1:
@@ -82,14 +80,11 @@ class VisualManager:
         torch.cuda.synchronize()
         b = time.time()
         for i in range(len(uuids)):
-            print(" + set_item_embed:", uuids[i], img_embed[i].shape)
-            cur_embed_bytes = tensor2bytes(img_embed[i])
+            # print(" + set_item_embed:", uuids[i], img_embed[i].shape)
             if not self.cache_client.root.get_item_embed(uuids[i]):
-                shared_memory = shm.SharedMemory(name=str(uuids[i]), create=True, size=len(cur_embed_bytes))
-                mem_view = shared_memory.buf
-                mem_view[:len(cur_embed_bytes)] = cur_embed_bytes
-            self.cache_client.root.set_item_embed(uuids[i])
-        self.cache_client.root.recycle_item()
+                cur_embed_bytes = tensor2bytes(img_embed[i])
+                create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
+                self.cache_client.root.set_item_embed(uuids[i])
         return
 
     async def loop_for_fwd(self):
@@ -100,25 +95,24 @@ class VisualManager:
                 cur_batch_size = 0
                 reqs_need_infer = []
                 uuids_need_infer = []
-                available_size = self.cache_client.root.query_available_size()
-                while cur_batch_size < available_size and cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
+                while cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
                     req = self.waiting_reqs.pop(0)
                     _, _, multimodal_params, _, _, _ = req
-                    need_infer = False
                     for img in multimodal_params.images:
                         if not self.cache_client.root.get_item_embed(img.uuid):
-                            need_infer = True
                             cur_batch_size += 1
                             uuids_need_infer.append(img.uuid)
-                    if need_infer:
+                    if len(uuids_need_infer) > 0:
                         reqs_need_infer.append(req)
+                        # delete items with 50% reserved
+                        self.cache_client.root.recycle_item(ratio=0.5)
                     else:
-                        print(" + no need need infer, send to router...")
+                        # print(" + no need need infer, send to router...")
                         self.send_to_router.send_pyobj(req)
 
                 await self.infer_imgs(uuids_need_infer)
                 for req in reqs_need_infer:
-                    print(" + after infer_imgs, send to router...")
+                    # print(" + after infer_imgs, send to router...")
                     self.send_to_router.send_pyobj(req)
 
     async def loop_for_netio_req(self):

@@ -6,15 +6,17 @@ from io import BytesIO
 from PIL import Image
 import base64
 import rpyc
+import hashlib
+from lightllm.server.embed_cache.utils import get_shm_name_data, create_shm
 
 
 class ImageItem:
 
-    def __init__(self, cache_port, **kwargs):
+    def __init__(self, cache_port, world_size, **kwargs):
         _type, _data = kwargs["type"], kwargs["data"]
         img_data = self.read(_type, _data)
         # the unique id for the image 
-        self.uuid = self.get_uuid(cache_port, img_data)
+        self.uuid = self.get_uuid(cache_port, world_size, img_data)
         # where should the image fill into the text embeds
         self.offset = -1
         # the length of the image embeds
@@ -33,15 +35,20 @@ class ImageItem:
     
             # check if valid image bytes
             image = Image.open(BytesIO(img_data))
-            print(f"succeed to read image {_type} size={image.size}")
+            # print(f"succeed to read image {_type} size={image.size}")
             return img_data
     
         except Exception as e:
             raise ValueError(f"Failed to read image type={_type}, data[:100]={_data[:100]}: {e}!")
 
-    def get_uuid(self, cache_port, img_data):
+    def get_uuid(self, cache_port, world_size, img_data):
         client = rpyc.connect("localhost", cache_port)
-        image_uuid = client.root.add_item(img_data)
+        md5sum = hashlib.md5(img_data).hexdigest()
+        # for input image cache, we set it ref count = world_size
+        image_uuid = client.root.add_item(md5sum, ref=world_size)
+        if not client.root.get_item_data(image_uuid):
+            create_shm(get_shm_name_data(image_uuid), img_data)
+            client.root.set_item_data(image_uuid)
         return image_uuid
 
     def to_dict(self):
@@ -57,10 +64,11 @@ class MultimodalParams:
     def __init__(
         self,
         cache_port,
+        world_size,
         images: List[dict] = [],
     ) -> None:
         self.cache_port = cache_port
-        self.images = [ImageItem(cache_port, **i) for i in images]
+        self.images = [ImageItem(cache_port, world_size, **i) for i in images]
         return
 
     def should_process(self):

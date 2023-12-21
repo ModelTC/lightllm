@@ -89,7 +89,7 @@ async def generate(request: Request) -> Response:
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
     multimodal_params_dict = request_dict.get("multimodal_params", {})
-    multimodal_params = MultimodalParams(cache_port, **multimodal_params_dict)
+    multimodal_params = MultimodalParams(cache_port, world_size, **multimodal_params_dict)
 
     request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
@@ -153,7 +153,7 @@ async def generate_stream(request: Request) -> Response:
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
     multimodal_params_dict = request_dict.get("multimodal_params", {})
-    multimodal_params = MultimodalParams(cache_port, **multimodal_params_dict)
+    multimodal_params = MultimodalParams(cache_port, world_size, **multimodal_params_dict)
 
     request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
@@ -229,7 +229,7 @@ async def chat_completions(
         stop_sequences=request.stop
     )
     sampling_params.verify()
-    multimodal_params = MultimodalParams(cache_port, images=[])
+    multimodal_params = MultimodalParams(cache_port, world_size, images=[])
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
     results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
@@ -395,6 +395,8 @@ def main():
     global cache_port
     router_port, detokenization_port, httpserver_port, visual_port, cache_port = can_use_ports[0:5]
     model_rpc_ports = can_use_ports[5:]
+    global world_size
+    world_size = args.tp
 
     from .httpserver.manager import HttpServerManager
     global httpserver_manager

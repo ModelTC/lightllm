@@ -6,30 +6,25 @@ class CacheManager(object):
     def __init__(self) -> None:
         pass
 
-    def add_item(self, data: bytes) -> int:
+    def add_item(self, md5sum: str, ref: int) -> int:
         pass
 
-    def query_item_uuid(self, md5sum) -> Union[int, None]:
-        ''' Query the uuid of certain data with its md5sum, if not exists, return None.
-        '''
+    def set_item_data(self, id: int) -> None:
         pass
 
-    def get_item_data(self, id: int) -> bytes:
+    def get_item_data(self, id: int) -> bool:
         pass
 
-    def set_item_embed(self, id: int):
-        pass
-
-    def query_available_size(self):
-        pass
-
-    def free_item(self, id: int):
+    def set_item_embed(self, id: int) -> None:
         pass
 
     def get_item_embed(self, id: int) -> bool:
         pass
 
-    def recycle_item(self):
+    def free_item(self, id: int) -> None:
+        pass
+
+    def recycle_item(self, ratio: float) -> None:
         pass
 
 class CacheManagerFactory(object):
