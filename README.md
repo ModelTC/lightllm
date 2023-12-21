@@ -177,6 +177,7 @@ python -m lightllm.server.api_server \
     --port 8080                    \
     --tp 1                         \
     --max_total_token_num 12000    \
+    --shm-size "16G"               \
     --trust_remote_code            \
     --enable_multimodal            \
     --model_dir /path/of/Qwen-VL or /path/of/Qwen-VL-Chat
@@ -189,6 +190,7 @@ python -m lightllm.server.api_server \
     --port 8080                    \
     --tp 1                         \
     --max_total_token_num 12000    \
+    --shm-size "16G"               \
     --trust_remote_code            \
     --enable_multimodal            \
     --model_dir /path/of/llava-v1.5-7b or /path/of/llava-v1.5-13b
@@ -329,7 +331,7 @@ else:
 
 > Additional lanuch parameters: `--enable_multimodal`
 
-> Only support `--tp 1`
+> Support `--tp > 1`, when `tp > 1`, visual model run on the gpu 0
 
 > The special image tag for Qwen-VL is `<img></img>` (`<image>` for Llava), the length of `data["multimodal_params"]["images"]` should be the same as the count of tags, The number can be 0, 1, 2, ...
 
