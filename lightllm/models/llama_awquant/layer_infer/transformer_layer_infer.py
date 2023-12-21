@@ -88,35 +88,47 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
         return
 
     def _get_qkv(self, input, cache_k, cache_v, token_scale, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerActivationWeightQuantized)->torch.Tensor:
-        qkv_output = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_), 
-                                                    quant_weight_params=layer_weight.qkv_weight_,
-                                                    is_prefill=infer_state.is_prefill,
-                                                    token_scale=token_scale)
-        
-        tp_k_head_dim = self.tp_k_head_num_ * self.head_dim_
-        q = qkv_output[:, : -2 * tp_k_head_dim]
-        k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim]
-        v = qkv_output[:, -tp_k_head_dim :]
-
+        q = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_),
+                                            quant_weight_params=layer_weight.q_weight_,
+                                            is_prefill=infer_state.is_prefill,
+                                            token_scale=token_scale)
         rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
-        cache_k_ = k.view(-1, self.tp_k_head_num_, self.head_dim_)
+
+        out = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_),
+                                            quant_weight_params=layer_weight.k_weight_,
+                                            is_prefill=infer_state.is_prefill,
+                                            token_scale=token_scale)
+        cache_k_ = out.view(-1, self.tp_k_head_num_, self.head_dim_)
         rotary_emb_fwd(cache_k_, infer_state.position_cos, infer_state.position_sin)
-        cache_v_ = v.view(-1, self.tp_v_head_num_, self.head_dim_)
+        out = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_),
+                                            quant_weight_params=layer_weight.v_weight_,
+                                            is_prefill=infer_state.is_prefill,
+                                            token_scale=token_scale)
+        cache_v_ = out.view(-1, self.tp_v_head_num_, self.head_dim_)
         return q, cache_k_, cache_v_
 
     def _get_o(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerActivationWeightQuantized) -> torch.Tensor:
         o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_)
         return o_tensor
 
-    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerActivationWeightQuantized) -> torch.Tensor:
-        gate_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_proj)
-        torch.nn.functional.silu(gate_out, inplace=True)
-        up_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.up_proj)
+    def _ffn(self, input, token_scale, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerActivationWeightQuantized) -> torch.Tensor:
+        gate_out = self._awquant_matmul_for_ffn_up(input.view(-1, self.embed_dim_), 
+                                                layer_weight.gate_proj,
+                                                is_prefill=infer_state.is_prefill,)
+        up_out = self._awquant_matmul_for_ffn_up(input.view(-1, self.embed_dim_), 
+                                                layer_weight.up_proj,
+                                                is_prefill=infer_state.is_prefill,)
         input = None
-        ffn1_out = gate_out * up_out
+        _, gate_proj_scale = layer_weight.gate_proj
+        _, up_proj_scale = layer_weight.up_proj
+        ffn1_out, ffn1_out_scale = self._awquant_silu(gate_out, up_out, 
+                                        gate_proj_scale, up_proj_scale, token_scale)
         gate_out, up_out = None, None
-        ffn2_out = torch.mm(ffn1_out, layer_weight.down_proj)
+        ffn2_out = self._awquant_matmul_for_ffn_down(ffn1_out, layer_weight.down_proj,
+                                                    is_prefill=infer_state.is_prefill, 
+                                                    token_scale=ffn1_out_scale)
         ffn1_out = None
+
         return ffn2_out
 
     @mark_cost_time("trans context flash forward time cost")  # dont to remove this, will make performence down, did not know why
@@ -136,8 +148,8 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
 
     @mark_cost_time("trans context ffn forward time cost")  # dont to remove this, will make performence down, did not know why
     def _context_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight):
-        input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
-        ffn_out = self._ffn(input1, infer_state, layer_weight)
+        input1, token_scale, skip_out = self._awquant_ffn_norm(input_embdings, infer_state, layer_weight)
+        ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
@@ -161,8 +173,8 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
 
     # this impl dont to use @mark_cost_time
     def _token_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight):
-        input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
-        ffn_out = self._ffn(input1, infer_state, layer_weight)
+        input1, token_scale, skip_out = self._awquant_ffn_norm(input_embdings, infer_state, layer_weight)
+        ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)

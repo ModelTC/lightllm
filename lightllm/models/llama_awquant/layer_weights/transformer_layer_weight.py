@@ -25,7 +25,9 @@ class LlamaTransformerLayerActivationWeightQuantized(TransformerLayerWeight):
         errors = "weights load not ok"
         weights = [
             self.att_norm_weight_,
-            self.qkv_weight_,
+            self.q_weight_,
+            self.k_weight_,
+            self.v_weight_,
             self.o_weight_,
             self.ffn_norm_weight_,
             self.up_proj,
@@ -44,36 +46,25 @@ class LlamaTransformerLayerActivationWeightQuantized(TransformerLayerWeight):
         n_embed = self.network_config_["hidden_size"]
         q_split_n_embed = n_embed // self.world_size_
         kv_split_n_embed = n_embed // self.network_config_["num_attention_heads"] * self.network_config_["num_key_value_heads"] // self.world_size_
-        
-        if getattr(self, "qkv_weight_", None) is None:
-            self.qkv_weight_ = torch.empty(n_embed, q_split_n_embed + 2 * kv_split_n_embed, dtype=self.data_type_, device='cpu')
-            self.qkv_step_ = 0
 
         # q k v weights for llama
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
             q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
             q_weight_ = q_weight_[q_split_n_embed * self.tp_rank_: q_split_n_embed * (self.tp_rank_ + 1), :]
             q_weight_ = q_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, :q_split_n_embed] = q_weight_
-            self.qkv_step_ += 1
+            self.q_weight_ = self.quantize_weight(q_weight_)
 
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
             k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
             k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
             k_weight_ = k_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, q_split_n_embed: (q_split_n_embed + kv_split_n_embed)] = k_weight_
-            self.qkv_step_ += 1
+            self.k_weight_ = self.quantize_weight(k_weight_)
 
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
             v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
             v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
             v_weight_ = v_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, (q_split_n_embed + kv_split_n_embed):(q_split_n_embed + 2 * kv_split_n_embed)] = v_weight_
-            self.qkv_step_ += 1
-
-        if self.qkv_step_ == 3:
-            self.qkv_step_ = 0
-            self.qkv_weight_ = self.quantize_weight(self.qkv_weight_)
+            self.v_weight_ = self.quantize_weight(v_weight_)
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
@@ -90,17 +81,19 @@ class LlamaTransformerLayerActivationWeightQuantized(TransformerLayerWeight):
         split_inter_size = inter_size // self.world_size_
 
         if f"model.layers.{self.layer_num_}.mlp.up_proj.weight" in weights:
-            self.up_proj = weights[f"model.layers.{self.layer_num_}.mlp.up_proj.weight"][split_inter_size *
+            up_proj = weights[f"model.layers.{self.layer_num_}.mlp.up_proj.weight"][split_inter_size *
                                                                                          self.tp_rank_: split_inter_size * (self.tp_rank_ + 1), :]
-            self.up_proj = self._cuda(self.up_proj.transpose(0, 1))
+            up_proj = up_proj.transpose(0, 1).to(self.data_type_)
+            self.up_proj = self.quantize_weight(up_proj)
 
         if f"model.layers.{self.layer_num_}.mlp.gate_proj.weight" in weights:
-            self.gate_proj = weights[f"model.layers.{self.layer_num_}.mlp.gate_proj.weight"][split_inter_size *
+            gate_proj = weights[f"model.layers.{self.layer_num_}.mlp.gate_proj.weight"][split_inter_size *
                                                                                              self.tp_rank_: split_inter_size * (self.tp_rank_ + 1), :]
-            self.gate_proj = self._cuda(self.gate_proj.transpose(0, 1))
+            gate_proj = gate_proj.transpose(0, 1).to(self.data_type_)
+            self.gate_proj = self.quantize_weight(gate_proj)
 
         if f"model.layers.{self.layer_num_}.mlp.down_proj.weight" in weights:
-            self.down_proj = weights[f"model.layers.{self.layer_num_}.mlp.down_proj.weight"][:,
+            down_proj = weights[f"model.layers.{self.layer_num_}.mlp.down_proj.weight"][:,
                                                                                              split_inter_size * self.tp_rank_: split_inter_size * (self.tp_rank_ + 1)]
-            self.down_proj = self._cuda(self.down_proj.transpose(0, 1))
+            self.down_proj = self.quantize_weight(down_proj.transpose(0, 1))
         return
