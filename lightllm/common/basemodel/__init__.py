@@ -29,5 +29,6 @@ __all__ = [
     "PreLayerInferTpl",
     "PostLayerInferTpl",
     "TransformerLayerInferWeightQuantTpl",
-    "SplitFuseInferStateInfo"
+    "SplitFuseInferStateInfo",
+    "TransformerLayerInferActivationWeightQuantTpl"
 ]

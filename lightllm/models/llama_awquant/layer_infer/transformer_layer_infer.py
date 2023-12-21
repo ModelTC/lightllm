@@ -42,8 +42,6 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
         return
     
     def _bind_norm(self):
-        self._att_norm = partial(LlamaTransformerLayerInfer._att_norm, self)
-        self._ffn_norm = partial(LlamaTransformerLayerInfer._ffn_norm, self)
         if "ppl_int8_activation_weight" in self.mode:
             self._awquant_att_norm = partial(LlamaTransformerLayerInferAWquant._awquant_att_norm_ppl_int8, self)
             self._awquant_ffn_norm = partial(LlamaTransformerLayerInferAWquant._awquant_ffn_norm_ppl_int8, self)
@@ -213,10 +211,12 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
             return out
 
     def _awquant_att_norm_ppl_int8(self, input, infer_state:LlamaInferStateInfo, layer_weight):
-        return skiprmsnorm_ppl(input, layer_weight.att_norm_weight_)
+        if getattr(infer_state, 'skip', None) is None:
+            infer_state.skip = torch.zeros_like(input)
+        return skiprmsnorm_ppl(input, layer_weight.att_norm_weight_, skip=infer_state.skip)
 
     def _awquant_ffn_norm_ppl_int8(self, input, infer_state:LlamaInferStateInfo, layer_weight):
-        return skiprmsnorm_ppl(input, layer_weight.ffn_norm_weight_)
+        return skiprmsnorm_ppl(input, layer_weight.ffn_norm_weight_, skip=infer_state.skip)
 
     def _awquant_silu_ppl_int8(self, x, y, x_scale, y_scale, token_scale):
         return gatesilu_i32_i8_ppl(x, y, x_scale, y_scale, token_scale)
