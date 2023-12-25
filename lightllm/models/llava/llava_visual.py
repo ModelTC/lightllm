@@ -36,7 +36,7 @@ class LlavaVisionModel:
                 d = torch.load(os.path.join(weight_dir, f), "cpu")
                 for k, v in d.items():
                     if 'model.mm_projector' in k:
-                        self.projector_weights[k] = v
+                        self.projector_weights[k] = v.half()
 
         assert 'model.mm_projector.0.weight' in self.projector_weights
         assert 'model.mm_projector.0.bias' in self.projector_weights
