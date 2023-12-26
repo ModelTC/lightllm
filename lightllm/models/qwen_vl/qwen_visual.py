@@ -438,15 +438,3 @@ class QWenVisionTransformer(nn.Module):
                 if "visual" in k:
                     weight_dict[k[len("transformer.visual."):]] = v 
         self.load_state_dict(weight_dict)
-
-if __name__ == "__main__":
-    visual = VisionTransformer(448, 14, 1664, 48, 16, 4.9231, 256, 4096)
-    visual.load_model("/nvme/baishihao/Qwen-VL-Chat/")
-    visual = visual.cuda()
-    import time 
-    torch.cuda.synchronize()
-    a = time.time()
-    visual.encode(["/home/baishihao/lightllm/lightllm/server/visualserver/models/demo.jpeg", "/home/baishihao/lightllm/lightllm/server/visualserver/models/demo.jpeg"])
-    torch.cuda.synchronize()
-    b = time.time()
-    print(b - a)
