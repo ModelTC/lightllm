@@ -1,5 +1,7 @@
 import torch
 import torch.distributed as dist
+
+from lightllm.utils.log_utils import init_logger
 from ..transformer_layer_infer import TransformerLayerInfer
 from ...infer_struct import InferStateInfo
 from ...splitfuse_infer_struct import SplitFuseInferStateInfo
@@ -7,6 +9,8 @@ from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from typing import Tuple
 
+
+logger = init_logger(__name__)
 
 class TransformerLayerInferTpl(TransformerLayerInfer):
     """

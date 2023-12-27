@@ -14,7 +14,9 @@ from lightllm.models.mistral.triton_kernel.token_attention_nopad_reduceV import 
 from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
 
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
+from lightllm.utils.log_utils import init_logger
 
+logger = init_logger(__name__)
 
 class MistralTransformerLayerInfer(LlamaTransformerLayerInfer):
     """
@@ -31,6 +33,7 @@ class MistralTransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def _context_attention_kernel(self, q, k, v, infer_state:MistralInferStateInfo, layer_weight, out=None)->torch.Tensor:
         o_tensor = torch.empty_like(q) if out is None else out
+        # logger.debug("sliding_window" + str(infer_state.sliding_window))
         context_attention_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_),
                               k.view(-1, self.tp_k_head_num_, self.head_dim_),
                               v.view(-1, self.tp_v_head_num_, self.head_dim_),

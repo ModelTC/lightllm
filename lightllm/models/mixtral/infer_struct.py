@@ -2,11 +2,12 @@ import torch
 import numpy as np
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.req_manager import ReqManager
+from lightllm.models.mistral.infer_struct import MistralInferStateInfo
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
-class MistralInferStateInfo(LlamaInferStateInfo):
+class MixtralInferStateInfo(MistralInferStateInfo):
     def __init__(self):
         super().__init__()
         self.sliding_window = None
@@ -14,11 +15,15 @@ class MistralInferStateInfo(LlamaInferStateInfo):
         self.b_att_seq_len = None
         self.b_att_start_loc = None
         self.total_cache_num = None
+        self.experts_topk = None
+        self.num_local_experts = None
         # self.window_postion = None
 
     def init_some_extra_state(self, model, input_ids : torch.Tensor):
-        self.sliding_window = model.config["sliding_window"]
-        #logger.debug("sliding_window" + str(self.sliding_window))
+        # sliding_window is not used in Mixtral 8x7b, ignore it
+        self.sliding_window = 4096 if model.config["sliding_window"] is None else model.config["sliding_window"]
+        self.experts_topk = model.config["num_experts_per_tok"]
+        self.num_local_experts = model.config["num_local_experts"]
         if self.is_prefill:
             b_seq_len_numpy = self.b_seq_len.cpu().numpy()
             position_ids = torch.from_numpy(np.concatenate([np.arange(0, b_seq_len_numpy[i])
