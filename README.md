@@ -177,7 +177,6 @@ python -m lightllm.server.api_server \
     --port 8080                    \
     --tp 1                         \
     --max_total_token_num 12000    \
-    --shm-size "16G"               \
     --trust_remote_code            \
     --enable_multimodal            \
     --cache_capacity 1000          \
@@ -191,7 +190,6 @@ python -m lightllm.server.api_server \
     --port 8080                    \
     --tp 1                         \
     --max_total_token_num 12000    \
-    --shm-size "16G"               \
     --trust_remote_code            \
     --enable_multimodal            \
     --cache_capacity 1000          \

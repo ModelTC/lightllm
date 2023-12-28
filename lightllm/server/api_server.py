@@ -358,7 +358,7 @@ def main():
                         help="""prompt cache strs""")
     parser.add_argument("--enable_multimodal", action='store_true',
                         help="Whether or not to allow to load additional multimodal models.")
-    parser.add_argument("--cache_capacity", type=int, default=10,
+    parser.add_argument("--cache_capacity", type=int, default=200,
                     help="cache server capacity for multimodal resources")
     parser.add_argument("--cache_reserved_ratio", type=float, default=0.5,
                     help="cache server reserved capacity ratio after clear")
