@@ -75,9 +75,8 @@ class HttpServerManager:
         return prompt_cache_len, prompt_cache_req_id
 
     # connect cache server, calculate md5, alloc resource, return uuid
-    async def _alloc_resource(self, data, timeout):
+    async def _alloc_resource(self, data):
         md5sum = hashlib.md5(data).hexdigest()
-        t0 = time.time()
         while True:
             uid = self.cache_client.root.alloc(md5sum)
             # hit or new
@@ -89,17 +88,16 @@ class HttpServerManager:
             # cache full
             else:
                 await asyncio.sleep(0.1)
-                t = time.time() - t0
-                if t > timeout:
-                    raise Exception("Exceed max cache server alloc time.")
 
-    async def _alloc_multimodal_resources(self, multimodal_params, timeout=10):
+    async def _alloc_multimodal_resources(self, multimodal_params):
         for img in multimodal_params.images:
-            img.uuid = await self._alloc_resource(img.read(), timeout)
+            img.uuid = await self._alloc_resource(img.read())
 
     async def _release_multimodal_resources(self, multimodal_params):
-        for img in multimodal_params.images:
-            self.cache_client.root.release(img.uuid)
+        if multimodal_params is not None:
+            for img in multimodal_params.images:
+                if img.uuid is not None:
+                    self.cache_client.root.release(img.uuid)
 
     async def generate(self, prompt, sampling_params, request_id, multimodal_params):
         prompt_ids = self.tokenizer.encode(prompt)
@@ -135,15 +133,14 @@ class HttpServerManager:
         
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
-        req_status = ReqStatus(request_id)
+        req_status = ReqStatus(request_id, multimodal_params)
         event = req_status.event
         self.req_id_to_out_inf[request_id] = req_status
 
         # 寻找是否有可用的prompt cache 可用
         prompt_cache_len, prompt_cache_req_id = self._find_prompt_cache_req(prompt_ids)
   
-        is_multimodal = self.enable_multimodal and multimodal_params.should_process()
-        if is_multimodal:
+        if self.enable_multimodal:
             await self._alloc_multimodal_resources(multimodal_params)
             self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
         else:
@@ -167,8 +164,7 @@ class HttpServerManager:
                     if finished:
                         try:
                             del self.req_id_to_out_inf[request_id]
-                            if is_multimodal:
-                                await self._release_multimodal_resources(multimodal_params)
+                            await self._release_multimodal_resources(multimodal_params)
                         except:
                             pass
                         return
@@ -181,6 +177,8 @@ class HttpServerManager:
         if self.enable_multimodal:
             self.send_to_visual.send_pyobj(abort_req)
         try:
+            req = self.req_id_to_out_inf[request_id]
+            await self._release_multimodal_resources(req.multimodal_params)
             del self.req_id_to_out_inf[request_id]
         except:
             pass
@@ -206,8 +204,9 @@ class HttpServerManager:
         return
 
 class ReqStatus:
-    def __init__(self, req_id) -> None:
+    def __init__(self, req_id, multimodal_params) -> None:
         self.req_id = req_id
+        self.multimodal_params = multimodal_params
         self.lock = asyncio.Lock()
         self.event = asyncio.Event()
         self.out_token_info_list = []

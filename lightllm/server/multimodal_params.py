@@ -54,9 +54,6 @@ class MultimodalParams:
         self.images = [ImageItem(**i) for i in images]
         return
 
-    def should_process(self):
-        return len(self.images) > 0
-
     def after_tokenize(self, prompt_ids):
         if not isinstance(prompt_ids, dict):
             return prompt_ids
