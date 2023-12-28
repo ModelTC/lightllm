@@ -17,7 +17,6 @@ class MixtralInferStateInfo(MistralInferStateInfo):
         self.total_cache_num = None
         self.experts_topk = None
         self.num_local_experts = None
-        # self.window_postion = None
 
     def init_some_extra_state(self, model, input_ids : torch.Tensor):
         # sliding_window is not used in Mixtral 8x7b, ignore it

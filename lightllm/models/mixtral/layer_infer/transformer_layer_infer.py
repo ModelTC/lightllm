@@ -5,9 +5,6 @@ from lightllm.common.basemodel.infer_struct import InferStateInfo
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.mistral.layer_infer.transformer_layer_infer import MistralTransformerLayerInfer
 from lightllm.models.mixtral.layer_weights.transformer_layer_weight import MixtralTransformerLayerWeight
-from lightllm.utils.log_utils import init_logger
-
-logger = init_logger(__name__)
 
 class MixtralTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _ffn(self, input, infer_state: InferStateInfo, layer_weight: MixtralTransformerLayerWeight) -> torch.Tensor:
@@ -17,8 +14,6 @@ class MixtralTransformerLayerInfer(LlamaTransformerLayerInfer):
                                                        infer_state.experts_topk,
                                                        dim=-1)
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-
-        # logger.debug(input)
 
         final_hidden_states = None
         for expert_idx in range(infer_state.num_local_experts):
@@ -39,5 +34,4 @@ class MixtralTransformerLayerInfer(LlamaTransformerLayerInfer):
             else:
                 final_hidden_states.add_(current_hidden_states)
         input = None
-        # logger.debug(final_hidden_states)
         return final_hidden_states

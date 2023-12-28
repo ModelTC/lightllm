@@ -2,9 +2,6 @@ import torch
 import numpy as np
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.req_manager import ReqManager
-from lightllm.utils.log_utils import init_logger
-
-logger = init_logger(__name__)
 
 class MistralInferStateInfo(LlamaInferStateInfo):
     def __init__(self):
@@ -18,7 +15,6 @@ class MistralInferStateInfo(LlamaInferStateInfo):
 
     def init_some_extra_state(self, model, input_ids : torch.Tensor):
         self.sliding_window = model.config["sliding_window"]
-        #logger.debug("sliding_window" + str(self.sliding_window))
         if self.is_prefill:
             b_seq_len_numpy = self.b_seq_len.cpu().numpy()
             position_ids = torch.from_numpy(np.concatenate([np.arange(0, b_seq_len_numpy[i])

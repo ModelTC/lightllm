@@ -70,12 +70,9 @@ class MixtralTransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.block_sparse_moe.gate.weight" in weights:
             self.gate = weights[f"model.layers.{self.layer_num_}.block_sparse_moe.gate.weight"]
             self.gate = self._cuda(self.gate.transpose(0, 1))
-        # logger.debug('loaded ' + f"model.layers.{self.layer_num_}.block_sparse_moe.gate.weight")
 
         for expert_idx in range(self.network_config_['num_local_experts']):
-            # self.experts.append({"w1":None, "w2":None, "w3":None})
             if f"model.layers.{self.layer_num_}.block_sparse_moe.experts.{expert_idx}.w1.weight" in weights:
-                #logger.debug('loading ' + f"model.layers.{self.layer_num_}.block_sparse_moe.experts.{expert_idx}.w1.weight")
                 self.experts[expert_idx]["w1"] = weights[f"model.layers.{self.layer_num_}.block_sparse_moe.experts.{expert_idx}.w1.weight"][split_inter_size *
                                                                                          self.tp_rank_: split_inter_size * (self.tp_rank_ + 1), :]
                 self.experts[expert_idx]["w1"] = self._cuda(self.experts[expert_idx]["w1"].transpose(0, 1))
