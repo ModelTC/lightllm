@@ -57,6 +57,9 @@ from .api_models import (
     ChatCompletionStreamResponseChoice,
 )
 
+from lightllm.utils.log_utils import init_logger
+logger = init_logger(__name__)
+
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
 
 g_id_gen = ReqIDGenerator()
@@ -402,9 +405,6 @@ def main():
     )
     router_port, detokenization_port, httpserver_port, visual_port, cache_port = can_use_ports[0:5]
     model_rpc_ports = can_use_ports[5:]
-
-    from lightllm.utils.log_utils import init_logger
-    logger = init_logger(__name__)
 
     if args.enable_multimodal:
         pipe_cache_reader, pipe_cache_writer = mp.Pipe(duplex=False)

@@ -44,7 +44,8 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 - [Qwen-VL](https://huggingface.co/Qwen/Qwen-VL)
 - [Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)
 - [Llava-7b](https://huggingface.co/liuhaotian/llava-v1.5-7b)
-- [Llava-13b](https://huggingface.co/liuhaotian/llava-v1.5-13b)
+- [Llava-13b](https://huggingface.co/liuhaotian/llava-v1.5-13b)  
+- [Mixtral]()
 
 > When you start Qwen-7b, you need to set the parameter '--eos_id 151643 --trust_remote_code'.
 
