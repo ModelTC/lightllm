@@ -68,9 +68,10 @@ def get_tokenizer(
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=trust_remote_code, *args,
                                                   **kwargs)
 
-    if "llava" in tokenizer_name.lower():
+    model_cfg, _ = PretrainedConfig.get_config_dict(tokenizer_name)
+    if model_cfg["model_type"] == "llava":
         tokenizer = LlavaTokenizer(tokenizer)
-    elif 'qwen-vl' in tokenizer_name.lower():
+    elif model_cfg["model_type"] == "qwen" and "visual" in model_cfg:
         tokenizer = QWenVLTokenizer(tokenizer)
 
     if not isinstance(tokenizer, PreTrainedTokenizerFast):

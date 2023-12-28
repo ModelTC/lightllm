@@ -180,6 +180,7 @@ python -m lightllm.server.api_server \
     --shm-size "16G"               \
     --trust_remote_code            \
     --enable_multimodal            \
+    --cache_capacity 1000          \
     --model_dir /path/of/Qwen-VL or /path/of/Qwen-VL-Chat
 ~~~
 
@@ -193,6 +194,7 @@ python -m lightllm.server.api_server \
     --shm-size "16G"               \
     --trust_remote_code            \
     --enable_multimodal            \
+    --cache_capacity 1000          \
     --model_dir /path/of/llava-v1.5-7b or /path/of/llava-v1.5-13b
 ~~~
 
@@ -329,7 +331,7 @@ else:
     print('Error:', response.status_code, response.text)
 ~~~
 
-> Additional lanuch parameters: `--enable_multimodal`
+> Additional lanuch parameters: `--enable_multimodal`, `--cache_capacity`, larger `--cache_capacity` requires larger `shm-size`
 
 > Support `--tp > 1`, when `tp > 1`, visual model run on the gpu 0
 
