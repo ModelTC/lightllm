@@ -53,7 +53,6 @@ class LlavaVisionModel:
     # batch images infer
     def forward(self, x):
         x = x.half().to(device=self.device)
-        print(" + llava visual forward input:", x.shape, x.dtype, x.device)
 
         x = self.vision_tower(x, output_hidden_states=True)
         x = x.hidden_states[self.select_layer]
@@ -75,7 +74,6 @@ class LlavaVisionModel:
             bias=self.projector_weights["model.mm_projector.2.bias"],
         )
         x = x.view(B, L, -1)
-        print(" + llava visual forward output:", x.shape, x.dtype, x.device)
         return x
 
     def encode(self, image_items: List[Union[str, Image.Image]]):

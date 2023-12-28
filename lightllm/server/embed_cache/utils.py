@@ -41,7 +41,7 @@ def free_shm(name):
 
 
 def get_shm_name_data(uid):
-    return str(uid) + "-image"
+    return str(uid) + "-data"
 
 
 def get_shm_name_embed(uid):

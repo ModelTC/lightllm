@@ -104,8 +104,6 @@ class VisualManager:
                             uuids_need_infer.append(img.uuid)
                     if len(uuids_need_infer) > 0:
                         reqs_need_infer.append(req)
-                        # delete items with 50% reserved
-                        self.cache_client.root.recycle_item(ratio=0.5)
                     else:
                         # print(" + no need need infer, send to router...")
                         self.send_to_router.send_pyobj(req)

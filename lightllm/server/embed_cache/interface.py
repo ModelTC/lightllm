@@ -6,7 +6,10 @@ class CacheManager(object):
     def __init__(self) -> None:
         pass
 
-    def add_item(self, md5sum: str, ref: int) -> int:
+    def alloc(self, md5sum: str) -> int:
+        pass
+
+    def release(self, id: int) -> None:
         pass
 
     def set_item_data(self, id: int) -> None:
@@ -19,12 +22,6 @@ class CacheManager(object):
         pass
 
     def get_item_embed(self, id: int) -> bool:
-        pass
-
-    def free_item(self, id: int) -> None:
-        pass
-
-    def recycle_item(self, ratio: float) -> None:
         pass
 
 class CacheManagerFactory(object):

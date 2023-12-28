@@ -224,9 +224,7 @@ class ModelRpcServer(rpyc.Service):
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
-            kwargs, run_reqs, not_run_reqs = prepare_prefill_inputs(batch)
-            if not self.is_multimodal:
-                kwargs.pop("multimodal_params")
+            kwargs, run_reqs, not_run_reqs = prepare_prefill_inputs(batch, self.is_multimodal)
         else:
             kwargs, run_reqs, not_run_reqs = prepare_decode_inputs(batch)
         

@@ -2,16 +2,21 @@ import zmq
 import zmq.asyncio
 import asyncio
 import uvloop
+import rpyc
+import time
+import hashlib
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from ..tokenizer import get_tokenizer
 from ..io_struct import BatchStrOut, AbortReq
+from ..embed_cache.utils import get_shm_name_data, create_shm
 
 class HttpServerManager:
     def __init__(
         self,
         args,
         router_port,
+        cache_port,
         httpserver_port,
         visual_port,
         enable_multimodal,
@@ -23,6 +28,7 @@ class HttpServerManager:
 
         self.enable_multimodal = enable_multimodal
         if self.enable_multimodal:
+            self.cache_client = rpyc.connect("localhost", cache_port)
             self.send_to_visual = context.socket(zmq.PUSH)
             self.send_to_visual.connect(f"tcp://127.0.0.1:{visual_port}")
 
@@ -67,7 +73,34 @@ class HttpServerManager:
                     prompt_cache_req_id = req_id
                     break
         return prompt_cache_len, prompt_cache_req_id
-    
+
+    # connect cache server, calculate md5, alloc resource, return uuid
+    async def _alloc_resource(self, data, timeout):
+        md5sum = hashlib.md5(data).hexdigest()
+        t0 = time.time()
+        while True:
+            uid = self.cache_client.root.alloc(md5sum)
+            # hit or new
+            if uid:
+                if not self.cache_client.root.get_item_data(uid):
+                    create_shm(get_shm_name_data(uid), data)
+                    self.cache_client.root.set_item_data(uid)
+                return uid
+            # cache full
+            else:
+                await asyncio.sleep(0.1)
+                t = time.time() - t0
+                if t > timeout:
+                    raise Exception("Exceed max cache server alloc time.")
+
+    async def _alloc_multimodal_resources(self, multimodal_params, timeout=10):
+        for img in multimodal_params.images:
+            img.uuid = await self._alloc_resource(img.read(), timeout)
+
+    async def _release_multimodal_resources(self, multimodal_params):
+        for img in multimodal_params.images:
+            self.cache_client.root.release(img.uuid)
+
     async def generate(self, prompt, sampling_params, request_id, multimodal_params):
         prompt_ids = self.tokenizer.encode(prompt)
         # special tokenizer for multimodal_params
@@ -109,7 +142,9 @@ class HttpServerManager:
         # 寻找是否有可用的prompt cache 可用
         prompt_cache_len, prompt_cache_req_id = self._find_prompt_cache_req(prompt_ids)
   
-        if self.enable_multimodal and multimodal_params.should_process():
+        is_multimodal = self.enable_multimodal and multimodal_params.should_process()
+        if is_multimodal:
+            await self._alloc_multimodal_resources(multimodal_params)
             self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
         else:
             self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
@@ -132,6 +167,8 @@ class HttpServerManager:
                     if finished:
                         try:
                             del self.req_id_to_out_inf[request_id]
+                            if is_multimodal:
+                                await self._release_multimodal_resources(multimodal_params)
                         except:
                             pass
                         return

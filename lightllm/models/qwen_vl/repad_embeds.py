@@ -1,6 +1,5 @@
 from lightllm.common.basemodel.infer_struct import InferStateInfo
 from lightllm.server.embed_cache.utils import bytes2tensor, read_shm, get_shm_name_embed
-import rpyc
 import torch
 
 """
@@ -22,15 +21,12 @@ def prepare_multimodal_embeds(input_embs, infer_state: InferStateInfo):
         return
 
     for batch_id, p in enumerate(infer_state.multimodal_params):
-        client = rpyc.connect("localhost", p["cache_port"])
         for img in p["images"]:
             uid, offset, length = img["uuid"], img["offset"], img["length"]
             # pull the img_embeds by uid from cache server
             if isinstance(uid, int):
-                # img_embeds = bytes2tensor(client.root.get_item_embed(uid))
                 embed_data = read_shm(get_shm_name_embed(uid))
                 img_embeds = bytes2tensor(embed_data).reshape(img["length"], -1)
-                client.root.free_item(uid)
             elif isinstance(uid, torch.Tensor):
                 img_embeds = uid
             else:

@@ -25,12 +25,14 @@ class CacheServer(rpyc.Service):
         # (to finalize the service, if needed)
         pass
 
-    def exposed_add_item(self, md5sum: str, ref: int) -> int:
+    def exposed_alloc(self, md5sum: str) -> int:
         md5sum = obtain(md5sum)
-        ref = obtain(ref)
-        id = self._impl.add_item(md5sum, ref)
-        assert isinstance(id, int)
+        id = self._impl.alloc(md5sum)
         return id
+
+    def exposed_release(self, id: int) -> None:
+        id = obtain(id)
+        return self._impl.release(id)
 
     def exposed_set_item_data(self, id: int) -> None:
         id = obtain(id)
@@ -48,18 +50,10 @@ class CacheServer(rpyc.Service):
         id = obtain(id)
         return self._impl.get_item_embed(id=id)
 
-    def exposed_free_item(self, id: int) -> None:
-        id = obtain(id)
-        return self._impl.free_item(id)
-
-    def exposed_recycle_item(self, ratio: float):
-        ratio = obtain(ratio)
-        return self._impl.recycle_item(ratio)
-
-def start_cache_manager(port: int, pipe_writer):
+def start_cache_manager(port: int, capacity: int, reserved_ratio: float, pipe_writer):
     from .interface import CacheManagerFactory
     manager_cls = CacheManagerFactory.get_impl("naive")
-    manager = manager_cls()
+    manager = manager_cls(capacity, reserved_ratio)
     service = CacheServer(manager)
     from rpyc.utils.server import ThreadedServer
     t = ThreadedServer(service, port=port)

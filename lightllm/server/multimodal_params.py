@@ -5,51 +5,37 @@ import requests
 from io import BytesIO
 from PIL import Image
 import base64
-import rpyc
-import hashlib
-from lightllm.server.embed_cache.utils import get_shm_name_data, create_shm
 
 
 class ImageItem:
 
-    def __init__(self, cache_port, world_size, **kwargs):
-        _type, _data = kwargs["type"], kwargs["data"]
-        img_data = self.read(_type, _data)
+    def __init__(self, **kwargs):
+        self._type = kwargs["type"]
+        self._data = kwargs["data"]
         # the unique id for the image 
-        self.uuid = self.get_uuid(cache_port, world_size, img_data)
+        self.uuid = None
         # where should the image fill into the text embeds
         self.offset = -1
         # the length of the image embeds
         self.length = -1
 
-    def read(self, _type, _data):
+    def read(self):
         try:
-            if _type == "url":
+            if self._type == "url":
                 timeout = int(os.getenv("REQUEST_TIMEOUT", "3"))
-                ret = requests.get(_data, timeout=timeout)
+                ret = requests.get(self._data, timeout=timeout)
                 img_data = ret.content
-            elif _type == "base64":
-                img_data = base64.b64decode(_data)
+            elif self._type == "base64":
+                img_data = base64.b64decode(self._data)
             else:
-                raise ValueError(f"cannot read image which type is {_type}!")
+                raise ValueError(f"cannot read image which type is {self._type}!")
     
             # check if valid image bytes
             image = Image.open(BytesIO(img_data))
-            # print(f"succeed to read image {_type} size={image.size}")
             return img_data
     
         except Exception as e:
-            raise ValueError(f"Failed to read image type={_type}, data[:100]={_data[:100]}: {e}!")
-
-    def get_uuid(self, cache_port, world_size, img_data):
-        client = rpyc.connect("localhost", cache_port)
-        md5sum = hashlib.md5(img_data).hexdigest()
-        # for input image cache, we set it ref count = world_size
-        image_uuid = client.root.add_item(md5sum, ref=world_size)
-        if not client.root.get_item_data(image_uuid):
-            create_shm(get_shm_name_data(image_uuid), img_data)
-            client.root.set_item_data(image_uuid)
-        return image_uuid
+            raise ValueError(f"Failed to read image type={self._type}, data[:100]={self._data[:100]}: {e}!")
 
     def to_dict(self):
         ret = {}
@@ -63,12 +49,9 @@ class MultimodalParams:
 
     def __init__(
         self,
-        cache_port,
-        world_size,
         images: List[dict] = [],
     ) -> None:
-        self.cache_port = cache_port
-        self.images = [ImageItem(cache_port, world_size, **i) for i in images]
+        self.images = [ImageItem(**i) for i in images]
         return
 
     def should_process(self):
@@ -87,12 +70,11 @@ class MultimodalParams:
             i.offset = o
             i.length = l
         return prompt_ids["input_ids"]
-    
+
     def verify(self):
         return
 
     def to_dict(self):
         ret = {}
         ret["images"] = [i.to_dict() for i in self.images]
-        ret["cache_port"] = self.cache_port
         return ret
