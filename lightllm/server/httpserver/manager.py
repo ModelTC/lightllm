@@ -101,8 +101,6 @@ class HttpServerManager:
 
     async def generate(self, prompt, sampling_params, request_id, multimodal_params):
         prompt_ids = self.tokenizer.encode(prompt)
-        # special tokenizer for multimodal_params
-        prompt_ids = multimodal_params.after_tokenize(prompt_ids)
         prompt_tokens = len(prompt_ids)
 
         if prompt_tokens > self.max_req_input_len:
@@ -141,6 +139,7 @@ class HttpServerManager:
         prompt_cache_len, prompt_cache_req_id = self._find_prompt_cache_req(prompt_ids)
   
         if self.enable_multimodal:
+            self.tokenizer.check_num(prompt_ids, target=len(multimodal_params.images))
             await self._alloc_multimodal_resources(multimodal_params)
             self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id, prompt_cache_len, prompt_cache_req_id))
         else:

@@ -1,4 +1,5 @@
 import json
+import numpy as np
 import unicodedata
 from lightllm.models.qwen.model import QWenTpPartModel
 from .layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
@@ -18,6 +19,13 @@ class QWenVLTokenizer:
         # <imgpad>: 151859
         self.image_pad_id = tokenizer.img_pad_id
         self.image_length = 256
+
+    def check_num(self, prompt_ids, target):
+        token_num = len(np.where(np.array(prompt_ids) == self.image_pad_id)[0])
+        n = token_num // self.image_length
+        r = token_num % self.image_length
+        assert n == target, "image num error: {} vs {}!".format(n, target)
+        assert r == 0, "token_num not divided by image_length: {} vs {}".format(token_num, self.image_length)
 
     def _list_find(self, input_list, target, start_idx):
         cur_list = input_list[start_idx:]
@@ -65,7 +73,7 @@ class QWenVLTokenizer:
             end += 1
 
         input_ids.extend(origin_ids[end: ])
-        return {"input_ids": input_ids, "offsets": offsets, "lengths": lengths}
+        return input_ids
 
     def __getattr__(self, name):
         if name != 'encode':
@@ -79,5 +87,14 @@ class QWenVLTpPartModel(QWenTpPartModel):
     pre_layer_infer_class = LlamaMultimodalPreLayerInfer
 
     def __init__(self, kvargs):
+        from lightllm.server.tokenizer import get_tokenizer
+        tokenizer = get_tokenizer(kvargs["weight_dir"], kvargs["tokenizer_mode"], trust_remote_code=kvargs["trust_remote_code"])
+        self.image_pad_id = tokenizer.image_pad_id
+        self.image_length = tokenizer.image_length
         super().__init__(kvargs)
         return
+
+    def _init_config(self):
+        super()._init_config()
+        self.config["image_pad_id"] = self.image_pad_id
+        self.config["image_length"] = self.image_length
