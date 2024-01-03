@@ -18,31 +18,6 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
-# Inverse dim formula to find dim based on number of rotations
-def find_correction_dim(num_rotations, dim, base=10000, max_position_embeddings=2048):
-    return (dim * math.log(max_position_embeddings/(num_rotations * 2 * math.pi)))/(2 * math.log(base))
-
-# Find dim range bounds based on rotations
-def find_correction_range(low_rot, high_rot, dim, base=10000, max_position_embeddings=2048):
-    low = math.floor(find_correction_dim(
-        low_rot, dim, base, max_position_embeddings))
-    high = math.ceil(find_correction_dim(
-        high_rot, dim, base, max_position_embeddings))
-    return max(low, 0), min(high, dim-1)  # Clamp values just in case
-
-def linear_ramp_mask(min, max, dim):
-    if min == max:
-        max += 0.001  # Prevent singularity
-
-    linear_func = (torch.arange(dim, dtype=torch.float32) - min) / (max - min)
-    ramp_func = torch.clamp(linear_func, 0, 1)
-    return ramp_func
-
-def get_mscale(scale=1):
-    if scale <= 1:
-        return 1.0
-    return 0.1 * math.log(scale) + 1.0
-
 class LlamaTpPartModel(TpPartBaseModel):
     # weight class
     pre_and_post_weight_class = LlamaPreAndPostLayerWeight
@@ -185,33 +160,36 @@ class LlamaTpPartModel(TpPartBaseModel):
         return
 
     def _init_to_get_yarn_rotary(self):
-            dim = self.head_dim_
-            max_position_embeddings = self.config.get("max_position_embeddings", 2048)
-            base = self.config.get("rope_theta", 10000.0)
-            scale = self.config.get("rope_scaling", {}).get("factor", 1.0)
-            original_max_position_embeddings = self.config.get("original_max_position_embeddings", 2048)
-            extrapolation_factor = 1.0
-            attn_factor = 1.0
-            beta_fast = 32.0
-            beta_slow = 1.0
+        from .yarn_rotary_utils import find_correction_range, linear_ramp_mask, get_mscale
+        dim = self.head_dim_
+        max_position_embeddings = self.config.get("max_position_embeddings", 2048)
+        base = self.config.get("rope_theta", 10000.0)
+        scale = self.config.get("rope_scaling", {}).get("factor", 1.0)
+        original_max_position_embeddings = self.config.get("original_max_position_embeddings", 2048)
+        extrapolation_factor = 1.0
+        attn_factor = 1.0
+        beta_fast = 32.0
+        beta_slow = 1.0
 
-            pos_freqs = base ** (torch.arange(0, dim, 2).float().cuda() / dim)
-            inv_freq_extrapolation = 1.0 / pos_freqs
-            inv_freq_interpolation = 1.0 / (scale * pos_freqs)
+        pos_freqs = base ** (torch.arange(0, dim, 2).float().cuda() / dim)
+        inv_freq_extrapolation = 1.0 / pos_freqs
+        inv_freq_interpolation = 1.0 / (scale * pos_freqs)
 
-            low, high = find_correction_range(beta_fast, beta_slow, dim, base, original_max_position_embeddings)
-            inv_freq_mask = (1 - linear_ramp_mask(low, high, dim // 2).float().cuda()) * extrapolation_factor # Get n-d rotational scaling corrected for extrapolation
-            inv_freq = inv_freq_interpolation * (1 - inv_freq_mask) + inv_freq_extrapolation * inv_freq_mask
+        low, high = find_correction_range(beta_fast, beta_slow, dim, base, original_max_position_embeddings)
+        inv_freq_mask = (1 - linear_ramp_mask(low, high, dim // 2).float().cuda()) * extrapolation_factor # Get n-d rotational scaling corrected for extrapolation
+        inv_freq = inv_freq_interpolation * (1 - inv_freq_mask) + inv_freq_extrapolation * inv_freq_mask
 
-            mscale = float(get_mscale(scale) * attn_factor) # Get n-d magnitude scaling corrected for interpolation
+        mscale = float(get_mscale(scale) * attn_factor) # Get n-d magnitude scaling corrected for interpolation
 
-            # Build here to make `torch.jit.trace` work.
-            max_seq_len_cached = max_position_embeddings
-            t = torch.arange(max_seq_len_cached, device="cuda", dtype=torch.float32)
-            freqs = torch.einsum("i,j->ij", t, inv_freq)
-            # Different from paper, but it uses a different permutation in order to obtain the same calculation
-            emb = torch.cat((freqs, freqs), dim=-1)
-            self._cos_cached = emb.cos().to(torch.float16).cuda() * mscale
-            self._sin_cached = emb.sin().to(torch.float16).cuda() * mscale
+        # Build here to make `torch.jit.trace` work.
+        max_seq_len_cached = max_position_embeddings
+        t = torch.arange(max_seq_len_cached, device="cuda", dtype=torch.float32)
+        freqs = torch.einsum("i,j->ij", t, inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self._cos_cached = emb.cos().to(torch.float16).cuda() * mscale
+        self._sin_cached = emb.sin().to(torch.float16).cuda() * mscale
 
-            return
+        return
+
+

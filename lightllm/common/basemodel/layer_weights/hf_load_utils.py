@@ -31,7 +31,7 @@ def load_hf_weights(data_type, weight_dir, pre_post_layer=None, transformer_laye
         assert pre_post_layer.data_type_ == data_type, "type is not right"
     if transformer_layer_list is not None:
         assert transformer_layer_list[0].data_type_ == data_type, "type is not right"
-    if weight_dict or weight_dict == {}:
+    if weight_dict:
         if pre_post_layer is not None:
             pre_post_layer.load_hf_weights(weight_dict)
         if transformer_layer_list is not None:
