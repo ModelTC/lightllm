@@ -133,7 +133,8 @@ class MixtralTransformerLayerWeight(TransformerLayerWeight):
             if (f"model.layers.{self.layer_num_}.block_sparse_moe.experts.{expert_idx}.w2.weight"
                     in weights):
                 self.experts[expert_idx]["w2"] = weights[
-                    f"model.layers.{self.layer_num_}.block_sparse_moe.experts.{expert_idx}.w2.weight"][:,split_inter_size*self.tp_rank_:split_inter_size*(self.tp_rank_+1),]
+                    f"model.layers.{self.layer_num_}.block_sparse_moe.experts.{expert_idx}.w2.weight"] \
+                        [:,split_inter_size*self.tp_rank_:split_inter_size*(self.tp_rank_+1),]
                 self.experts[expert_idx]["w2"] = self._cuda(
                     self.experts[expert_idx]["w2"].transpose(0, 1))
 
