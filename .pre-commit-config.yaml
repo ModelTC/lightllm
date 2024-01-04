@@ -4,4 +4,3 @@ repos:
     hooks:
       - id: yapf
         name: "yapf"
-        args: [--style "google"]
