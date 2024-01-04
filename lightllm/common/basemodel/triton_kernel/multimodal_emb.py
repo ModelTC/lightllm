@@ -15,7 +15,8 @@ def _fwd_kernel(
     stride_text_emb_s, stride_text_emb_d, # text_stride
     stride_img_emb_s, stride_img_emb_d, # img_stride
     stride_out_s, stride_out_d,
-    vob_size,
+    tp_text_start_token_id,
+    tp_text_end_token_id,
     BLOCK_HIDDEN_DIM: tl.constexpr
     ):
 
@@ -26,8 +27,8 @@ def _fwd_kernel(
     off_d = tl.arange(0, BLOCK_HIDDEN_DIM)
     
     # load store text emb
-    for _ in range(0, tl.where((img_handle_id == 0) & (token_id < vob_size), 1, 0), 1):
-        load_emb = tl.load(Text_weight_embs + stride_text_emb_s * token_id + off_d * stride_text_emb_d)
+    for _ in range(0, tl.where((img_handle_id == 0) & (token_id < tp_text_end_token_id) & (token_id >= tp_text_start_token_id), 1, 0), 1):
+        load_emb = tl.load(Text_weight_embs + stride_text_emb_s * (token_id - tp_text_start_token_id) + off_d * stride_text_emb_d)
         tl.store(Out + stride_out_s * seq_index + stride_out_d * off_d, load_emb)
     
     img_start_token_id = tl.load(Img_start_token_ids + img_handle_id - 1, mask=img_handle_id >= 1, other=0)
@@ -42,7 +43,9 @@ def _fwd_kernel(
 
 @torch.no_grad()
 def multimodal_emb(out: torch.Tensor, prompt_ids: torch.Tensor, text_weight_embs: torch.Tensor, img_embs: torch.Tensor, 
-                         img_token_lens: torch.Tensor, img_start_token_ids: torch.Tensor, img_start_locs: torch.Tensor, vob_size):
+                         img_token_lens: torch.Tensor, img_start_token_ids: torch.Tensor, img_start_locs: torch.Tensor, 
+                         tp_text_start_token_id,
+                         tp_text_end_token_id):
     total_len = prompt_ids.shape[0]
     # print(len(img_token_lens))
     grid = (total_len, len(img_token_lens) + 1)
@@ -58,7 +61,8 @@ def multimodal_emb(out: torch.Tensor, prompt_ids: torch.Tensor, text_weight_embs
         text_weight_embs.stride(0), text_weight_embs.stride(1),
         img_embs.stride(0), img_embs.stride(1),
         out.stride(0), out.stride(1),
-        vob_size,
+        tp_text_start_token_id,
+        tp_text_end_token_id,
         BLOCK_HIDDEN_DIM=out.shape[1],
         num_warps=num_warps,
         num_stages=1,
@@ -87,13 +91,13 @@ def test():
 
     import time
     
-    triton_output = multimodal_emb(out, prompt_ids, text_weight, img_weight, img_token_lens, img_start_token_ids, img_start_locs, vob_size)
+    triton_output = multimodal_emb(out, prompt_ids, text_weight, img_weight, img_token_lens, img_start_token_ids, img_start_locs, 0, vob_size)
 
     torch.cuda.synchronize()
-    iters = 10
+    iters = 20
     t1 = time.time()
     for _ in range(iters):
-        triton_output = multimodal_emb(out, prompt_ids, text_weight, img_weight, img_token_lens, img_start_token_ids, img_start_locs, vob_size)
+        triton_output = multimodal_emb(out, prompt_ids, text_weight, img_weight, img_token_lens, img_start_token_ids, img_start_locs, 0, vob_size)
     torch.cuda.synchronize()
     t2 = time.time()
     print("Triton time cost", (t2 - t1) / iters)
