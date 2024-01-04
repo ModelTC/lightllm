@@ -104,8 +104,6 @@ class InMemoryCache(CacheManager):
     def release(self, id: int) -> None:
         with self.lock:
             self._records[id].ref -= 1
-        if all([v.ref == 0 for k, v in self._records.items()]):
-            print("+++++ cache server release ok")
 
     def set_item_data(self, id: int) -> None:
         self._records[id].data = True

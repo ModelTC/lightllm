@@ -7,6 +7,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.server.embed_cache.utils import bytes2tensor, read_shm, get_shm_name_embed
+from lightllm.common.basemodel.triton_kernel.multimodal_emb import multimodal_emb
 
 
 """
@@ -30,41 +31,51 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
 
     @mark_cost_time("pre context forward")
     def context_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
-        input_embdings = super().context_forward(input_ids, infer_state, layer_weight)
-        print("input_ids:", input_ids)
-        if infer_state.multimodal_params is None:
-            return input_embdings
 
-        embeds = []
-        token_nums = []
-        token_ids = []
+        img_weight = []
+        img_start_token_ids = []
+        img_token_lens = []
+        img_start_loc = 0
+        img_start_locs = []
 
         for batch_id, p in enumerate(infer_state.multimodal_params):
             for img in p["images"]:
                 # skip the same image
-                if img["token_id"] in token_ids:
+                if img["token_id"] in img_start_token_ids:
                     continue
                 # pull the img_embeds by uid from shm
-                embed_data = read_shm(get_shm_name_embed(img["uuid"]))
-                embeds.append(bytes2tensor(embed_data).reshape(img["token_num"], -1))
-                token_ids.append(img["token_id"])
-                token_nums.append(img["token_num"])
+                data = read_shm(get_shm_name_embed(img["uuid"]))
+                img_weight.append(bytes2tensor(data).reshape(img["token_num"], -1))
+                img_start_token_ids.append(img["token_id"])
+                img_token_lens.append(img["token_num"])
+                img_start_locs.append(img_start_loc)
+                img_start_loc += img["token_num"]
 
-        if len(embeds) == 0:
-            return input_embdings
+        device = layer_weight.wte_weight_.device
+        dtype = layer_weight.wte_weight_.dtype
+        hidden_size = layer_weight.wte_weight_.shape[1]
+        out = torch.zeros((len(input_ids), hidden_size), dtype=dtype, device=device)
+        if len(img_weight) > 0:
+            img_weight = torch.cat(img_weight, dim=0).to(device=device, dtype=dtype)
+        else:
+            img_weight = torch.empty((0, hidden_size), device=device, dtype=dtype)
+        # each tp will fill the img embeds, should divide by world_size
+        img_weight = img_weight / self.world_size_
+        img_start_token_ids = torch.Tensor(img_start_token_ids).to(device=device, dtype=torch.long)
+        img_token_lens = torch.Tensor(img_token_lens).to(device=device, dtype=torch.long)
+        img_start_locs = torch.Tensor(img_start_locs).to(device=device, dtype=torch.long)
 
-        device = input_embdings.device
-        dtype = input_embdings.dtype
-        # embeds = torch.cat(embeds, dim=0).to(device=device, dtype=dtype)
-        # token_ids = torch.Tensor(token_ids).to(device=device, dtype=torch.int64)
-        # token_nums = torch.Tensor(token_nums).to(device=device, dtype=torch.int64)
-        print("token_ids", token_ids, "token_nums", token_nums)
-
-        for embed, token_id, token_num in zip(embeds, token_ids, token_nums):
-            # find all idx satisfied input_ids[idx] == token_id
-            # assume input_ids[idx: idx+token_num] == [token_id, token_id + 1, ... token_id + token_num - 1]
-            print("embed:", embed.shape, token_id, token_num)
-            for idx in torch.where(input_ids == token_id)[0]:
-                print("offset:", idx)
-                input_embdings[idx: idx + token_num] = embed.to(device=device, dtype=dtype)
-        return input_embdings
+        multimodal_emb(
+            out,
+            input_ids,
+            layer_weight.wte_weight_,
+            img_weight,
+            img_token_lens,
+            img_start_token_ids,
+            img_start_locs,
+            self.vob_start_id_,
+            self.vob_end_id_
+        )
+        if self.world_size_ > 1:
+            dist.all_reduce(out, op=dist.ReduceOp.SUM, async_op=False)
+        return out

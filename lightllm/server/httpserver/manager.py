@@ -105,6 +105,9 @@ class HttpServerManager:
 
     async def generate(self, prompt, sampling_params, request_id, multimodal_params):
         if self.enable_multimodal:
+            assert (
+                len(multimodal_params.images) <= self.args.cache_capacity
+            ), "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
             prompt_ids = self.tokenizer.encode(prompt, multimodal_params)
         else:
