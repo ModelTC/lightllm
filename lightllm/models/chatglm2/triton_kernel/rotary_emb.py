@@ -25,29 +25,29 @@ def _rotary_kernel(
 
     dim_range0 = tl.arange(0, BLOCK_DMODEL // 2) * 2
     dim_range1 = dim_range0 + 1
-    off_q0 = cur_seq_range[:, None, None] * stride_qbs + cur_head_range[None, :, None] * stride_qh + dim_range0[None, None, :] * stride_qd
-    off_q1 = cur_seq_range[:, None, None] * stride_qbs + cur_head_range[None, :, None] * stride_qh + dim_range1[None, None, :] * stride_qd
-    off_k0 = cur_seq_range[:, None, None] * stride_kbs + cur_head_range[None, :, None] * stride_kh + dim_range0[None, None, :] * stride_kd
-    off_k1 = cur_seq_range[:, None, None] * stride_kbs + cur_head_range[None, :, None] * stride_kh + dim_range1[None, None, :] * stride_kd
-
     cos_range = tl.arange(0, BLOCK_DMODEL // 2)
     off_dimcos_sin = cur_seq_range[:, None, None] * stride_cosbs + cos_range[None, None, :] * stride_cosd
 
+    off_q0 = cur_seq_range[:, None, None] * stride_qbs + cur_head_range[None, :, None] * stride_qh + dim_range0[None, None, :] * stride_qd
+    off_q1 = cur_seq_range[:, None, None] * stride_qbs + cur_head_range[None, :, None] * stride_qh + dim_range1[None, None, :] * stride_qd
     q0 = tl.load(Q + off_q0, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H), other=0.0)
     q1 = tl.load(Q + off_q1, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H), other=0.0)
-    k0 = tl.load(K + off_k0, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H), other=0.0)
-    k1 = tl.load(K + off_k1, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H), other=0.0)
-
     cos = tl.load(Cos + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
     sin = tl.load(Sin + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
-
     out_q0 = q0 * cos - q1 * sin
     out_q1 = q0 * sin + q1 * cos
-    out_k0 = k0 * cos - k1 * sin
-    out_k1 = k0 * sin + k1 * cos
-
     tl.store(Q + off_q0, out_q0, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H))
     tl.store(Q + off_q1, out_q1, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H))
+
+    off_dimcos_sin = cur_seq_range[:, None, None] * stride_cosbs + dim_range0[None, None, :] * stride_cosd
+    cos = tl.load(Cos + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
+    sin = tl.load(Sin + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
+    off_k0 = cur_seq_range[:, None, None] * stride_kbs + cur_head_range[None, :, None] * stride_kh + dim_range0[None, None, :] * stride_kd
+    off_k1 = cur_seq_range[:, None, None] * stride_kbs + cur_head_range[None, :, None] * stride_kh + dim_range1[None, None, :] * stride_kd
+    k0 = tl.load(K + off_k0, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H), other=0.0)
+    k1 = tl.load(K + off_k1, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H), other=0.0)
+    out_k0 = k0 * cos - k1 * sin
+    out_k1 = k0 * sin + k1 * cos
     tl.store(K + off_k0, out_k0, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H))
     tl.store(K + off_k1, out_k1, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < H))
     return
