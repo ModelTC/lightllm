@@ -27,8 +27,6 @@ class RouterManager:
     def __init__(self, args, router_port, detokenization_port, model_rpc_ports):
         self.args = args
         self.model_weightdir = args.model_dir
-        self.tokenizer_mode = args.tokenizer_mode
-        self.trust_remote_code = args.trust_remote_code
         self.world_size = args.tp
         self.load_way = args.load_way
         self.mode = args.mode
@@ -78,9 +76,7 @@ class RouterManager:
                 "nccl_port" : self.args.nccl_port,
                 "is_splitfuse_mode" : self.is_splitfuse_mode,
                 "splitfuse_block_size" : self.splitfuse_block_size,
-                "return_all_prompt_logprobs" : self.args.return_all_prompt_logprobs,
-                "tokenizer_mode": self.tokenizer_mode,
-                "trust_remote_code": self.trust_remote_code,
+                "return_all_prompt_logprobs" : self.args.return_all_prompt_logprobs
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 

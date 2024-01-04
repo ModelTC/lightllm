@@ -80,9 +80,7 @@ class ModelRpcServer(rpyc.Service):
             "mode": self.mode,
             "max_req_num": kvargs.get("max_req_num", 1000),
             "max_seq_length": kvargs.get("max_seq_length", 1024 * 5),
-            "return_all_prompt_logprobs": self.return_all_prompt_logprobs,
-            "tokenizer_mode": kvargs.get("tokenizer_mode", "slow"),
-            "trust_remote_code": kvargs.get("trust_remote_code", False),
+            "return_all_prompt_logprobs": self.return_all_prompt_logprobs
         }
 
         try:

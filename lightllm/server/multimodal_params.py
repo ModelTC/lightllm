@@ -14,10 +14,10 @@ class ImageItem:
         self._data = kwargs["data"]
         # the unique id for the image 
         self.uuid = None
-        # where should the image fill into the text embeds
-        self.offset = -1
-        # the length of the image embeds
-        self.length = -1
+        # the start image token id
+        self.token_id = None
+        # the image token num
+        self.token_num = None
 
     def read(self):
         try:
@@ -38,7 +38,11 @@ class ImageItem:
             raise ValueError(f"Failed to read image type={self._type}, data[:100]={self._data[:100]}: {e}!")
 
     def to_dict(self):
-        return self.uuid
+        ret = {}
+        ret['uuid'] = self.uuid
+        ret['token_id'] = self.token_id
+        ret['token_num'] = self.token_num
+        return ret
 
 
 class MultimodalParams:
