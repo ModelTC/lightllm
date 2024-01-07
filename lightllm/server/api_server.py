@@ -164,7 +164,7 @@ async def generate_stream(request: Request) -> Response:
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
-        async for request_output, metadata, finished in results_generator:
+        async for request_output, metadata, finish_reason in results_generator:
             ret = {
                 "token": {
                     "id": metadata.get("id", None),
@@ -173,7 +173,7 @@ async def generate_stream(request: Request) -> Response:
                     "special": False
                 },
                 "generated_text": None,
-                "finished": finished,
+                "finish_reason": finish_reason,
                 "details": None
             }
 

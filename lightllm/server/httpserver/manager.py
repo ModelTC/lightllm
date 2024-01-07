@@ -165,11 +165,11 @@ class HttpServerManager:
                 if len(req_status.out_token_info_list) == 0:
                     continue
 
-                for out_str, metadata, finished in req_status.out_token_info_list:
+                for out_str, metadata, finish_reason in req_status.out_token_info_list:
                     metadata["prompt_tokens"] = prompt_tokens
-                    yield out_str, metadata, finished
+                    yield out_str, metadata, finish_reason
 
-                    if finished:
+                    if finish_reason is not None:
                         try:
                             del self.req_id_to_out_inf[request_id]
                             await self._release_multimodal_resources(multimodal_params)
@@ -198,12 +198,12 @@ class HttpServerManager:
             assert isinstance(
                 recv_ans, BatchStrOut
             ), f"error recv type {type(recv_ans)}"
-            for req_id, text, metadata, finished, abort in recv_ans.reqs_infs:
+            for req_id, text, metadata, finish_reason in recv_ans.reqs_infs:
                 try:
-                    if not abort:
+                    if finish_reason != "abort":
                         req_status : ReqStatus = self.req_id_to_out_inf[req_id]
                         async with req_status.lock: 
-                            req_status.out_token_info_list.append((text, metadata, finished))
+                            req_status.out_token_info_list.append((text, metadata, finish_reason))
                             req_status.event.set()
                     else:
                         del self.req_id_to_out_inf[req_id]
