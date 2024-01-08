@@ -5,13 +5,16 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import (
-    LlamaPreAndPostLayerWeight, )
+    LlamaPreAndPostLayerWeight,
+)
 from lightllm.models.mixtral.infer_struct import MixtralInferStateInfo
 from lightllm.models.mixtral.layer_infer.transformer_layer_infer import (
-    MixtralTransformerLayerInfer, )
+    MixtralTransformerLayerInfer,
+)
 
 from lightllm.models.mixtral.layer_weights.transformer_layer_weight import (
-    MixtralTransformerLayerWeight, )
+    MixtralTransformerLayerWeight,
+)
 
 from lightllm.utils.log_utils import init_logger
 
@@ -36,9 +39,7 @@ class MixtralTpPartModel(TpPartBaseModel):
         return
 
     def _verify_params(self):
-        assert self.load_way in [
-            "HF"
-        ], "mixtral only supports HF format to load Now!"
+        assert self.load_way in ["HF"], "mixtral only supports HF format to load Now!"
         assert self.config["num_key_value_heads"] % self.world_size_ == 0
         assert self.config["num_attention_heads"] % self.world_size_ == 0
         assert self.config["sliding_window"] is not None
@@ -46,14 +47,6 @@ class MixtralTpPartModel(TpPartBaseModel):
 
     def _init_config(self):
         super()._init_config()
-        return
-
-    def _verify_params(self):
-        assert self.load_way in [
-            "HF"
-        ], "mixtral only supports HF format to load Now!"
-        assert self.config["num_key_value_heads"] % self.world_size_ == 0
-        assert self.config["num_attention_heads"] % self.world_size_ == 0
         return
 
     def _init_custom(self):
@@ -65,8 +58,7 @@ class MixtralTpPartModel(TpPartBaseModel):
             self.max_total_token_num,
             dtype=torch.float16,
             head_num=self.config["num_key_value_heads"] // self.world_size_,
-            head_dim=self.config["hidden_size"] //
-            self.config["num_attention_heads"],
+            head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
             layer_num=self.config["num_hidden_layers"],
             always_copy=False,
         )
@@ -76,25 +68,18 @@ class MixtralTpPartModel(TpPartBaseModel):
         if self.config.get("rope_scaling", {}) is None:
             rope_scaling_factor = 1.0
         else:
-            rope_scaling_factor = self.config.get("rope_scaling",
-                                                  {}).get("factor", 1.0)
+            rope_scaling_factor = self.config.get("rope_scaling", {}).get("factor", 1.0)
 
         base = self.config.get("rope_theta", float(default_base))
 
         if "max_sequence_length" in self.config:
             max_seq_len = self.config["max_sequence_length"]
         else:
-            max_position_embeddings = self.config.get(
-                "max_position_embeddings",
-                2048 if base <= 10000.0 + 1e-5 else 16384)
+            max_position_embeddings = self.config.get("max_position_embeddings", 2048 if base <= 10000.0 + 1e-5 else 16384)
             max_seq_len = max_position_embeddings * rope_scaling_factor
 
-        inv_freq = 1.0 / (base**(torch.arange(
-            0, self.head_dim_, 2, device="cpu", dtype=torch.float32) /
-                                 self.head_dim_))
-        t = (torch.arange(
-            max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) /
-             rope_scaling_factor)
+        inv_freq = 1.0 / (base ** (torch.arange(0, self.head_dim_, 2, device="cpu", dtype=torch.float32) / self.head_dim_))
+        t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
         freqs = torch.outer(t, inv_freq)
 
         self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
