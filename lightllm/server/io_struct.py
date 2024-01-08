@@ -16,19 +16,20 @@ class FinishStatus(enum.Enum):
     NO_FINISH = 0 # 没有结束
     FINISHED_STOP = 1 # 因为遇到了STOP token 而结束
     FINISHED_LENGTH = 2 # 因为长度达到了最大长度而结束
-    FINISHED_ABORT = 2 # 因为请求被中止而结束
+    FINISHED_ABORT = 3 # 因为请求被中止而结束
 
-    @staticmethod
-    def is_finished(status: "FinishStatus"):
-        return status in [FinishStatus.FINISHED_STOP, FinishStatus.FINISHED_LENGTH, FinishStatus.FINISHED_ABORT]
+    def is_finished(self):
+        return 1 <= self.value <= 3
+    
+    def is_aborted(self):
+        return self == FinishStatus.FINISHED_ABORT
 
-    @staticmethod
-    def get_finish_reason(status: "FinishStatus"):
-        if status == FinishStatus.FINISHED_STOP:
+    def get_finish_reason(self):
+        if self == FinishStatus.FINISHED_STOP:
             finish_reason = "stop"
-        elif status == FinishStatus.FINISHED_LENGTH:
+        elif self == FinishStatus.FINISHED_LENGTH:
             finish_reason = "length"
-        elif status == FinishStatus.FINISHED_ABORT:
+        elif self == FinishStatus.FINISHED_ABORT:
             finish_reason = "abort"
         else:
             finish_reason = None
@@ -241,7 +242,7 @@ class Batch:
             elif len(req.output_ids) >= req.max_output_len:
                 req.finish_status = FinishStatus.FINISHED_LENGTH
 
-            if FinishStatus.is_finished(req.finish_status):
+            if req.finish_status.is_finished():
                 finished_req_ids.append(req.request_id)
                 # 标记的时候，也同时更新一些这些请求被移除掉的更新量，有点dirty
                 self.batch_used_tokens -= req.get_used_tokens()
@@ -283,11 +284,11 @@ class Batch:
         
 class BatchTokenIdOut:
     def __init__(self):
-        self.reqs_infs: List[Tuple[str, int, Dict, Union[str, None]]] = []  # [req_id, new_token_id, gen_metadata, finish_reason]
+        self.reqs_infs: List[Tuple[str, int, Dict, int]] = []  # [req_id, new_token_id, gen_metadata, finish_status]
 
 class BatchStrOut:
     def __init__(self):
-        self.reqs_infs: List[Tuple[str, str, Dict, Union[str, None]]] = [] # [req_id, token_str, gen_metadata, finish_reason]
+        self.reqs_infs: List[Tuple[str, str, Dict, int]] = [] # [req_id, token_str, gen_metadata, finish_status]
         
 class AbortReq:
     def __init__(self, req_id):
