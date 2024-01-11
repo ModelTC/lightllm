@@ -5,43 +5,60 @@ import triton.language as tl
 
 @triton.jit
 def _silu_and_mul_kernel(
-    input, output,
-    stride_b,
-    n_element,
-    BLOCK_SIZE: tl.constexpr,
+    input_ptr, 
+    output_ptr,
+    stride_input_m, stride_input_n,
+    stride_output_m, stride_output_n,
+    size_m, size_n,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
     ):
     tid = tl.program_id(0)
-    input = input + tid * stride_b
-    output = output + tid * stride_b // 2
+    input_m_offsets = tid * BLOCK_M + tl.arange(0, BLOCK_M)
+    output_m_offsets = tid * BLOCK_M + tl.arange(0, BLOCK_M)
 
     pid = tl.program_id(1)
-    gate_block_start = pid * BLOCK_SIZE
-    up_block_start = n_element + gate_block_start
-    up_offsets = up_block_start + tl.arange(0, BLOCK_SIZE)
-    gate_offsets = gate_block_start + tl.arange(0, BLOCK_SIZE)
+    input_n_offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    output_n_offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    mask = gate_offsets < n_element
+    up_offsets = input_m_offsets[:, None] * stride_input_m + (input_n_offsets[None, :]+ size_n) * stride_input_n;
+    gate_offsets = input_m_offsets[:, None] * stride_input_m + input_n_offsets[None, :] * stride_input_n;
+    res_offsets = output_m_offsets[:, None] * stride_output_m + output_n_offsets[None, :] * stride_output_n;
 
-    up_ele = tl.load(input + up_offsets, mask=mask, other=0.0)
-    gate_ele = tl.load(input + gate_offsets, mask=mask, other=0.0).to(tl.float32)
+    up = tl.load(input_ptr + up_offsets,
+            mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None], other=0.0)
+    gate = tl.load(input_ptr + gate_offsets, 
+            mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None], other=0.0).to(tl.float32)
 
-    gate_ele = gate_ele / (1 + tl.exp(-gate_ele))
-    gate_ele = gate_ele.to(tl.float16)
+    gate = gate / (1 + tl.exp(-gate))
+    gate = gate.to(tl.float16)
 
-    res = up_ele * gate_ele
+    res = up * gate
 
-    tl.store(output + gate_offsets, res.to(tl.float16), mask=mask)
+    tl.store(output_ptr + res_offsets, 
+            res.to(tl.float16), mask=(output_n_offsets < size_n)[None, :] * (output_m_offsets < size_m)[:, None])
 
 def silu_and_mul_fwd(input):
     output_size = list(input.shape)
     output_size[-1] = output_size[-1] // 2
     output = torch.zeros(output_size, dtype=input.dtype, device=input.device)
 
-    stride_b = input.stride(0)
-    n_element = input.shape[-1] // 2
-
-    grid = (input.shape[0], triton.cdiv(n_element, 128), )
-    _silu_and_mul_kernel[grid](input, output, stride_b, input.shape[-1]//2, 128)
+    stride_input_m = input.stride(0)
+    stride_input_n = input.stride(1)
+    stride_output_m = output.stride(0)
+    stride_output_n = output.stride(1)
+    size_m = input.shape[0]
+    size_n = input.shape[-1] // 2
+    BLOCK_M = 128
+    BLOCK_N = 128
+    grid = (triton.cdiv(size_m, BLOCK_M), triton.cdiv(size_n, BLOCK_N), )
+    _silu_and_mul_kernel[grid](
+        input, 
+        output, 
+        stride_input_m, stride_input_n,
+        stride_output_m, stride_output_n,
+        size_m, size_n, 
+        BLOCK_M, BLOCK_N)
     return output
 
 def torch_silu_and_mul(input: torch.Tensor):
@@ -49,7 +66,7 @@ def torch_silu_and_mul(input: torch.Tensor):
 
 def test_silu_and_mul(M, N, dtype, device='cuda'):
     # create data
-    X = torch.load("../../../../up_gate_out.pt").to(device=device, dtype=dtype)
+    X = torch.randn((M, N), dtype=dtype, device=device)
 
     # run
     y_tri = silu_and_mul_fwd(X)
