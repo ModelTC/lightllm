@@ -119,14 +119,21 @@ def rotary_emb_fwd(q, k, cos, sin):
     head_num = q.shape[1]
     head_dim = q.shape[2]
     assert q.shape[0] == cos.shape[0] and q.shape[0] == sin.shape[0], f"q shape {q.shape} cos shape {cos.shape}"
-    BLOCK_HEAD, BLOCK_SEQ = 4, 16
-    grid = (triton.cdiv(head_num, BLOCK_HEAD), triton.cdiv(total_len, BLOCK_SEQ))
+    assert k.shape[0] == cos.shape[0] and k.shape[0] == sin.shape[0], f"k shape {k.shape} cos shape {cos.shape}"
+
+    BLOCK_SEQ = 16
     if head_dim >= 128:
         num_warps = 8
     else:
         num_warps = 4
+    if head_num == k.shape[1]:
+        rotary_fwd = _rotary_kernel
+        BLOCK_HEAD = 4
+    else:
+        rotary_fwd = _rotary_kernel_gqa
+        BLOCK_HEAD = q.shape[1] // k.shape[1]
 
-    rotary_fwd = _rotary_kernel if head_num == k.shape[1] else _rotary_kernel_gqa
+    grid = (triton.cdiv(head_num, BLOCK_HEAD), triton.cdiv(total_len, BLOCK_SEQ))
     rotary_fwd[grid](
         q, k, cos, sin,
         q.stride(0), q.stride(1), q.stride(2),
