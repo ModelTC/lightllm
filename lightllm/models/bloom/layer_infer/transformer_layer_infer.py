@@ -42,19 +42,21 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
             bias=layer_weight.ffn_norm_bias_,
             eps=self.eps_)
     
-    def _get_qkv(self, input, cache_k, cache_v, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight)->torch.Tensor:
+    def _get_qkv(self, input, cache_kv, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight)->torch.Tensor:
         q = torch.addmm(layer_weight.q_bias_, input.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0)
+        cache_k = cache_kv[:, 0: self.tp_k_head_num_, :]
+        cache_v = cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
         torch.addmm(layer_weight.k_bias_, input.view(-1, self.embed_dim_), layer_weight.k_weight_, beta=1.0,
                     alpha=1.0, out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
         torch.addmm(layer_weight.v_bias_, input.view(-1, self.embed_dim_), layer_weight.v_weight_, beta=1.0,
                     alpha=1.0, out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
-        return q, cache_k, cache_v
+        return q, cache_kv
     
-    def _context_attention_kernel(self, q, k, v, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight, out=None)->torch.Tensor:
+    def _context_attention_kernel(self, q, kv, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight, out=None)->torch.Tensor:
         o_tensor =  torch.empty_like(q) if out is None else out
         context_attention_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_),
-                              k.view(-1, self.tp_k_head_num_, self.head_dim_),
-                              v.view(-1, self.tp_v_head_num_, self.head_dim_),
+                              kv[:, 0: self.tp_k_head_num_, :],
+                              kv[:, self.tp_k_head_num_ : self.tp_k_head_num_ + self.tp_v_head_num_, :],
                               o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
                               layer_weight.tp_alibi,
                               infer_state.b_start_loc,
@@ -65,8 +67,8 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
     def _token_attention_kernel(self, q, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight, out=None)->torch.Tensor:
         o_tensor =  torch.empty_like(q) if out is None else out
         token_attention_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_),
-                            infer_state.mem_manager.key_buffer[self.layer_num_],
-                            infer_state.mem_manager.value_buffer[self.layer_num_],
+                            infer_state.mem_manager.buffer[self.layer_num_][:, 0: self.tp_k_head_num_, :],
+                            infer_state.mem_manager.buffer[self.layer_num_][:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :],
                             o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
                             layer_weight.tp_alibi,
                             infer_state.req_manager.req_to_token_indexs,

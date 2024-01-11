@@ -45,12 +45,11 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
             self._copy_kv_to_mem_cache(cache_kv, infer_state.mem_index, mem_manager)
             return
     
-    def _copy_kv_to_mem_cache(self, key_buffer, value_buffer, mem_index, mem_manager):
-        destindex_copy_kv(key_buffer, mem_index, mem_manager.key_buffer[self.layer_num_])
-        destindex_copy_kv(value_buffer, mem_index, mem_manager.value_buffer[self.layer_num_])
+    def _copy_kv_to_mem_cache(self, buffer, mem_index, mem_manager):
+        destindex_copy_kv(buffer, mem_index, mem_manager.buffer[self.layer_num_])
         return
     
-    def _context_attention_kernel(self, q, k, v, infer_state:InferStateInfo, layer_weight, out=None)->torch.Tensor:
+    def _context_attention_kernel(self, q, kv, infer_state:InferStateInfo, layer_weight, out=None)->torch.Tensor:
         raise Exception("need to impl")
     
     def _token_attention_kernel(self, q, infer_state:InferStateInfo, layer_weight, out=None)->torch.Tensor:
@@ -119,10 +118,10 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     # @mark_cost_time("trans context flash forward time cost")  # dont to remove this, will make performence down, did not know why
     def _splitfuse_attention(self, input_embding, infer_state: SplitFuseInferStateInfo, layer_weight):
         input1 = self._att_norm(input_embding, infer_state, layer_weight)
-        cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
-        q, cache_k, cache_v  = self._get_qkv(input1, cache_k, cache_v, infer_state, layer_weight)
+        cache_kv = self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_kv  = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
-        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
+        self._post_cache_kv(cache_kv, infer_state, layer_weight)
         o = self._splitfuse_attention_kernel(q, infer_state, layer_weight)
         q = None
         o = self._get_o(o, infer_state, layer_weight)

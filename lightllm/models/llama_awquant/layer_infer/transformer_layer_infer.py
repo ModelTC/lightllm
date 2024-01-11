@@ -69,25 +69,23 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
             raise Exception(f"error mode {self.mode}")
         return
 
-    def _get_qkv(self, input, cache_k, cache_v, token_scale, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerActivationWeightQuantized)->torch.Tensor:
+    def _get_qkv(self, input, cache_kv, token_scale, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerActivationWeightQuantized)->torch.Tensor:
         q = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_),
                                             quant_weight_params=layer_weight.q_weight_,
                                             is_prefill=infer_state.is_prefill,
                                             token_scale=token_scale)
-        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
-
         out = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_),
                                             quant_weight_params=layer_weight.k_weight_,
                                             is_prefill=infer_state.is_prefill,
                                             token_scale=token_scale)
-        cache_k_ = out.view(-1, self.tp_k_head_num_, self.head_dim_)
-        rotary_emb_fwd(cache_k_, infer_state.position_cos, infer_state.position_sin)
+        cache_kv[:, 0: self.tp_k_head_num_, :] = out.view(-1, self.tp_k_head_num_, self.head_dim_)
+        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), cache_kv[:, 0: self.tp_k_head_num_, :], infer_state.position_cos, infer_state.position_sin)
         out = self._awquant_matmul_for_qkv(input.view(-1, self.embed_dim_),
                                             quant_weight_params=layer_weight.v_weight_,
                                             is_prefill=infer_state.is_prefill,
                                             token_scale=token_scale)
-        cache_v_ = out.view(-1, self.tp_v_head_num_, self.head_dim_)
-        return q, cache_k_, cache_v_
+        cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :] = out.view(-1, self.tp_v_head_num_, self.head_dim_)
+        return q, cache_kv
 
     def _get_o(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerActivationWeightQuantized) -> torch.Tensor:
         o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_)
@@ -116,11 +114,11 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
     @mark_cost_time("trans context flash forward time cost")  # dont to remove this, will make performence down, did not know why
     def _context_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
         input1, token_scale, skip_out = self._awquant_att_norm(input_embding, infer_state, layer_weight)
-        cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
-        q, cache_k, cache_v = self._get_qkv(input1, cache_k, cache_v, token_scale, infer_state, layer_weight)
+        cache_kv = self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_kv = self._get_qkv(input1, cache_kv, token_scale, infer_state, layer_weight)
         input1 = None
-        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
-        o = self._context_attention_kernel(q, cache_k, cache_v, infer_state, layer_weight)
+        self._post_cache_kv(cache_kv, infer_state, layer_weight)
+        o = self._context_attention_kernel(q, cache_kv, infer_state, layer_weight)
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
@@ -141,10 +139,10 @@ class LlamaTransformerLayerInferAWquant(TransformerLayerInferActivationWeightQua
     # this impl dont to use @mark_cost_time
     def _token_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
         input1, token_scale, skip_out = self._awquant_att_norm(input_embding, infer_state, layer_weight)
-        cache_k, cache_v = self._pre_cache_kv(infer_state, layer_weight)
-        q, cache_k, cache_v = self._get_qkv(input1, cache_k, cache_v, token_scale, infer_state, layer_weight)
+        cache_kv = self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_kv = self._get_qkv(input1, cache_kv, token_scale, infer_state, layer_weight)
         input1 = None
-        self._post_cache_kv(cache_k, cache_v, infer_state, layer_weight)
+        self._post_cache_kv(cache_kv, infer_state, layer_weight)
         o = self._token_attention_kernel(q, infer_state, layer_weight)
         q = None
         o = self._get_o(o, infer_state, layer_weight)

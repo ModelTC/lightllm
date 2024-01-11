@@ -83,7 +83,7 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
             raise Exception(f"error mode {self.mode}")
         return
 
-    def _get_qkv(self, input, cache_k, cache_v, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeightQuantized):
+    def _get_qkv(self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeightQuantized):
         qkv_output = self._wquant_matmul_for_qkv(input.view(-1, self.embed_dim_), 
                                                     quant_weight_params=layer_weight.qkv_weight_,
                                                     infer_state=infer_state)
@@ -93,11 +93,10 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim]
         v = qkv_output[:, -tp_k_head_dim :]
 
-        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
-        cache_k_ = k.view(-1, self.tp_k_head_num_, self.head_dim_)
-        rotary_emb_fwd(cache_k_, infer_state.position_cos, infer_state.position_sin)
-        cache_v_ = v.view(-1, self.tp_v_head_num_, self.head_dim_)
-        return q, cache_k_, cache_v_
+        cache_kv[:, 0: self.tp_k_head_num_, :] = k.view(-1, self.tp_k_head_num_, self.head_dim_)
+        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), cache_kv[:, 0: self.tp_k_head_num_, :], infer_state.position_cos, infer_state.position_sin)
+        cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :] = v.view(-1, self.tp_v_head_num_, self.head_dim_)
+        return q, cache_kv
 
     def _get_o(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeightQuantized) -> torch.Tensor:
         o_tensor = self._wquant_matmul_for_o(input, 
