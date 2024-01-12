@@ -7,7 +7,6 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
-
 class MixtralInferStateInfo(MistralInferStateInfo):
     def __init__(self):
         super().__init__()
@@ -19,19 +18,15 @@ class MixtralInferStateInfo(MistralInferStateInfo):
         self.experts_topk = None
         self.num_local_experts = None
 
-    def init_some_extra_state(self, model, input_ids: torch.Tensor):
+    def init_some_extra_state(self, model, input_ids : torch.Tensor):
         # sliding_window is not used in Mixtral 8x7b, ignore it
         self.sliding_window = 4096 if model.config["sliding_window"] is None else model.config["sliding_window"]
         self.experts_topk = model.config["num_experts_per_tok"]
         self.num_local_experts = model.config["num_local_experts"]
         if self.is_prefill:
             b_seq_len_numpy = self.b_seq_len.cpu().numpy()
-            position_ids = torch.from_numpy(
-                np.concatenate(
-                    [np.arange(0, b_seq_len_numpy[i]) for i in range(len(b_seq_len_numpy))],
-                    axis=0,
-                )
-            ).cuda()
+            position_ids = torch.from_numpy(np.concatenate([np.arange(0, b_seq_len_numpy[i])
+                                            for i in range(len(b_seq_len_numpy))], axis=0)).cuda()
             self.position_cos = torch.index_select(model._cos_cached, 0, position_ids).view(position_ids.shape[0], -1)
             self.position_sin = torch.index_select(model._sin_cached, 0, position_ids).view(position_ids.shape[0], -1)
             position_ids = None
