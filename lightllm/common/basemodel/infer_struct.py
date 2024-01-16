@@ -23,7 +23,7 @@ class InferStateInfo:
         self.mem_index = None
         self.mem_start = None 
         self.mem_end = None
-        self.buffer = None
+        self.kv_buffer = None
 
         self.is_splitfuse = False
         self.return_all_prompt_logprobs = False

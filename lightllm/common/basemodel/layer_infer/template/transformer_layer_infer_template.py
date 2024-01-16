@@ -31,9 +31,9 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     
     def _pre_cache_kv(self, infer_state:InferStateInfo, layer_weight)->Tuple[torch.Tensor, torch.Tensor]:
         if infer_state.mem_is_contiguous:
-            cache_kv = infer_state.mem_manager.buffer[self.layer_num_][infer_state.mem_start:infer_state.mem_end, :, :]
+            cache_kv = infer_state.mem_manager.kv_buffer[self.layer_num_][infer_state.mem_start:infer_state.mem_end, :, :]
         else:
-            cache_kv = infer_state.buffer
+            cache_kv = infer_state.kv_buffer
         return cache_kv
 
     def _get_qkv(self, input, cache_kv, infer_state:InferStateInfo, layer_weight)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -46,7 +46,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
             return
     
     def _copy_kv_to_mem_cache(self, buffer, mem_index, mem_manager):
-        destindex_copy_kv(buffer, mem_index, mem_manager.buffer[self.layer_num_])
+        destindex_copy_kv(buffer, mem_index, mem_manager.kv_buffer[self.layer_num_])
         return
     
     def _context_attention_kernel(self, q, kv, infer_state:InferStateInfo, layer_weight, out=None)->torch.Tensor:
