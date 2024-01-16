@@ -20,10 +20,10 @@ class MemoryManager:
         self._init_buffers(size, dtype, head_num, head_dim, layer_num)
     
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
-        self.buffer = [torch.empty((size, 2 * head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)]
+        self.kv_buffer = [torch.empty((size, 2 * head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)]
     
     def _free_buffers(self):
-        self.buffer = None
+        self.kv_buffer = None
     
     @torch.no_grad()
     def alloc(self, need_size):

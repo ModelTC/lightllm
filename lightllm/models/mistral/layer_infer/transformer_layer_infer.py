@@ -49,7 +49,7 @@ class MistralTransformerLayerInfer(LlamaTransformerLayerInfer):
         att_m_tensor = torch.empty((self.tp_q_head_num_, total_token_num), dtype=q.dtype, device="cuda")
 
         token_att_fwd(q.view(calcu_shape1),
-                      infer_state.mem_manager.buffer[self.layer_num_][:, 0: self.tp_k_head_num_, :],
+                      infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0: self.tp_k_head_num_, :],
                       att_m_tensor,
                       infer_state.req_manager.req_to_token_indexs,
                       infer_state.b_req_idx,
@@ -67,7 +67,7 @@ class MistralTransformerLayerInfer(LlamaTransformerLayerInfer):
             token_softmax_fwd(att_m_tensor, infer_state.b_att_start_loc, infer_state.b_att_seq_len, prob, infer_state.sliding_window)
             att_m_tensor = None
             token_att_fwd2(prob,
-                        infer_state.mem_manager.buffer[self.layer_num_][:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :],
+                        infer_state.mem_manager.kv_buffer[self.layer_num_][:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :],
                         o_tensor.view(calcu_shape1),
                         infer_state.req_manager.req_to_token_indexs,
                         infer_state.b_req_idx,
@@ -81,7 +81,7 @@ class MistralTransformerLayerInfer(LlamaTransformerLayerInfer):
         elif triton.__version__ >= "2.1.0":
             from lightllm.models.mistral.triton_kernel.token_attention_softmax_and_reducev import token_softmax_reducev_fwd
             token_softmax_reducev_fwd(att_m_tensor, 
-                                      infer_state.mem_manager.buffer[self.layer_num_][:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :],
+                                      infer_state.mem_manager.kv_buffer[self.layer_num_][:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :],
                                       o_tensor.view(calcu_shape1),
                                       infer_state.req_manager.req_to_token_indexs,
                                       infer_state.b_req_idx,
