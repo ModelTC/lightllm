@@ -88,13 +88,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
 
     def _get_qkv(self, input, cache_kv, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight)->torch.Tensor:
         q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_weight_)
-        cache_k = cache_kv[:, 0: self.tp_k_head_num_, :]
-        cache_v = cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
-        torch.mm(input.view(-1, self.embed_dim_), layer_weight.k_weight_,
-                    out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
-        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), cache_k, infer_state.position_cos, infer_state.position_sin)
-        torch.mm(input.view(-1, self.embed_dim_), layer_weight.v_weight_,
-                    out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
+        torch.mm(input.view(-1, self.embed_dim_), layer_weight.kv_weight_, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_)* self.head_dim_))
+        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), cache_kv[:, 0: self.tp_k_head_num_, :], infer_state.position_cos, infer_state.position_sin)
         return q, cache_kv
     
     def _context_attention_kernel(self, q, kv, infer_state:LlamaInferStateInfo, layer_weight, out=None)->torch.Tensor:
@@ -304,8 +299,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     
     def _token_decode_attention_gqa_flashdecoding(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
         # 对 gqa 模型进行推理优化的代码
-        import pdb
-        pdb.set_trace()
         from ..triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0: self.tp_k_head_num_, :]
         cache_v = infer_state.mem_manager.kv_buffer[self.layer_num_][:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
