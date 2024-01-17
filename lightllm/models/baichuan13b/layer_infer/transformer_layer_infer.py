@@ -25,11 +25,13 @@ class Baichuan13bTransformerLayerInfer(LlamaTransformerLayerInfer):
         self._token_attention_kernel = partial(BloomTransformerLayerInfer._token_attention_kernel, self)
         return
     
-    def _get_qkv(self, input, cache_k, cache_v, infer_state, layer_weight: BaiChuan13bTransformerLayerWeight) -> torch.Tensor:
+    def _get_qkv(self, input, cache_kv, infer_state, layer_weight: BaiChuan13bTransformerLayerWeight) -> torch.Tensor:
         q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_weight_)
+        cache_k = cache_kv[:, 0: self.tp_k_head_num_, :]
+        cache_v = cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
         torch.mm(input.view(-1, self.embed_dim_), layer_weight.k_weight_,
                     out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
         torch.mm(input.view(-1, self.embed_dim_), layer_weight.v_weight_,
                     out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
-        return q, cache_k, cache_v
+        return q, cache_kv
     
