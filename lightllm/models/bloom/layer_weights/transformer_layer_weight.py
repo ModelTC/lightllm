@@ -29,11 +29,9 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
         weights = [self.att_norm_weight_,
                    self.att_norm_bias_,
                    self.q_weight_,
-                   self.k_weight_,
-                   self.v_weight_,
+                   self.kv_weight_,
                    self.q_bias_,
-                   self.k_bias_,
-                   self.v_bias_,
+                   self.kv_bias_,
                    self.o_weight_,
                    self.o_bias_,
 
@@ -68,20 +66,24 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
                                                              n_embed)[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1),
                                                                       :].transpose(0,
                                                                                    1))
-            self.k_weight_ = self._cuda(att_qkv_dense_weight[:,
+            self.k_weight_ = att_qkv_dense_weight[:,
                                                   1,
                                                   :,
                                                   :].reshape(-1,
                                                              n_embed)[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1),
                                                                       :].transpose(0,
-                                                                                   1))
-            self.v_weight_ = self._cuda(att_qkv_dense_weight[:,
+                                                                                   1)
+            self.v_weight_ = att_qkv_dense_weight[:,
                                                   2,
                                                   :,
                                                   :].reshape(-1,
                                                              n_embed)[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1),
                                                                       :].transpose(0,
-                                                                                   1))
+                                                                                   1)
+            self.kv_weight_ = self._cuda(torch.cat([self.k_weight_, self.v_weight_], dim=1))
+            del self.k_weight_
+            del self.v_weight_
+
         if f"h.{self.layer_num_}.self_attention.query_key_value.bias" in weights:
             n_embed = self.network_config_["n_embed"]
             split_n_embed = n_embed // self.world_size_
@@ -89,10 +91,13 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
             att_qkv_dense_bias = weights[f"h.{self.layer_num_}.self_attention.query_key_value.bias"].reshape(head_num, 3, -1)
             self.q_bias_ = self._cuda(att_qkv_dense_bias[:, 0, :].reshape(-1)[split_n_embed *
                                                                    self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
-            self.k_bias_ = self._cuda(att_qkv_dense_bias[:, 1, :].reshape(-1)[split_n_embed *
-                                                                   self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
-            self.v_bias_ = self._cuda(att_qkv_dense_bias[:, 2, :].reshape(-1)[split_n_embed *
-                                                                   self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
+            self.k_bias_ = att_qkv_dense_bias[:, 1, :].reshape(-1)[split_n_embed *
+                                                                   self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
+            self.v_bias_ = att_qkv_dense_bias[:, 2, :].reshape(-1)[split_n_embed *
+                                                                   self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
+            self.kv_bias_ = self._cuda(torch.cat([self.k_bias_, self.v_bias_], dim=0))
+            del self.k_bias_
+            del self.v_bias_
 
         if f"h.{self.layer_num_}.self_attention.dense.weight" in weights:
             n_embed = self.network_config_["n_embed"]

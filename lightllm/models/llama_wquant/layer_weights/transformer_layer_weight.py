@@ -66,33 +66,29 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
         
         if getattr(self, "qkv_weight_", None) is None:
             self.qkv_weight_ = torch.empty(n_embed, q_split_n_embed + 2 * kv_split_n_embed, dtype=self.data_type_, device='cpu')
-            self.qkv_step_ = 0
         
         # q k v weights for llama
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
-            q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
-            q_weight_ = q_weight_[q_split_n_embed * self.tp_rank_: q_split_n_embed * (self.tp_rank_ + 1), :]
-            q_weight_ = q_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, :q_split_n_embed] = q_weight_
-            self.qkv_step_ += 1
+            self.q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
+            self.q_weight_ = self.q_weight_[q_split_n_embed * self.tp_rank_: q_split_n_embed * (self.tp_rank_ + 1), :]
+            self.q_weight_ = self.q_weight_.transpose(0, 1).to(self.data_type_)
 
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
-            k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
-            k_weight_ = k_weight_[kv_split_n_embed *  self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
-            k_weight_ = k_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, q_split_n_embed: (q_split_n_embed + kv_split_n_embed)] = k_weight_
-            self.qkv_step_ += 1
+            self.k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
+            self.k_weight_ = self.k_weight_[kv_split_n_embed *  self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
+            self.k_weight_ = self.k_weight_.transpose(0, 1).to(self.data_type_)
 
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
-            v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
-            v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
-            v_weight_ = v_weight_.transpose(0, 1).to(self.data_type_)
-            self.qkv_weight_[:, (q_split_n_embed + kv_split_n_embed):(q_split_n_embed + 2 * kv_split_n_embed)] = v_weight_
-            self.qkv_step_ += 1
-        
-        if self.qkv_step_ == 3:
-            self.qkv_step_ = 0
+            self.v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
+            self.v_weight_ = self.v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
+            self.v_weight_ = self.v_weight_.transpose(0, 1).to(self.data_type_)
+
+        if hasattr(self, "q_weight_") and hasattr(self, "k_weight_") and hasattr(self, "v_weight_"):
+            self.qkv_weight_[:, :q_split_n_embed] = self.q_weight_
+            self.qkv_weight_[:, q_split_n_embed: (q_split_n_embed + kv_split_n_embed)] = self.k_weight_
+            self.qkv_weight_[:, (q_split_n_embed + kv_split_n_embed):(q_split_n_embed + 2 * kv_split_n_embed)] = self.v_weight_
             self.qkv_weight_ = self.quantize_weight(self.qkv_weight_)
+            del self.q_weight_, self.k_weight_, self.v_weight_
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:

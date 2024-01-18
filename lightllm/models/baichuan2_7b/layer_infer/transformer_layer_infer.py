@@ -18,13 +18,10 @@ class Baichuan2_7bTransformerLayerInfer(LlamaTransformerLayerInfer):
         q_ = q.float()
         rotary_emb_fwd(q_.view(-1, self.tp_q_head_num_, self.head_dim_).float(), infer_state.position_cos, infer_state.position_sin)
         q.copy_(q_)
+        torch.mm(input.view(-1, self.embed_dim_), layer_weight.kv_weight_,
+                    out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_))
         cache_k = cache_kv[:, 0: self.tp_k_head_num_, :]
-        cache_v = cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
-        torch.mm(input.view(-1, self.embed_dim_), layer_weight.k_weight_,
-                    out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
         cache_k_ = cache_k.float()
         rotary_emb_fwd(cache_k_, infer_state.position_cos, infer_state.position_sin)
         cache_k.copy_(cache_k_)
-        torch.mm(input.view(-1, self.embed_dim_), layer_weight.v_weight_,
-                    out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
         return q, cache_kv

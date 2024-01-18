@@ -15,7 +15,7 @@ class Internlm2TransformerLayerWeight(LlamaTransformerLayerWeight):
          
         # handle internlm 20b, which has no bias, so set q k v o bias to zero
         if not self.network_config_.get("bias", True):
-            for layer_type in ("q", "k", "v", "o"):
+            for layer_type in ("q", "kv", "o"):
                 attr_name = f"{layer_type}_bias_"
                 if hasattr(self, attr_name):
                     continue
@@ -23,12 +23,10 @@ class Internlm2TransformerLayerWeight(LlamaTransformerLayerWeight):
 
         weights = [self.att_norm_weight_,
                    self.q_weight_,
-                   self.k_weight_,
-                   self.v_weight_,
+                   self.kv_weight_,
                    self.o_weight_,
                    self.q_bias_,
-                   self.k_bias_,
-                   self.v_bias_,
+                   self.kv_bias_,
                    self.o_bias_,
                    self.ffn_norm_weight_,
                    self.up_proj,
@@ -56,9 +54,13 @@ class Internlm2TransformerLayerWeight(LlamaTransformerLayerWeight):
             q_weight_ = qkv_weight_[:, :q_groups, :, :].reshape(-1, qkv_weight_.shape[-1]) 
             self.q_weight_ = self._cuda(q_weight_[q_split_n_embed * self.tp_rank_: q_split_n_embed * (self.tp_rank_ + 1):].transpose(0, 1))
             k_weight_ = qkv_weight_[:, -2, :, :].reshape(-1, qkv_weight_.shape[-1])
-            self.k_weight_ = self._cuda(k_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1):].transpose(0, 1))
+            self.k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1):].transpose(0, 1)
             v_weight_ = qkv_weight_[:, -1, :, :].reshape(-1, qkv_weight_.shape[-1])
-            self.v_weight_ = self._cuda(v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1):].transpose(0, 1))
+            self.v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1):].transpose(0, 1)
+
+            self.kv_weight_ = self._cuda(torch.cat([self.k_weight_, self.v_weight_], dim=1))
+            del self.k_weight_, self.v_weight_, qkv_weight_
+
         # attention output dense params
         if f"model.layers.{self.layer_num_}.attention.wo.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.attention.wo.weight"]

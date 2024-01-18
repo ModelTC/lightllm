@@ -18,13 +18,12 @@ class InternlmTransformerLayerInferWquant(LlamaTransformerLayerInferWquant):
     def _get_qkv(self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: InternlmTransformerLayerWeightQuantized):
         qkv_output = self._wquant_matmul_for_qkv(input.view(-1, self.embed_dim_), 
                                                     quant_weight_params=layer_weight.qkv_weight_,
-                                                    infer_state=infer_state)
+                                                    infer_state=infer_state).add_(layer_weight.qkv_bias_)
         
         tp_k_head_dim = self.tp_k_head_num_ * self.head_dim_
-        q = qkv_output[:, : -2 * tp_k_head_dim].add_(layer_weight.q_bias_)
-        k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim].add_(layer_weight.k_bias_)
-        v = qkv_output[:, -tp_k_head_dim :].add_(layer_weight.v_bias_)
-
+        q = qkv_output[:, 0: tp_k_head_dim]
+        k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim]
+        v = qkv_output[:, -tp_k_head_dim :]
         cache_kv[:, 0: self.tp_k_head_num_, :] = k.view(-1, self.tp_k_head_num_, self.head_dim_)
         rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), cache_kv[:, 0: self.tp_k_head_num_, :], infer_state.position_cos, infer_state.position_sin)
         cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :] = v.view(-1, self.tp_v_head_num_, self.head_dim_)

@@ -24,17 +24,25 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
             self.q_weight_ = q_weights[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
             self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
             self.k_weight_ = k_weights[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = self._cuda(self.k_weight_.transpose(0, 1))
+            self.k_weight_ = self.k_weight_.transpose(0, 1)
             self.v_weight_ = v_weights[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = self._cuda(self.v_weight_.transpose(0, 1))
+            self.v_weight_ = self.v_weight_.transpose(0, 1)
+
+            self.kv_weight_ = self._cuda(torch.cat([self.k_weight_, self.v_weight_], dim=1))
+            del self.k_weight_
+            del self.v_weight_
         
         if f"transformer.h.{self.layer_num_}.attn.c_attn.bias" in weights:
             qkv_bias = weights[f"transformer.h.{self.layer_num_}.attn.c_attn.bias"]
             split_size = qkv_bias.shape[0] // 3
             q_bias, k_bias, v_bias = torch.split(qkv_bias, split_size, dim=0)
             self.q_bias_ = self._cuda(q_bias[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
-            self.k_bias_ = self._cuda(k_bias[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
-            self.v_bias_ = self._cuda(v_bias[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)])
+            self.k_bias_ = k_bias[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
+            self.v_bias_ = v_bias[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
+
+            self.kv_bias_ = self._cuda(torch.cat([self.k_bias_, self.v_bias_], dim=0))
+            del self.k_bias_
+            del self.v_bias_
 
         # attention output dense params
         if f"transformer.h.{self.layer_num_}.attn.c_proj.weight" in weights:
@@ -62,18 +70,16 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
             self.down_proj = weights[f"transformer.h.{self.layer_num_}.mlp.c_proj.weight"][:,
                                                                                              split_inter_size * self.tp_rank_: split_inter_size * (self.tp_rank_ + 1)]
             self.down_proj = self._cuda(self.down_proj.transpose(0, 1))
-            
+
         return
     
     def verify_load(self):
         errors = "weights load not ok"
         weights = [self.att_norm_weight_,
                    self.q_weight_,
-                   self.k_weight_,
-                   self.v_weight_,
+                   self.kv_weight_,
                    self.q_bias_,
-                   self.k_bias_,
-                   self.v_bias_,
+                   self.kv_bias_,
                    self.o_weight_,
                    self.ffn_norm_weight_,
                    self.up_proj,

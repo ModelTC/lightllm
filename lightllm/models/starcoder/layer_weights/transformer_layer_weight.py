@@ -28,19 +28,15 @@ class StarcoderTransformerLayerWeight(BloomTransformerLayerWeight):
             self.qkv_weight_ = weights[f"transformer.h.{self.layer_num_}.attn.c_attn.weight"].transpose(0, 1).contiguous().to(self.data_type_)
             self.q_weight_ = self.qkv_weight_[:, :n_embed][:, split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
             self.q_weight_ = self.q_weight_.cuda()
-
-            self.k_weight_ = self.qkv_weight_[:, n_embed:n_embed + head_dim]
-            self.k_weight_ = self.k_weight_.cuda()
-
-            self.v_weight_ = self.qkv_weight_[:, n_embed + head_dim:n_embed + 2 * head_dim]
-            self.v_weight_ = self.v_weight_.cuda()
+            self.kv_weight_ = self.qkv_weight_[:, n_embed:n_embed + 2 * head_dim].cuda()
+            del self.qkv_weight_
 
         if f"transformer.h.{self.layer_num_}.attn.c_attn.bias" in weights:
 
             self.qkv_bias_ = weights[f"transformer.h.{self.layer_num_}.attn.c_attn.bias"].to(self.data_type_)
             self.q_bias_ = self.qkv_bias_[:n_embed].cuda()[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
-            self.k_bias_ = self.qkv_bias_[n_embed : n_embed + head_dim].cuda()
-            self.v_bias_ = self.qkv_bias_[n_embed + head_dim : n_embed + 2 * head_dim].cuda()
+            self.kv_bias_ = self.qkv_bias_[n_embed : n_embed + 2 * head_dim].cuda()
+            del self.qkv_bias_
 
         # attention output dense params
         if f"transformer.h.{self.layer_num_}.attn.c_proj.weight" in weights:

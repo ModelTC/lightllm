@@ -13,11 +13,9 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
         errors = "weights load not ok"
         weights = [self.att_norm_weight_,
                    self.q_weight_,
-                   self.k_weight_,
-                   self.v_weight_,
+                   self.kv_weight_,
                    self.q_bias_,
-                   self.k_bias_,
-                   self.v_bias_,
+                   self.kv_bias_,
                    self.o_weight_,
                    self.ffn_norm_weight_,
                    self.gate_up_proj,
@@ -44,10 +42,14 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
             self.q_weight_ = qkv_weight_[:, :n_embed][:, split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
             self.q_weight_ = self._cuda(self.q_weight_)
             self.k_weight_ = qkv_weight_[:, n_embed:n_embed + head_dim * multi_query_group_num]
-            self.k_weight_ = self._cuda(self.k_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)])
+            self.k_weight_ = self.k_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
 
             self.v_weight_ = qkv_weight_[:, n_embed + multi_query_group_num * head_dim : n_embed + 2 * multi_query_group_num * head_dim]
-            self.v_weight_ = self._cuda(self.v_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)])
+            self.v_weight_ = self.v_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
+
+            self.kv_weight_ = self._cuda(torch.cat([self.k_weight_, self.v_weight_], dim=1))
+            del self.k_weight_
+            del self.v_weight_
 
         if f"transformer.encoder.layers.{self.layer_num_}.self_attention.query_key_value.bias" in weights:
 
@@ -55,9 +57,13 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
             self.q_bias_ = qkv_bias_[:n_embed][split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]
             self.q_bias_ = self._cuda(self.q_bias_)
             self.k_bias_ = qkv_bias_[n_embed : n_embed + head_dim * multi_query_group_num]
-            self.k_bias_ = self._cuda(self.k_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)])
+            self.k_bias_ = self.k_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
             self.v_bias_ = qkv_bias_[n_embed + multi_query_group_num * head_dim : n_embed + 2 * multi_query_group_num * head_dim]
-            self.v_bias_ = self._cuda(self.v_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)])
+            self.v_bias_ = self.v_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
+
+            self.kv_bias_ = self._cuda(torch.cat([self.k_bias_, self.v_bias_], dim=0))
+            del self.k_bias_
+            del self.v_bias_
 
         # attention output dense params
         if f"transformer.encoder.layers.{self.layer_num_}.self_attention.dense.weight" in weights:

@@ -25,10 +25,14 @@ class BaiChuan7bTransformerLayerWeight(LlamaTransformerLayerWeight):
             self.q_weight_ = q_weights[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
             self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
             self.k_weight_ = k_weights[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = self._cuda(self.k_weight_.transpose(0, 1))
+            self.k_weight_ = self.k_weight_.transpose(0, 1)
             self.v_weight_ = v_weights[split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = self._cuda(self.v_weight_.transpose(0, 1))
-        
+            self.v_weight_ = self.v_weight_.transpose(0, 1)
+
+            self.kv_weight_ = self._cuda(torch.cat([self.k_weight_, self.v_weight_], dim=1))
+            del self.k_weight_
+            del self.v_weight_
+
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][:,split_n_embed * self.tp_rank_: split_n_embed * (self.tp_rank_ + 1)]

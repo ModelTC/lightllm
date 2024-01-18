@@ -44,12 +44,8 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
     
     def _get_qkv(self, input, cache_kv, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight)->torch.Tensor:
         q = torch.addmm(layer_weight.q_bias_, input.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0)
-        cache_k = cache_kv[:, 0: self.tp_k_head_num_, :]
-        cache_v = cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
-        torch.addmm(layer_weight.k_bias_, input.view(-1, self.embed_dim_), layer_weight.k_weight_, beta=1.0,
-                    alpha=1.0, out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
-        torch.addmm(layer_weight.v_bias_, input.view(-1, self.embed_dim_), layer_weight.v_weight_, beta=1.0,
-                    alpha=1.0, out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
+        torch.addmm(layer_weight.kv_bias_, input.view(-1, self.embed_dim_), layer_weight.kv_weight_, beta=1.0,
+                    alpha=1.0, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_q_head_num_) * self.head_dim_))
         return q, cache_kv
     
     def _context_attention_kernel(self, q, kv, infer_state:InferStateInfo, layer_weight: BloomTransformerLayerWeight, out=None)->torch.Tensor:

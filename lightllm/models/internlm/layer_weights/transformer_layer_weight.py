@@ -23,12 +23,10 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
 
         weights = [self.att_norm_weight_,
                    self.q_weight_,
-                   self.k_weight_,
-                   self.v_weight_,
+                   self.kv_weight_,
                    self.o_weight_,
                    self.q_bias_,
-                   self.k_bias_,
-                   self.v_bias_,
+                   self.kv_bias_,
                    self.o_bias_,
                    self.ffn_norm_weight_,
                    self.up_proj,
@@ -59,19 +57,17 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
             self.k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
             self.k_weight_ = self.k_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = self._cuda(self.k_weight_.transpose(0, 1))
+            self.k_weight_ = self.k_weight_.transpose(0, 1)
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.bias" in weights:
             self.k_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.bias"][kv_split_n_embed *
                                                                                                 self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1)]
-            self.k_bias_ = self._cuda(self.k_bias_)
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
             self.v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
             self.v_weight_ = self.v_weight_[kv_split_n_embed * self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = self._cuda(self.v_weight_.transpose(0, 1))
+            self.v_weight_ = self.v_weight_.transpose(0, 1)
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.bias" in weights:
             self.v_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.bias"][kv_split_n_embed *
                                                                                                 self.tp_rank_: kv_split_n_embed * (self.tp_rank_ + 1)]
-            self.v_bias_ = self._cuda(self.v_bias_)        
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
@@ -80,4 +76,13 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.bias" in weights:
             self.o_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.bias"]
             self.o_bias_ = self._cuda(self.o_bias_)   
+
+        if hasattr(self, "k_weight_") and hasattr(self, "v_weight_"):
+            self.kv_weight_ = self._cuda(torch.cat([self.k_weight_, self.v_weight_], dim=1))
+            del self.k_weight_
+            del self.v_weight_
+        if hasattr(self, "k_bias_") and hasattr(self, "v_bias_"):
+            self.kv_bias_ = self._cuda(torch.cat([self.k_bias_, self.v_bias_], dim=0))
+            del self.k_bias_
+            del self.v_bias_
         return
