@@ -42,7 +42,7 @@ class StarcoderTransformerLayerInferWQuant(TransformerLayerInferWeightQuantTpl):
         LlamaTransformerLayerInferWquant._bind_attention(self)
         return
 
-    def _get_qkv(self, input, cache_k, cache_v, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
+    def _get_qkv(self, input, cache_kv, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
         qkv_output = self._wquant_matmul_for_qkv(input.view(-1, self.embed_dim_), 
                                                  layer_weight.qkv_weight_, 
                                                  infer_state=infer_state,
@@ -52,9 +52,9 @@ class StarcoderTransformerLayerInferWQuant(TransformerLayerInferWeightQuantTpl):
         k = qkv_output[:, -2 * tp_k_head_dim: -tp_k_head_dim]
         v = qkv_output[:, -tp_k_head_dim :]
         
-        cache_k = k.view(-1, self.tp_k_head_num_, self.head_dim_)
-        cache_v = v.view(-1, self.tp_v_head_num_, self.head_dim_)
-        return q, cache_k, cache_v
+        cache_kv[:, 0: self.tp_k_head_num_, :] = k.view(-1, self.tp_k_head_num_, self.head_dim_)
+        cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :] = v.view(-1, self.tp_v_head_num_, self.head_dim_)
+        return q, cache_kv
     
     def _get_o(self, input, infer_state: StarcoderInferStateInfo, layer_weight: StarcoderTransformerLayerWeightQuantized) -> torch.Tensor:
         o_output =self._wquant_matmul_for_o(input.view(-1, self.embed_dim_),

@@ -24,15 +24,16 @@ class ChatGLM2TransformerLayerInfer(LlamaTransformerLayerInfer):
         x = torch.chunk(x, 2, dim=-1)
         return torch.nn.functional.silu(x[0]) * x[1]
 
-    def _get_qkv(self, input_emb, cache_k, cache_v, infer_state: LlamaInferStateInfo, layer_weight:ChatGLM2TransformerLayerWeight):      
+    def _get_qkv(self, input_emb, cache_kv, infer_state: LlamaInferStateInfo, layer_weight:ChatGLM2TransformerLayerWeight):      
         q = torch.addmm(layer_weight.q_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0)
-        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), infer_state.position_cos, infer_state.position_sin)
+        cache_k = cache_kv[:, 0: self.tp_k_head_num_, :]
+        cache_v = cache_kv[:, self.tp_k_head_num_: self.tp_k_head_num_+ self.tp_v_head_num_, :]
         torch.addmm(layer_weight.k_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.k_weight_, beta=1.0, alpha=1.0,
                     out=cache_k.view(-1, self.tp_k_head_num_ * self.head_dim_))
-        rotary_emb_fwd(cache_k, infer_state.position_cos, infer_state.position_sin)
+        rotary_emb_fwd(q.view(-1, self.tp_q_head_num_, self.head_dim_), cache_k, infer_state.position_cos, infer_state.position_sin)
         torch.addmm(layer_weight.v_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.v_weight_, beta=1.0, alpha=1.0,
                     out=cache_v.view(-1, self.tp_v_head_num_ * self.head_dim_))
-        return q, cache_k, cache_v
+        return q, cache_kv
 
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight):
 
