@@ -91,7 +91,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             self.gate_proj = weights[f"model.layers.{self.layer_num_}.mlp.gate_proj.weight"][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
-            self.gate_proj = self.self.gate_proj.transpose(0, 1)
+            self.gate_proj = self.gate_proj.transpose(0, 1)
 
         self._try_cat_to(["gate_proj", "up_proj"], "gate_up_proj", cat_dim=1)
 
