@@ -3,16 +3,20 @@ import torch
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def _silu_and_mul_kernel(
-    input_ptr, 
+    input_ptr,
     output_ptr,
-    stride_input_m, stride_input_n,
-    stride_output_m, stride_output_n,
-    size_m, size_n,
+    stride_input_m,
+    stride_input_n,
+    stride_output_m,
+    stride_output_n,
+    size_m,
+    size_n,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    ):
+):
     tid = tl.program_id(0)
     input_m_offsets = tid * BLOCK_M + tl.arange(0, BLOCK_M)
     output_m_offsets = tid * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -21,27 +25,37 @@ def _silu_and_mul_kernel(
     input_n_offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
     output_n_offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    up_offsets = input_m_offsets[:, None] * stride_input_m + (input_n_offsets[None, :]+ size_n) * stride_input_n;
-    gate_offsets = input_m_offsets[:, None] * stride_input_m + input_n_offsets[None, :] * stride_input_n;
-    res_offsets = output_m_offsets[:, None] * stride_output_m + output_n_offsets[None, :] * stride_output_n;
+    up_offsets = input_m_offsets[:, None] * stride_input_m + (input_n_offsets[None, :] + size_n) * stride_input_n
+    gate_offsets = input_m_offsets[:, None] * stride_input_m + input_n_offsets[None, :] * stride_input_n
+    res_offsets = output_m_offsets[:, None] * stride_output_m + output_n_offsets[None, :] * stride_output_n
 
-    up = tl.load(input_ptr + up_offsets,
-            mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None], other=0.0)
-    gate = tl.load(input_ptr + gate_offsets, 
-            mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None], other=0.0).to(tl.float32)
+    up = tl.load(
+        input_ptr + up_offsets,
+        mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None],
+        other=0.0,
+    )
+    gate = tl.load(
+        input_ptr + gate_offsets,
+        mask=(input_n_offsets < size_n)[None, :] * (input_m_offsets < size_m)[:, None],
+        other=0.0,
+    ).to(tl.float32)
 
     gate = gate / (1 + tl.exp(-gate))
     gate = gate.to(tl.float16)
 
     res = up * gate
 
-    tl.store(output_ptr + res_offsets, 
-            res.to(tl.float16), mask=(output_n_offsets < size_n)[None, :] * (output_m_offsets < size_m)[:, None])
+    tl.store(
+        output_ptr + res_offsets,
+        res.to(tl.float16),
+        mask=(output_n_offsets < size_n)[None, :] * (output_m_offsets < size_m)[:, None],
+    )
+
 
 def silu_and_mul_fwd(input):
     output_size = list(input.shape)
     output_size[-1] = output_size[-1] // 2
-    output = torch.zeros(output_size, dtype=input.dtype, device=input.device)
+    output = torch.empty(output_size, dtype=input.dtype, device=input.device)
 
     stride_input_m = input.stride(0)
     stride_input_n = input.stride(1)
@@ -51,20 +65,30 @@ def silu_and_mul_fwd(input):
     size_n = input.shape[-1] // 2
     BLOCK_M = 128
     BLOCK_N = 128
-    grid = (triton.cdiv(size_m, BLOCK_M), triton.cdiv(size_n, BLOCK_N), )
+    grid = (
+        triton.cdiv(size_m, BLOCK_M),
+        triton.cdiv(size_n, BLOCK_N),
+    )
     _silu_and_mul_kernel[grid](
-        input, 
-        output, 
-        stride_input_m, stride_input_n,
-        stride_output_m, stride_output_n,
-        size_m, size_n, 
-        BLOCK_M, BLOCK_N)
+        input,
+        output,
+        stride_input_m,
+        stride_input_n,
+        stride_output_m,
+        stride_output_n,
+        size_m,
+        size_n,
+        BLOCK_M,
+        BLOCK_N,
+    )
     return output
 
-def torch_silu_and_mul(input: torch.Tensor):
-    return torch.nn.functional.silu(input[:, 0:(input.shape[-1]//2)]) * input[:, (input.shape[-1]//2):]
 
-def test_silu_and_mul(M, N, dtype, device='cuda'):
+def torch_silu_and_mul(input: torch.Tensor):
+    return torch.nn.functional.silu(input[:, 0 : (input.shape[-1] // 2)]) * input[:, (input.shape[-1] // 2) :]
+
+
+def test_silu_and_mul(M, N, dtype, device="cuda"):
     # create data
     X = torch.randn((M, N), dtype=dtype, device=device)
 
@@ -77,5 +101,6 @@ def test_silu_and_mul(M, N, dtype, device='cuda'):
     print("max delta:", torch.max(torch.abs(y_tri - y_ref)))
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)
     return
+
 
 # test_silu_and_mul(16, 4096, torch.float16, device='cuda')
