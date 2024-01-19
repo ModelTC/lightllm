@@ -21,8 +21,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
                    self.kv_weight_,
                    self.o_weight_,
                    self.ffn_norm_weight_,
-                   self.up_proj,
-                   self.gate_proj,
+                   self.gate_up_proj,
                    self.down_proj
                    ]
         for i in range(len(weights)):
@@ -73,15 +72,18 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         inter_size = self.network_config_['intermediate_size']
         split_inter_size = inter_size // self.world_size_
 
-        if f"model.layers.{self.layer_num_}.mlp.up_proj.weight" in weights:
-            self.up_proj = weights[f"model.layers.{self.layer_num_}.mlp.up_proj.weight"][split_inter_size *
-                                                                                         self.tp_rank_: split_inter_size * (self.tp_rank_ + 1), :]
-            self.up_proj = self._cuda(self.up_proj.transpose(0, 1))
-
         if f"model.layers.{self.layer_num_}.mlp.gate_proj.weight" in weights:
-            self.gate_proj = weights[f"model.layers.{self.layer_num_}.mlp.gate_proj.weight"][split_inter_size *
+            self.gate_up_proj = weights[f"model.layers.{self.layer_num_}.mlp.gate_proj.weight"][split_inter_size *
                                                                                              self.tp_rank_: split_inter_size * (self.tp_rank_ + 1), :]
-            self.gate_proj = self._cuda(self.gate_proj.transpose(0, 1))
+            self.gate_up_proj = self._cuda(self.gate_up_proj.transpose(0, 1))
+
+        if f"model.layers.{self.layer_num_}.mlp.up_proj.weight" in weights:
+            self.gate_up_proj = torch.cat(
+                (self.gate_up_proj, self._cuda(weights[f"model.layers.{self.layer_num_}.mlp.up_proj.weight"]
+                    [split_inter_size * self.tp_rank_: split_inter_size * (self.tp_rank_ + 1), :]
+                    .transpose(0, 1))), 
+                dim=1
+            )
 
         if f"model.layers.{self.layer_num_}.mlp.down_proj.weight" in weights:
             self.down_proj = weights[f"model.layers.{self.layer_num_}.mlp.down_proj.weight"][:,

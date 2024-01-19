@@ -13,6 +13,7 @@ from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import to
 from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2, token_att_fwd2_int8v
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
+from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.splitfuse_infer_struct import SplitFuseInferStateInfo
@@ -169,12 +170,10 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return o_tensor
 
     def _ffn(self, input, infer_state:LlamaInferStateInfo, layer_weight:LlamaTransformerLayerWeight)->torch.Tensor:
-        gate_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_proj)
-        torch.nn.functional.silu(gate_out, inplace=True)
-        up_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.up_proj)
+        up_gate_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_up_proj)
+        ffn1_out = silu_and_mul_fwd(up_gate_out)
         input = None
-        ffn1_out = gate_out * up_out
-        gate_out, up_out = None, None
+        up_gate_out = None
         ffn2_out = torch.mm(ffn1_out, layer_weight.down_proj)
         ffn1_out = None
         return ffn2_out
