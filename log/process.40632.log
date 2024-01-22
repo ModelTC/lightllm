@@ -1,0 +1,4 @@
+DEBUG 01-22 13:32:48 [stats.py:37] Avg tokens(prompt+generate) throughput:    0.009 tokens/s
+DEBUG 01-22 13:32:48 [stats.py:37] Avg prompt tokens throughput:              0.009 tokens/s
+DEBUG 01-22 13:32:48 [stats.py:37] Avg generate tokens throughput:            0.000 tokens/s
+DEBUG 01-22 13:32:49 [manager.py:151] current batch size: 1 paused req num: 0 token used ratio: 4.1666666666666665e-05 
