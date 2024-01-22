@@ -63,27 +63,21 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
             ]
             self.q_bias_ = self._cuda(self.q_bias_)
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
-            self.k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
-            self.k_weight_ = self.k_weight_[
-                kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :
-            ]
-            self.k_weight_ = self.k_weight_.transpose(0, 1)
+            k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
+            k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
+            self.k_weight_ = k_weight_.transpose(0, 1)
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.bias" in weights:
             self.k_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.bias"][
                 kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1)
             ]
-            self.k_bias_ = self.k_bias_
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
-            self.v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
-            self.v_weight_ = self.v_weight_[
-                kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :
-            ]
-            self.v_weight_ = self.v_weight_.transpose(0, 1)
+            v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
+            v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
+            self.v_weight_ = v_weight_.transpose(0, 1)
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.bias" in weights:
             self.v_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.bias"][
                 kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1)
             ]
-            self.v_bias_ = self.v_bias_
 
         self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
 
