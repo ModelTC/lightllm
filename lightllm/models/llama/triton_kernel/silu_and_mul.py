@@ -43,11 +43,9 @@ def _silu_and_mul_kernel(
     gate = gate / (1 + tl.exp(-gate))
     gate = gate.to(tl.float16)
 
-    res = up * gate
-
     tl.store(
         output_ptr + res_offsets,
-        res.to(tl.float16),
+        up * gate,
         mask=(output_n_offsets < size_n)[None, :] * (output_m_offsets < size_m)[:, None],
     )
 
