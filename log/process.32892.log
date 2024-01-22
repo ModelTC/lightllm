@@ -1,3 +1,0 @@
-INFO 01-22 13:25:35 [tokenizer.py:78] Using a slow tokenizer. This might cause a significant slowdown. Consider using a fast tokenizer instead.
-INFO 01-22 13:26:02 [start_utils.py:29] init func start_router_process : init ok
-INFO 01-22 13:26:02 [start_utils.py:29] init func start_detokenization_process : init ok

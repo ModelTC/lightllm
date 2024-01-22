@@ -1,7 +1,0 @@
-INFO 01-22 13:27:44 [mem_utils.py:9] mode setting params: []
-INFO 01-22 13:27:44 [mem_utils.py:18] Model kv cache using mode normal
-DEBUG 01-22 13:27:54 [infer_utils.py:62] Function exposed_decode_batch took 1003.9019584655762 ms to run.
-DEBUG 01-22 13:27:55 [req_manager.py:26] freed all request size 1008
-DEBUG 01-22 13:27:55 [mem_manager.py:68] freed all gpu mem size 120000
-DEBUG 01-22 13:28:02 [req_manager.py:26] freed all request size 1008
-DEBUG 01-22 13:28:02 [mem_manager.py:68] freed all gpu mem size 120000
