@@ -85,6 +85,8 @@ def _rotary_kernel(
         + dim_range1[None, None, :] * stride_kd
     )
 
+    off_dimcos_sin = cur_seq_range[:, None, None] * stride_cosbs + cos_range[None, None, :] * stride_cosd
+
     k0 = tl.load(
         K + off_k0,
         mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_K),
@@ -95,6 +97,9 @@ def _rotary_kernel(
         mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_K),
         other=0.0,
     )
+
+    cos = tl.load(Cos + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
+    sin = tl.load(Sin + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
 
     out_k0 = k0 * cos - k1 * sin
     out_k1 = k0 * sin + k1 * cos
