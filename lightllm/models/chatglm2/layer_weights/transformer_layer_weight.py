@@ -49,13 +49,13 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
                 :, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)
             ]
             self.q_weight_ = self._cuda(self.q_weight_)
-            self.k_weight_ = qkv_weight_[:, n_embed : n_embed + head_dim * multi_query_group_num]
-            self.k_weight_ = self.k_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
+            k_weight_ = qkv_weight_[:, n_embed : n_embed + head_dim * multi_query_group_num]
+            self.k_weight_ = k_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
 
-            self.v_weight_ = qkv_weight_[
+            v_weight_ = qkv_weight_[
                 :, n_embed + multi_query_group_num * head_dim : n_embed + 2 * multi_query_group_num * head_dim
             ]
-            self.v_weight_ = self.v_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
+            self.v_weight_ = v_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
 
         self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
 
@@ -66,12 +66,12 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
             )
             self.q_bias_ = qkv_bias_[:n_embed][split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)]
             self.q_bias_ = self._cuda(self.q_bias_)
-            self.k_bias_ = qkv_bias_[n_embed : n_embed + head_dim * multi_query_group_num]
-            self.k_bias_ = self.k_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
-            self.v_bias_ = qkv_bias_[
+            k_bias_ = qkv_bias_[n_embed : n_embed + head_dim * multi_query_group_num]
+            self.k_bias_ = k_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
+            v_bias_ = qkv_bias_[
                 n_embed + multi_query_group_num * head_dim : n_embed + 2 * multi_query_group_num * head_dim
             ]
-            self.v_bias_ = self.v_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
+            self.v_bias_ = v_bias_[tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
 
         self._try_cat_to(["k_bias_", "v_bias_"], "kv_bias_", cat_dim=0)
 
