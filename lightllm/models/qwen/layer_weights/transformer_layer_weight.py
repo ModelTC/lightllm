@@ -85,7 +85,7 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
             self.kv_bias_,
             self.o_weight_,
             self.ffn_norm_weight_,
-            self.up_gate_proj,
+            self.gate_up_proj,
             self.down_proj,
         ]
         for i in range(len(weights)):
