@@ -166,17 +166,25 @@ async def generate_stream(request: Request) -> Response:
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
         async for request_output, metadata, finish_status in results_generator:
-            ret = {
-                "token": {
+            if not return_details:
+                tokens = {
+                    "id": metadata.get("id", None),
+                    "text": request_output,
+                }
+            else:
+                tokens = {
                     "id": metadata.get("id", None),
                     "text": request_output,
                     "logprob": metadata.get("logprob", None),
-                    "special": False
-                },
+                    "special": metadata.get("special", False),
+                    "count_output_tokens": metadata.get("count_output_tokens", 0),
+                }
+            ret = {
+                "token": tokens,
                 "generated_text": None,
                 "finished": finish_status.is_finished(),
                 "finish_reason": finish_status.get_finish_reason(),
-                "details": None
+                # "details": None
             }
 
             yield ("data:" + json.dumps(ret, ensure_ascii=False) + f"\n\n").encode(
