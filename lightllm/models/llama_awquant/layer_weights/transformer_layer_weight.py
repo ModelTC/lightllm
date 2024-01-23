@@ -29,8 +29,7 @@ class LlamaTransformerLayerActivationWeightQuantized(TransformerLayerWeight):
             self.kv_weight_,
             self.o_weight_,
             self.ffn_norm_weight_,
-            self.gate_proj,
-            self.up_proj,
+            self.gate_up_proj,
             self.down_proj,
         ]
         for i in range(len(weights)):
