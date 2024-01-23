@@ -24,14 +24,14 @@ class InternlmTransformerLayerInferWquant(LlamaTransformerLayerInferWquant):
             input.view(-1, self.embed_dim_),
             quant_weight_params=layer_weight.q_weight_,
             infer_state=infer_state,
-            bias=layer_weight.q_bias_,
+        ).add_(layer_weight.q_bias_)
+        cache_kv = (
+            self._wquant_matmul_for_qkv(
+                input.view(-1, self.embed_dim_), quant_weight_params=layer_weight.kv_weight_, infer_state=infer_state
+            )
+            .add_(layer_weight.kv_bias_)
+            .view(-1, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_)
         )
-        cache_kv = self._wquant_matmul_for_qkv(
-            input.view(-1, self.embed_dim_),
-            quant_weight_params=layer_weight.kv_weight_,
-            infer_state=infer_state,
-            bias=layer_weight.kv_bias_,
-        ).view(-1, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],
