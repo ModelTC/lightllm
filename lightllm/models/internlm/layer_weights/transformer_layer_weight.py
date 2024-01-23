@@ -31,8 +31,7 @@ class InternlmTransformerLayerWeight(LlamaTransformerLayerWeight):
             self.kv_bias_,
             self.o_bias_,
             self.ffn_norm_weight_,
-            self.up_proj,
-            self.gate_proj,
+            self.gate_up_proj,
             self.down_proj,
         ]
         for i in range(len(weights)):

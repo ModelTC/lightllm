@@ -57,7 +57,8 @@ class InternlmTransformerLayerWeightQuantized(LlamaTransformerLayerWeightQuantiz
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
             q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
             q_weight_ = q_weight_[q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1), :]
-            self.q_weight_ = self._cuda(q_weight_.transpose(0, 1).to(self.data_type_))
+            q_weight_ = q_weight_.transpose(0, 1).to(self.data_type_)
+            self.q_weight_ = self.quantize_weight(q_weight_)
 
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.bias" in weights:
             self.q_bias_ = self._cuda(
@@ -87,7 +88,6 @@ class InternlmTransformerLayerWeightQuantized(LlamaTransformerLayerWeightQuantiz
             ]
 
         self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1, handle_func=self.quantize_weight)
-
         self._try_cat_to(["k_bias_", "v_bias_"], "kv_bias_", cat_dim=0)
 
         # attention output dense params
