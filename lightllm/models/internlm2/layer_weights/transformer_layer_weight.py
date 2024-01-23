@@ -92,16 +92,16 @@ class Internlm2TransformerLayerWeight(LlamaTransformerLayerWeight):
         split_inter_size = inter_size // self.world_size_
 
         if f"model.layers.{self.layer_num_}.feed_forward.w3.weight" in weights:
-            self.up_proj = weights[f"model.layers.{self.layer_num_}.feed_forward.w3.weight"][
+            up_proj = weights[f"model.layers.{self.layer_num_}.feed_forward.w3.weight"][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
-            self.up_proj = self.up_proj.transpose(0, 1)
+            self.up_proj = up_proj.transpose(0, 1)
 
         if f"model.layers.{self.layer_num_}.feed_forward.w1.weight" in weights:
-            self.gate_proj = weights[f"model.layers.{self.layer_num_}.feed_forward.w1.weight"][
+            gate_proj = weights[f"model.layers.{self.layer_num_}.feed_forward.w1.weight"][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
-            self.gate_proj = self.gate_proj.transpose(0, 1)
+            self.gate_proj = gate_proj.transpose(0, 1)
 
         self._try_cat_to(["gate_proj", "up_proj"], "gate_up_proj", cat_dim=1)
 

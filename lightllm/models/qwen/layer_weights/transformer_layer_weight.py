@@ -23,10 +23,10 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
 
             self.q_weight_ = q_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
             self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
-            self.k_weight_ = k_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = self.k_weight_.transpose(0, 1)
-            self.v_weight_ = v_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = self.v_weight_.transpose(0, 1)
+            k_weight_ = k_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
+            self.k_weight_ = k_weight_.transpose(0, 1)
+            v_weight_ = v_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
+            self.v_weight_ = v_weight_.transpose(0, 1)
 
         self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
 
@@ -54,16 +54,16 @@ class QwenTransformerLayerWeight(TransformerLayerWeight):
         split_inter_size = inter_size // self.world_size_
 
         if f"transformer.h.{self.layer_num_}.mlp.w1.weight" in weights:
-            self.up_proj = weights[f"transformer.h.{self.layer_num_}.mlp.w1.weight"][
+            up_proj = weights[f"transformer.h.{self.layer_num_}.mlp.w1.weight"][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
-            self.up_proj = self.up_proj.transpose(0, 1)
+            self.up_proj = up_proj.transpose(0, 1)
 
         if f"transformer.h.{self.layer_num_}.mlp.w2.weight" in weights:
-            self.gate_proj = weights[f"transformer.h.{self.layer_num_}.mlp.w2.weight"][
+            gate_proj = weights[f"transformer.h.{self.layer_num_}.mlp.w2.weight"][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
-            self.gate_proj = self.gate_proj.transpose(0, 1)
+            self.gate_proj = gate_proj.transpose(0, 1)
 
         if f"transformer.h.{self.layer_num_}.mlp.c_proj.weight" in weights:
             self.down_proj = weights[f"transformer.h.{self.layer_num_}.mlp.c_proj.weight"][
