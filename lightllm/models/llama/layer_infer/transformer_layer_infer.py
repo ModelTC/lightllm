@@ -334,7 +334,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         token_att_fwd_int8k(
             q.view(calcu_shape1),
             infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :],
-            infer_state.mem_manager.kv_buffer[self.layer_num_][
+            infer_state.mem_manager.scale_buffer[self.layer_num_][
                 :, self.tp_k_head_num_ : self.tp_k_head_num_ + self.tp_v_head_num_, :
             ],
             att_m_tensor,
