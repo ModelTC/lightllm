@@ -95,8 +95,9 @@ class LlamaTpPartModel(TpPartBaseModel):
                 weight_dict=self.weight_dict,
                 prefix='model.layers.',
                 num_layer=self.config["n_layer"])
-        self.pre_post_weight.verify_load()
-        [weight.verify_load() for weight in self.trans_layers_weight]            
+        if not self.weight_dict == {}:
+            self.pre_post_weight.verify_load()
+            [weight.verify_load() for weight in self.trans_layers_weight]            
         return 
 
     def _init_to_get_rotary(self, default_base=10000):

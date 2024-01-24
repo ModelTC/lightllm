@@ -75,6 +75,14 @@ class TpPartBaseModel:
         assert self.load_way == "HF", "only support HF format weights"
         assert self.config["num_key_value_heads"] % self.world_size_ == 0
         return
+    
+    def load_weights_from_dict(self, weight_dict):
+                load_hf_weights(
+                "fp16",
+                weight_dir=self.weight_dir_,
+                pre_post_layer=self.pre_post_weight,
+                transformer_layer_list=self.trans_layers_weight,
+                weight_dict=weight_dict)
 
     def _init_weights(self):
         self.pre_post_weight = self.pre_and_post_weight_class(self.tp_rank_, self.world_size_, torch.float16, network_config=self.config, mode=self.mode)
@@ -88,8 +96,9 @@ class TpPartBaseModel:
             pre_post_layer=self.pre_post_weight,
             transformer_layer_list=self.trans_layers_weight,
             weight_dict=self.weight_dict)
-        self.pre_post_weight.verify_load()
-        [weight.verify_load() for weight in self.trans_layers_weight]
+        if not self.weight_dict == {}:
+            self.pre_post_weight.verify_load()
+            [weight.verify_load() for weight in self.trans_layers_weight]
         return 
     
     def _init_mem_manager(self):
