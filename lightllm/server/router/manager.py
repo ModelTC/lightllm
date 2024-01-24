@@ -10,7 +10,7 @@ from ..sampling_params import SamplingParams
 from ..io_struct import Req, NormalReq, SplitFuseReq, Batch
 from ..multimodal_params import MultimodalParams
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
-from .req_queue import ReqQueue
+from .req_queue import FuturePastReqQueue, ReqQueue
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from ..io_struct import BatchTokenIdOut, AbortReq, ReqRunStatus, FinishStatus
@@ -49,6 +49,8 @@ class RouterManager:
         self.is_splitfuse_mode = args.splitfuse_mode
         self.splitfuse_block_size = args.splitfuse_block_size
 
+        self.use_future_past_scheduler = args.future_past_scheduler
+
         if self.is_splitfuse_mode and len(args.prompt_cache_strs) != 0:
             self.tokenizer = get_tokenizer(self.model_weightdir, args.tokenizer_mode, args.trust_remote_code)
 
@@ -83,10 +85,11 @@ class RouterManager:
         await asyncio.gather(*init_model_ret)
 
         await self._init_prompt_cache()
-        
-        self.req_queue = ReqQueue(self.args, 
-                                  self.prompt_cache_used_tokens, 
-                                  self.prompt_cache_req_num)   
+
+        req_queue_cls = FuturePastReqQueue if self.use_future_past_scheduler else ReqQueue
+        self.req_queue = req_queue_cls(self.args,
+                                  self.prompt_cache_used_tokens,
+                                  self.prompt_cache_req_num)
         return
     
     async def _init_prompt_cache(self):
@@ -149,7 +152,7 @@ class RouterManager:
                     total_used_tokens = self.prompt_cache_used_tokens + self.running_batch.batch_used_tokens + self.req_queue.pause_req_used_tokens
                     token_ratio = total_used_tokens / self.max_total_token_num
                     logger.debug(
-                        f"current batch size: {len(self.running_batch.reqs)} " 
+                        f"current batch size: {len(self.running_batch.reqs)} "
                         f"paused req num: {len(self.req_queue.pause_req_dict)} "
                         f"token used ratio: {token_ratio} "
                     )
@@ -229,6 +232,8 @@ class RouterManager:
 
             self._update_out_status_to_batch(batch, req_to_out_status)
             unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status(self.eos_id)
+            if self.use_future_past_scheduler:
+                self.req_queue.record_output_lengths([len(batch.id_to_reqs[req_id].output_ids) for req_id in finished_req_ids])
             self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
             await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
@@ -260,6 +265,8 @@ class RouterManager:
 
         self._update_out_status_to_batch(batch, req_to_out_status)
         unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status(self.eos_id)
+        if self.use_future_past_scheduler:
+            self.req_queue.record_output_lengths([len(batch.id_to_reqs[req_id].output_ids) for req_id in finished_req_ids])
         self._send_to_detokenization_proc(batch, req_to_out_status)
         batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
         await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
