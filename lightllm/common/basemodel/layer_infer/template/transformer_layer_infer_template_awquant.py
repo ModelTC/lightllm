@@ -36,7 +36,8 @@ class TransformerLayerInferActivationWeightQuantTpl(TransformerLayerInferTpl):
         '''
         Release kv buffer to save memory, since we allocate while kv projection. 
         '''
-        infer_state.kv_buffer = None
-        return None
+        infer_state.key_buffer = None
+        infer_state.value_buffer = None
+        return None, None
 
 
