@@ -228,6 +228,18 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         ffn1_out = None
         return ffn2_out
 
+    # # keep code
+    # def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight)->torch.Tensor:
+    #     gate_up_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_up_proj)
+    #     size = gate_up_out.shape[1]
+    #     gate_out, up_out = gate_up_out[:, 0: size // 2], gate_up_out[:, size // 2:]
+    #     torch.nn.functional.silu(gate_out, inplace=True)
+    #     gate_out.mul_(up_out)
+    #     input = None
+    #     ffn2_out = torch.mm(gate_out, layer_weight.down_proj)
+    #     gate_out, up_out = None, None
+    #     return ffn2_out
+
     def _copy_kv_to_mem_cache_normal(self, buffer, mem_index, mem_manager):
         destindex_copy_kv(buffer, mem_index, mem_manager.kv_buffer[self.layer_num_])
         return
