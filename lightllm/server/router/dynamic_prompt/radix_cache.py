@@ -2,10 +2,12 @@
 import torch
 import heapq
 import time
+import numpy as np
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Tuple
 from sortedcontainers import SortedSet
+from .shared_arr import SharedArray, SharedIdxNode, SharedTreeIdxManager
 class UniqueTimeIdGenerator:
     def __init__(self):
         self.counter = 0
@@ -17,20 +19,21 @@ class UniqueTimeIdGenerator:
 time_gen = UniqueTimeIdGenerator()
 
 class TreeNode:
-    def __init__(self):
+    def __init__(self, shared_idx_manager : SharedTreeIdxManager):
+        self.shared_idx_manager = shared_idx_manager
         self.children = {} #这里的键 为 token_id_key 的第一个元素
-        self.parent = None
+        self.parent: TreeNode = None
         self.token_id_key = None
         self.token_mem_index_value = None # 用于记录存储的 token_index 为每个元素在 token mem 中的index位置
         self.ref_counter = 0
+        self.shared_idx_node: SharedIdxNode = self.shared_idx_manager.alloc()
         self.time_id = time_gen.generate_time_id() # 用于标识时间周期
 
     def get_compare_key(self):
         return (0 if self.ref_counter == 0 else 1, len(self.children), self.time_id)
     
-
     def split_node(self, prefix_len):
-        new_node = TreeNode()
+        new_node = TreeNode(self.shared_idx_manager)
         new_node.parent = self
         new_node.token_id_key = self.token_id_key[prefix_len:]
         new_node.token_mem_index_value = self.token_mem_index_value[prefix_len:]
@@ -41,25 +44,49 @@ class TreeNode:
         self.token_mem_index_value = self.token_mem_index_value[0:prefix_len]
         self.children = {}
         self.children[new_node.token_id_key[0]] = new_node
+
+        # 更新shared 信息
+        self.shared_idx_node.set_node_value_len(prefix_len)
+        self.shared_idx_node.set_node_prefix_total_len(self.get_parent_prefix_total_len() + prefix_len)
+        
+        new_node.shared_idx_node.set_parent_idx(self.shared_idx_node.get_idx())
+        new_len = len(new_node.token_mem_index_value)
+        new_node.shared_idx_node.set_node_value_len(new_len)
+        new_node.shared_idx_node.set_node_prefix_total_len(new_node.get_parent_prefix_total_len() + new_len)
         return new_node
     
-
     def add_and_return_new_child(self, token_id_key, token_mem_index_value):
-        child = TreeNode()
+        child = TreeNode(self.shared_idx_manager)
         child.token_id_key = token_id_key
         child.token_mem_index_value = token_mem_index_value
         first_token_key = child.token_id_key[0]
         assert first_token_key not in self.children.keys()
         self.children[first_token_key] = child
         child.parent = self
+
+        # 更新shared 信息
+        child.shared_idx_node.set_parent_idx(self.shared_idx_node.get_idx())
+        new_len = len(child.token_mem_index_value)
+        child.shared_idx_node.set_node_value_len(new_len)
+        child.shared_idx_node.set_node_prefix_total_len(child.get_parent_prefix_total_len() + new_len)
         return child
+    
+    def remove_child(self, child_node):
+        del self.children[child_node.token_id_key[0]]
+        child_node.parent = None
+        return
     
     def update_time(self):
         self.time_id = time_gen.generate_time_id()
 
     def is_leaf(self):
         return len(self.children) == 0
+    
+    def get_parent_prefix_total_len(self):
+        return self.parent.shared_idx_node.get_node_prefix_total_len()
 
+    def __del__(self):
+        self.shared_idx_manager.free(self.shared_idx_node.get_idx())
 
 
 def match(key, seq):
@@ -72,14 +99,18 @@ def match(key, seq):
 
 
 class RadixCache:
-    def __init__(self):
-        self.root_node = {}
+    def __init__(self, total_token_num, tp_id):
+        self.shared_idx_manager = SharedTreeIdxManager(total_token_num, tp_id)
+        self.root_node = TreeNode(self.shared_idx_manager)
         self.root_node.token_id_key = []
         self.root_node.token_mem_index_value = []
-        self.root_node.ref_counter = 0
+        self.root_node.ref_counter = 1 # 初始化为 1 保证永远不会被 evict 掉
 
         self.evict_tree_set = SortedSet(key=lambda x: x.get_compare_key()) # 自定义比较器
         self.evict_tree_set.add(self.root_node)
+
+        self.refed_tokens_num = SharedArray(f"refed_tokens_num_{tp_id}", (1,), dtype=np.int64)
+        self.tree_total_tokens_num = SharedArray(f"tree_total_tokens_num_{tp_id}", (1,), dtype=np.int64)
 
     
     def insert(self, key, value):
@@ -111,6 +142,8 @@ class RadixCache:
                     value = value[prefix_len:]
                     split_new_node = child.split_node(prefix_len)
                     new_node = child.add_and_return_new_child(key, value)
+                    # update total token num
+                    self.tree_total_tokens_num.arr[0] += len(new_node.token_mem_index_value)
                     
                     if split_new_node.is_leaf():
                         self.evict_tree_set.add(split_new_node)
@@ -124,10 +157,12 @@ class RadixCache:
                 elif prefix_len < len(key) and prefix_len == len(child.token_id_key):
                     return prefix_len + self._insert_helper(child, key[prefix_len:], value[prefix_len:])
                 else:
-                    assert False, "cannot run to here"
+                    assert False, "can not run to here"
 
             else:
                 new_node = node.add_and_return_new_child(key, value)
+                # update total token num
+                self.tree_total_tokens_num.arr[0] += len(new_node.token_mem_index_value)
                 if new_node.is_leaf():
                     self.evict_tree_set.add(new_node)
                 return 0
@@ -146,13 +181,16 @@ class RadixCache:
             value = [] # 应该返回一个 0 shape tensor 更好
         return len(value), value
 
-
     def _match_prefix_helper(self, node: TreeNode, key, ans_value_list: list, update_refs=False):
         if node.is_leaf():
             self.evict_tree_set.discard(node)
         
         if update_refs:
             node.ref_counter += 1
+            # from 0 to 1 need update refs token num
+            if node.ref_counter == 1:
+                self.refed_tokens_num.arr[0] += len(node.token_mem_index_value)
+
         
         try:
             if len(key) == 0:
@@ -176,6 +214,9 @@ class RadixCache:
                     
                     if update_refs:
                         child.ref_counter += 1
+                        # from 0 to 1 need update refs token num
+                        if child.ref_counter == 1:
+                            self.refed_tokens_num.arr[0] += len(child.token_mem_index_value)
 
                     child.update_time()
                     if child.is_leaf():
@@ -191,161 +232,72 @@ class RadixCache:
             if node.is_leaf():
                 self.evict_tree_set.add(node)
 
-        
-# ///////////////////////////////////////////////////////////////////////////////
-
-
-    def match_prefix(self, key):
-        value = []
-        last_node = [self.root_node]
-        self._match_prefix_helper(self.root_node, key, value, last_node)
-        if value:
-            value = torch.concat(value)
-        return value, last_node[0]
-
-    def insert(self, key, value=None):
-        if value is None:
-            value = [x for x in key]
-        return self._insert_helper(self.root_node, key, value)
-
-    def pretty_print(self):
-        self._print_helper(self.root_node, 0)
-        print(f"#tokens: {self.total_size()}")
-
-    def total_size(self):
-        return self._total_size_helper(self.root_node)
-
-    def evict(self, num_tokens, evict_callback):
-        leaves = self._collect_leaves()
-        heapq.heapify(leaves)
-
+    def evict(self, need_remove_tokens, evict_callback):
+        if self.tree_total_tokens_num.arr[0] - self.refed_tokens_num.arr[0] < need_remove_tokens:
+            assert False, f"""can not free tree tokens {need_remove_tokens},
+                              tree_total_tokens_num {self.tree_total_tokens_num.arr[0]},
+                              refed_tokens_num {self.refed_tokens_num.arr[0]}"""
         num_evicted = 0
-        while num_evicted < num_tokens and len(leaves):
-            x = heapq.heappop(leaves)
-
-            if x == self.root_node:
-                break
-            if x.ref_counter > 0:
-                continue
-
-            num_evicted += evict_callback(x.value)
-            self._delete_leaf(x)
-
-            if len(x.parent.children) == 0:
-                heapq.heappush(leaves, x.parent)
-
-    def inc_ref_counter(self, node):
-        delta = 0
-        while node != self.root_node:
-            if node.ref_counter == 0:
-                self.evictable_size_ -= len(node.value)
-                delta -= len(node.value)
-            node.ref_counter += 1
-            node = node.parent
-        return delta
-
-    def dec_ref_counter(self, node):
-        delta = 0
+        while num_evicted < need_remove_tokens:
+            node : TreeNode = self.evict_tree_set.pop(0)
+            assert node.ref_counter == 0 and len(node.children) == 0 and node != self.root_node, "error evict tree node state"
+            num_evicted += len(node.token_mem_index_value)
+            evict_callback(node.token_mem_index_value)
+            # update total token num
+            self.tree_total_tokens_num.arr[0] -= len(node.token_mem_index_value)
+            parent_node : TreeNode = node.parent
+            parent_node.remove_child(node)
+            if parent_node.is_leaf():
+                self.evict_tree_set.add(parent_node)
+        return
+    
+    def dec_node_ref_counter(self, node):
         while node != self.root_node:
             if node.ref_counter == 1:
-                self.evictable_size_ += len(node.value)
-                delta += len(node.value)
+                self.refed_tokens_num -= len(node.token_mem_index_value)
             node.ref_counter -= 1
             node = node.parent
-        return delta
-
-    def evictable_size(self):
-        return self.evictable_size_
-
-    ##### Internal Helper Functions #####
-    def _match_prefix_helper(self, node, key, value, last_node):
-        node.last_access_time = time.time()
-
-        for c_key, child in node.children.items():
-            prefix_len = match(c_key, key)
-            if prefix_len != 0:
-                if prefix_len < len(c_key):
-                    new_node = self._split_node(c_key, child, prefix_len)
-                    value.append(new_node.value)
-                    last_node[0] = new_node
-                else:
-                    value.append(child.value)
-                    last_node[0] = child
-                    self._match_prefix_helper(child, key[prefix_len:], value, last_node)
-                break
-
-    def _split_node(self, key, child, split_len):
-        # new_node -> child
-        new_node = TreeNode()
-        new_node.children = {key[split_len:]: child}
-        new_node.parent = child.parent
-        new_node.ref_counter = child.ref_counter
-        new_node.value = child.value[:split_len]
-        child.parent = new_node
-        child.value = child.value[split_len:]
-        new_node.parent.children[key[:split_len]] = new_node
-        del new_node.parent.children[key]
-        return new_node
-
-    def _insert_helper(self, node, key, value):
-        node.last_access_time = time.time()
-
-        for c_key, child in node.children.items():
-            prefix_len = match(c_key, key)
-
-            if prefix_len == len(c_key):
-                if prefix_len == len(key):
-                    return prefix_len
-                else:
-                    key = key[prefix_len:]
-                    value = value[prefix_len:]
-                    return prefix_len + self._insert_helper(child, key, value)
-
-            if prefix_len:
-                new_node = self._split_node(c_key, child, prefix_len)
-                return prefix_len + self._insert_helper(
-                    new_node, key[prefix_len:], value[prefix_len:]
-                )
-
-        if len(key):
-            new_node = TreeNode()
-            new_node.parent = node
-            new_node.value = value
-            node.children[key] = new_node
-            self.evictable_size_ += len(value)
-        return 0
-
-    def _print_helper(self, node, indent):
-        for key, child in node.children.items():
-            print(" " * indent, len(key), key[:10], f"r={child.ref_counter}")
+        return
+    
+    def print_self(self, indent=0):
+        self._print_helper(self, self.root_node, indent)
+    
+    def _print_helper(self, node: TreeNode, indent):
+        for first_token_id, child in node.children.items():
+            print(" " * indent,  f"fk: {first_token_id} k: {node.token_id_key[0:10]} v: {node.token_mem_index_value[0:10]} refs: {node.ref_counter} time_id: {node.time_id} prefix_total_len: {node.shared_idx_node.get_node_prefix_total_len()}")
             self._print_helper(child, indent=indent + 2)
+        return
 
-    def _delete_leaf(self, node):
-        for k, v in node.parent.children.items():
-            if v == node:
-                break
-        del node.parent.children[k]
-        self.evictable_size_ -= len(k)
 
-    def _total_size_helper(self, node):
-        x = len(node.value)
-        for child in node.children.values():
-            x += self._total_size_helper(child)
-        return x
+class RadixCacheReadOnlyClient:
+    """
+    router 端只读用的客户端，用于从共享内存中读取树结构中的信息，用于进行prompt cache 的调度等
+    """
+    def __init__(self, total_token_num, tp_id):
+        self.shared_idx_manager = SharedTreeIdxManager(total_token_num, tp_id)
+        self.refed_tokens_num = SharedArray(f"refed_tokens_num_{tp_id}", (1,), dtype=np.int64)
+        self.tree_total_tokens_num = SharedArray(f"tree_total_tokens_num_{tp_id}", (1,), dtype=np.int64)
+    
+    def get_refed_tokens_num(self):
+        return self.refed_tokens_num.arr[0]
+    
+    def get_tree_total_tokens_num(self):
+        return self.tree_total_tokens_num.arr[0]
+    
+    def get_shared_node(self, idx):
+        return self.shared_idx_manager.get_shared_node(idx)
+    
+    def get_all_parent_shared_nodes(self, idx):
+        node = self.shared_idx_manager.get_shared_node(idx)
+        ans_list = [node]
+        while node.get_parent_idx() != -1:
+            node = self.shared_idx_manager.get_shared_node(node.get_parent_idx())
+            ans_list.append(node)
+        return ans_list
 
-    def _collect_leaves(self):
-        ret_list = []
+    
 
-        def dfs_(cur_node):
-            if len(cur_node.children) == 0:
-                ret_list.append(cur_node)
-
-            for x in cur_node.children.values():
-                dfs_(x)
-
-        dfs_(self.root_node)
-        return ret_list
-
+# ///////////////////////////////////////////////////////////////////////////////
 
 if __name__ == "__main__":
     tree = RadixCache()
