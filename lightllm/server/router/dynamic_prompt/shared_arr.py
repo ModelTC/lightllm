@@ -4,13 +4,15 @@ from multiprocessing import shared_memory
 
 class SharedArray:
     def __init__(self, name, shape, dtype):
+        dtype_byte_num = np.array([1], dtype=dtype).dtype.itemsize
         try:
-            print(f"create shm {name}")
-            shm = shared_memory.SharedMemory(name=name, create=True, size=np.cumprod(shape) * dtype.itemsize)
+            print(f"create shm {name}") 
+            shm = shared_memory.SharedMemory(name=name, create=True, size=np.prod(shape) * dtype_byte_num)
         except:
             print(f"link shm {name}")
-            shm = shared_memory.SharedMemory(name=name, create=False, size=np.cumprod(shape) * dtype.itemsize)
-        self.arr = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+            shm = shared_memory.SharedMemory(name=name, create=False, size=np.prod(shape) * dtype_byte_num)
+        self.shm = shm # SharedMemory 对象一定要被持有，否则会被释放
+        self.arr = np.ndarray(shape, dtype=dtype, buffer=self.shm.buf)
 
 
 class SharedIdxNode:
@@ -51,7 +53,8 @@ class SharedTreeIdxManager:
     def __init__(self, total_token_num, tp_id) -> None:
         self.size = total_token_num + 2 # 因为 0 号节点不分配，所以为了满足充分可用性需要 + 2.
         # 第二维对应信息 0 idx 1 pre index 2 next index 用于链表管理  3 tree_node parent node idx 4 tree_node value len 5 tree node prefix total len 
-        self._values = SharedArray(f"SharedTreeIdx_{tp_id}", shape=(self.size, 6), dtype=np.int64)
+        self._shm_array = SharedArray(f"SharedTreeIdx_{tp_id}", shape=(self.size, 6), dtype=np.int64)
+        self._values = self._shm_array.arr
         # idx
         self._values[:, self.VALUE_INDEX] = np.arange(0, self.size, 1)
         # pre     
@@ -97,4 +100,45 @@ class SharedTreeIdxManager:
     def get_shared_node(self, idx):
         return SharedIdxNode(self, idx)
 
+
+
+if __name__ == "__main__":
+    # test SharedArray
+    a = SharedArray("sb_abc", (1,), dtype=np.int32)
+    a.arr[0] = 10
+    assert a.arr[0] == 10
+    a.arr[0] += 10
+    assert a.arr[0] == 20
+
+    # test SharedTreeIdxManager
+    mananger = SharedTreeIdxManager(100, 0)
+    node1 = mananger.alloc()
+    node1.set_parent_idx(10)
+    assert node1.get_parent_idx() == 10
+    node1.set_node_value_len(10)
+    assert node1.get_node_value_len() == 10
+    node1.set_node_prefix_total_len(100)
+    assert node1.get_node_prefix_total_len() == 100
+    mananger.free(node1.get_idx())
+    alloc_nodes = []
+    for _ in range(101):
+        node1 = alloc_nodes.append(mananger.alloc())
+    
+    try:
+        node_tmp = mananger.alloc()
+    except:
+        assert True
+    
+    for e in alloc_nodes:
+        mananger.free(e.get_idx())
+
+    alloc_nodes = []
+    for _ in range(101):
+        node1 = alloc_nodes.append(mananger.alloc())
+
+    try:
+        node_tmp = mananger.alloc()
+    except:
+        assert True
+    
 
