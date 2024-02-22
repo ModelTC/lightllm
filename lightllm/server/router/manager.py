@@ -49,7 +49,7 @@ class RouterManager:
         self.is_splitfuse_mode = args.splitfuse_mode
         self.splitfuse_block_size = args.splitfuse_block_size
 
-        if self.is_splitfuse_mode and len(args.prompt_cache_strs) != 0:
+        if len(args.prompt_cache_strs) != 0:
             self.tokenizer = get_tokenizer(self.model_weightdir, args.tokenizer_mode, args.trust_remote_code)
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
@@ -96,18 +96,17 @@ class RouterManager:
         # 初始化 prompt cahce， 然后初始化请求队列
         self.prompt_cache_used_tokens = 0
         self.prompt_cache_req_num = len(self.args.prompt_cache_strs)
-        if self.is_splitfuse_mode:
-            reqs = []
-            id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
-            for prompt_cache_str in self.args.prompt_cache_strs:
-                prompt_ids = self.tokenizer.encode(prompt_cache_str)
-                req = NormalReq(id, prompt_ids, SamplingParams(stop_sequences=[]))
-                self.prompt_cache_used_tokens += len(prompt_ids)
-                reqs.append(req)
-                id -= 1
-            if len(reqs) != 0:
-                self.prompt_cache_batch = Batch(uuid.uuid4().hex, reqs)
-                await self._prefill_to_init_prompt_cache(self.prompt_cache_batch)
+        reqs = []
+        id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
+        for prompt_cache_str in self.args.prompt_cache_strs:
+            prompt_ids = self.tokenizer.encode(prompt_cache_str)
+            req = NormalReq(id, prompt_ids, SamplingParams(stop_sequences=[]), MultimodalParams())
+            self.prompt_cache_used_tokens += len(prompt_ids)
+            reqs.append(req)
+            id -= 1
+        if len(reqs) != 0:
+            self.prompt_cache_batch = Batch(uuid.uuid4().hex, reqs)
+            await self._prefill_to_init_prompt_cache(self.prompt_cache_batch)
         return
 
     def add_req(

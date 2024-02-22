@@ -378,10 +378,8 @@ def main():
                         center : remove some tokens in center loc to make input token len <= max_req_input_len""")
     
     args = parser.parse_args()
-
-    # 非splitfuse 模式，不支持 prompt cache 特性
-    if not args.splitfuse_mode:
-        assert len(args.prompt_cache_strs) == 0
+    
+    args.prompt_cache_strs = [s.encode('utf-8').decode('unicode_escape') for s in args.prompt_cache_strs]
 
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num

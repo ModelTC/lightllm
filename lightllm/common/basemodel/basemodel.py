@@ -142,15 +142,16 @@ class TpPartBaseModel:
             b_req_idx : torch.Tensor,
             b_start_loc : torch.Tensor,
             b_seq_len : torch.Tensor,
+            b_prompt_cache_len: torch.Tensor = None,
             multimodal_params=None,
             is_prefill=True):
         if is_prefill:
-            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params)
+            return self._prefill(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, multimodal_params)
         else:
             return self._decode(batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params)
 
     
-    def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, multimodal_params):
+    def _prefill(self, batch_size, total_token_num, max_len_in_batch, input_ids, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, multimodal_params):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
         infer_state.return_all_prompt_logprobs = self.return_all_prompt_logprobs
@@ -162,6 +163,7 @@ class TpPartBaseModel:
         infer_state.b_req_idx = b_req_idx
         infer_state.b_start_loc = b_start_loc
         infer_state.b_seq_len = b_seq_len
+        infer_state.b_prompt_cache_len = b_prompt_cache_len
         infer_state.multimodal_params = multimodal_params
 
         infer_state.mem_manager = self.mem_manager
@@ -181,7 +183,7 @@ class TpPartBaseModel:
             infer_state.kv_buffer = torch.empty((infer_state.total_token_num, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
         
         init_req_to_token_indexes(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len,
-                            max_len_in_batch, infer_state.mem_index)
+                            b_prompt_cache_len, max_len_in_batch, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
         predict_logics = self._context_forward(input_ids, infer_state)

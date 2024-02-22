@@ -54,12 +54,11 @@ class HttpServerManager:
         """
         self.prompt_cache_reqs = []
         # 初始化 prompt cahce， 然后初始化请求队列
-        if self.args.splitfuse_mode:
-            id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
-            for prompt_cache_str in self.args.prompt_cache_strs:
-                prompt_ids = self.tokenizer.encode(prompt_cache_str)
-                self.prompt_cache_reqs.append((id, prompt_ids))
-                id -= 1
+        id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
+        for prompt_cache_str in self.args.prompt_cache_strs:
+            prompt_ids = self.tokenizer.encode(prompt_cache_str)
+            self.prompt_cache_reqs.append((id, prompt_ids))
+            id -= 1
         return
     
     def _find_prompt_cache_req(self, token_ids):

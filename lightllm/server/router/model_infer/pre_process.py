@@ -15,12 +15,13 @@ def prepare_prefill_inputs(batch:InferBatch, is_multimodal=False):
     nopad_b_start_loc = []
     nopad_b_seq_len = []
     batch_multimodal_params = []
+    b_prompt_cache_len = []
     for request_id in batch.request_ids:
         req : InferReq = requests_mapping[request_id]
         assert req.req_status == ReqRunStatus.RUNNING
         # 当请求已经存在 cur_kv_len 不为 0 的时候，就不需要做全 prefill 操作了，
         # 说明是从 RERUNNING_FROM_KVKEEP 中 恢复的请求
-        if req.cur_kv_len != 0: 
+        if req.cur_kv_len == len(req.input_token_ids):
             not_run_reqs.append(req)
             continue
         
@@ -29,13 +30,14 @@ def prepare_prefill_inputs(batch:InferBatch, is_multimodal=False):
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
         
-        seq_len = len(req.input_token_ids)
-        input_id = req.input_token_ids
+        seq_len = len(req.input_token_ids) - req.prompt_cache_len
+        input_id = req.input_token_ids[req.prompt_cache_len:]
         
         nopad_b_seq_len.append(seq_len)
         input_ids.append(input_id)
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
+        b_prompt_cache_len.append(req.prompt_cache_len)
         start_loc += seq_len
     
     if len(run_reqs) >= 1:
@@ -46,6 +48,7 @@ def prepare_prefill_inputs(batch:InferBatch, is_multimodal=False):
         nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device='cuda')
         nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device='cuda')
         nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device='cuda')
+        b_prompt_cache_len = torch.tensor(b_prompt_cache_len, dtype=torch.int32, device='cuda')
         kwargs = {
             "batch_size": len(batch),
             "total_token_num": nopad_total_token_num,
@@ -54,6 +57,7 @@ def prepare_prefill_inputs(batch:InferBatch, is_multimodal=False):
             "b_req_idx": nopad_b_req_idx,
             "b_start_loc": nopad_b_start_loc,
             "b_seq_len": nopad_b_seq_len,
+            "b_prompt_cache_len": b_prompt_cache_len,
             "is_prefill": True,
         }
         if is_multimodal:
