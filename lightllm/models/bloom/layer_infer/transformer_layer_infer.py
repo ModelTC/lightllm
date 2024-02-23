@@ -74,7 +74,7 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
             layer_weight.tp_alibi,
             infer_state.b_start_loc,
             infer_state.b_seq_len,
-            infer_state.b_prompt_cache_len,
+            infer_state.b_ready_cache_len,
             infer_state.max_len_in_batch,
             infer_state.req_manager.req_to_token_indexs,
         )
