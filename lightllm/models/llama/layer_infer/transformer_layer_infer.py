@@ -133,7 +133,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             infer_state.b_req_idx,
             infer_state.b_start_loc,
             infer_state.b_seq_len,
-            infer_state.b_prompt_cache_len,
+            infer_state.b_ready_cache_len,
             infer_state.max_len_in_batch,
             infer_state.req_manager.req_to_token_indexs,
         )
@@ -168,7 +168,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                     infer_state.req_manager.req_to_token_indexs,
                     infer_state.prefill_b_req_idx,
                     infer_state.prefill_b_split_start_loc,
-                    infer_state.prefill_b_split_seq_len,
+                    infer_state.prefill_b_split_ready_cache_len,
                     infer_state.prefill_b_seq_len,
                     infer_state.prefill_max_split_seq_len_in_batch,
                 )
@@ -210,7 +210,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                     infer_state.req_manager.req_to_token_indexs,
                     infer_state.prefill_b_req_idx,
                     infer_state.prefill_b_split_start_loc,
-                    infer_state.prefill_b_split_seq_len,
+                    infer_state.prefill_b_split_ready_cache_len,
                     infer_state.prefill_b_seq_len,
                     infer_state.prefill_max_split_seq_len_in_batch,
                 )
