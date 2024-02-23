@@ -35,7 +35,7 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, mem_manag
         nopad_b_seq_len.append(seq_len)
         input_ids.append(input_id)
         nopad_total_token_num += seq_len
-        nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
+        nopad_max_len_in_batch = max(nopad_max_len_in_batch, input_token_len)
         b_ready_cache_len.append(req.ready_cache_len)
         start_loc += input_token_len
 
