@@ -23,12 +23,14 @@ from lightllm.models.baichuan2_7b.model import Baichuan2_7bTpPartModel
 from lightllm.models.baichuan2_13b.model import Baichuan2_13bTpPartModel
 from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
+from lightllm.models.stablelm.model import StablelmTpPartModel
 from lightllm.models.internlm2.model import Internlm2TpPartModel
 from lightllm.models.internlm_wquant.model import InternlmTpPartModelWQuant
 from lightllm.models.yi.model import YiTpPartModel
 from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.models.llava.model import LlavaTpPartModel
 from lightllm.models.qwen_vl.model import QWenVLTpPartModel
+from lightllm.models.internlm_xcomposer.model import InternlmComposerTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from .pre_process import prepare_decode_inputs, prepare_prefill_inputs, splitfuse_prepare_decode_inputs
@@ -142,10 +144,15 @@ class ModelRpcServer(rpyc.Service):
                 self.model = YiTpPartModel(model_kvargs)
             elif self.model_type == "mistral":
                 self.model = MistralTpPartModel(model_kvargs)
+            elif self.model_type == "stablelm":
+                self.model = StablelmTpPartModel(model_kvargs)
             elif self.model_type == "mixtral":
                 self.model = MixtralTpPartModel(model_kvargs)
             elif self.model_type == "llava":
                 self.model = LlavaTpPartModel(model_kvargs)
+                self.is_multimodal = True
+            elif self.model_type == "internlmxcomposer2":
+                self.model = InternlmComposerTpPartModel(model_kvargs)
                 self.is_multimodal = True
             else:
                 raise Exception(f"can not support {self.model_type} now")
