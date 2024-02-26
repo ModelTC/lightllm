@@ -16,7 +16,7 @@ class InternlmComposerInferStateInfo(LlamaInferStateInfo):
             vocab_size = model.config['vocab_size']
             self.im_mask = (input_ids >= vocab_size)
             self.has_img = torch.sum(self.im_mask) > 0
-            print(self.im_mask.sum())
+            # print(self.im_mask.sum())
         else:
             self.im_mask = None
             self.has_img = False
