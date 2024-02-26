@@ -123,9 +123,6 @@ class InferBatch:
                 if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                     r_obj: InferReq = requests_mapping[r_id]
                     r_obj.req_status = ReqRunStatus.RERUNNING_FROM_OFFLOAD
-                elif requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
-                    r_obj: InferReq = requests_mapping[r_id]
-                    r_obj.req_status = ReqRunStatus.RERUNNING_FROM_KVKEEP
                 else:
                     assert False, f"should not exist {requests_mapping[r_id].req_status}"
 
@@ -178,6 +175,7 @@ class InferBatch:
             req: InferReq = requests_mapping.pop(request_id)
             free_req_index.append(req.req_idx)
             self._free_a_req_mem(free_token_index, req)
+            req.cur_kv_len = 0
 
         free_token_index = torch.cat(free_token_index, dim=-1)
         self.req_manager.free(free_req_index, free_token_index)
@@ -208,6 +206,7 @@ class InferBatch:
             req: InferReq = requests_mapping.pop(request_id)
             free_req_index.append(req.req_idx)
             self._free_a_req_mem(free_token_index, req)
+            req.cur_kv_len = 0
 
         free_token_index = torch.cat(free_token_index, dim=-1)
         self.req_manager.free(free_req_index, free_token_index)

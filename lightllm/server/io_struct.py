@@ -8,10 +8,8 @@ import enum
 class ReqRunStatus(enum.Enum):
     WAIT_IN_QUEUE = 0  # 在队列中等待
     RUNNING = 1  # 运行
-    PAUSED_AND_KVKEEP = 2  # 暂停保留KV
-    PAUSED_AND_OFFLOAD = 3  # 暂停卸载KV
-    RERUNNING_FROM_KVKEEP = 4  # 从暂停中恢复
-    RERUNNING_FROM_OFFLOAD = 5  # 从卸载KV中恢复
+    PAUSED_AND_OFFLOAD = 2  # 暂停卸载KV
+    RERUNNING_FROM_OFFLOAD = 3  # 从卸载KV中恢复
 
 
 class FinishStatus(enum.Enum):
@@ -122,8 +120,6 @@ class NormalReq(Req):
             return (self.input_len + 1, max(0, cur_max_new_token_len - 1 - 1))
         elif self.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
             return (self.input_len + has_out_len + 1, max(0, cur_max_new_token_len - has_out_len - 1 - 1))
-        elif self.req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
-            return (self.input_len + has_out_len, max(0, cur_max_new_token_len - has_out_len - 1))
         else:
             assert False, "error state"
         return
@@ -139,8 +135,6 @@ class NormalReq(Req):
             return self.input_len
         elif self.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
             return self.input_len + len(self.output_ids)
-        elif self.req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
-            return 0
         else:
             assert False, "error state"
 
@@ -170,7 +164,7 @@ class SplitFuseReq(Req):
         else:
             cur_max_new_token_len = min(self.max_output_len, max(int(1.1 * has_out_len), router_max_new_token_len))
 
-        if self.req_status == ReqRunStatus.RUNNING or self.req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
+        if self.req_status == ReqRunStatus.RUNNING:
             return (
                 self.input_len + has_out_len,
                 max(
@@ -221,8 +215,6 @@ class SplitFuseReq(Req):
             return min(self.input_len, self.splitfuse_block_size)
         elif self.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
             return min(self.input_len + len(self.output_ids), self.splitfuse_block_size)
-        elif self.req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
-            return min(self.input_len + len(self.output_ids) - self.cur_kv_len, self.splitfuse_block_size)
         else:
             assert False, "error state"
 

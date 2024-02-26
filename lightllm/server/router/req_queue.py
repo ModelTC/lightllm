@@ -16,7 +16,7 @@ class ReqQueue:
         self.waiting_req_list: List[Req] = []
         self.router_token_ratio = args.router_token_ratio
         self.router_max_new_token_len = args.router_max_new_token_len
-        self.pause_req_dict = {}  # 用于保存队列中被暂停的请求，暂停原因为 ReqRunStatus.PAUSED_AND_KVKEEP  ReqRunStatus.PAUSED_AND_OFFLOAD
+        self.pause_req_dict = {}  # 用于保存队列中被暂停的请求，暂停原因为 ReqRunStatus.PAUSED_AND_OFFLOAD
         self.pause_req_used_tokens = 0
 
         self.is_splitfuse_mode = args.splitfuse_mode
@@ -28,7 +28,9 @@ class ReqQueue:
 
     def back_to_wait_list(self, req_list: List[Req]):
         for req in req_list:
-            if req.req_status in [ReqRunStatus.PAUSED_AND_KVKEEP, ReqRunStatus.PAUSED_AND_OFFLOAD]:
+            if req.req_status in [
+                ReqRunStatus.PAUSED_AND_OFFLOAD,
+            ]:
                 self.pause_req_dict[req.request_id] = req
         self.waiting_req_list = req_list + self.waiting_req_list
         self.recalcu_pause_req_used_tokens()
@@ -56,7 +58,7 @@ class ReqQueue:
         size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
 
         need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
-        if req.req_status in [ReqRunStatus.PAUSED_AND_KVKEEP, ReqRunStatus.PAUSED_AND_OFFLOAD]:
+        if req.req_status in [ReqRunStatus.PAUSED_AND_OFFLOAD]:
             self.cache_pause_reqs_used_tokens -= req.get_used_tokens()
             self.cache_pause_reqs_num -= 1
 
@@ -113,7 +115,7 @@ class ReqQueue:
             ):
                 can_run_list.append(req)
                 new_batch_first_router_need_tokens += req_first_router_need_tokens
-                if req.req_status in [ReqRunStatus.PAUSED_AND_KVKEEP, ReqRunStatus.PAUSED_AND_OFFLOAD]:
+                if req.req_status in [ReqRunStatus.PAUSED_AND_OFFLOAD]:
                     self.pause_req_dict.pop(req.request_id)
             else:
                 break
