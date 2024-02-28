@@ -54,7 +54,7 @@ class LlavaVisionModel:
 
     # batch images infer
     def forward(self, x):
-        x = x.half().to(device=self.device)
+        x = x.half().to(device=self.device, dtype=torch.bfloat16)
 
         x = self.vision_tower(x, output_hidden_states=True)
         x = x.hidden_states[self.select_layer]
@@ -76,6 +76,7 @@ class LlavaVisionModel:
             bias=self.projector_weights["model.mm_projector.2.bias"],
         )
         x = x.view(B, L, -1)
+        x = x.to(dtype=torch.float16)
         return x
 
     def encode(self, image_items: List[Union[str, Image.Image]]):
@@ -89,5 +90,41 @@ class LlavaVisionModel:
                 image = Image.open(item)
             images.append(image.convert("RGB"))
 
-        images = self.image_processor.preprocess(images, return_tensors='pt')['pixel_values']
+        images = process_images(images, self.image_processor)
+
+        if type(images) is list:
+            images = [image.to(self.device, dtype=torch.bfloat16) for image in images]
+        else:
+            images = images.to(self.device, dtype=torch.bfloat16)
+
         return self.forward(images)
+
+
+def process_images(images, image_processor):
+    image_aspect_ratio = 'pad'
+    new_images = []
+    if image_aspect_ratio == 'pad':
+        for image in images:
+            image = expand2square(image, tuple(int(x*255) for x in image_processor.image_mean))
+            image = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+            new_images.append(image)
+    else:
+        return image_processor(images, return_tensors='pt')['pixel_values']
+    if all(x.shape == new_images[0].shape for x in new_images):
+        new_images = torch.stack(new_images, dim=0)
+    return new_images
+
+
+def expand2square(pil_img, background_color):
+    width, height = pil_img.size
+    if width == height:
+        return pil_img
+    elif width > height:
+        result = Image.new(pil_img.mode, (width, width), background_color)
+        result.paste(pil_img, (0, (width - height) // 2))
+        return result
+    else:
+        result = Image.new(pil_img.mode, (height, height), background_color)
+        result.paste(pil_img, ((height - width) // 2, 0))
+        return result
+
