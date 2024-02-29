@@ -27,18 +27,28 @@ class LlavaVisionModel:
             vision_path = os.path.join(weight_dir, vision_path)
 
         self.image_processor = CLIPImageProcessor.from_pretrained(vision_path)
-        self.vision_tower = CLIPVisionModel.from_pretrained(vision_path).half()
+
+        # self.vision_tower = CLIPVisionModel.from_pretrained(vision_path).half()
+        self.vision_tower = CLIPVisionModel.from_pretrained(vision_path, torch_dtype='auto')  # btnkij
+
         self.vision_tower.requires_grad_(False)
         self.device = torch.device('cpu')
+        self.dtype = next(self.vision_tower.parameters()).dtype  # btnkij
 
         # load projector weights
+        vision_tower_weights = self.vision_tower.state_dict()
         self.projector_weights = {}
         for f in os.listdir(weight_dir):
-            if f.endswith(".bin"):
+            # if f.endswith(".bin"):
+            if f.startswith('pytorch_model-'):  # btnkij
                 d = torch.load(os.path.join(weight_dir, f), "cpu")
                 for k, v in d.items():
                     if 'model.mm_projector' in k:
-                        self.projector_weights[k] = v.half()
+                        # self.projector_weights[k] = v.half()
+                        self.projector_weights[k] = v  # btnkij
+                    elif 'model.vision_tower.vision_tower.vision_model' in k:  # btnkij
+                        vision_tower_weights[k[len('model.vision_tower.vision_tower.'):]] = v
+        self.vision_tower.load_state_dict(vision_tower_weights)
 
         assert 'model.mm_projector.0.weight' in self.projector_weights
         assert 'model.mm_projector.0.bias' in self.projector_weights
@@ -54,8 +64,8 @@ class LlavaVisionModel:
 
     # batch images infer
     def forward(self, x):
-        x = x.half().to(device=self.device, dtype=torch.bfloat16)
-
+        # x = x.half().to(device=self.device)
+        x = x.to(dtype=self.dtype, device=self.device)  # btnkij
         x = self.vision_tower(x, output_hidden_states=True)
         x = x.hidden_states[self.select_layer]
         if self.select_feature == 'patch':
@@ -76,7 +86,7 @@ class LlavaVisionModel:
             bias=self.projector_weights["model.mm_projector.2.bias"],
         )
         x = x.view(B, L, -1)
-        x = x.to(dtype=torch.float16)
+
         return x
 
     def encode(self, image_items: List[Union[str, Image.Image]]):
@@ -90,26 +100,19 @@ class LlavaVisionModel:
                 image = Image.open(item)
             images.append(image.convert("RGB"))
 
+        # images = self.image_processor.preprocess(images, return_tensors='pt')['pixel_values']
         images = process_images(images, self.image_processor)
-
-        if type(images) is list:
-            images = [image.to(self.device, dtype=torch.bfloat16) for image in images]
-        else:
-            images = images.to(self.device, dtype=torch.bfloat16)
-
-        return self.forward(images)
+        # return self.forward(images)
+        ans = self.forward(images)
+        return ans
 
 
 def process_images(images, image_processor):
-    image_aspect_ratio = 'pad'
     new_images = []
-    if image_aspect_ratio == 'pad':
-        for image in images:
-            image = expand2square(image, tuple(int(x*255) for x in image_processor.image_mean))
-            image = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
-            new_images.append(image)
-    else:
-        return image_processor(images, return_tensors='pt')['pixel_values']
+    for image in images:
+        image = expand2square(image, tuple(int(x*255) for x in image_processor.image_mean))
+        image = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+        new_images.append(image)
     if all(x.shape == new_images[0].shape for x in new_images):
         new_images = torch.stack(new_images, dim=0)
     return new_images
