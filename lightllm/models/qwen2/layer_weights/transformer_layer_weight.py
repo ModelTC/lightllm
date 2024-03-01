@@ -21,7 +21,8 @@ class Qwen2TransformerLayerWeight(TransformerLayerWeight):
             * self.network_config_["num_key_value_heads"]
             // self.world_size_
         )
-        # q k v weights for llama
+
+        # q k v weights
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
             self.q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
             self.q_weight_ = self.q_weight_[q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1), :]
@@ -43,6 +44,7 @@ class Qwen2TransformerLayerWeight(TransformerLayerWeight):
             self.o_weight_ = self.o_weight_[:, q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)]
             self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
 
+        # q k v bias
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.bias" in weights:
             q_bias_ = self._cuda(weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.bias"])
             self.q_bias_ = q_bias_[q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)]
