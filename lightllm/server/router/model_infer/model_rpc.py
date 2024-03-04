@@ -92,9 +92,9 @@ class ModelRpcServer(rpyc.Service):
             if self.model_type == "bloom":
                 self.model = BloomTpPartModel(model_kvargs)
             elif self.model_type == "llama":
-                if any('int8weight' in mode_ or 'int4weight' in mode_ for mode_ in self.mode):
+                if any('w4a16' in mode_ or 'w8a16' in mode_ for mode_ in self.mode):
                     self.model = LlamaTpPartModelWQuant(model_kvargs)
-                elif any('int8_activation_weight' in mode_ for mode_ in self.mode):
+                elif any('w8a8' in mode_ for mode_ in self.mode):
                     self.model = LlamaTpPartModelAWQuant(model_kvargs)
                 else:
                     self.model = LlamaTpPartModel(model_kvargs)
