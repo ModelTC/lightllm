@@ -23,5 +23,6 @@ class Gemma_2bPreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
             self.lm_head_weight_ = self.wte_weight_
         if "model.norm.weight" in weights:
             self.final_norm_weight_ = self._cuda(weights["model.norm.weight"])
+            self.final_norm_weight_ = self.final_norm_weight_ + 1
 
         return

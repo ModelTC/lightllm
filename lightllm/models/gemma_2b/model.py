@@ -6,8 +6,8 @@ from lightllm.common.basemodel import TpPartBaseModel
 from lightllm.models.gemma_2b.layer_weights.transformer_layer_weight import Gemma_2bTransformerLayerWeight
 from lightllm.models.gemma_2b.layer_weights.pre_and_post_layer_weight import Gemma_2bPreAndPostLayerWeight
 from lightllm.models.gemma_2b.layer_infer.pre_layer_infer import Gemma_2bPreLayerInfer
-from lightllm.models.gemma_2b.layer_infer.post_layer_infer import Gemma_2bPostLayerInfer
 from lightllm.models.gemma_2b.layer_infer.transformer_layer_infer import Gemma_2bTransformerLayerInfer
+from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 
 from lightllm.common.mem_utils import MemoryManager
@@ -19,7 +19,7 @@ class Gemma_2bTpPartModel(TpPartBaseModel):
 
     # infer class
     pre_layer_infer_class = Gemma_2bPreLayerInfer
-    post_layer_infer_class = Gemma_2bPostLayerInfer
+    post_layer_infer_class = LlamaPostLayerInfer
     transformer_layer_infer_class = Gemma_2bTransformerLayerInfer
 
     # infer state class
