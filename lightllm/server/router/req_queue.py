@@ -1,7 +1,10 @@
+import bisect
+from collections import deque
+import random
 import uuid
 import asyncio
 import numpy as np
-from typing import List
+from typing import List, Tuple
 from ..io_struct import Batch, Req
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.io_struct import Req
@@ -109,7 +112,7 @@ class ReqQueue:
                 aborted_count += 1
                 continue
             req_first_router_need_tokens = req.get_first_router_need_tokens()
-            if self._can_add_new_req(req, is_busy) and cur_batch_decode_need_tokens + new_batch_first_router_need_tokens + req_first_router_need_tokens <= self.batch_max_tokens:
+            if cur_batch_decode_need_tokens + new_batch_first_router_need_tokens + req_first_router_need_tokens <= self.batch_max_tokens and self._can_add_new_req(req, is_busy) :
                 can_run_list.append(req)
                 new_batch_first_router_need_tokens += req_first_router_need_tokens
                 if req.req_status in [ReqRunStatus.PAUSED_AND_KVKEEP, ReqRunStatus.PAUSED_AND_OFFLOAD]:
@@ -133,3 +136,77 @@ class ReqQueue:
         self.pause_req_used_tokens = used_tokens
         return self.pause_req_used_tokens
 
+
+class FuturePastReqQueue(ReqQueue):
+    WINDOW_SIZE = 200
+    MINIMUM_SAMPLES = 200
+    MAXIMUM_LISTS = 5
+    REVERSED = 0.05
+
+    def __init__(self, args, prompt_cache_used_tokens, prompt_cache_req_num) -> None:
+        super().__init__(args, prompt_cache_used_tokens, prompt_cache_req_num)
+        initial_len = args.max_req_total_len - args.max_req_input_len
+        self.history_output_len = deque([initial_len] * (self.WINDOW_SIZE // 2), maxlen=self.WINDOW_SIZE)
+
+    def _sample_cache_list(self, reqs: List[Req], samples=1) -> List[List[Tuple[int, int]]]:
+        cache_len_lists = [[] for _ in range(samples)]
+        his_Lo = sorted(self.history_output_len)
+        for req in reqs:
+            dl = len(req.output_ids)
+            pos = bisect.bisect(his_Lo, dl)
+            sample_range = [dl] + his_Lo[pos:]
+            if sample_range[-1] < req.max_output_len:
+                sample_range.append(req.max_output_len)
+
+            for i in range(samples):
+                random_p = np.random.random() * (len(sample_range)-1)
+                l_pos = int(random_p)
+                l_val, r_val = sample_range[l_pos:l_pos+2]
+
+                # 线性差值
+                sampled = round(l_val + (r_val - l_val) * (random_p - l_pos))
+                cache_len_lists[i].append(req.get_tuple_tokens(False, sampled, minimal_output_len_factor=1))
+
+        return cache_len_lists
+
+    def _calc_max_token_num_needed(self, cache_len_list: List[Tuple[int, int]]) -> int:
+        cache_len_list.sort(key=lambda x: -x[1])
+
+        left_out_len_array = np.array([e[1] for e in cache_len_list])
+        has_run_len_array = np.array([e[0] for e in cache_len_list])
+        cum_run_len_array = np.cumsum(has_run_len_array)
+        size_array = np.arange(1, len(cache_len_list) + 1, 1)
+
+        need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
+        return need_max_token_num
+
+    def _init_cache_list(self, current_batch:Batch, is_busy):
+        self.cache_pause_reqs_used_tokens = self.pause_req_used_tokens
+        self.cache_pause_reqs_num = len(self.pause_req_dict)
+        if current_batch is not None:
+            n_lists = min(self.MAXIMUM_LISTS, int(self.MINIMUM_SAMPLES / len(current_batch.reqs)) + 1)
+            self._cache_len_lists = self._sample_cache_list(current_batch.reqs, samples=n_lists)
+        else:
+            self._cache_len_lists = [[]]
+        self.cache_len_list = self._cache_len_lists[0]   # keep compatibility
+
+    # @calculate_time(show=True, min_cost_ms=0.1)
+    def _can_add_new_req(self, req: Req, is_busy: bool):
+        need_max_token_nums = []
+        for li in self._cache_len_lists:
+            newreq_output_len_sample = random.choice(self.history_output_len)
+            li.append(req.get_tuple_tokens(False, newreq_output_len_sample, minimal_output_len_factor=1))
+            need_max_token_nums.append(self._calc_max_token_num_needed(li))
+        need_max_token_num = np.max(need_max_token_nums)
+
+        if req.req_status in [ReqRunStatus.PAUSED_AND_KVKEEP, ReqRunStatus.PAUSED_AND_OFFLOAD]:
+            self.cache_pause_reqs_used_tokens -= req.get_used_tokens()
+            self.cache_pause_reqs_num -= 1
+
+        ok_token_num = need_max_token_num < self.max_total_tokens * (1 - self.REVERSED) - self.cache_pause_reqs_used_tokens - self.prompt_cache_used_tokens
+        ok_req_num = len(self.cache_len_list) + self.cache_pause_reqs_num + self.prompt_cache_req_num <= self.running_max_req_size
+
+        return ok_token_num and ok_req_num
+
+    def record_output_lengths(self, lengths: List[int]):
+        self.history_output_len.extend(lengths)
