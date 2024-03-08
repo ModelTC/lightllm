@@ -20,19 +20,19 @@ def decode_token(
         return req.output_str
 
     if not getattr(tokenizer, "added_tokens_encoder", {}):
-        output_text = tokenizer.convert_tokens_to_string(req.output_tokens)
+        output_text = tokenizer.convert_tokens_to_string([''] + req.output_tokens)
         return output_text
 
     sep = " " if spaces_between_special_tokens else ""
 
     if new_token in tokenizer.added_tokens_encoder:
         if req.current_sub_text:
-            sub_text = tokenizer.convert_tokens_to_string(req.current_sub_text)
+            sub_text = tokenizer.convert_tokens_to_string([''] + req.current_sub_text)
             req.sub_texts.append(sub_text)
             req.current_sub_text = []
         req.sub_texts.append(new_token)
         return sep.join(req.sub_texts)
     else:
         req.current_sub_text.append(new_token)
-        new_sub_text = tokenizer.convert_tokens_to_string(req.current_sub_text)
+        new_sub_text = tokenizer.convert_tokens_to_string([''] + req.current_sub_text)
         return sep.join(req.sub_texts + [new_sub_text])
