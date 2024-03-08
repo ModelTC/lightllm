@@ -26,8 +26,8 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
 
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode)
-        self.cat_kv_ = False
-        self.cat_gate_up_ = False
+        self.cat_kv_ = True
+        self.cat_gate_up_ = True
 
         self.k_proj: MixedQLinear = None
         self.v_proj: MixedQLinear = None
@@ -59,18 +59,18 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
     def _try_cat_tensors(self, first_weights: Dict[str, torch.Tensor], second_weights: Dict[str, torch.Tensor], handle_func=None):
         """Q/K/V and Gate/Up projection has the same outlier indices, so K and V can be concatenated."""
         assert len(first_weights) == len(second_weights) and all([(k.shape == v.shape and k.dtype == v.dtype and k.device == v.device) for k,v in zip(first_weights.values(), second_weights.values())]), "first and second weights dict dismatch"
+        with self.lock:
+            kv_weights = {}
+            for key in self.WEIGHT_KEYS:
+                cat_dim = 1 if key == "reduced_w" else 0
+                # weights shape: [out, in], should concat by out axis
+                kv_weights[key] = torch.cat([first_weights[key], second_weights[key]], dim=cat_dim).contiguous()
+                if handle_func != None and isinstance(handle_func, Callable):
+                    kv_weights[key] = handle_func(kv_weights[key])
 
-        kv_weights = {}
-        for key in self.WEIGHT_KEYS:
-            cat_dim = 0
-            # weights shape: [out, in], should concat by out axis
-            kv_weights[key] = torch.cat([first_weights[key], second_weights[key]], dim=cat_dim).contiguous()
-            if handle_func != None and isinstance(handle_func, Callable):
-                kv_weights[key] = handle_func(kv_weights[key])
-
-        for key in self.INDICE_KEYS:
-            kv_weights[key] = first_weights[key]
-        return kv_weights
+            for key in self.INDICE_KEYS:
+                kv_weights[key] = first_weights[key]
+            return kv_weights
 
     def _load_column_splitting_proj(self, prefix: str, split_n: int, weights: Dict[str, torch.Tensor]):
         """load q/k/v_proj in attention module and gate/up_proj in mlp module, , which are column splitting when tensor parallel is enabled
@@ -225,7 +225,8 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
         if self.cat_gate_up_:
             up_weights = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.up_proj", split_inter_size, weights)
             gate_weights = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.gate_proj", split_inter_size, weights)
-            gate_up_weights = self._try_cat_tensors(up_weights, gate_weights)
+            # [gate, up]
+            gate_up_weights = self._try_cat_tensors(gate_weights, up_weights)
             up_weights = None
             gate_weights = None
             self.gate_up_proj = self._load_proj(f"model.layers.{self.layer_num_}.mlp.gate_up", gate_up_weights, gate_up_shared_input)
