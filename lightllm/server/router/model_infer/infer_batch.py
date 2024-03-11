@@ -182,13 +182,14 @@ class InferBatch:
         if len(requests_mapping) == 0:
             requests_mapping.clear()
 
-        logger.info(
-            f"""free a batch state:
-                    radix refed token num {self.radix_cache.get_refed_tokens_num()}
-                    radix hold token num {self.radix_cache.get_tree_total_tokens_num()}
-                    mem manager can alloc token num {self.req_manager.mem_manager.can_use_mem_size}
-                    mem manager total size {self.req_manager.mem_manager.size}"""
-        )
+        if self.radix_cache is not None:
+            logger.info(
+                f"""free a batch state:
+                        radix refed token num {self.radix_cache.get_refed_tokens_num()}
+                        radix hold token num {self.radix_cache.get_tree_total_tokens_num()}
+                        mem manager can alloc token num {self.req_manager.mem_manager.can_use_mem_size}
+                        mem manager total size {self.req_manager.mem_manager.size}"""
+            )
         return
 
     @torch.no_grad()
