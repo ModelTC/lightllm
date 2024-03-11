@@ -42,7 +42,7 @@ def quantize_int4_lmdeploy(weight, group_size=128, tp_rank=0, pack_order=[0, 2, 
 
     weight = None
     qweight = qweight.transpose(1, 0).contiguous()
-    scale = scale.transpose(1, 0).contiguous()
+    scale = scale.half().transpose(1, 0).contiguous()
     qzeros = qzeros.transpose(1, 0).contiguous()
 
     # convert to layout defined inside lmdeploy
