@@ -39,12 +39,12 @@ class LlamaTransformerLayerInferQuik(LlamaTransformerLayerInfer):
         infer_state: LlamaInferStateInfo,
         layer_weight: LlamaTransformerLayerWeightQuik,
     ) -> torch.Tensor:
-        q = layer_weight.q_proj(input)
+        q = layer_weight.q_proj(input.view(-1, self.embed_dim_))
         if layer_weight.cat_kv_:
-            cache_kv = layer_weight.kv_proj(input).view(-1, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_)
+            cache_kv = layer_weight.kv_proj(input.view(-1, self.embed_dim_)).view(-1, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_)
         else:
-            cache_k = layer_weight.k_proj(input).view(-1, self.tp_k_head_num_, self.head_dim_)
-            cache_v = layer_weight.v_proj(input).view(-1, self.tp_v_head_num_, self.head_dim_)
+            cache_k = layer_weight.k_proj(input.view(-1, self.embed_dim_)).view(-1, self.tp_k_head_num_, self.head_dim_)
+            cache_v = layer_weight.v_proj(input.view(-1, self.embed_dim_)).view(-1, self.tp_v_head_num_, self.head_dim_)
             cache_kv = torch.cat([cache_k, cache_v], dim=1)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
@@ -57,7 +57,7 @@ class LlamaTransformerLayerInferQuik(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeightQuik
     ) -> torch.Tensor:
-        return layer_weight.o_proj(input)
+        return layer_weight.o_proj(input.view(-1, self.embed_dim_))
 
     def _ffn(
         self,

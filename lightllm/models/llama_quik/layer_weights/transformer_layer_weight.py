@@ -29,36 +29,83 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
         self.cat_kv_ = True
         self.cat_gate_up_ = True
 
+        self._q_weights: Dict[str, torch.Tensor] = {}
+        self._k_weights: Dict[str, torch.Tensor] = {}
+        self._v_weights: Dict[str, torch.Tensor] = {}
+        self._o_weights: Dict[str, torch.Tensor] = {}
+
+        self._gate_weights: Dict[str, torch.Tensor] = {}
+        self._up_weights: Dict[str, torch.Tensor] = {}
+        self._down_weights: Dict[str, torch.Tensor] = {}
+
+        self.q_proj: MixedQLinear = None
         self.k_proj: MixedQLinear = None
         self.v_proj: MixedQLinear = None
         self.kv_proj: MixedQLinear = None
         self.gate_proj: MixedQLinear = None
         self.up_proj: MixedQLinear = None
         self.gate_up_proj: MixedQLinear = None
+        self.down_up_proj: MixedQLinear = None
 
     def load_hf_weights(self, weights):
-        self._load_qkvo_proj(weights)
-        self._load_ffn_proj(weights)
+        self._load_qkvo_weights(weights)
+        self._load_ffn_weights(weights)
 
     def verify_load(self):
         errors = "weights load not ok"
+        norm_weights = [
+            self.att_norm_weight_,
+            self.ffn_norm_weight_,
+        ]
+        proj_weights = [
+            self._q_weights,
+            self._k_weights,
+            self._v_weights,
+            self._o_weights,
+            self._gate_weights,
+            self._up_weights,
+            self._down_weights,
+        ]
+        weights = norm_weights + proj_weights
+        for i in range(len(weights)):
+            assert weights[i] is not None, f"index: {i} {errors}"
+            if isinstance(weights[i], dict):
+                expect = set(self.ALL_WEIGHT_KEYS)
+                current = set(weights[i].keys())
+
+                missings = expect - current
+                unexpected = current - expect
+                assert len(missings) == 0 and len(unexpected) == 0, f"index: {i} weights load not ok, missings = {missings}, unexpected = {unexpected}"
+
+        # TODO 为了避免重写load,在这里组织projs
+        self._load_projs()
+        self._verify_proj()
+
+        return
+
+    def _verify_proj(self):
+        errors = "proj load not ok"
         kv_proj = [self.kv_proj] if self.cat_kv_ else [self.k_proj, self.v_proj]
         gate_up_proj = [self.gate_up_proj] if self.cat_gate_up_ else [self.gate_proj, self.up_proj]
         weights = [
-            self.att_norm_weight_,
             self.q_proj,
             self.o_proj,
-            self.ffn_norm_weight_,
             self.down_proj,
         ] + kv_proj + gate_up_proj
         for i in range(len(weights)):
-            assert weights[i] is not None, "index:" + str(i) + " " + errors
+            assert weights[i] is not None, f"index: {i} {errors}"
         return
+
+    def _load_projs(self):
+        self._load_qkvo_proj()
+        self._load_ffn_proj()
 
     # @TODO: 测一下QKV都合并
     def _try_cat_tensors(self, first_weights: Dict[str, torch.Tensor], second_weights: Dict[str, torch.Tensor], handle_func=None):
         """Q/K/V and Gate/Up projection has the same outlier indices, so K and V can be concatenated."""
-        assert len(first_weights) == len(second_weights) and all([(k.shape == v.shape and k.dtype == v.dtype and k.device == v.device) for k,v in zip(first_weights.values(), second_weights.values())]), "first and second weights dict dismatch"
+        assert len(first_weights) == len(second_weights), "first and second weights len dismatch"
+        assert all([(first_weights[k].shape == second_weights[k].shape and first_weights[k].dtype == first_weights[k].dtype and first_weights[k].device == first_weights[k].device) for k in self.ALL_WEIGHT_KEYS]), "first and second weights dismatch"
+
         with self.lock:
             kv_weights = {}
             for key in self.WEIGHT_KEYS:
@@ -85,31 +132,27 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
             Dict[str, torch.Tensor]
         """
         _construt_weight_key_fn = lambda x: f"{prefix}.{x}"
-        return_dict = {}
-
-        ## 权重shard分线程加载，有可能不包含
-        for name in self.ALL_WEIGHT_KEYS:
-            full_name = _construt_weight_key_fn(name)
-            # assert full_name in weights, f"Llama-quik load weight [{full_name}] failed, not found"
-            if full_name not in weights:
-                print(f"Llama-quik load weight [{full_name}] failed, not found")
-                return None
+        collector = {}
 
         # load weights
         for name in self.WEIGHT_KEYS:
             full_name = _construt_weight_key_fn(name)
+            if full_name not in weights:
+                continue
             weight_ = weights[full_name]
             weight_ = weight_[split_n * self.tp_rank_ : split_n * (self.tp_rank_ + 1), :]
-            return_dict[name] = weight_
+            collector[name] = weight_
 
         # load indices
         for name in self.INDICE_KEYS:
+            if full_name not in weights:
+                continue
             full_name = _construt_weight_key_fn(name)
             weight_ = weights[full_name]
-            weight_ = weight_.to(torch.int32)
-            return_dict[name] = weight_
+            # weight_ = weight_.to(torch.int32)
+            collector[name] = weight_
 
-        return return_dict
+        return collector
 
     def _load_row_splitting_proj(self, prefix: str, split_n: int, weights: Dict[str, torch.Tensor]):
         """load o_proj in attention module and down_proj in mlp module, which are row splitting when tensor parallel is enabled
@@ -124,20 +167,15 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
             Dict[str, torch.Tensor]
         """
         _construt_weight_key_fn = lambda x: f"{prefix}.{x}"
-        return_dict = {}
-
-        ## 权重shard分线程加载，有可能不包含
-        for name in self.ALL_WEIGHT_KEYS:
-            full_name = _construt_weight_key_fn(name)
-            # assert full_name in weights, f"Llama-quik load weight [{full_name}] failed, not found"
-            if full_name not in weights:
-                return None
+        collector = {}
 
         # load weights
         lower = split_n * self.tp_rank_
         upper = split_n * (self.tp_rank_ + 1)
         for name in self.WEIGHT_KEYS:
             full_name = _construt_weight_key_fn(name)
+            if full_name not in weights:
+                continue
             weight_ = weights[full_name]
             if name in ["fp_weight", "int_weight"]:
                 weight_ = weight_[:, lower : upper]
@@ -150,20 +188,22 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
             ## 2. 行拆分的proj不做TP => 减弱TP性能加速效果
             elif name in ["reduced_w"]:
                 weight_ = weight_ / self.world_size_
-            return_dict[name] = weight_
+            collector[name] = weight_
 
         # load indices
         for name in self.INDICE_KEYS:
             full_name = _construt_weight_key_fn(name)
+            if full_name not in weights:
+                continue
             weight_ = weights[full_name]
             # only indices in range [lower, upper) are reserved
             selected = torch.logical_and(weight_ >= lower, weight_ < upper)
             weight_ = weight_[selected] - lower
-            weight_ = weight_.to(torch.int32)
+            # weight_ = weight_.to(torch.int32)
             # weight_ = self._cuda(weight_)
-            return_dict[name] = weight_
+            collector[name] = weight_
 
-        return return_dict
+        return collector
 
     def _load_proj(self, name_hint:str, weights: Dict[str, torch.Tensor], shared_input: SharedQuantizedInput = None) -> MixedQLinear:
         if not weights:
@@ -178,7 +218,7 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
             print(str(e))
             return None
 
-    def _load_qkvo_proj(self, weights):
+    def _load_qkvo_weights(self, weights):
         # input layernorm params
         if f"model.layers.{self.layer_num_}.input_layernorm.weight" in weights:
             self.att_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
@@ -192,27 +232,19 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
             // self.world_size_
         )
 
-        shared_input_n = 2 if self.cat_kv_ else 3
-        qkv_shared_input = SharedQuantizedInput(shared_input_n)
-        self.q_proj = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.q_proj", self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.q_proj", q_split_n_embed, weights), qkv_shared_input)
-        # split k and v
-        if not self.cat_kv_:
-            self.k_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.k_proj", self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.k_proj", kv_split_n_embed, weights), qkv_shared_input)
-            self.v_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.v_proj", self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.v_proj", kv_split_n_embed, weights), qkv_shared_input)
-        else: # cat k and v
-            k_weights = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.k_proj", kv_split_n_embed, weights)
-            v_weights = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.v_proj", kv_split_n_embed, weights)
-            kv_weights = self._try_cat_tensors(k_weights, v_weights)
-            k_weights = None
-            v_weights = None
-            self.kv_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.kv_proj", kv_weights, qkv_shared_input)
-            kv_weights = None
-
-        self.o_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.o_proj", self._load_row_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.o_proj", q_split_n_embed, weights))
+        q_weights_ = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.q_proj", q_split_n_embed, weights)
+        k_weights_ = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.k_proj", kv_split_n_embed, weights)
+        v_weights_ = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.v_proj", kv_split_n_embed, weights)
+        o_weights_ = self._load_row_splitting_proj(f"model.layers.{self.layer_num_}.self_attn.o_proj", q_split_n_embed, weights)
+        with self.lock:
+            self._q_weights.update(q_weights_)
+            self._k_weights.update(k_weights_)
+            self._v_weights.update(v_weights_)
+            self._o_weights.update(o_weights_)
 
         return
 
-    def _load_ffn_proj(self, weights):
+    def _load_ffn_weights(self, weights):
         if f"model.layers.{self.layer_num_}.post_attention_layernorm.weight" in weights:
             self.ffn_norm_weight_ = self._cuda(
                 weights[f"model.layers.{self.layer_num_}.post_attention_layernorm.weight"]
@@ -220,21 +252,55 @@ class LlamaTransformerLayerWeightQuik(TransformerLayerWeight):
 
         inter_size = self.network_config_["intermediate_size"]
         split_inter_size = inter_size // self.world_size_
+
+        gate_weights_ = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.gate_proj", split_inter_size, weights)
+        up_weights_ = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.up_proj", split_inter_size, weights)
+        down_weights_ = self._load_row_splitting_proj(f"model.layers.{self.layer_num_}.mlp.down_proj", split_inter_size, weights)
+
+        with self.lock:
+            self._gate_weights.update(gate_weights_)
+            self._up_weights.update(up_weights_)
+            self._down_weights.update(down_weights_)
+
+        return
+
+    def _load_qkvo_proj(self):
+        shared_input_n = 2 if self.cat_kv_ else 3
+        qkv_shared_input = SharedQuantizedInput(shared_input_n)
+        self.q_proj = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.q_proj", self._q_weights, qkv_shared_input)
+        self._q_weights = None
+        # split k and v
+        if self.cat_kv_:
+            kv_weights = self._try_cat_tensors(self._k_weights, self._v_weights)
+            self.k_weights_ = None
+            self.v_weights_ = None
+            self.kv_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.kv_proj", kv_weights, qkv_shared_input)
+            kv_weights = None
+        else: # cat k and v
+            self.k_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.k_proj", self._k_weights, qkv_shared_input)
+            self.v_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.v_proj", self._v_weights, qkv_shared_input)
+            self._k_weights = None
+            self._v_weights = None
+
+        self.o_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.self_attn.o_proj", self._o_weights)
+        self._o_weights = None
+
+        return
+
+    def _load_ffn_proj(self):
         shared_input_n = 1 if self.cat_gate_up_ else 2
         gate_up_shared_input = SharedQuantizedInput(shared_input_n)
         if self.cat_gate_up_:
-            up_weights = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.up_proj", split_inter_size, weights)
-            gate_weights = self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.gate_proj", split_inter_size, weights)
             # [gate, up]
-            gate_up_weights = self._try_cat_tensors(gate_weights, up_weights)
-            up_weights = None
-            gate_weights = None
+            gate_up_weights = self._try_cat_tensors(self._gate_weights, self._up_weights)
+            self._up_weights = None
+            self._gate_weights = None
             self.gate_up_proj = self._load_proj(f"model.layers.{self.layer_num_}.mlp.gate_up", gate_up_weights, gate_up_shared_input)
             gate_up_weights = None
         else:
-            self.up_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.mlp.up_proj", self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.up_proj", split_inter_size, weights), gate_up_shared_input)
-            self.gate_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.mlp.gate_proj", self._load_column_splitting_proj(f"model.layers.{self.layer_num_}.mlp.gate_proj", split_inter_size, weights), gate_up_shared_input)
+            self.up_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.mlp.up_proj", self._up_weights, gate_up_shared_input)
+            self.gate_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.mlp.gate_proj", self._gate_weights, gate_up_shared_input)
 
-        self.down_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.mlp.down_proj", self._load_row_splitting_proj(f"model.layers.{self.layer_num_}.mlp.down_proj", split_inter_size, weights))
+        self.down_proj: MixedQLinear = self._load_proj(f"model.layers.{self.layer_num_}.mlp.down_proj", self._down_weights)
 
         return
