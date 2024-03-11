@@ -300,15 +300,15 @@ def main():
         "--tokenizer_mode",
         type=str,
         default="slow",
-        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is good for debug and test,
-                        when you want to get best performance, try auto mode""",
+        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is
+          good for debug and test, when you want to get best performance, try auto mode""",
     )
     parser.add_argument(
         "--load_way",
         type=str,
         default="HF",
-        help="""the way of loading model weights, the default is HF(Huggingface format), \
-             llama also supports DS(Deepspeed)""",
+        help="""the way of loading model weights, the default is HF(Huggingface format), llama also supports
+          DS(Deepspeed)""",
     )
     parser.add_argument(
         "--max_total_token_num",
@@ -341,7 +341,7 @@ def main():
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
                         | triton_gqa_attention | triton_gqa_flashdecoding]
-                        [triton_int8weight | triton_int4weight | lmdeploy_int4weight | ppl_int4weight],
+                        [triton_w4a16 | triton_w8a16 | lmdeploy_w4a16 | ppl_w4a16 | ppl_w8a8],
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
