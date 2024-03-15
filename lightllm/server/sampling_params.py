@@ -1,5 +1,5 @@
 """Sampling parameters for text generation."""
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 _SAMPLING_EPS = 1e-5
 
@@ -12,6 +12,7 @@ class SamplingParams:
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0,
         repetition_penalty: float = 1.0,
+        exponential_decay_length_penalty: Tuple[int, float] = (1, 1.0),
         temperature: float = 1.0,
         top_p: float = 1.0,
         top_k: int = -1,  # -1 is for all 
@@ -23,6 +24,7 @@ class SamplingParams:
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty
         self.repetition_penalty = repetition_penalty
+        self.exponential_decay_length_penalty = exponential_decay_length_penalty
         self.temperature = temperature
         self.top_p = top_p
         self.top_k = top_k
@@ -77,6 +79,7 @@ class SamplingParams:
         ret["presence_penalty"] = self.presence_penalty
         ret["frequency_penalty"] = self.frequency_penalty
         ret["repetition_penalty"] = self.repetition_penalty
+        ret["exponential_decay_length_penalty"] = self.exponential_decay_length_penalty
         ret["temperature"] = self.temperature
         ret["top_p"] = self.top_p
         ret["top_k"] = self.top_k
