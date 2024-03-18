@@ -302,9 +302,7 @@ elif triton.__version__ == "2.0.0":
         return
 
     @torch.no_grad()
-    def context_attention_fwd(
-        q, k, v, o, b_req_idx, alibi, b_start_loc, b_seq_len, b_ready_cache_len, max_input_len, req_to_token_indexs
-    ):
+    def context_attention_fwd(q, k, v, o, alibi, b_start_loc, b_seq_len, max_input_len):
         BLOCK = 128
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]

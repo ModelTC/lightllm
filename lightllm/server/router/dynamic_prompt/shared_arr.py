@@ -1,6 +1,5 @@
-import faulthandler
-
-faulthandler.enable()
+# import faulthandler
+# faulthandler.enable()
 
 import numpy as np
 import multiprocessing as mp

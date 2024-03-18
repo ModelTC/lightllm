@@ -373,8 +373,10 @@ def main():
         help="whether to add spaces between special tokens when decoding",
     )
 
-    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
+
+    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
+    
     parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."

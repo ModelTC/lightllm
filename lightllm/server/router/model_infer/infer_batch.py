@@ -200,7 +200,7 @@ class InferBatch:
             return self
         if len(request_ids) == 0:
             self.free_self()
-            return InferBatch(batch_id=self.batch_id, request_ids=[], req_manager=self.req_manager)
+            return InferBatch(batch_id=self.batch_id, request_ids=[], req_manager=self.req_manager, radix_cache=self.radix_cache)
         free_req_index = []
         free_token_index = []
         for request_id in finished_request_ids:
