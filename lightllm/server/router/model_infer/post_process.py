@@ -50,7 +50,7 @@ def _get_post_sample_tensors(reqs):
         frequency_penalties.append(sample_param.frequency_penalty)
         repetition_penalties.append(sample_param.repetition_penalty)
         exponential_decay_length_penalties.append(sample_param.exponential_decay_length_penalty[1])
-        length_penalty_idx.append(max(len(req_obj.input_token_ids) + 1 - req_obj.prompt_len - sample_param.exponential_decay_length_penalty[0], 0))
+        length_penalty_idx.append(max(len(req_obj.input_token_ids) - req_obj.prompt_len - sample_param.exponential_decay_length_penalty[0], 0))
 
         temperatures.append(sample_param.temperature)
         top_ps.append(sample_param.top_p)

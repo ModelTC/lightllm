@@ -55,6 +55,12 @@ class SamplingParams:
             raise ValueError(f"top_k must be -1 (disable), or at least 1, got {self.top_k}.")
         if self.max_new_tokens < 1:
             raise ValueError(f"max_new_tokens must be at least 1 , got {self.max_new_tokens}.")
+        if len(self.exponential_decay_length_penalty) != 2:
+            raise ValueError(f"exponential_decay_length_penalty must be a tuple of (int, float), got {self.exponential_decay_length_penalty}.")
+        if not isinstance(self.exponential_decay_length_penalty[0], int) or self.exponential_decay_length_penalty[0] < 0:
+            raise ValueError(f"exponential_decay_length_penalty[0] must be a non-negative integer, got {self.exponential_decay_length_penalty[0]}.")
+        if not isinstance(self.exponential_decay_length_penalty[1], float) or self.exponential_decay_length_penalty[1] < 1.0:
+            raise ValueError(f"exponential_decay_length_penalty[1] must be a float >= 1.0, got {self.exponential_decay_length_penalty[1]}.")
         return
 
     def stop_sentences_to_token_ids(self, tokenizer):
