@@ -18,7 +18,7 @@ def _silu_and_mul_kernel(
 ):
     stride_input_m = stride_input_m.to(tl.int64)
     stride_output_m = stride_output_m.to(tl.int64)
-    
+
     tid = tl.program_id(0)
     input_m_offsets = tid * BLOCK_M + tl.arange(0, BLOCK_M)
     output_m_offsets = tid * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -53,30 +53,33 @@ def _silu_and_mul_kernel(
 
 
 def silu_and_mul_fwd(input):
-    stride_input_m = input.stride(0)
-    stride_input_n = input.stride(1)
-    stride_output_m = input.stride(0)
-    stride_output_n = input.stride(1)
-    size_m = input.shape[0]
-    size_n = input.shape[-1] // 2
-    BLOCK_M = 128
-    BLOCK_N = 128
-    grid = (
-        triton.cdiv(size_m, BLOCK_M),
-        triton.cdiv(size_n, BLOCK_N),
-    )
-    _silu_and_mul_kernel[grid](
-        input,
-        stride_input_m,
-        stride_input_n,
-        stride_output_m,
-        stride_output_n,
-        size_m,
-        size_n,
-        BLOCK_M,
-        BLOCK_N,
-    )
-    return input[:, 0 : (input.shape[-1] // 2)]
+    if triton.__version__ >= "2.1.0":
+        stride_input_m = input.stride(0)
+        stride_input_n = input.stride(1)
+        stride_output_m = input.stride(0)
+        stride_output_n = input.stride(1)
+        size_m = input.shape[0]
+        size_n = input.shape[-1] // 2
+        BLOCK_M = 128
+        BLOCK_N = 128
+        grid = (
+            triton.cdiv(size_m, BLOCK_M),
+            triton.cdiv(size_n, BLOCK_N),
+        )
+        _silu_and_mul_kernel[grid](
+            input,
+            stride_input_m,
+            stride_input_n,
+            stride_output_m,
+            stride_output_n,
+            size_m,
+            size_n,
+            BLOCK_M,
+            BLOCK_N,
+        )
+        return input[:, 0 : (input.shape[-1] // 2)]
+    elif triton.__version__ == "2.0.0":
+        return torch_silu_and_mul(input)
 
 
 def torch_silu_and_mul(input: torch.Tensor):
@@ -94,8 +97,5 @@ def test_silu_and_mul(M, N, dtype, device="cuda"):
     # compare
     print("type:", y_tri.dtype, y_ref.dtype)
     print("max delta:", torch.max(torch.abs(y_tri - y_ref)))
-    assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)
+    assert torch.allclose(y_tri, y_ref, atol=1e-6, rtol=0)
     return
-
-
-# test_silu_and_mul(16, 4096, torch.float16, device='cuda')
