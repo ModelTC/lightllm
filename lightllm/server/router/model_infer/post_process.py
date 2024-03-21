@@ -67,9 +67,7 @@ def _get_post_sample_tensors(reqs):
     top_ks: List[int] = []
     p_token_ids: List[int] = []
     p_token_counts: List[int] = []
-    p_seq_len: List[int] = [
-        0,
-    ]
+    p_seq_len: List[int] = [0,]
     p_max_len_in_batch: int = 0
     length_penalty_idx: List[int] = []
     for i, req_obj in enumerate(reqs):
