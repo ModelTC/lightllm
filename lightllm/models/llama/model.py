@@ -145,7 +145,6 @@ class LlamaTpPartModel(TpPartBaseModel):
         else:
             scaling_factor = self.config.get("rope_scaling", {}).get("factor", 1.0)
         max_seq_len = self.max_seq_length
-        print(max_seq_len)
         self._cos_cached = torch.zeros((max_seq_len, partial_head_dim // 2), dtype=torch.float16, device="cuda")
         self._sin_cached = torch.zeros((max_seq_len, partial_head_dim // 2), dtype=torch.float16, device="cuda")
         
