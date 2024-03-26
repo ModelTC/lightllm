@@ -16,7 +16,7 @@ def decode_token(
     req.output_tokens.append(new_token)
     
     is_eos_id = new_token_id in eos_id
-    if is_eos_id and not req.print_eos_id:
+    if is_eos_id and not req.print_eos_token:
         return req.output_str
     
     if req.skip_special_tokens and new_token_id in tokenizer.all_special_ids and not is_eos_id:
@@ -26,7 +26,7 @@ def decode_token(
         output_text = tokenizer.convert_tokens_to_string(req.output_tokens)
         return output_text
 
-    sep = " " if req.spaces_between_special_tokens else ""
+    sep = " " if req.add_spaces_between_special_tokens else ""
 
     if new_token in tokenizer.added_tokens_encoder:
         if req.current_sub_text:

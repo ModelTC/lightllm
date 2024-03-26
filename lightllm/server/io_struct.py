@@ -65,8 +65,8 @@ class Req:
     def to_req_detokenization_state(self):
         out = ReqDetokenizationState(
             self.request_id, self.prompt_ids, self.max_output_len, self.sample_params.ignore_eos,
-            self.sample_params.skip_special_tokens, self.sample_params.spaces_between_special_tokens,
-            self.sample_params.print_eos_id
+            self.sample_params.skip_special_tokens, self.sample_params.add_spaces_between_special_tokens,
+            self.sample_params.print_eos_token
         )
         # if self.output_metadata_list: # looks like no use
         #     out.gen_metadata.update(self.output_metadata_list[-1])
@@ -229,8 +229,8 @@ class ReqDetokenizationState:
         max_output_len: int,
         ignore_eos: bool,
         skip_special_tokens: bool,
-        spaces_between_special_tokens: bool,
-        print_eos_id: bool,
+        add_spaces_between_special_tokens: bool,
+        print_eos_token: bool,
     ) -> None:
         self.request_id = request_id
         self.prompt_ids = prompt_ids
@@ -243,8 +243,8 @@ class ReqDetokenizationState:
         self.ignore_eos = ignore_eos
         self.gen_metadata = {}
         self.skip_special_tokens = skip_special_tokens
-        self.spaces_between_special_tokens = spaces_between_special_tokens
-        self.print_eos_id = print_eos_id
+        self.add_spaces_between_special_tokens = add_spaces_between_special_tokens
+        self.print_eos_token = print_eos_token
 
 
 class Batch:
