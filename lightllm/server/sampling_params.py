@@ -21,6 +21,7 @@ class SamplingParams:
         stop_sequences: Optional[Union[str, List[str]]] = None,  # 停止句子条件
         skip_special_tokens: bool = False, # whether to skip special tokens when decoding
         spaces_between_special_tokens: bool = True, # whether to add spaces between special tokens when decoding
+        print_eos_id: bool = False, # eos_id will be always ignored except the value is set to True
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
@@ -35,6 +36,7 @@ class SamplingParams:
         self.stop_sequences = stop_sequences
         self.skip_special_tokens = skip_special_tokens
         self.spaces_between_special_tokens = spaces_between_special_tokens
+        self.print_eos_id = print_eos_id
         if self.do_sample == False:
             self.temperature = 1.0
             self.top_p = 1.0

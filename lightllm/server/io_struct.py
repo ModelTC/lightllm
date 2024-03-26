@@ -65,7 +65,8 @@ class Req:
     def to_req_detokenization_state(self):
         out = ReqDetokenizationState(
             self.request_id, self.prompt_ids, self.max_output_len, self.sample_params.ignore_eos,
-            self.sample_params.skip_special_tokens, self.sample_params.spaces_between_special_tokens
+            self.sample_params.skip_special_tokens, self.sample_params.spaces_between_special_tokens,
+            self.sample_params.print_eos_id
         )
         # if self.output_metadata_list: # looks like no use
         #     out.gen_metadata.update(self.output_metadata_list[-1])
@@ -229,6 +230,7 @@ class ReqDetokenizationState:
         ignore_eos: bool,
         skip_special_tokens: bool,
         spaces_between_special_tokens: bool,
+        print_eos_id: bool,
     ) -> None:
         self.request_id = request_id
         self.prompt_ids = prompt_ids
@@ -242,6 +244,7 @@ class ReqDetokenizationState:
         self.gen_metadata = {}
         self.skip_special_tokens = skip_special_tokens
         self.spaces_between_special_tokens = spaces_between_special_tokens
+        self.print_eos_id = print_eos_id
 
 
 class Batch:
@@ -270,7 +273,7 @@ class Batch:
         for req in self.reqs:
             if req.stop_sequences_matched():
                 req.finish_status = FinishStatus.FINISHED_STOP
-            elif len(req.output_ids) >= 1 and req.output_ids[-1] == eos_id and req.sample_params.ignore_eos is False:
+            elif len(req.output_ids) >= 1 and req.output_ids[-1] in eos_id and req.sample_params.ignore_eos is False:
                 req.finish_status = FinishStatus.FINISHED_STOP
             elif len(req.output_ids) >= req.max_output_len:
                 req.finish_status = FinishStatus.FINISHED_LENGTH

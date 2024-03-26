@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, List
 
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
@@ -9,15 +9,17 @@ def decode_token(
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
     req: ReqDetokenizationState,
     new_token_id: int,
-    eos_id: int,
+    eos_id: List[int],
 ) -> str:
     new_token = tokenizer.convert_ids_to_tokens(
         new_token_id, skip_special_tokens=req.skip_special_tokens)
     req.output_tokens.append(new_token)
-    if new_token_id == eos_id:
+    
+    is_eos_id = new_token_id in eos_id
+    if is_eos_id and not req.print_eos_id:
         return req.output_str
     
-    if req.skip_special_tokens and new_token_id in tokenizer.all_special_ids:
+    if req.skip_special_tokens and new_token_id in tokenizer.all_special_ids and not is_eos_id:
         return req.output_str
 
     if not getattr(tokenizer, "added_tokens_encoder", {}):
