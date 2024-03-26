@@ -77,7 +77,7 @@ class HttpServerManager:
                 if img.uuid is not None:
                     self.cache_client.root.release(img.uuid)
 
-    async def generate(self, prompt, sampling_params, request_id, multimodal_params):
+    async def generate(self, prompt, sampling_params, request_id, multimodal_params, tools=None, tool_choice=None):
         if self.enable_multimodal:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)

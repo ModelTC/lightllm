@@ -22,6 +22,8 @@ import torch
 import uvloop
 import sys
 
+from lightllm.server.tool_params import ToolChoiceParams, ToolParams
+
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -211,9 +213,6 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     if request.n > 1:
         return create_error_response(HTTPStatus.BAD_REQUEST, "The n parameter currently only supports 1")
 
-    if request.function_call != "none":
-        return create_error_response(HTTPStatus.BAD_REQUEST, "The function call feature is not supported")
-
     created_time = int(time.time())
     prompt = await build_prompt(request)
     sampling_params = SamplingParams(
@@ -229,9 +228,19 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     )
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
+    tool_params = ToolParams(request.tools)
+    tool_choice = None
+    if request.tools_choice == "auto":
+        tool_choice = "auto"
+    elif request.tools_choice == "none":
+        tool_choice = "none"
+    elif request.tools_choice is not None:
+        tool_choice = ToolChoiceParams(request.tools_choice)
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, request_id, multimodal_params, tools=tool_params, tool_choice=tool_choice
+    )
 
     # Non-streaming case
     if not request.stream:
@@ -376,7 +385,7 @@ def main():
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
 
     parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
-    
+
     parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
