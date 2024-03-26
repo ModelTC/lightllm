@@ -5,7 +5,7 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 
 
-def sample(logits, reqs, eos_id=2):
+def sample(logits, reqs, eos_id:List[int]=[2]):
     logits = logits.contiguous()
     (
         presence_penalties,
