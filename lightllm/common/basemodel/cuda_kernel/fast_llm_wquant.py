@@ -11,7 +11,7 @@ def fp6_quant(weight: torch.Tensor, tp_rank=0):
     scale = weight_max / 28
     quant_half = (weight / (scale.view(M, 1) * (2 ** 12))).half().contiguous()
     from flash_llm_fp6_llm import weight_quant_to_fp6
-    fp6_weight = weight_quant_to_fp6(quant_half, fp6_weight)
+    fp6_weight = weight_quant_to_fp6(quant_half, fp6_weight, True)
 
     return fp6_weight.cuda(tp_rank), scale.half().contiguous().cuda(tp_rank)
 
