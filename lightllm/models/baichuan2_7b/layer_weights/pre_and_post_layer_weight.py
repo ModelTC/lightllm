@@ -22,7 +22,7 @@ class Baichuan2_7bPreAndPostLayerWeight(PreAndPostLayerWeight):
         if 'lm_head.weight' in weights:
             # print(weights['lm_head.weight'].shape)
             self.lm_head_weight_ = nn.functional.normalize(weights['lm_head.weight'].to(
-                torch.float16).cuda())[split_vob_size * self.tp_rank_:split_vob_size * (self.tp_rank_ + 1), :]
+                self.data_type_).cuda())[split_vob_size * self.tp_rank_:split_vob_size * (self.tp_rank_ + 1), :]
         if 'model.norm.weight' in weights:
             self.final_norm_weight_ = self._cuda(weights['model.norm.weight'])
 
