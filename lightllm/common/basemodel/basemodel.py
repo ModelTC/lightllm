@@ -144,8 +144,10 @@ class TpPartBaseModel:
             self.data_type = torch.float16
         elif self.data_type in ["bf16", "bfloat16"]:
             self.data_type = torch.bfloat16
-        else:
+        elif self.data_type in ["fp32", "float32"]:
             self.data_type =torch.float32
+        else:
+            raise ValueError(f"Unsupport datatype {self.data_type}!")
 
     def _init_custom(self):
         pass
