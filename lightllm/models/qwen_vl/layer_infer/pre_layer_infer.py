@@ -15,7 +15,7 @@ infer_state.multimodal_params: batch list of MultimodalParams-dict like:
    {
        "images": [
            {
-               "uuid": int,
+               "uuid": int/torch.Tensor,
                "token_id": int, image token start id,
                "token_num": int, image token num,
            },
@@ -43,9 +43,12 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
                 # skip the same image
                 if img["token_id"] in img_start_token_ids:
                     continue
-                # pull the img_embeds by uid from shm
-                data = read_shm(get_shm_name_embed(img["uuid"]))
-                img_weight.append(bytes2tensor(data).reshape(img["token_num"], -1))
+                if isinstance(img["uuid"], torch.Tensor):
+                    img_weight.append(img["uuid"])
+                else:
+                    # pull the img_embeds by uid from shm
+                    data = read_shm(get_shm_name_embed(img["uuid"]))
+                    img_weight.append(bytes2tensor(data).reshape(img["token_num"], -1))
                 img_start_token_ids.append(img["token_id"])
                 img_token_lens.append(img["token_num"])
                 img_start_locs.append(img_start_loc)
