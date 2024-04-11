@@ -14,6 +14,32 @@ from lightllm.models.internlm_xcomposer.internlm_visual import InternVisionModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 
+
+def load_vision_model(weight_dir):
+   model_cfg, _ = PretrainedConfig.get_config_dict(
+       weight_dir
+   )
+   try:
+       model_type = model_cfg["model_type"]
+       if model_type == "qwen":
+           model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
+       elif model_type == "llava":
+           model = LlavaVisionModel()
+       elif model_type == "internlmxcomposer2":
+           model = InternVisionModel()
+       else:
+           raise Exception(f"can not support {model_type} now")
+       model.load_model(weight_dir)
+       model = model.cuda()
+       return model
+   except Exception as e:
+       print("#" * 16)
+       print("load model error:", str(e), e, type(e))
+       import traceback
+       traceback.print_exc()
+       raise e
+
+
 class VisualModelRpcServer(rpyc.Service):
 
     def exposed_init_model(self, kvargs):
@@ -27,28 +53,7 @@ class VisualModelRpcServer(rpyc.Service):
         # torch.cuda.set_device(self.tp_rank)
         
         weight_dir = kvargs["weight_dir"]
-        model_cfg, _ = PretrainedConfig.get_config_dict(
-            weight_dir
-        )
-        try:
-            self.model_type = model_cfg["model_type"]
-            if self.model_type == "qwen":
-                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
-            elif self.model_type == "llava":
-                self.model = LlavaVisionModel()
-            elif self.model_type == "internlmxcomposer2":
-                self.model = InternVisionModel()
-            else:
-                raise Exception(f"can not support {self.model_type} now")
-            self.model.load_model(weight_dir)
-            self.model = self.model.cuda()
-        except Exception as e:
-            print("#" * 16)
-            print("load model error:", str(e), e, type(e))
-            import traceback
-            traceback.print_exc()
-            raise e
-        
+        self.model = load_vision_model(weight_dir)
         set_random_seed(2147483647)
         return
     
