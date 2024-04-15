@@ -256,10 +256,6 @@ class Batch:
         # 该参数只会在batch init， prefill， decode 后进行更新，并在剔除请求时减少
         # 在 batch rpc init 之后才会被填充正确的值，初始化为 None
         self.batch_decode_need_tokens = None
-        self.batch_used_tokens = 0
-        # init used tokens
-        for req in self.reqs:
-            self.batch_used_tokens += req.get_used_tokens()
         return
 
     def input_tokens(self):
@@ -281,7 +277,6 @@ class Batch:
             if req.finish_status.is_finished():
                 finished_req_ids.append(req.request_id)
                 # 标记的时候，也同时更新一些这些请求被移除掉的更新量，有点dirty
-                self.batch_used_tokens -= req.get_used_tokens()
                 self.batch_decode_need_tokens -= req.get_decode_need_tokens()
             else:
                 unfinished_req_ids.append(req.request_id)
@@ -299,7 +294,6 @@ class Batch:
         self.reqs = [req for req in self.reqs if req.request_id != req_id]
         req = self.id_to_reqs[req_id]
         self.id_to_reqs.pop(req_id)
-        self.batch_used_tokens -= req.get_used_tokens()
         self.batch_decode_need_tokens -= req.get_decode_need_tokens()
         return
 
@@ -310,7 +304,6 @@ class Batch:
         for _req in mini_batch.reqs:
             self.reqs.append(_req)
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
-        self.batch_used_tokens += mini_batch.batch_used_tokens
         self.batch_decode_need_tokens += mini_batch.batch_decode_need_tokens
         return
 

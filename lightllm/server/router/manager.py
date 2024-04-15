@@ -14,6 +14,8 @@ from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import ReqQueue
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
+from .dynamic_prompt.shared_arr import SharedInt
+from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
 from ..io_struct import BatchTokenIdOut, AbortReq, ReqRunStatus, FinishStatus
 from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
@@ -31,6 +33,12 @@ class RouterManager:
         self.load_way = args.load_way
         self.mode = args.mode
         self.max_total_token_num = args.max_total_token_num
+        # 用共享内存进行共享，router 模块读取进行精确的调度估计
+        self.shared_can_use_token_num = SharedInt("mem_manger_can_use_token_num")
+        # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
+        self.radix_cache_client = None
+        if self.args.use_dynamic_prompt_cache:
+            self.radix_cache_client = RadixCacheReadOnlyClient(str(args.nccl_port), self.max_total_token_num, tp_id=0)
 
         self.pause_strategy = Fcfs()
         self.running_batch: Batch = None
@@ -82,7 +90,7 @@ class RouterManager:
 
         await asyncio.gather(*init_model_ret)
 
-        self.req_queue = ReqQueue(self.args)
+        self.req_queue = ReqQueue(self.args, self)
         return
 
     def add_req(
@@ -119,12 +127,13 @@ class RouterManager:
             counter_count += 1
             if self.running_batch is not None:
                 if counter_count % 50 == 0:
-                    total_used_tokens = self.running_batch.batch_used_tokens + self.req_queue.pause_req_used_tokens
-                    token_ratio = total_used_tokens / self.max_total_token_num
+                    token_ratio1 = self.get_used_tokens() / self.max_total_token_num
+                    token_ratio2 = (self.max_total_token_num - self.shared_can_use_token_num.get_value()) / self.max_total_token_num
                     logger.debug(
                         f"current batch size: {len(self.running_batch.reqs)} "
                         f"paused req num: {len(self.req_queue.pause_req_dict)} "
-                        f"token used ratio: {token_ratio} "
+                        f"token used ratio: {token_ratio1} not contain prompt cache tree unrefed tokens"
+                        f"token used ratio: {token_ratio2} contain prompt cache tree unrefed tokens"
                     )
                     pass
                 self.stats_tool.print_stats()
@@ -267,21 +276,17 @@ class RouterManager:
 
     def _update_init_status_to_batch(self, batch: Batch, req_to_req_status):
         # 更新请求状态
-        new_batch_used_tokens = 0
         new_batch_decode_need_tokens = 0  # 只有在 splitfuse 模式下有意义
         for req_id, (req_status, cur_kv_len) in req_to_req_status.items():
             r_obj = batch.id_to_reqs[req_id]
             r_obj.req_status = req_status
             r_obj.cur_kv_len = cur_kv_len
-            new_batch_used_tokens += r_obj.get_used_tokens()
             new_batch_decode_need_tokens += r_obj.get_decode_need_tokens()
 
-        batch.batch_used_tokens = new_batch_used_tokens
         batch.batch_decode_need_tokens = new_batch_decode_need_tokens
         return
 
     def _update_out_status_to_batch(self, batch: Batch, req_to_out_status):
-        new_batch_used_tokens = 0
         new_batch_decode_need_tokens = 0  # 只有在 splitfuse 模式下有意义
         for req_id, (req_status, cur_kv_len, new_token_id, new_gen_metadata) in req_to_out_status.items():
             req: Req = batch.id_to_reqs[req_id]
@@ -290,17 +295,13 @@ class RouterManager:
             if new_token_id is not None:
                 req.output_ids.append(new_token_id)
                 req.output_metadata_list.append(new_gen_metadata)
-            new_batch_used_tokens += req.get_used_tokens()
             new_batch_decode_need_tokens += req.get_decode_need_tokens()
 
-        batch.batch_used_tokens = new_batch_used_tokens
         batch.batch_decode_need_tokens = new_batch_decode_need_tokens
         return
 
     def _can_decode(self, batch: Batch):
-        total_used_tokens = batch.batch_used_tokens + self.req_queue.pause_req_used_tokens
-        remaining_tokens = self.max_total_token_num - total_used_tokens
-        return batch.batch_decode_need_tokens <= remaining_tokens
+        return batch.batch_decode_need_tokens + self.get_used_tokens() <= self.max_total_token_num
 
     def _send_to_detokenization_proc(self, batch: Batch, req_ans):
         batch_out = BatchTokenIdOut()
@@ -312,6 +313,12 @@ class RouterManager:
 
         self.send_to_detokenization.send_pyobj(batch_out)
         return
+
+    def get_used_tokens(self):
+        if self.args.use_dynamic_prompt_cache:
+            return self.max_total_token_num - self.shared_can_use_token_num.get_value() - self.radix_cache_client.get_unrefed_tokens_num()
+        else:
+            return self.max_total_token_num - self.shared_can_use_token_num.get_value()
 
     async def loop_for_netio_req(self):
         while True:
