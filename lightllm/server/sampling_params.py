@@ -122,8 +122,7 @@ class SamplingParams:
         ret["top_p"] = self.top_p
         ret["top_k"] = self.top_k
         ret["min_new_tokens"] = self.min_new_tokens
-        # if self.ignore_eos is not None:
-        #     ret["ignore_eos"] = self.ignore_eos
-        # if self.max_tokens is not None:
-        #     ret["max_tokens"] = self.max_tokens
+        ret["ignore_eos"] = self.ignore_eos
+        ret["max_new_tokens"] = self.max_new_tokens
+        ret["stop_sequences"] = self.stop_sequences
         return ret
