@@ -70,6 +70,13 @@ app = FastAPI()
 
 isFirst = True
 
+def first_set_handle_loop():
+    global isFirst
+    if isFirst:
+        loop = asyncio.get_event_loop()
+        loop.create_task(httpserver_manager.handle_loop())
+        isFirst = False
+    return
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
     return JSONResponse({"message": message}, status_code=status_code.value)
@@ -88,11 +95,7 @@ def healthcheckhead():
 
 @app.post("/generate")
 async def generate(request: Request) -> Response:
-    global isFirst
-    if isFirst:
-        loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.handle_loop())
-        isFirst = False
+    first_set_handle_loop()
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -153,11 +156,7 @@ async def generate(request: Request) -> Response:
 
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
-    global isFirst
-    if isFirst:
-        loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.handle_loop())
-        isFirst = False
+    first_set_handle_loop()
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -202,31 +201,19 @@ async def generate_stream(request: Request) -> Response:
 
 @app.post("/tgi_generate")
 async def tgi_generate(request: Request) -> Response:
-    global isFirst
-    if isFirst:
-        loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.handle_loop())
-        isFirst = False
+    first_set_handle_loop()
     return await tgi_generate_impl(request, g_id_gen, httpserver_manager)
 
 
 @app.post("/tgi_generate_stream")
 async def tgi_generate_stream(request: Request) -> Response:
-    global isFirst
-    if isFirst:
-        loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.handle_loop())
-        isFirst = False
+    first_set_handle_loop()
     return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager)
 
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
-    global isFirst
-    if isFirst:
-        loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.handle_loop())
-        isFirst = False
+    first_set_handle_loop()
 
     if request.logit_bias is not None:
         return create_error_response(

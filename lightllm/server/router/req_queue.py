@@ -8,7 +8,10 @@ from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 
 
 class ReqQueue:
-    def __init__(self, args) -> None:
+    def __init__(self, args, router) -> None:
+        self.args = args
+        from lightllm.server.router.manager import RouterManager
+        self.router: RouterManager = router
         self.max_total_tokens = args.max_total_token_num
         assert args.batch_max_tokens is not None
         self.batch_max_tokens = args.batch_max_tokens
@@ -17,7 +20,6 @@ class ReqQueue:
         self.router_token_ratio = args.router_token_ratio
         self.router_max_new_token_len = args.router_max_new_token_len
         self.pause_req_dict = {}  # 用于保存队列中被暂停的请求，暂停原因为 ReqRunStatus.PAUSED_AND_OFFLOAD
-        self.pause_req_used_tokens = 0
 
         self.is_splitfuse_mode = args.splitfuse_mode
         self.splitfuse_block_size = args.splitfuse_block_size
@@ -33,11 +35,9 @@ class ReqQueue:
             ]:
                 self.pause_req_dict[req.request_id] = req
         self.waiting_req_list = req_list + self.waiting_req_list
-        self.recalcu_pause_req_used_tokens()
         return
 
     def _init_cache_list(self, current_batch: Batch, is_busy):
-        self.cache_pause_reqs_used_tokens = self.pause_req_used_tokens
         self.cache_pause_reqs_num = len(self.pause_req_dict)
         if current_batch is not None:
             self.cache_len_list = [
@@ -59,10 +59,9 @@ class ReqQueue:
 
         need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
         if req.req_status in [ReqRunStatus.PAUSED_AND_OFFLOAD]:
-            self.cache_pause_reqs_used_tokens -= req.get_used_tokens()
             self.cache_pause_reqs_num -= 1
 
-        ok_token_num = need_max_token_num < self.max_total_tokens - self.cache_pause_reqs_used_tokens
+        ok_token_num = need_max_token_num < self.max_total_tokens
         ok_req_num = len(self.cache_len_list) + self.cache_pause_reqs_num <= self.running_max_req_size
 
         if ok_token_num and ok_req_num:
@@ -81,9 +80,8 @@ class ReqQueue:
         if req_is_full:
             return None
 
-        # 计算当前所有的token使用量，包括当前使用和暂停的
-        cur_all_used_tokens = 0 if current_batch is None else current_batch.batch_used_tokens
-        cur_all_used_tokens += self.recalcu_pause_req_used_tokens()
+        # 计算当前所有的token使用量, 如果使用了dynamic prompt cache, 使用的token量中不包含，cache tree 中未被引用的数据。
+        cur_all_used_tokens = self.router.get_used_tokens()
 
         # 判断当前服务是否处于token使用率过高的状态，过高的情况下，调度要偏向保守
         cur_token_ratio = cur_all_used_tokens / self.max_total_tokens
@@ -123,15 +121,6 @@ class ReqQueue:
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list)
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]
-            # 生成新 batch 以后，更新一下状态
-            self.recalcu_pause_req_used_tokens()
             return new_batch
         else:
             return None
-
-    def recalcu_pause_req_used_tokens(self):
-        used_tokens = 0
-        for req_id, req_obj in self.pause_req_dict.items():
-            used_tokens += req_obj.get_used_tokens()
-        self.pause_req_used_tokens = used_tokens
-        return self.pause_req_used_tokens

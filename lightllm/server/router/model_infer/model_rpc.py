@@ -43,7 +43,7 @@ from .pre_process import prepare_decode_inputs, prepare_prefill_inputs, splitfus
 from .post_process import sample
 from .infer_batch import requests_mapping
 from .infer_batch import InferReq
-from lightllm.server.io_struct import ReqRunStatus
+from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 
@@ -67,7 +67,7 @@ class ModelRpcServer(rpyc.Service):
         self.splitfuse_block_size = kvargs.get("splitfuse_block_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
-        self.eos_id = kvargs.get("eos_id", [2])
+        self.eos_id: List[int] = kvargs.get("eos_id", [2])
 
         self.cache = {}
         self.logger = init_logger(__name__)
@@ -112,7 +112,7 @@ class ModelRpcServer(rpyc.Service):
                     self.model = LlamaTpPartModelWQuant(model_kvargs)
                 elif any("w8a8" in mode_ for mode_ in self.mode):
                     self.model = LlamaTpPartModelAWQuant(model_kvargs)
-                elif any('quik_activation_weight' in mode_ for mode_ in self.mode):
+                elif any("quik_activation_weight" in mode_ for mode_ in self.mode):
                     # Supports both w4a4 and w8a8 modes, with automatic mode selection upon model loading.
                     self.model = LlamaTpPartModelQuik(model_kvargs)
                 else:
@@ -215,7 +215,15 @@ class ModelRpcServer(rpyc.Service):
         ans = {}
         for req_id in batch_data.request_ids:
             req_obj: InferReq = requests_mapping[req_id]
-            ans[req_id] = (req_obj.req_status, req_obj.cur_kv_len)
+            # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
+            ans[req_id] = (
+                req_obj.req_status,
+                req_obj.cur_kv_len,
+                req_obj.get_output_len(),
+                [],
+                req_obj.finish_status.value,
+                None,
+            )
         return ans
 
     @calculate_time(show=False, min_cost_ms=300)
@@ -293,9 +301,12 @@ class ModelRpcServer(rpyc.Service):
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same
+            req_obj: InferReq = req_obj
             req_obj.cur_kv_len = len(req_obj.input_token_ids)
             req_obj.input_token_ids.append(next_token_id)
             req_obj.out_token_id_count[next_token_id] += 1
+            req_obj.update_finish_status(self.eos_id)
+
             metadata = {
                 "id": int(next_token_id),
                 "logprob": float(next_token_logprob),
@@ -303,9 +314,11 @@ class ModelRpcServer(rpyc.Service):
             output_dict[req_obj.r_id] = (
                 req_obj.req_status,
                 req_obj.cur_kv_len,
-                int(next_token_id),
-                metadata,
-            )  # 状态， cur_kv_len, token_id, metadata
+                req_obj.get_output_len(),
+                [(int(next_token_id), metadata)],
+                req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
+                None,
+            )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
         self.cache[batch.batch_id] = batch
         return output_dict
@@ -354,14 +367,18 @@ class ModelRpcServer(rpyc.Service):
                 tmp_dict = {int(cur_ids[index + 1]): float(cur_logprobs[index, 0])}
                 all_prompts.append([int(cur_ids[index]), tmp_dict])
 
+            req_obj.update_finish_status(self.eos_id)
+
             metadata["prompt_logprobs"] = all_prompts
             metadata["prompt_token_ids"] = [int(e) for e in cur_ids]
             output_dict[req_obj.r_id] = (
                 req_obj.req_status,
                 req_obj.cur_kv_len,
-                int(next_token_id),
-                metadata,
-            )  # 状态， cur_kv_len, token_id, metadata
+                req_obj.get_output_len(),
+                [(int(next_token_id), metadata)],
+                req_obj.finish_status.value,
+                None,
+            )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
         self.cache[batch.batch_id] = batch
         return output_dict
@@ -388,6 +405,7 @@ class ModelRpcServer(rpyc.Service):
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
                 req_obj.out_token_id_count[next_token_id] += 1
+                req_obj.update_finish_status(self.eos_id)
                 metadata = {
                     "id": int(next_token_id),
                     "logprob": float(next_token_logprob),
@@ -395,9 +413,11 @@ class ModelRpcServer(rpyc.Service):
                 output_dict[req_obj.r_id] = (
                     req_obj.req_status,
                     req_obj.cur_kv_len,
-                    int(next_token_id),
-                    metadata,
-                )  # 状态， cur_kv_len, token_id, metadata
+                    req_obj.get_output_len(),
+                    [(int(next_token_id), metadata)],
+                    req_obj.finish_status.value,
+                    None,
+                )
             else:
                 old_input_token_size = len(req_obj.input_token_ids)
                 split_len = min(old_input_token_size - req_obj.cur_kv_len, self.splitfuse_block_size)
@@ -406,15 +426,31 @@ class ModelRpcServer(rpyc.Service):
                     req_obj.cur_kv_len = old_input_token_size
                     req_obj.input_token_ids.append(next_token_id)
                     req_obj.out_token_id_count[next_token_id] += 1
+                    req_obj.update_finish_status(self.eos_id)
                     metadata = {
                         "id": int(next_token_id),
                         "logprob": float(next_token_logprob),
                     }
-                    output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata)
+                    output_dict[req_obj.r_id] = (
+                        req_obj.req_status,
+                        req_obj.cur_kv_len,
+                        req_obj.get_output_len(),
+                        [(int(next_token_id), metadata)],
+                        req_obj.finish_status.value,
+                        None,
+                    )
                 elif req_obj.cur_kv_len + split_len < old_input_token_size:
                     # 没输出
                     req_obj.cur_kv_len = req_obj.cur_kv_len + split_len
-                    output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, None, None)
+                    req_obj.update_finish_status(self.eos_id)
+                    output_dict[req_obj.r_id] = (
+                        req_obj.req_status,
+                        req_obj.cur_kv_len,
+                        req_obj.get_output_len(),
+                        [],
+                        req_obj.finish_status.value,
+                        None,
+                    )
                 else:
                     assert False, "error state"
             index += 1

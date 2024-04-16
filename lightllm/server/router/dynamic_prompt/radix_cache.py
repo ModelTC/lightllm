@@ -339,6 +339,9 @@ class RadixCacheReadOnlyClient:
 
     def get_tree_total_tokens_num(self):
         return self.tree_total_tokens_num.arr[0]
+    
+    def get_unrefed_tokens_num(self):
+        return self.tree_total_tokens_num.arr[0] - self.refed_tokens_num.arr[0]
 
     def get_shared_node(self, idx):
         return self.shared_idx_manager.get_shared_node(idx)

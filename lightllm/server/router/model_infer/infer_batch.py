@@ -8,7 +8,7 @@ from typing import List, Dict, Tuple
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.io_struct import ReqRunStatus
+from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.utils.log_utils import init_logger
 
@@ -31,6 +31,9 @@ class InferSamplingParams:
         top_k: int = -1,
         vocab_size: int = -1,
         min_new_tokens: int = 1,
+        max_new_tokens: int = 16,
+        ignore_eos: bool = False,
+        stop_sequences: List[List[int]] = [],
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
@@ -41,6 +44,9 @@ class InferSamplingParams:
         self.top_p = top_p
         self.top_k = top_k
         self.min_new_tokens = min_new_tokens
+        self.max_new_tokens = max_new_tokens
+        self.ignore_eos = ignore_eos
+        self.stop_sequences = stop_sequences
         if self.top_k == -1:
             self.top_k = vocab_size
         return
@@ -70,7 +76,34 @@ class InferReq:
 
         self.shared_kv_node = None
         self.ready_cache_len = 0
+        self.finish_status = FinishStatus.NO_FINISH
         return
+
+    def get_output_len(self):
+        return len(self.input_token_ids) - self.prompt_len
+
+    def update_finish_status(self, eos_ids):
+        if self._stop_sequences_matched():
+            self.finish_status = FinishStatus.FINISHED_STOP
+        elif (
+            len(self.input_token_ids) > self.prompt_len
+            and self.input_token_ids[-1] in eos_ids
+            and self.sampling_param.ignore_eos is False
+        ):
+            self.finish_status = FinishStatus.FINISHED_STOP
+        elif len(self.input_token_ids) >= self.prompt_len + self.sampling_param.max_new_tokens:
+            self.finish_status = FinishStatus.FINISHED_LENGTH
+        return
+
+    def _stop_sequences_matched(self):
+        for stop_token_ids in self.sampling_param.stop_sequences:
+            stop_len = len(stop_token_ids)
+            output_len = len(self.input_token_ids) - self.prompt_len
+            if stop_len > 0:
+                if output_len >= stop_len:
+                    if all(self.input_token_ids[i] == stop_token_ids[i] for i in range(-1, -(stop_len + 1), -1)):
+                        return True
+        return False
 
 
 @dataclass
