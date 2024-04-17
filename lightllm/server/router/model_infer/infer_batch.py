@@ -79,7 +79,6 @@ class InferReq:
         self.cur_kv_len = 0  # 当前已经占用掉 token 现存的 kv len 长度
 
         self.shared_kv_node = None
-        self.ready_cache_len = 0
         self.finish_status = FinishStatus.NO_FINISH
         return
 
@@ -178,12 +177,12 @@ class InferBatch:
                     share_node, kv_len, value_tensor = radix_cache.match_prefix(key, update_refs=True)
                     if share_node is not None:
                         r_obj.shared_kv_node = share_node
-                        r_obj.ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
+                        ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
                         mem_manager: MemoryManager = req_manager.mem_manager
                         value_tensor = value_tensor.long().cuda()
                         mem_manager.add_refs(value_tensor)  # 加 refs
-                        req_manager.req_to_token_indexs[r_obj.req_idx, 0 : r_obj.ready_cache_len] = value_tensor
-                        r_obj.cur_kv_len = r_obj.ready_cache_len
+                        req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
+                        r_obj.cur_kv_len = ready_cache_len
 
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.req_status = ReqRunStatus.RUNNING
@@ -207,7 +206,6 @@ class InferBatch:
                 assert req.shared_kv_node.shared_idx_node.get_node_prefix_total_len() <= prefix_len
                 self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                 req.shared_kv_node = None
-                req.ready_cache_len = 0
 
     @torch.no_grad()
     def free_self(self):
