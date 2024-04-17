@@ -1,8 +1,9 @@
+import asyncio
+import enum
 from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from typing import Dict, List, Optional, Tuple, Union
-import asyncio
-import enum
+from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 
 class ReqRunStatus(enum.Enum):
@@ -39,6 +40,7 @@ class FinishStatus(enum.Enum):
 class Req:
     def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, multimodal_params: MultimodalParams):
         self.request_id = request_id
+        self.group_req_id = convert_sub_id_to_group_id(request_id)
         self.prompt_ids = prompt_ids
         self.input_len = len(prompt_ids)
         self.max_output_len = sample_params.max_new_tokens
@@ -57,25 +59,12 @@ class Req:
     def to_rpc_obj(self):
         return {
             "request_id": self.request_id,
+            "group_req_id": self.group_req_id,
             "input_id": self.prompt_ids,
             "sampling_param": self.sample_params.to_dict(),
             "multimodal_params": self.multimodal_params.to_dict(),
             "req_status": self.req_status,
         }
-
-    def to_req_detokenization_state(self):
-        out = ReqDetokenizationState(
-            self.request_id,
-            self.prompt_ids,
-            self.max_output_len,
-            self.sample_params.ignore_eos,
-            self.sample_params.skip_special_tokens,
-            self.sample_params.add_spaces_between_special_tokens,
-            self.sample_params.print_eos_token,
-        )
-        # if self.output_metadata_list: # looks like no use
-        #     out.gen_metadata.update(self.output_metadata_list[-1])
-        return out
 
     def __repr__(self):
         return f"request_id(n={self.request_id}, " f"prompt_ids={self.prompt_ids}, "
@@ -220,15 +209,17 @@ class SplitFuseReq(Req):
 class ReqDetokenizationState:
     def __init__(
         self,
-        request_id: str,
+        group_req_id: int,
         prompt_ids: List[int],
         max_output_len: int,
         ignore_eos: bool,
         skip_special_tokens: bool,
         add_spaces_between_special_tokens: bool,
         print_eos_token: bool,
+        best_of: int,
     ) -> None:
-        self.request_id = request_id
+        self.request_id = None
+        self.group_req_id = group_req_id
         self.prompt_ids = prompt_ids
         self.output_ids = []
         self.output_tokens = []
@@ -241,6 +232,7 @@ class ReqDetokenizationState:
         self.skip_special_tokens = skip_special_tokens
         self.add_spaces_between_special_tokens = add_spaces_between_special_tokens
         self.print_eos_token = print_eos_token
+        self.best_of = best_of
 
 
 class Batch:
@@ -302,14 +294,14 @@ class Batch:
 
 class BatchTokenIdOut:
     def __init__(self):
-        self.reqs_infs: List[Tuple[str, int, Dict, int]] = []  # [req_id, new_token_id, gen_metadata, finish_status]
+        self.reqs_infs: List[Tuple[int, int, Dict, int]] = []  # [req_id, new_token_id, gen_metadata, finish_status]
 
 
 class BatchStrOut:
     def __init__(self):
-        self.reqs_infs: List[Tuple[str, str, Dict, int]] = []  # [req_id, token_str, gen_metadata, finish_status]
+        self.reqs_infs: List[Tuple[int, str, Dict, int]] = []  # [req_id, token_str, gen_metadata, finish_status]
 
 
 class AbortReq:
-    def __init__(self, req_id):
-        self.req_id = req_id
+    def __init__(self, group_req_id):
+        self.group_req_id = group_req_id

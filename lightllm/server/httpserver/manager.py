@@ -10,6 +10,8 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from ..tokenizer import get_tokenizer
 from ..io_struct import BatchStrOut, AbortReq, FinishStatus
 from ..embed_cache.utils import get_shm_name_data, create_shm
+from ..req_id_generator import convert_sub_id_to_group_id
+from ..sampling_params import SamplingParams
 
 
 class HttpServerManager:
@@ -77,7 +79,7 @@ class HttpServerManager:
                 if img.uuid is not None:
                     self.cache_client.root.release(img.uuid)
 
-    async def generate(self, prompt, sampling_params, request_id, multimodal_params):
+    async def generate(self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params):
         if self.enable_multimodal:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
@@ -113,14 +115,16 @@ class HttpServerManager:
 
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
-        req_status = ReqStatus(request_id, multimodal_params)
+        req_status = ReqStatus(group_request_id, multimodal_params)
         event = req_status.event
-        self.req_id_to_out_inf[request_id] = req_status
+        self.req_id_to_out_inf[group_request_id] = req_status
 
         if self.enable_multimodal:
-            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id))
+            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
         else:
-            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, request_id))
+            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
+
+        unfinished_count = sampling_params.best_of
 
         while True:
             try:
@@ -133,13 +137,18 @@ class HttpServerManager:
                 if len(req_status.out_token_info_list) == 0:
                     continue
 
-                for out_str, metadata, finish_status in req_status.out_token_info_list:
+                for sub_req_id, out_str, metadata, finish_status in req_status.out_token_info_list:
                     metadata["prompt_tokens"] = prompt_tokens
-                    yield out_str, metadata, finish_status
+                    yield sub_req_id, out_str, metadata, finish_status
 
+                    # 如果有子请求完成，就更新计数
                     if finish_status.is_finished():
+                        unfinished_count -= 1
+
+                    # 所有子请求完成后，就删除占用的资源
+                    if unfinished_count == 0:
                         try:
-                            del self.req_id_to_out_inf[request_id]
+                            del self.req_id_to_out_inf[group_request_id]
                             await self._release_multimodal_resources(multimodal_params)
                         except:
                             pass
@@ -147,15 +156,15 @@ class HttpServerManager:
                 req_status.out_token_info_list.clear()
         return
 
-    async def abort(self, request_id):
-        abort_req = AbortReq(req_id=request_id)
+    async def abort(self, group_request_id):
+        abort_req = AbortReq(group_req_id=group_request_id)
         self.send_to_router.send_pyobj(abort_req)
         if self.enable_multimodal:
             self.send_to_visual.send_pyobj(abort_req)
         try:
-            req = self.req_id_to_out_inf[request_id]
+            req = self.req_id_to_out_inf[group_request_id]
             await self._release_multimodal_resources(req.multimodal_params)
-            del self.req_id_to_out_inf[request_id]
+            del self.req_id_to_out_inf[group_request_id]
         except:
             pass
         return
@@ -164,16 +173,17 @@ class HttpServerManager:
         while True:
             recv_ans: BatchStrOut = await self.recv_from_detokenization.recv_pyobj()
             assert isinstance(recv_ans, BatchStrOut), f"error recv type {type(recv_ans)}"
-            for req_id, text, metadata, finish_status in recv_ans.reqs_infs:
+            for sub_req_id, text, metadata, finish_status in recv_ans.reqs_infs:
                 finish_status = FinishStatus(finish_status)
+                group_req_id = convert_sub_id_to_group_id(sub_req_id)
                 try:
                     if not finish_status.is_aborted():
-                        req_status: ReqStatus = self.req_id_to_out_inf[req_id]
+                        req_status: ReqStatus = self.req_id_to_out_inf[group_req_id]
                         async with req_status.lock:
-                            req_status.out_token_info_list.append((text, metadata, finish_status))
+                            req_status.out_token_info_list.append((sub_req_id, text, metadata, finish_status))
                             req_status.event.set()
                     else:
-                        del self.req_id_to_out_inf[req_id]
+                        del self.req_id_to_out_inf[group_req_id]
                 except:
                     pass
         return

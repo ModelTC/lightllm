@@ -11,6 +11,7 @@ class ReqQueue:
     def __init__(self, args, router) -> None:
         self.args = args
         from lightllm.server.router.manager import RouterManager
+
         self.router: RouterManager = router
         self.max_total_tokens = args.max_total_token_num
         assert args.batch_max_tokens is not None
@@ -26,6 +27,10 @@ class ReqQueue:
 
     def append(self, req):
         self.waiting_req_list.append(req)
+        return
+
+    def extend(self, req_group: List):
+        self.waiting_req_list.extend(req_group)
         return
 
     def back_to_wait_list(self, req_list: List[Req]):

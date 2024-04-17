@@ -17,6 +17,7 @@
 # limitations under the License.
 
 import asyncio
+import collections
 import time
 import torch
 import uvloop
@@ -70,6 +71,7 @@ app = FastAPI()
 
 isFirst = True
 
+
 def first_set_handle_loop():
     global isFirst
     if isFirst:
@@ -77,6 +79,7 @@ def first_set_handle_loop():
         loop.create_task(httpserver_manager.handle_loop())
         isFirst = False
     return
+
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
     return JSONResponse({"message": message}, status_code=status_code.value)
@@ -106,20 +109,21 @@ async def generate(request: Request) -> Response:
     multimodal_params_dict = request_dict.get("multimodal_params", {})
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
-    request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
+    group_request_id = g_id_gen.generate_id()
+    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
 
     # Non-streaming case
-    final_output = []
-    count_output_tokens = 0
-    tokens = []
+    final_output_dict = collections.defaultdict(list)
+    count_output_tokens_dict = collections.defaultdict(lambda: 0)
+    tokens_dict = collections.defaultdict(list)
+    finish_reason_dict = {}
     prompt_logprobs = None
     prompt_token_ids = None
     is_first_metadata = True
-    async for request_output, metadata, finish_status in results_generator:
+    async for sub_req_id, request_output, metadata, finish_status in results_generator:
         if await request.is_disconnected():
             # Abort the request if the client disconnects.
-            await httpserver_manager.abort(request_id)
+            await httpserver_manager.abort(group_request_id)
             return Response(status_code=499)
 
         # when set "--return_all_prompt_logprobs", the first token metadata will contains
@@ -133,20 +137,31 @@ async def generate(request: Request) -> Response:
                 del metadata["prompt_token_ids"]
             is_first_metadata = False
 
-        count_output_tokens += 1
-        final_output.append(request_output)
+        count_output_tokens_dict[sub_req_id] += 1
+        final_output_dict[sub_req_id].append(request_output)
         if return_details:
             metadata["text"] = request_output
-            tokens.append(metadata)
+            tokens_dict[sub_req_id].append(metadata)
 
-    assert final_output is not None
+        if finish_status.is_finished():
+            finish_reason_dict[sub_req_id] = finish_status
+
+    sub_ids = list(final_output_dict.keys())
+    final_output_list = ["".join(final_output_dict[sub_id]) for sub_id in sub_ids]
+    count_output_tokens_list = [count_output_tokens_dict[sub_id] for sub_id in sub_ids]
+    finish_reson_list = [finish_reason_dict[sub_id].get_finish_reason() for sub_id in sub_ids]
+    tokens_list = [tokens_dict[sub_id] for sub_id in sub_ids]
+    only_one = len(sub_ids) == 1
+
+    ret_data_format = lambda data_list: data_list[0] if only_one else data_list
+
     ret = {
-        "generated_text": ["".join(final_output)],
-        "count_output_tokens": count_output_tokens,
-        "finish_reason": finish_status.get_finish_reason(),
+        "generated_text": final_output_list,
+        "count_output_tokens": ret_data_format(count_output_tokens_list),
+        "finish_reason": ret_data_format(finish_reson_list),
     }
     if return_details:
-        ret["tokens"] = tokens
+        ret["tokens"] = ret_data_format(tokens_list)
     if prompt_token_ids is not None:
         ret["prompt_token_ids"] = prompt_token_ids
     if prompt_logprobs is not None:
@@ -164,15 +179,18 @@ async def generate_stream(request: Request) -> Response:
     _ = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
+    if sampling_params.best_of != 1:
+        raise Exception("stream api only support best_of == 1")
+
     multimodal_params_dict = request_dict.get("multimodal_params", {})
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
-    request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
+    group_request_id = g_id_gen.generate_id()
+    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
-        async for request_output, metadata, finish_status in results_generator:
+        async for _, request_output, metadata, finish_status in results_generator:
             ret = {
                 "token": {
                     "id": metadata.get("id", None),
@@ -190,7 +208,7 @@ async def generate_stream(request: Request) -> Response:
             yield ("data:" + json.dumps(ret, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     async def abort_request() -> None:
-        await httpserver_manager.abort(request_id)
+        await httpserver_manager.abort(group_request_id)
 
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
@@ -251,7 +269,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         final_output = []
         prompt_tokens = -1
         completion_tokens = 0
-        async for request_output, metadata, _ in results_generator:
+        async for sub_req_id, request_output, metadata, _ in results_generator:
             if await raw_request.is_disconnected():
                 # Abort the request if the client disconnects.
                 await httpserver_manager.abort(request_id)
@@ -275,7 +293,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
-        async for request_output, metadata, _ in results_generator:
+        async for sub_req_id, request_output, metadata, _ in results_generator:
             delta_message = DeltaMessage(role="assistant", content=request_output)
 
             stream_choice = ChatCompletionStreamResponseChoice(index=0, delta=delta_message)
@@ -335,7 +353,7 @@ def main():
         default=None,
         help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM",
     )
-    parser.add_argument("--eos_id", nargs='+', type=int, default=[2], help="eos stop token id")
+    parser.add_argument("--eos_id", nargs="+", type=int, default=[2], help="eos stop token id")
     parser.add_argument(
         "--running_max_req_size", type=int, default=1000, help="the max size for forward requests in the same time"
     )
@@ -380,7 +398,7 @@ def main():
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
 
     parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
-    
+
     parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
@@ -392,9 +410,11 @@ def main():
         "--cache_reserved_ratio", type=float, default=0.5, help="cache server reserved capacity ratio after clear"
     )
     parser.add_argument(
-        "--data_type", type=str, 
+        "--data_type",
+        type=str,
         choices=["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"],
-        default="float16", help="the data type of the model weight"
+        default="float16",
+        help="the data type of the model weight",
     )
     parser.add_argument("--return_all_prompt_logprobs", action="store_true", help="return all prompt tokens logprobs")
     parser.add_argument(

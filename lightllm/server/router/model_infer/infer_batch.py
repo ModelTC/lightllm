@@ -21,6 +21,7 @@ requests_mapping = {}
 class InferSamplingParams:
     def __init__(
         self,
+        best_of: int = 1,
         do_sample: bool = False,
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0,
@@ -35,6 +36,7 @@ class InferSamplingParams:
         ignore_eos: bool = False,
         stop_sequences: List[List[int]] = [],
     ) -> None:
+        self.best_of = best_of
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty
@@ -56,6 +58,7 @@ class InferReq:
     def __init__(
         self,
         r_id,
+        group_req_id,
         input_token_ids=[],
         out_token_id_count={},
         sampling_param=None,
@@ -65,6 +68,7 @@ class InferReq:
         multimodal_params=None,
     ) -> None:
         self.r_id = r_id
+        self.group_req_id = (group_req_id,)
         self.out_token_id_count = out_token_id_count
         self.sampling_param = sampling_param
         self.multimodal_params = multimodal_params
@@ -146,6 +150,7 @@ class InferBatch:
                 assert r["req_status"] == ReqRunStatus.WAIT_IN_QUEUE
                 r_obj = InferReq(
                     r_id,
+                    r["group_req_id"],
                     input_token_ids=tokenized_input,
                     out_token_id_count=collections.defaultdict(int),
                     sampling_param=InferSamplingParams(**sampling_param),
@@ -221,11 +226,11 @@ class InferBatch:
 
         if self.radix_cache is not None:
             logger.info(
-                f"""free a batch state:
-                        radix refed token num {self.radix_cache.get_refed_tokens_num()}
-                        radix hold token num {self.radix_cache.get_tree_total_tokens_num()}
-                        mem manager can alloc token num {self.req_manager.mem_manager.can_use_mem_size}
-                        mem manager total size {self.req_manager.mem_manager.size}"""
+                f"free a batch state:\n"
+                f"radix refed token num {self.radix_cache.get_refed_tokens_num()}\n"
+                f"radix hold token num {self.radix_cache.get_tree_total_tokens_num()}\n"
+                f"mem manager can alloc token num {self.req_manager.mem_manager.can_use_mem_size}\n"
+                f"mem manager total size {self.req_manager.mem_manager.size}"
             )
         return
 

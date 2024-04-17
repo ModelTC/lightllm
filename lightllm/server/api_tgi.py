@@ -1,3 +1,4 @@
+import collections
 from typing import AsyncGenerator
 from fastapi import BackgroundTasks, Request
 from fastapi.responses import Response, StreamingResponse, JSONResponse
@@ -30,7 +31,8 @@ def format_tgi_params(params):
         pub seed: Option<u64>,
     }
     """
-    # same keys: temperature, repetition_penalty, frequency_penalty, presence_penalty, top_k, top_p, do_sample, max_new_tokens
+    # same keys: temperature, repetition_penalty, frequency_penalty, presence_penalty,
+    # top_k, top_p, do_sample, max_new_tokens
     # keys re-map
     if "return_details" not in params:
         params["return_details"] = params.pop("details", False)
@@ -59,20 +61,21 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
     multimodal_params_dict = request_dict.get("multimodal_params", {})
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
-    request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
+    group_request_id = g_id_gen.generate_id()
+    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
 
     # Non-streaming case
-    final_output = []
-    count_output_tokens = 0
-    tokens = []
+    final_output_dict = collections.defaultdict(list)
+    count_output_tokens_dict = collections.defaultdict(lambda: 0)
+    tokens_dict = collections.defaultdict(list)
+    finish_status_dict = {}
     prompt_logprobs = None
     prompt_token_ids = None
     is_first_metadata = True
-    async for request_output, metadata, finish_status in results_generator:
+    async for sub_req_id, request_output, metadata, finish_status in results_generator:
         if await request.is_disconnected():
             # Abort the request if the client disconnects.
-            await httpserver_manager.abort(request_id)
+            await httpserver_manager.abort(group_request_id)
             return Response(status_code=499)
 
         # when set "--return_all_prompt_logprobs", the first token metadata will contains
@@ -86,31 +89,33 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
                 del metadata["prompt_token_ids"]
             is_first_metadata = False
 
-        count_output_tokens += 1
-        final_output.append(request_output)
+        count_output_tokens_dict[sub_req_id] += 1
+        final_output_dict[sub_req_id].append(request_output)
         if return_details:
             metadata["text"] = request_output
-            tokens.append(metadata)
+            tokens_dict[sub_req_id].append(metadata)
+        if finish_status.is_finished():
+            finish_status_dict[sub_req_id] = finish_status
 
-    assert final_output is not None
-    ret = {
-        "generated_text": "".join(final_output),
-        "count_output_tokens": count_output_tokens,
-        "finish_reason": finish_status.get_finish_reason(),
-    }
-    if return_details:
-        ret["details"] = {
-            "tokens": tokens,
-            "generated_tokens": count_output_tokens,
-            "finish_reason": finish_status.get_finish_reason(),
+    rets = []
+    for sub_id in list(final_output_dict.keys()):
+        ret = {
+            "generated_text": "".join(final_output_dict[sub_id]),
+            "count_output_tokens": count_output_tokens_dict[sub_id],
+            "finish_reason": finish_status_dict[sub_id].get_finish_reason(),
         }
-    if prompt_token_ids is not None:
-        ret["prompt_token_ids"] = prompt_token_ids
-    if prompt_logprobs is not None:
-        ret["prompt_logprobs"] = prompt_logprobs
+        if return_details:
+            ret["details"] = {
+                "tokens": tokens_dict[sub_id],
+                "generated_tokens": count_output_tokens_dict[sub_id],
+                "finish_reason": finish_status_dict[sub_id].get_finish_reason(),
+            }
+        if prompt_token_ids is not None:
+            ret["prompt_token_ids"] = prompt_token_ids
+        if prompt_logprobs is not None:
+            ret["prompt_logprobs"] = prompt_logprobs
     # wrap generation inside a Vec to match api-inference
-    ret = [ret]
-    json_compatible_item_data = jsonable_encoder(ret)
+    json_compatible_item_data = jsonable_encoder(rets)
     return JSONResponse(content=json_compatible_item_data)
 
 
@@ -121,16 +126,18 @@ async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manage
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
     sampling_params.verify()
+    if sampling_params.best_of != 1:
+        raise Exception("stream api only support best_of == 1")
     multimodal_params_dict = request_dict.get("multimodal_params", {})
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
-    request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
+    group_request_id = g_id_gen.generate_id()
+    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
         final_output = []
-        async for request_output, metadata, finish_status in results_generator:
+        async for _, request_output, metadata, finish_status in results_generator:
             ret = {
                 "token": {
                     "id": metadata.get("id", None),
@@ -156,7 +163,7 @@ async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manage
             yield ("data:" + json.dumps(ret, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     async def abort_request() -> None:
-        await httpserver_manager.abort(request_id)
+        await httpserver_manager.abort(group_request_id)
 
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.

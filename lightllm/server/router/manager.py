@@ -16,11 +16,12 @@ from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from .dynamic_prompt.shared_arr import SharedInt
 from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
-from ..io_struct import BatchTokenIdOut, AbortReq, ReqRunStatus, FinishStatus
+from ..io_struct import BatchTokenIdOut, AbortReq, ReqRunStatus, FinishStatus, ReqDetokenizationState
 from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
 from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
+from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 logger = init_logger(__name__)
 
@@ -98,23 +99,40 @@ class RouterManager:
         prompt_ids: List[int],
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
-        request_id: str,
+        group_req_id: int,
     ):
-        if self.is_splitfuse_mode:
-            req = SplitFuseReq(request_id, prompt_ids, sampling_params, multimodal_params, self.splitfuse_block_size)
-        else:
-            req = NormalReq(request_id, prompt_ids, sampling_params, multimodal_params)
-        self.req_queue.append(req)
-        self.send_to_detokenization.send_pyobj(req.to_req_detokenization_state())
+        req_group = []
+        for i in range(sampling_params.best_of):
+            if self.is_splitfuse_mode:
+                req = SplitFuseReq(
+                    group_req_id + i, prompt_ids, sampling_params, multimodal_params, self.splitfuse_block_size
+                )
+            else:
+                req = NormalReq(group_req_id + i, prompt_ids, sampling_params, multimodal_params)
+            req_group.append(req)
+
+        self.req_queue.extend(req_group)
+        self.send_to_detokenization.send_pyobj(
+            ReqDetokenizationState(
+                group_req_id,
+                prompt_ids,
+                sampling_params.max_new_tokens,
+                sampling_params.ignore_eos,
+                sampling_params.skip_special_tokens,
+                sampling_params.add_spaces_between_special_tokens,
+                sampling_params.print_eos_token,
+                sampling_params.best_of,
+            )
+        )
         return
 
-    async def abort(self, request_id):
+    async def abort(self, group_req_id):
         if self.running_batch is not None:
             for req in self.running_batch.reqs:
-                if req.request_id == request_id:
+                if convert_sub_id_to_group_id(req.request_id) == group_req_id:
                     req.finish_status = FinishStatus.FINISHED_ABORT
         for req in self.req_queue.waiting_req_list:
-            if req.request_id == request_id:
+            if convert_sub_id_to_group_id(req.request_id) == group_req_id:
                 req.finish_status = FinishStatus.FINISHED_ABORT
         return
 
@@ -343,12 +361,12 @@ class RouterManager:
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
             if isinstance(recv_req, tuple) and len(recv_req) == 4:
-                prompt_ids, sampling_params, multimodal_params, request_id = recv_req
-                self.add_req(prompt_ids, sampling_params, multimodal_params, request_id)
+                prompt_ids, sampling_params, multimodal_params, group_req_id = recv_req
+                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id)
             elif isinstance(recv_req, AbortReq):
                 abort_req = recv_req
-                request_id = abort_req.req_id
-                await self.abort(request_id)
+                group_req_id = abort_req.group_req_id
+                await self.abort(group_req_id)
                 self.send_to_detokenization.send_pyobj(abort_req)
             else:
                 assert False, f"Error Req Inf {recv_req}"

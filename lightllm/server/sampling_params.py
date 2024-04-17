@@ -1,5 +1,6 @@
 """Sampling parameters for text generation."""
 from typing import List, Optional, Union, Tuple
+from .req_id_generator import MAX_BEST_OF
 
 _SAMPLING_EPS = 1e-5
 
@@ -7,6 +8,7 @@ _SAMPLING_EPS = 1e-5
 class SamplingParams:
     def __init__(
         self,
+        best_of: int = 1,
         do_sample: bool = False,
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0,
@@ -23,6 +25,7 @@ class SamplingParams:
         add_spaces_between_special_tokens: bool = True,  # whether to add spaces between special tokens when decoding
         print_eos_token: bool = False,  # eos_id will be always ignored except the value is set to True
     ) -> None:
+        self.best_of = best_of
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty
@@ -50,6 +53,8 @@ class SamplingParams:
         return
 
     def verify(self):
+        if self.best_of <= 0 or self.best_of > MAX_BEST_OF:
+            raise ValueError(f"need 0 < best_of <= {MAX_BEST_OF}, but get {self.best_of}")
         if self.presence_penalty < 0.0:
             raise ValueError(f"presence_penalty must >= 0.0, got {self.presence_penalty}")
         if self.frequency_penalty < 0.0:
@@ -125,4 +130,5 @@ class SamplingParams:
         ret["ignore_eos"] = self.ignore_eos
         ret["max_new_tokens"] = self.max_new_tokens
         ret["stop_sequences"] = self.stop_sequences
+        ret["best_of"] = self.best_of
         return ret
