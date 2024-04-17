@@ -68,7 +68,7 @@ class InferReq:
         multimodal_params=None,
     ) -> None:
         self.r_id = r_id
-        self.group_req_id = (group_req_id,)
+        self.group_req_id = group_req_id
         self.out_token_id_count = out_token_id_count
         self.sampling_param = sampling_param
         self.multimodal_params = multimodal_params
