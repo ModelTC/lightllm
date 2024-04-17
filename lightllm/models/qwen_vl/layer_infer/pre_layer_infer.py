@@ -15,7 +15,7 @@ infer_state.multimodal_params: batch list of MultimodalParams-dict like:
    {
        "images": [
            {
-               "uuid": int/torch.Tensor,
+               "uuid": int,
                "embedding": torch.Tensor,
                "token_id": int, image token start id,
                "token_num": int, image token num,
