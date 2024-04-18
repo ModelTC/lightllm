@@ -11,7 +11,7 @@ from ..sampling_params import SamplingParams
 from ..io_struct import Req, NormalReq, SplitFuseReq, Batch
 from ..multimodal_params import MultimodalParams
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
-from .req_queue import ReqQueue
+from .req_queue import build_req_queue
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from .dynamic_prompt.shared_arr import SharedInt
@@ -91,7 +91,8 @@ class RouterManager:
 
         await asyncio.gather(*init_model_ret)
 
-        self.req_queue = ReqQueue(self.args, self)
+        self.req_queue = build_req_queue(self.args, self)
+        logger.info(f"use req queue {self.req_queue.__class__.__name__}")
         return
 
     def add_req(

@@ -2,7 +2,7 @@ import uuid
 import numpy as np
 from typing import List, Tuple
 from lightllm.server.io_struct import Batch, Req
-from lightllm.server.router.req_queue import ReqQueue
+from lightllm.server.router.req_queue.base_queue import BaseQueue
 from lightllm.server.io_struct import ReqRunStatus
 
 
@@ -42,7 +42,7 @@ class Hrnn(Strategy):
         )
 
 
-def select_paused_reqs(batch: Batch, strategy: Strategy, req_queue: ReqQueue, max_total_token_num):
+def select_paused_reqs(batch: Batch, strategy: Strategy, req_queue: BaseQueue, max_total_token_num):
     reqs: List[Req] = strategy.ordering_reqs(batch)
     if len(reqs) == 0:
         return []
