@@ -33,7 +33,7 @@ class ContinuesBatchBackend(ModeBackend):
         logits = self.model.forward(**kwargs)
         probs = torch.softmax(logits, dim=-1)
         logprobs = torch.log2(probs + 1e-6)
-        shang = -torch.sum(probs * logprobs, dim=-1, keepdim=False)
+        shangs = -torch.sum(probs * logprobs, dim=-1, keepdim=False).detach().cpu().numpy()
         
         select_index = torch.argmax(probs, dim=1, keepdim=False)
         next_token_ids = select_index
@@ -42,14 +42,14 @@ class ContinuesBatchBackend(ModeBackend):
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_probs = next_token_probs.detach().cpu().numpy()
 
-        for req_obj, next_token_id, next_token_prob in zip(run_reqs, next_token_ids, next_token_probs):
+        for req_obj, next_token_id, next_token_prob, shang in zip(run_reqs, next_token_ids, next_token_probs, shangs):
             # prefill and decode is same
             req_obj: InferReq = req_obj
             req_obj.cur_kv_len = len(req_obj.input_token_ids)
             if next_token_prob >= req_obj.sampling_param.low_prob or req_obj.recompute == 3:
                 if req_obj.recompute == 3:
-                    print(f"recompute 3 {next_token_prob}")
-                print(f"ok get {next_token_prob}")
+                    print(f"recompute 3 {next_token_prob}, shang {shang}")
+                print(f"ok get {next_token_prob} shang {shang}")
                 if is_prefill:
                     req_obj.position_loc = len(req_obj.input_token_ids)
                 else:
@@ -74,7 +74,7 @@ class ContinuesBatchBackend(ModeBackend):
                     None,
                 )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
             else:
-                print(f"not ok get {next_token_prob}")
+                print(f"not ok get {next_token_prob} shang {shang}")
                 if is_prefill:
                     req_obj.position_loc = len(req_obj.input_token_ids) - 1
                 
