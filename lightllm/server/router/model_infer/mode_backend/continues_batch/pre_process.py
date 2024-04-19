@@ -77,6 +77,7 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     nopad_b_req_idx = []
     nopad_b_start_loc = []
     nopad_b_seq_len = []
+    b_position_locs = []
     for request_id in batch.request_ids:
         req: InferReq = requests_mapping[request_id]
         assert req.req_status == ReqRunStatus.RUNNING
@@ -91,11 +92,13 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
         start_loc += seq_len
+        b_position_locs.append(req.position_loc)
 
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
     nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device="cuda")
     nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device="cuda")
     nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device="cuda")
+    b_position_locs = torch.tensor(b_position_locs, dtype=torch.int32, device="cuda")
     kwargs = {
         "batch_size": len(batch),
         "total_token_num": nopad_total_token_num,
@@ -105,6 +108,7 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
         "b_start_loc": nopad_b_start_loc,
         "b_seq_len": nopad_b_seq_len,
         "is_prefill": False,
+        "b_position_locs": b_position_locs,
     }
     # dynamic prompt cache 准备 token
     if radix_cache is not None:

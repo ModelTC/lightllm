@@ -24,6 +24,7 @@ class SamplingParams:
         skip_special_tokens: bool = True,  # whether to skip special tokens when decoding
         add_spaces_between_special_tokens: bool = True,  # whether to add spaces between special tokens when decoding
         print_eos_token: bool = False,  # eos_id will be always ignored except the value is set to True
+        low_prob: float = 0.3,
     ) -> None:
         self.best_of = best_of
         self.do_sample = do_sample
@@ -41,6 +42,7 @@ class SamplingParams:
         self.skip_special_tokens = skip_special_tokens
         self.add_spaces_between_special_tokens = add_spaces_between_special_tokens
         self.print_eos_token = print_eos_token
+        self.low_prob = low_prob
         if self.do_sample is False:
             self.temperature = 1.0
             self.top_p = 1.0
@@ -131,4 +133,5 @@ class SamplingParams:
         ret["max_new_tokens"] = self.max_new_tokens
         ret["stop_sequences"] = self.stop_sequences
         ret["best_of"] = self.best_of
+        ret["low_prob"] = self.low_prob
         return ret

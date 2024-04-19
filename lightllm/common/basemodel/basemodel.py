@@ -163,6 +163,7 @@ class TpPartBaseModel:
         b_start_loc: torch.Tensor,
         b_seq_len: torch.Tensor,
         b_ready_cache_len: torch.Tensor = None,
+        b_position_locs: torch.Tensor = None,
         multimodal_params=None,
         is_prefill=True,
     ):
@@ -187,6 +188,7 @@ class TpPartBaseModel:
                 b_req_idx,
                 b_start_loc,
                 b_seq_len,
+                b_position_locs,
                 multimodal_params,
             )
 
@@ -261,6 +263,7 @@ class TpPartBaseModel:
         b_req_idx,
         b_start_loc,
         b_seq_len,
+        b_position_locs,
         multimodal_params,
     ):
         infer_state = self.infer_state_class()
@@ -273,6 +276,7 @@ class TpPartBaseModel:
         infer_state.b_req_idx = b_req_idx
         infer_state.b_start_loc = b_start_loc
         infer_state.b_seq_len = b_seq_len
+        infer_state.b_position_locs = b_position_locs
         infer_state.multimodal_params = multimodal_params
 
         infer_state.mem_manager = self.mem_manager

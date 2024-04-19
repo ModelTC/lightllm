@@ -35,6 +35,7 @@ class InferSamplingParams:
         max_new_tokens: int = 16,
         ignore_eos: bool = False,
         stop_sequences: List[List[int]] = [],
+        low_prob:float =0.3,
     ) -> None:
         self.best_of = best_of
         self.do_sample = do_sample
@@ -49,6 +50,7 @@ class InferSamplingParams:
         self.max_new_tokens = max_new_tokens
         self.ignore_eos = ignore_eos
         self.stop_sequences = stop_sequences
+        self.low_prob = low_prob
         if self.top_k == -1:
             self.top_k = vocab_size
         return
@@ -80,6 +82,8 @@ class InferReq:
 
         self.shared_kv_node = None
         self.finish_status = FinishStatus.NO_FINISH
+        self.position_loc = 0
+        self.recompute = 0
         return
 
     def get_output_len(self):
