@@ -38,15 +38,15 @@ class TpPartBaseModel:
         self.weight_dir_ = kvargs["weight_dir"]
         self.max_total_token_num = kvargs["max_total_token_num"]
         self.load_way = kvargs.get("load_way", "HF")
-        self.mode = [m.replace('int4weight', 'w4a16').replace('int8weight', 'w8a16') for m in kvargs.get("mode", [])]
+        self.mode = [m.replace("int4weight", "w4a16").replace("int8weight", "w8a16") for m in kvargs.get("mode", [])]
         self.weight_dict = kvargs.get("weight_dict", None)
         self.finetune_config = kvargs.get("finetune_config", None)
         self.max_req_num = kvargs.get("max_req_num", 1000)
         self.max_seq_length = kvargs.get("max_seq_length", 1024 * 5)
-        self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
+        self.return_all_prompt_logics = kvargs.get("return_all_prompt_logics", False)
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         self.data_type = kvargs.get("data_type", "float16")
-        
+
         self._init_datatype()
         self._init_config()
         self._verify_must()
@@ -145,7 +145,7 @@ class TpPartBaseModel:
         elif self.data_type in ["bf16", "bfloat16"]:
             self.data_type = torch.bfloat16
         elif self.data_type in ["fp32", "float32"]:
-            self.data_type =torch.float32
+            self.data_type = torch.float32
         else:
             raise ValueError(f"Unsupport datatype {self.data_type}!")
 
@@ -204,7 +204,7 @@ class TpPartBaseModel:
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
-        infer_state.return_all_prompt_logprobs = self.return_all_prompt_logprobs
+        infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num

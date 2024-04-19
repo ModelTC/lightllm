@@ -30,7 +30,9 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         if infer_state.is_splitfuse:
             # for SplitFuse
             batch_size = infer_state.batch_size
-            last_input = torch.empty((batch_size, self.embed_dim_), device=input_embdings.device, dtype=input_embdings.dtype)
+            last_input = torch.empty(
+                (batch_size, self.embed_dim_), device=input_embdings.device, dtype=input_embdings.dtype
+            )
             tmp_ = torch.cat(
                 [
                     torch.ones(infer_state.decode_req_num, dtype=torch.int32, device="cuda"),
@@ -42,16 +44,18 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
             last_input[:, :] = input_embdings[last_index, :]
             return last_input, batch_size
 
-        if not infer_state.is_splitfuse and infer_state.is_prefill and not infer_state.return_all_prompt_logprobs:
+        if not infer_state.is_splitfuse and infer_state.is_prefill and not infer_state.return_all_prompt_logics:
             batch_size = infer_state.batch_size
-            last_input = torch.empty((batch_size, self.embed_dim_), device=input_embdings.device, dtype=input_embdings.dtype)
+            last_input = torch.empty(
+                (batch_size, self.embed_dim_), device=input_embdings.device, dtype=input_embdings.dtype
+            )
             last_index = (
                 torch.cumsum(infer_state.b_seq_len - infer_state.b_ready_cache_len, dim=0, dtype=torch.long) - 1
             )
             last_input[:, :] = input_embdings[last_index, :]
             return last_input, batch_size
 
-        if not infer_state.is_splitfuse and infer_state.is_prefill and infer_state.return_all_prompt_logprobs:
+        if not infer_state.is_splitfuse and infer_state.is_prefill and infer_state.return_all_prompt_logics:
             total_tokens = infer_state.total_token_num
             return input_embdings, total_tokens
 
@@ -82,7 +86,9 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         if self.world_size_ == 1:
             gather_data = logic_batch
         else:
-            gather_data = torch.empty((self.vocab_size_, token_num), device=logic_batch.device, dtype=input_embdings_dtype)
+            gather_data = torch.empty(
+                (self.vocab_size_, token_num), device=logic_batch.device, dtype=input_embdings_dtype
+            )
             split_indexes = np.linspace(0, self.vocab_size_, self.world_size_ + 1, dtype=np.int64)
             dist.all_gather(
                 [gather_data[split_indexes[i] : split_indexes[i + 1], :] for i in range(self.world_size_)],

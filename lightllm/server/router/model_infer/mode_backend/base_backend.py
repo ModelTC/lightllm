@@ -85,7 +85,7 @@ class ModeBackend:
             "mode": self.mode,
             "max_req_num": kvargs.get("max_req_num", 1000),
             "max_seq_length": kvargs.get("max_seq_length", 1024 * 5),
-            "return_all_prompt_logprobs": self.return_all_prompt_logprobs,
+            "return_all_prompt_logics": self.return_all_prompt_logprobs,
             "use_dynamic_prompt_cache": self.use_dynamic_prompt_cache,
             "data_type": kvargs.get("data_type", "float16"),
         }
