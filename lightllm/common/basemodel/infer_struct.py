@@ -31,6 +31,7 @@ class InferStateInfo:
         self.kv_buffer = None
 
         self.is_splitfuse = False
+        self.is_token_healing = False
         self.return_all_prompt_logics = False
         self.use_dynamic_prompt_cache = False
         self.multimodal_params = None

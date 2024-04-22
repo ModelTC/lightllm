@@ -420,6 +420,7 @@ def main():
         help="the data type of the model weight",
     )
     parser.add_argument("--return_all_prompt_logprobs", action="store_true", help="return all prompt tokens logprobs")
+    parser.add_argument("--token_healing", action="store_true", help="code model infer mode")
     parser.add_argument(
         "--long_truncation_mode",
         type=str,

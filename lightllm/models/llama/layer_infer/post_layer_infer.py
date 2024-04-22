@@ -44,6 +44,31 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
             last_input[:, :] = input_embdings[last_index, :]
             return last_input, batch_size
 
+        if infer_state.is_prefill and infer_state.is_token_healing:
+            batch_size = infer_state.batch_size
+            b_seq_len_numpy = (infer_state.b_seq_len - infer_state.b_ready_cache_len).detach().cpu().numpy()
+            select_index = []
+            start_index = 0
+            select_token_num = 0
+            for cur_len in b_seq_len_numpy:
+                if cur_len == 1:
+                    select_index.append(start_index + cur_len - 1)
+                    start_index += cur_len
+                    select_token_num += 1
+                else:
+                    select_index.append(start_index + cur_len - 2)
+                    select_index.append(start_index + cur_len - 1)
+                    start_index += cur_len
+                    select_token_num += 2
+
+            last_index = torch.tensor(select_index, dtype=torch.long, device=input_embdings.device)
+            last_input = torch.empty(
+                (select_token_num, self.embed_dim_), device=input_embdings.device, dtype=input_embdings.dtype
+            )
+
+            last_input[:, :] = input_embdings[last_index, :]
+            return last_input, select_token_num
+
         if not infer_state.is_splitfuse and infer_state.is_prefill and not infer_state.return_all_prompt_logics:
             batch_size = infer_state.batch_size
             last_input = torch.empty(

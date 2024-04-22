@@ -43,7 +43,11 @@ class TpPartBaseModel:
         self.finetune_config = kvargs.get("finetune_config", None)
         self.max_req_num = kvargs.get("max_req_num", 1000)
         self.max_seq_length = kvargs.get("max_seq_length", 1024 * 5)
+        # is_token_healing 和 return_all_prompt_logics 是有排斥关系的两个模式，只能单独有一个生效
+        # 主要是在prefill阶段返回多少个token的用于后续处理相关。
+        self.is_token_healing = kvargs.get("is_token_healing", False)
         self.return_all_prompt_logics = kvargs.get("return_all_prompt_logics", False)
+        assert not (self.is_token_healing and self.return_all_prompt_logics), "can not be true in same time"
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         self.data_type = kvargs.get("data_type", "float16")
 
@@ -204,6 +208,7 @@ class TpPartBaseModel:
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
+        infer_state.is_token_healing = self.is_token_healing
         infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
         infer_state.batch_size = batch_size

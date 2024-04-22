@@ -82,6 +82,7 @@ class RouterManager:
                 "nccl_port": self.args.nccl_port,
                 "is_splitfuse_mode": self.is_splitfuse_mode,
                 "splitfuse_block_size": self.splitfuse_block_size,
+                "is_token_healing": self.args.token_healing,
                 "return_all_prompt_logprobs": self.args.return_all_prompt_logprobs,
                 "use_dynamic_prompt_cache": self.args.use_dynamic_prompt_cache,
                 "data_type": self.args.data_type,
