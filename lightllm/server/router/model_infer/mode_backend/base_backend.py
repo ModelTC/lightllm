@@ -1,3 +1,4 @@
+import os
 import asyncio
 import numpy as np
 import rpyc
@@ -74,6 +75,10 @@ class ModeBackend:
         )
         torch.cuda.set_device(self.tp_rank)
 
+        # 为了不修改，原有的接口形式，在这里写入环境变量，model 对象中的mem_manger对象初始化的时候，
+        # 需要读取，来初始化用于信息共享的shared mem 名称
+        os.environ["_NCCL_PORT_"] = str(kvargs["nccl_port"])
+
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
 
         model_kvargs = {
@@ -85,7 +90,8 @@ class ModeBackend:
             "mode": self.mode,
             "max_req_num": kvargs.get("max_req_num", 1000),
             "max_seq_length": kvargs.get("max_seq_length", 1024 * 5),
-            "return_all_prompt_logprobs": self.return_all_prompt_logprobs,
+            "is_token_healing": kvargs.get("is_token_healing", False),
+            "return_all_prompt_logics": self.return_all_prompt_logprobs,
             "use_dynamic_prompt_cache": self.use_dynamic_prompt_cache,
             "data_type": kvargs.get("data_type", "float16"),
         }

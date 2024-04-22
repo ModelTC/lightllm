@@ -400,6 +400,9 @@ def main():
     parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
 
     parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
+
+    parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
+
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
     )
@@ -417,6 +420,7 @@ def main():
         help="the data type of the model weight",
     )
     parser.add_argument("--return_all_prompt_logprobs", action="store_true", help="return all prompt tokens logprobs")
+    parser.add_argument("--token_healing", action="store_true", help="code model infer mode")
     parser.add_argument(
         "--long_truncation_mode",
         type=str,

@@ -11,7 +11,7 @@ from ..sampling_params import SamplingParams
 from ..io_struct import Req, NormalReq, SplitFuseReq, Batch
 from ..multimodal_params import MultimodalParams
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
-from .req_queue import ReqQueue
+from .req_queue import build_req_queue
 from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from .dynamic_prompt.shared_arr import SharedInt
@@ -35,7 +35,7 @@ class RouterManager:
         self.mode = args.mode
         self.max_total_token_num = args.max_total_token_num
         # 用共享内存进行共享，router 模块读取进行精确的调度估计
-        self.shared_can_use_token_num = SharedInt("mem_manger_can_use_token_num")
+        self.shared_can_use_token_num = SharedInt(f"{args.nccl_port}_mem_manger_can_use_token_num")
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
         self.radix_cache_client = None
         if self.args.use_dynamic_prompt_cache:
@@ -82,6 +82,7 @@ class RouterManager:
                 "nccl_port": self.args.nccl_port,
                 "is_splitfuse_mode": self.is_splitfuse_mode,
                 "splitfuse_block_size": self.splitfuse_block_size,
+                "is_token_healing": self.args.token_healing,
                 "return_all_prompt_logprobs": self.args.return_all_prompt_logprobs,
                 "use_dynamic_prompt_cache": self.args.use_dynamic_prompt_cache,
                 "data_type": self.args.data_type,
@@ -91,7 +92,8 @@ class RouterManager:
 
         await asyncio.gather(*init_model_ret)
 
-        self.req_queue = ReqQueue(self.args, self)
+        self.req_queue = build_req_queue(self.args, self)
+        logger.info(f"use req queue {self.req_queue.__class__.__name__}")
         return
 
     def add_req(
