@@ -260,16 +260,18 @@ class InferBatch:
 
     @torch.no_grad()
     def pause_reqs(self, pause_reqs: List[str]):
+        free_token_index = []
         for request_id, pause_way in pause_reqs:
             req: InferReq = requests_mapping[request_id]
             req.req_status = pause_way
             self.request_ids.remove(request_id)
             if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
-                # 现在只支持全卸载一个请求的所有 kv 了
-                free_token_index = []
                 self._free_a_req_mem(free_token_index, req)
-                self.req_manager.free_token(free_token_index[0])
                 req.cur_kv_len = 0
+
+        if len(free_token_index) != 0:
+            free_token_index = torch.cat(free_token_index, dim=-1)
+            self.req_manager.free_token(free_token_index)
 
         return self
 

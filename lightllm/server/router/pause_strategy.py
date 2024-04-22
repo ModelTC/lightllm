@@ -52,6 +52,7 @@ def select_paused_reqs(batch: Batch, strategy: Strategy, req_queue: BaseQueue, m
     for req in reqs:
         if req.group_req_id == group_req_id:
             pause_reqs.append(req)
+            batch.pop_req(req.request_id)
         else:
             break
 
