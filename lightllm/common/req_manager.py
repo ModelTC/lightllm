@@ -37,5 +37,21 @@ class ReqManager:
     def free_all(self):
         self.can_use_req_size = len(self.req_state)
         self.req_state[:] = 0
-    
-    
+
+    def beam_copy(self, reqs, is_prefill):
+        cache_req_to_token = {}
+        if is_prefill:
+            cache_req_to_token[0] = self.req_to_token_indexs[reqs[0].req_idx][:len(reqs[0].input_token_ids)].clone()
+            self.mem_manager.free(cache_req_to_token[0])
+        else:
+            for req in reqs:
+                prev_req =reqs[req.prev_beamid]
+                prev_tokens =  self.req_to_token_indexs[prev_req.req_idx][:len(prev_req.input_token_ids)].clone()
+                cache_req_to_token[req.prev_beamid] = prev_tokens
+                # print("prev_beamid  ", req.prev_beamid, len(prev_req.input_token_ids), len(req.input_token_ids))
+                self.mem_manager.free(self.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)])
+        for req in reqs:
+            prev_req =reqs[req.prev_beamid]
+            self.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)] = cache_req_to_token[req.prev_beamid]
+            self.mem_manager.add_refs(cache_req_to_token[req.prev_beamid])
+            

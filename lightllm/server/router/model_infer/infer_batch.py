@@ -1,3 +1,4 @@
+import copy
 import time
 import torch
 import numpy as np
@@ -11,11 +12,13 @@ from lightllm.utils.infer_utils import mark_start, mark_end
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.utils.log_utils import init_logger
+from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 logger = init_logger(__name__)
 
 
 requests_mapping = {}
+group_mapping = {}
 
 
 class InferSamplingParams:
@@ -109,6 +112,60 @@ class InferReq:
         return False
 
 
+class InferReqGroup:
+
+    def __init__(
+        self,
+        group_req_id,
+        best_of = 1,
+    ) -> None:
+        self.best_of = best_of
+        self.group_req_id = group_req_id
+        self.scores = torch.zeros([self.best_of], dtype=torch.float32, device='cuda')
+        self.prev_beamid = [0] * best_of
+        self.min_score = 1e9
+        self.req_group = []
+        self.res = []
+        self.finish_status = False
+    
+    def get_req(self, index):
+        return requests_mapping[self.req_group[index]]
+
+    def add_req(self, req_id):
+        self.req_group.append(req_id)
+    
+    def add_res(self, output_ids, cum_logprob, finish_status):
+        score = cum_logprob / len(output_ids)
+        if len(self.res) < self.best_of or score < self.min_score:
+            self.res.append([score, output_ids, finish_status])
+            if len(self.res) > self.best_of:
+                sorted_scores = sorted([(s, idx) for idx, (s, _, _) in enumerate(self.res)])
+                del self.res[sorted_scores[0][1]]
+                self.min_score = sorted_scores[1][0]
+            else:
+                self.min_score = min(score, self.worst_score)
+    
+    def beam_copy(self):
+        cache_req = {}
+
+        for prev_ in self.self.prev_beamid :
+            prev_req = requests_mapping[self.req_group[prev_]]
+            cache_req[prev_] =copy.deepcopy(prev_req)
+        for i, req_id in enumerate(self.req_group):
+            prev_ = self.prev_beamid[i]
+            prev_req = cache_req[prev_]
+            req =requests_mapping[req_id]
+            req.input_token_ids = copy.deepcopy(prev_req.input_token_ids)
+            req.out_token_id_count = copy.deepcopy(req.out_token_id_count)
+            req.finish_status = FinishStatus.NO_FINISH
+    
+    def update_finish_status(self, best_new_score):
+        if len(self.res) < self.best_of:
+            self.finish_status = False
+        else:
+            self.finish_status = best_new_score < self.min_score
+
+
 @dataclass
 class InferBatch:
     batch_id: int
@@ -138,7 +195,6 @@ class InferBatch:
         for r in requests:
             # request id -> idx in list mapping
             r_id = r["request_id"]
-
             if r_id not in requests_mapping.keys():
                 tokenized_input = r["input_id"]
                 input_length = len(tokenized_input)
@@ -146,10 +202,12 @@ class InferBatch:
                 sampling_param = r["sampling_param"]
                 multimodal_params = r["multimodal_params"]
                 sampling_param["vocab_size"] = vocab_size
+                best_of = sampling_param.pop("best_of")
                 assert r["req_status"] == ReqRunStatus.WAIT_IN_QUEUE
+                group_req_id = r["group_req_id"]
                 r_obj = InferReq(
                     r_id,
-                    r["group_req_id"],
+                    group_req_id,
                     input_token_ids=tokenized_input,
                     out_token_id_count=collections.defaultdict(int),
                     sampling_param=InferSamplingParams(**sampling_param),
@@ -160,6 +218,9 @@ class InferBatch:
                 )
                 requests_mapping[r_id] = r_obj
                 index += 1
+                if group_req_id not in group_mapping:
+                    group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
+                group_mapping[group_req_id].add_req(r_id)
             else:
                 if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                     r_obj: InferReq = requests_mapping[r_id]
