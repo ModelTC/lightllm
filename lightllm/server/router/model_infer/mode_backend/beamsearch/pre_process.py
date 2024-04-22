@@ -67,12 +67,12 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
     if radix_cache is not None:
         radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
 
-    return kwargs, run_reqs
+    return kwargs, run_reqs_group
 
 
 # @calculate_time(show=True, min_cost_ms=1)
 def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
-    run_reqs = []
+    run_req_groups = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
     start_loc = 0
@@ -83,7 +83,9 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     for request_id in batch.request_ids:
         req: InferReq = requests_mapping[request_id]
         assert req.req_status == ReqRunStatus.RUNNING
-        run_reqs.append(req)
+        group_req_id = req.group_req_id
+        if request_id == group_req_id:
+            run_req_groups.append(group_mapping[group_req_id])
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
         input_id = req.input_token_ids[-1]
@@ -100,7 +102,7 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device="cuda")
     nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device="cuda")
     kwargs = {
-        "batch_size": len(batch),
+        "batch_size": nopad_b_seq_len.shape[0],
         "total_token_num": nopad_total_token_num,
         "max_len_in_batch": nopad_max_len_in_batch,
         "input_ids": input_ids,
@@ -113,4 +115,4 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     if radix_cache is not None:
         radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
 
-    return kwargs, run_reqs
+    return kwargs, run_req_groups

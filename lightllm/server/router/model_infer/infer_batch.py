@@ -121,7 +121,7 @@ class InferReqGroup:
     ) -> None:
         self.best_of = best_of
         self.group_req_id = group_req_id
-        self.scores = torch.zeros([self.best_of], dtype=torch.float32, device='cuda')
+        self.cum_logprob = torch.zeros([self.best_of], dtype=torch.float32, device='cuda')
         self.prev_beamid = [0] * best_of
         self.min_score = 1e9
         self.req_group = []
@@ -143,12 +143,12 @@ class InferReqGroup:
                 del self.res[sorted_scores[0][1]]
                 self.min_score = sorted_scores[1][0]
             else:
-                self.min_score = min(score, self.worst_score)
+                self.min_score = min(score, self.min_score)
     
     def beam_copy(self):
         cache_req = {}
 
-        for prev_ in self.self.prev_beamid :
+        for prev_ in self.prev_beamid :
             prev_req = requests_mapping[self.req_group[prev_]]
             cache_req[prev_] =copy.deepcopy(prev_req)
         for i, req_id in enumerate(self.req_group):
@@ -163,7 +163,7 @@ class InferReqGroup:
         if len(self.res) < self.best_of:
             self.finish_status = False
         else:
-            self.finish_status = best_new_score < self.min_score
+            self.finish_status = best_new_score <= self.min_score
 
 
 @dataclass

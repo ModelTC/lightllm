@@ -31,36 +31,35 @@ class BeamSearchBackend(ModeBackend):
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
         logits = self.model.forward(**kwargs)
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+        next_token_id_groups, next_token_logprob_groups = sample(logits, run_reqs, is_prefill, self.model.vocab_size, self.model.req_manager, self.eos_id)
 
-        for req_group_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
+        for req_group_obj, next_token_id_group, next_token_logprob_group in zip(run_reqs, next_token_id_groups, next_token_logprob_groups):
             # prefill and decode is same
-
-            if req_group_obj.best_of == 1:
-                req_obj: InferReq = req_group_obj.get_req(0)
+            for i in range(req_group_obj.best_of):
+                req_obj = req_group_obj.get_req(i)
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
-                req_obj.input_token_ids.append(next_token_id)
-                req_obj.out_token_id_count[next_token_id] += 1
-                req_obj.update_finish_status(self.eos_id)
-                metadata = {
-                    "id": int(next_token_id),
-                    "logprob": float(next_token_logprob),
-                }
-                output_dict[req_obj.r_id] = (
-                    req_obj.req_status,
-                    req_obj.cur_kv_len,
-                    req_obj.get_output_len(),
-                    [(int(next_token_id), metadata)],
-                    req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
-                    None,
-                )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
-            else:
-                if not req_group_obj.finish_status:
-                    continue
-                for i in range(req_group_obj.best_of):
-                    req_obj = req_group_obj.get_req(i)
+
+                if req_group_obj.best_of == 1:
+                    req_obj.input_token_ids.append(next_token_id_group[i])
+                    req_obj.out_token_id_count[next_token_id_group[i]] += 1
+                    req_obj.update_finish_status(self.eos_id)
+                    metadata = {
+                        "id": int(next_token_id_group[i]),
+                        "logprob": float(next_token_logprob_group[i]),
+                    }
+                    output_dict[req_obj.r_id] = (
+                        req_obj.req_status,
+                        req_obj.cur_kv_len,
+                        req_obj.get_output_len(),
+                        [(int(next_token_id_group[i]), metadata)],
+                        req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
+                        None,
+                    )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
+                else:
+                    if not req_group_obj.finish_status:
+                        req_obj.input_token_ids.append(next_token_id_group[i])
+                        req_obj.out_token_id_count[next_token_id_group[i]] += 1
+                        continue
                     score, output_ids, finish_status_value = req_group_obj.res[i]
                     next_token_metas = []
                     for next_token_id in output_ids:
@@ -69,12 +68,11 @@ class BeamSearchBackend(ModeBackend):
                             "logprob": float(score),
                         }
                         next_token_metas.append((int(next_token_id), metadata))
-
                     output_dict[req_obj.r_id] = (
                         req_obj.req_status,
                         req_obj.cur_kv_len,
                         req_obj.get_output_len(),
-                        [(int(next_token_id), metadata)],
+                        next_token_metas,
                         finish_status_value,  # 转化为整数，避免传送大对象,
                         None,
                     )  # 请求

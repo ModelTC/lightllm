@@ -72,6 +72,7 @@ class DeTokenizationManager:
                     for req_id, new_token_id, new_gen_metadata, finish_status in recv_obj.reqs_infs:
                         if req_id not in self.req_id_to_out:
                             continue
+                        
                         req_out: ReqDetokenizationState = self.req_id_to_out[req_id]
                         req_out.output_ids.append(new_token_id)
                         new_gen_metadata["special"] = new_token_id in self.all_special_ids

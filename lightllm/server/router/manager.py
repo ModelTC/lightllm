@@ -87,6 +87,7 @@ class RouterManager:
                 "use_dynamic_prompt_cache": self.args.use_dynamic_prompt_cache,
                 "data_type": self.args.data_type,
                 "eos_id": self.eos_id,
+                "beam_mode" : self.args.beam_mode,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -342,9 +343,12 @@ class RouterManager:
         batch_out = BatchTokenIdOut()
         for req_id, (_, _, _, token_info_list, _, _) in req_ans.items():
             req = batch.id_to_reqs[req_id]
-            for (new_token_id, new_gen_metadata) in token_info_list:
+            for idx, (new_token_id, new_gen_metadata) in enumerate(token_info_list):
                 # req.finish_status 传输 value值 不传送对象，可以减少序列化对象的大小。
-                batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, req.finish_status.value))
+                if idx == len(token_info_list) - 1:
+                    batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, req.finish_status.value))
+                else:
+                    batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, 0))
 
         self.send_to_detokenization.send_pyobj(batch_out)
         return
