@@ -80,9 +80,9 @@ class InferReq:
         self.input_token_ids = input_token_ids
         self.req_status = req_status
         self.cur_kv_len = 0  # 当前已经占用掉 token 现存的 kv len 长度
-
         self.shared_kv_node = None
         self.finish_status = FinishStatus.NO_FINISH
+        self.logprobs = []
         return
 
     def get_output_len(self):
@@ -134,12 +134,12 @@ class InferReqGroup:
     def add_req(self, req_id):
         self.req_group.append(req_id)
     
-    def add_res(self, output_ids, cum_logprob, finish_status):
+    def add_res(self, output_ids, logprobs, cum_logprob, finish_status):
         score = cum_logprob / len(output_ids)
         if len(self.res) < self.best_of or score < self.min_score:
-            self.res.append([score, output_ids, finish_status])
+            self.res.append([score, output_ids, logprobs, finish_status])
             if len(self.res) > self.best_of:
-                sorted_scores = sorted([(s, idx) for idx, (s, _, _) in enumerate(self.res)])
+                sorted_scores = sorted([(s, idx) for idx, (s, _, _, _) in enumerate(self.res)])
                 del self.res[sorted_scores[0][1]]
                 self.min_score = sorted_scores[1][0]
             else:
@@ -157,6 +157,7 @@ class InferReqGroup:
             req =requests_mapping[req_id]
             req.input_token_ids = copy.deepcopy(prev_req.input_token_ids)
             req.out_token_id_count = copy.deepcopy(req.out_token_id_count)
+            req.logprobs = copy.deepcopy(req.logprobs)
             req.finish_status = FinishStatus.NO_FINISH
     
     def update_finish_status(self, best_new_score):

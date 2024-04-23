@@ -58,14 +58,15 @@ class BeamSearchBackend(ModeBackend):
                 else:
                     if not req_group_obj.finish_status:
                         req_obj.input_token_ids.append(next_token_id_group[i])
+                        req_obj.logprobs.append(next_token_logprob_group[i])
                         req_obj.out_token_id_count[next_token_id_group[i]] += 1
                         continue
-                    score, output_ids, finish_status_value = req_group_obj.res[i]
+                    score, output_ids, logprobs, finish_status_value = req_group_obj.res[i]
                     next_token_metas = []
-                    for next_token_id in output_ids:
+                    for (next_token_id, logprob) in zip(output_ids, logprobs):
                         metadata = {
                             "id": int(next_token_id),
-                            "logprob": float(score),
+                            "logprob": float(logprob),
                         }
                         next_token_metas.append((int(next_token_id), metadata))
                     output_dict[req_obj.r_id] = (

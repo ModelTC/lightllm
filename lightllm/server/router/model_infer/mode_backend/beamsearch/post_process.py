@@ -88,13 +88,15 @@ def beam_sample(probs, req_group, is_prefill, eos_id, vocab_size, req_manager):
     for i in range(2 * best_of):
         req_obj = requests_mapping[req_group.req_group[valid_beams]]
         req_obj.input_token_ids.append(next_tokens[i])
+        req_obj.logprobs.append(next_logprobs[i])
         req_obj.update_finish_status(eos_id)
         if req_obj.finish_status.is_finished():
             output_ids = req_obj.input_token_ids[req_obj.prompt_len:]
-            req_group.add_res(output_ids, next_logprobs[i], req_obj.finish_status.value)
+            req_group.add_res(output_ids, req_obj.logprobs, next_logprobs[i], req_obj.finish_status.value)
             if not req_obj.finish_status == FinishStatus.FINISHED_LENGTH:
                 req_obj.finish_status = FinishStatus.NO_FINISH
                 del req_obj.input_token_ids[-1]
+                del req_obj.logprobs[-1]
                 continue
         del req_obj.input_token_ids[-1]
         req_group.prev_beamid[valid_beams] = beam_id[i]
