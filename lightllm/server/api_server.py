@@ -402,6 +402,7 @@ def main():
     parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
 
     parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
+    parser.add_argument("--diverse_mode", action="store_true", help="use beamsearch mode")
 
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."

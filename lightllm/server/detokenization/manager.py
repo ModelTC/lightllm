@@ -54,6 +54,7 @@ class DeTokenizationManager:
                     for delta_id in range(recv_obj.best_of):
                         recv_obj.request_id = recv_obj.group_req_id + delta_id
                         self.req_id_to_out[recv_obj.request_id] = copy.deepcopy(recv_obj)
+                        print()
 
                 if isinstance(recv_obj, AbortReq):
                     delete_group_req_id = recv_obj.group_req_id

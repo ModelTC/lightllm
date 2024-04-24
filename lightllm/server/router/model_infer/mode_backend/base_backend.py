@@ -67,7 +67,7 @@ class ModeBackend:
         self.cache = {}
         self.logger = init_logger(__name__)
 
-        weight_dir = kvargs["weight_dir"]
+        self.weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
 
         dist.init_process_group(
@@ -79,12 +79,12 @@ class ModeBackend:
         # 需要读取，来初始化用于信息共享的shared mem 名称
         os.environ["_NCCL_PORT_"] = str(kvargs["nccl_port"])
 
-        model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
+        model_cfg, _ = PretrainedConfig.get_config_dict(self.weight_dir)
 
         model_kvargs = {
             "tp_rank": self.tp_rank,
             "world_size": self.world_size,
-            "weight_dir": weight_dir,
+            "weight_dir": self.weight_dir,
             "max_total_token_num": max_total_token_num,
             "load_way": self.load_way,
             "mode": self.mode,
@@ -187,8 +187,12 @@ class ModeBackend:
             if self.use_dynamic_prompt_cache
             else None
         )
+        self.init_custom()
 
         return
+
+    def init_custom(self):
+        pass 
 
     # @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):

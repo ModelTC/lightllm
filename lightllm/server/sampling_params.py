@@ -109,7 +109,7 @@ class SamplingParams:
             new_stop_sequences = []
             for stop_str in self.stop_sequences:
                 stop_str_ids = tokenizer.encode(stop_str)
-                if stop_str_ids is not None and len(stop_str_ids) >= 1:  # remove bos_token_id
+                if stop_str_ids is not None and len(stop_str_ids) > 1:  # remove bos_token_id
                     stop_str_ids = stop_str_ids[1:]
                 if len(stop_str_ids) > 0:
                     new_stop_sequences.append(stop_str_ids)
