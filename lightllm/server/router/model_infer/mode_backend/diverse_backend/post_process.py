@@ -1,3 +1,4 @@
+import os
 import re
 import torch
 from typing import List, Tuple
@@ -5,6 +6,9 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, group_map
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 from lightllm.server.io_struct import FinishStatus
 from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import _top_p_top_k
+SPLIT_TOKEN = int(os.getenv("SPLIT_TOKEN", -1))
+global_topp = [0.7, 0.9, 0.9]
+global_repetition = [1.12, 1.15, 1.14]
 
 
 def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List[int] = [2]):
@@ -24,7 +28,6 @@ def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List
         length_penalty_idx,
         mask_eos_reqs,
     ) = _get_post_sample_tensors(req_groups, is_prefill)
-
     apply_penalty(
         logits,
         presence_penalties,
@@ -49,7 +52,7 @@ def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List
         req_group = req_groups[i]
         best_of = req_group.best_of
         end = start + 1 if is_prefill else start + best_of
-        if best_of > 1 and is_prefill:
+        if best_of > 1 and not req_group.has_beam:            
             next_token_id, next_token_logprob = diverse_sample(probs[start:end], req_group, is_prefill, req_manager)
         else:
             probs_sort, probs_idx = _top_p_top_k(probs[start:end], top_ps[start:end], top_ks[start:end])
@@ -77,7 +80,13 @@ def diverse_sample(probs, req_group, is_prefill, req_manager):
     next_token_logprob, next_token_id = torch.topk(logprobs[0].view(-1), best_of, dim=0, largest=True, sorted=True)
     next_token_logprob = next_token_logprob.detach().cpu().numpy()
     next_token_id = next_token_id.detach().cpu().numpy()
-    req_manager.beam_copy(req_group, is_prefill)
+    if is_prefill and next_token_id[0] == SPLIT_TOKEN:
+        next_token_id = [next_token_id[0]] * best_of
+        next_token_logprob = [next_token_logprob[0]] * best_of
+    else:
+        req_group.has_beam = True
+    if is_prefill:
+        req_manager.beam_copy(req_group, is_prefill)
     return next_token_id, next_token_logprob
 
 def _get_post_sample_tensors(req_groups, is_prefill):
@@ -99,18 +108,19 @@ def _get_post_sample_tensors(req_groups, is_prefill):
     for i, req_group_obj in enumerate(req_groups):
         for j in range(req_group_obj.best_of):
             req_obj = req_group_obj.get_req(j)
+            relative_idx = req_group_obj.get_relative_index(j)
             id_to_count = req_obj.out_token_id_count
             sample_param = req_obj.sampling_param
             presence_penalties.append(sample_param.presence_penalty)
             frequency_penalties.append(sample_param.frequency_penalty)
-            repetition_penalties.append(sample_param.repetition_penalty)
+            repetition_penalties.append(global_repetition[relative_idx % len(global_repetition)])
             exponential_decay_length_penalties.append(sample_param.exponential_decay_length_penalty[1])
             out_token_len = len(req_obj.input_token_ids) - req_obj.prompt_len
             length_penalty_idx.append(max(out_token_len - sample_param.exponential_decay_length_penalty[0], 0))
             mask_eos_reqs.append(out_token_len < sample_param.min_new_tokens - 1)
 
             temperatures.append(sample_param.temperature)
-            top_ps.append(sample_param.top_p)
+            top_ps.append(global_topp[relative_idx % len(global_topp)])
             top_ks.append(sample_param.top_k)
 
             for token_id, count in id_to_count.items():

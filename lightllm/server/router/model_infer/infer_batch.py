@@ -1,3 +1,4 @@
+import os
 import copy
 import time
 import torch
@@ -19,6 +20,7 @@ logger = init_logger(__name__)
 
 requests_mapping = {}
 group_mapping = {}
+INPUT_PENALTY = os.getenv("INPUT_PENALTY", "1").upper() in ["ON", "TRUE", "1"]
 
 
 class InferSamplingParams:
@@ -127,9 +129,13 @@ class InferReqGroup:
         self.req_group = []
         self.res = []
         self.finish_status = False
+        self.has_beam = False
     
     def get_req(self, index):
         return requests_mapping[self.req_group[index]]
+
+    def get_relative_index(self, index):
+        return self.req_group[index] - self.group_req_id
 
     def add_req(self, req_id):
         self.req_group.append(req_id)
@@ -206,11 +212,15 @@ class InferBatch:
                 best_of = sampling_param.pop("best_of")
                 assert r["req_status"] == ReqRunStatus.WAIT_IN_QUEUE
                 group_req_id = r["group_req_id"]
+                out_token_id_count = collections.defaultdict(int)
+                if INPUT_PENALTY:
+                    for token_id in tokenized_input:
+                        out_token_id_count[token_id] +=1
                 r_obj = InferReq(
                     r_id,
                     group_req_id,
                     input_token_ids=tokenized_input,
-                    out_token_id_count=collections.defaultdict(int),
+                    out_token_id_count=out_token_id_count,
                     sampling_param=InferSamplingParams(**sampling_param),
                     multimodal_params=multimodal_params,
                     req_idx=nopad_b_req_idx[index],
