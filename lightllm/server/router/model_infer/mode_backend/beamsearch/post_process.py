@@ -86,7 +86,7 @@ def beam_sample(probs, req_group, is_prefill, eos_id, vocab_size, req_manager):
     next_tokens = (next_inds % vocab_size).detach().cpu().numpy()
     best_score = -float("inf")
     for i in range(2 * best_of):
-        req_obj = requests_mapping[req_group.req_group[valid_beams]]
+        req_obj = requests_mapping[req_group.req_group[beam_id[i]]]
         req_obj.input_token_ids.append(next_tokens[i])
         req_obj.logprobs.append(next_logprobs[i])
         req_obj.update_finish_status(eos_id)
