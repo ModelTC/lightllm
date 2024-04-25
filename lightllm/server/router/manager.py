@@ -88,8 +88,8 @@ class RouterManager:
                 "use_dynamic_prompt_cache": self.args.use_dynamic_prompt_cache,
                 "data_type": self.args.data_type,
                 "eos_id": self.eos_id,
-                "beam_mode" : self.args.beam_mode,
-                "diverse_mode" : self.args.diverse_mode,
+                "beam_mode": self.args.beam_mode,
+                "diverse_mode": self.args.diverse_mode,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -110,7 +110,11 @@ class RouterManager:
         for i in range(sampling_params.best_of):
             if self.is_splitfuse_mode:
                 req = SplitFuseReq(
-                    group_req_id + i, copy.deepcopy(prompt_ids), sampling_params, multimodal_params, self.splitfuse_block_size
+                    group_req_id + i,
+                    copy.deepcopy(prompt_ids),
+                    sampling_params,
+                    multimodal_params,
+                    self.splitfuse_block_size,
                 )
             else:
                 req = NormalReq(group_req_id + i, copy.deepcopy(prompt_ids), sampling_params, multimodal_params)
@@ -330,7 +334,7 @@ class RouterManager:
             # for (new_token_id, new_gen_metadata) in token_info_list:
             #     req.output_ids.append(new_token_id)
             #     req.output_metadata_list.append(new_gen_metadata)
-            # 当没有被 aborted 的时候，才停止请求。
+            # 当没有被 aborted 的时候，才更新请求状态。
             if not req.finish_status.is_aborted():
                 req.finish_status = FinishStatus(finish_status_value)
             new_batch_decode_need_tokens += req.get_decode_need_tokens()

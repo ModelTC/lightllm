@@ -79,7 +79,9 @@ class HttpServerManager:
                 if img.uuid is not None:
                     self.cache_client.root.release(img.uuid)
 
-    async def generate(self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params):
+    async def generate(
+        self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None
+    ):
         if self.enable_multimodal:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
@@ -131,6 +133,10 @@ class HttpServerManager:
                 await asyncio.wait_for(event.wait(), timeout=5)
             except asyncio.TimeoutError:
                 pass
+
+            if request is not None and await request.is_disconnected():
+                self.abort(group_request_id)
+                raise Exception(f"req_id {group_request_id} disconnected")
 
             async with req_status.lock:
                 event.clear()

@@ -62,7 +62,9 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
     group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, group_request_id, multimodal_params, request=request
+    )
 
     # Non-streaming case
     final_output_dict = collections.defaultdict(list)
@@ -132,7 +134,9 @@ async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manage
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
     group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, group_request_id, multimodal_params, request=request
+    )
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
