@@ -2,7 +2,7 @@ import torch
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferReqGroup, InferSamplingParams, requests_mapping, group_mapping
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
@@ -20,24 +20,35 @@ class BeamSearchBackend(ModeBackend):
     @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=False)
+    
+    def build_group(self, batch):
+        for r_id in batch.request_ids:
+            req = requests_mapping[r_id]
+            group_req_id = req.group_req_id
+            best_of = req.sampling_param.best_of
+            if group_req_id not in group_mapping:
+                group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
+            group_mapping[group_req_id].add_req(r_id)
 
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
+            self.build_group(batch)
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
         else:
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
         logits = self.model.forward(**kwargs)
-        next_token_id_groups, next_token_logprob_groups = sample(logits, run_reqs, is_prefill, self.model.vocab_size, self.model.req_manager, self.eos_id)
+        next_token_id_groups, next_token_logprob_groups, next_cumlogprob_groups = sample(logits, run_reqs, is_prefill, self.model.vocab_size, self.model.req_manager, self.eos_id)
 
-        for req_group_obj, next_token_id_group, next_token_logprob_group in zip(run_reqs, next_token_id_groups, next_token_logprob_groups):
+        for req_group_obj, next_token_id_group, next_token_logprob_group, next_cumlogprob_group in zip(run_reqs, next_token_id_groups, next_token_logprob_groups, next_cumlogprob_groups):
             # prefill and decode is same
             for i in range(req_group_obj.best_of):
                 req_obj = req_group_obj.get_req(i)
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
+                req_obj.cum_logprob = next_cumlogprob_group[i]
 
                 if req_group_obj.best_of == 1:
                     req_obj.input_token_ids.append(next_token_id_group[i])

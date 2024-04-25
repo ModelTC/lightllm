@@ -2,7 +2,7 @@ import torch
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferReqGroup, InferSamplingParams, requests_mapping, group_mapping
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.tokenizer import get_tokenizer
@@ -25,11 +25,21 @@ class DiversehBackend(ModeBackend):
     def decode_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=False)
 
+    def build_group(self, batch):
+        for r_id in batch.request_ids:
+            req = requests_mapping[r_id]
+            group_req_id = req.group_req_id
+            best_of = req.sampling_param.best_of
+            if group_req_id not in group_mapping:
+                group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
+            group_mapping[group_req_id].add_req(r_id)
+
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
+            self.build_group(batch)
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
         else:
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
@@ -45,10 +55,12 @@ class DiversehBackend(ModeBackend):
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id_group[i])
                 req_obj.out_token_id_count[next_token_id_group[i]] += 1
+                req_obj.cum_logprob += next_token_logprob_group[i]
                 req_obj.update_finish_status(self.eos_id)
                 metadata = {
                     "id": int(next_token_id_group[i]),
                     "logprob": float(next_token_logprob_group[i]),
+                    "cumlogprob": req_obj.cum_logprob,
                 }
                 output_dict[req_obj.r_id] = (
                     req_obj.req_status,

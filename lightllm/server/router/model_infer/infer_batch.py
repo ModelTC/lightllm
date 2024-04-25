@@ -85,6 +85,7 @@ class InferReq:
         self.shared_kv_node = None
         self.finish_status = FinishStatus.NO_FINISH
         self.logprobs = []
+        self.cum_logprob = 0.
         return
 
     def get_output_len(self):
@@ -122,8 +123,8 @@ class InferReqGroup:
         best_of = 1,
     ) -> None:
         self.best_of = best_of
+        self.refs = best_of
         self.group_req_id = group_req_id
-        self.cum_logprob = torch.zeros([self.best_of], dtype=torch.float32, device='cuda')
         self.prev_beamid = [0] * best_of
         self.min_score = 1e9
         self.req_group = []
@@ -139,6 +140,13 @@ class InferReqGroup:
 
     def add_req(self, req_id):
         self.req_group.append(req_id)
+    
+    def get_cumlogprobs(self):
+        return [requests_mapping[r_id].cum_logprob for r_id in self.req_group]
+    
+    def decrease_refs(self):
+        self.refs -= 1
+        return self.refs == 0
     
     def add_res(self, output_ids, logprobs, cum_logprob, finish_status):
         score = cum_logprob / len(output_ids)
@@ -209,7 +217,6 @@ class InferBatch:
                 sampling_param = r["sampling_param"]
                 multimodal_params = r["multimodal_params"]
                 sampling_param["vocab_size"] = vocab_size
-                best_of = sampling_param.pop("best_of")
                 assert r["req_status"] == ReqRunStatus.WAIT_IN_QUEUE
                 group_req_id = r["group_req_id"]
                 out_token_id_count = collections.defaultdict(int)
@@ -229,9 +236,6 @@ class InferBatch:
                 )
                 requests_mapping[r_id] = r_obj
                 index += 1
-                if group_req_id not in group_mapping:
-                    group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
-                group_mapping[group_req_id].add_req(r_id)
             else:
                 if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                     r_obj: InferReq = requests_mapping[r_id]
@@ -285,6 +289,11 @@ class InferBatch:
         free_token_index = []
         for request_id in self.request_ids:
             req: InferReq = requests_mapping.pop(request_id)
+            group_req_id = convert_sub_id_to_group_id(req.r_id)
+            if group_req_id in group_mapping:
+                is_empty = group_mapping[group_req_id].decrease_refs()
+                if is_empty:
+                    del group_mapping[group_req_id]
             free_req_index.append(req.req_idx)
             self._free_a_req_mem(free_token_index, req)
             req.cur_kv_len = 0
@@ -293,6 +302,8 @@ class InferBatch:
         self.req_manager.free(free_req_index, free_token_index)
         if len(requests_mapping) == 0:
             requests_mapping.clear()
+        if len(group_mapping) == 0:
+            group_mapping.clear()
 
         if self.radix_cache is not None:
             logger.info(
@@ -319,6 +330,11 @@ class InferBatch:
         free_token_index = []
         for request_id in finished_request_ids:
             req: InferReq = requests_mapping.pop(request_id)
+            group_req_id = convert_sub_id_to_group_id(req.r_id)
+            if group_req_id in group_mapping:
+                is_empty = group_mapping[group_req_id].decrease_refs()
+                if is_empty:
+                    del group_mapping[group_req_id]
             free_req_index.append(req.req_idx)
             self._free_a_req_mem(free_token_index, req)
             req.cur_kv_len = 0
