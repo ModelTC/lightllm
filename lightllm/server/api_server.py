@@ -68,6 +68,7 @@ TIMEOUT_KEEP_ALIVE = 5  # seconds.
 
 g_id_gen = ReqIDGenerator()
 app = FastAPI()
+g_use_tgi_api = False
 
 isFirst = True
 
@@ -99,6 +100,8 @@ def healthcheckhead():
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     first_set_handle_loop()
+    if g_use_tgi_api:
+        return await tgi_generate_impl(request, g_id_gen, httpserver_manager)
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -110,7 +113,9 @@ async def generate(request: Request) -> Response:
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
     group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, group_request_id, multimodal_params, request=request
+    )
 
     # Non-streaming case
     final_output_dict = collections.defaultdict(list)
@@ -121,11 +126,6 @@ async def generate(request: Request) -> Response:
     prompt_token_ids = None
     is_first_metadata = True
     async for sub_req_id, request_output, metadata, finish_status in results_generator:
-        if await request.is_disconnected():
-            # Abort the request if the client disconnects.
-            await httpserver_manager.abort(group_request_id)
-            return Response(status_code=499)
-
         # when set "--return_all_prompt_logprobs", the first token metadata will contains
         # prompt_logprobs and prompt_token_ids
         if is_first_metadata:
@@ -172,6 +172,8 @@ async def generate(request: Request) -> Response:
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
     first_set_handle_loop()
+    if g_use_tgi_api:
+        return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager)
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -186,7 +188,9 @@ async def generate_stream(request: Request) -> Response:
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
     group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(prompt, sampling_params, group_request_id, multimodal_params)
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, group_request_id, multimodal_params, request=request
+    )
 
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
@@ -215,18 +219,6 @@ async def generate_stream(request: Request) -> Response:
     background_tasks.add_task(abort_request)
 
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
-
-
-@app.post("/tgi_generate")
-async def tgi_generate(request: Request) -> Response:
-    first_set_handle_loop()
-    return await tgi_generate_impl(request, g_id_gen, httpserver_manager)
-
-
-@app.post("/tgi_generate_stream")
-async def tgi_generate_stream(request: Request) -> Response:
-    first_set_handle_loop()
-    return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager)
 
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
@@ -262,7 +254,9 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     multimodal_params = MultimodalParams(images=[])
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
-    results_generator = httpserver_manager.generate(prompt, sampling_params, request_id, multimodal_params)
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, request_id, multimodal_params, request=raw_request
+    )
 
     # Non-streaming case
     if not request.stream:
@@ -270,10 +264,6 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         prompt_tokens = -1
         completion_tokens = 0
         async for sub_req_id, request_output, metadata, _ in results_generator:
-            if await raw_request.is_disconnected():
-                # Abort the request if the client disconnects.
-                await httpserver_manager.abort(request_id)
-                return Response(status_code=499)
             completion_tokens += 1
             if prompt_tokens == -1:
                 prompt_tokens = metadata["prompt_tokens"]
@@ -432,8 +422,13 @@ def main():
                         head : remove some head tokens to make input token len <= max_req_input_len
                         center : remove some tokens in center loc to make input token len <= max_req_input_len""",
     )
+    parser.add_argument("--use_tgi_api", action="store_true", help="use tgi input and ouput format")
 
     args = parser.parse_args()
+
+    global g_use_tgi_api
+    g_use_tgi_api = args.use_tgi_api
+    logger.info(f"use tgi api: {g_use_tgi_api}")
 
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num
