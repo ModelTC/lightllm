@@ -54,7 +54,6 @@ class DeTokenizationManager:
                     for delta_id in range(recv_obj.best_of):
                         recv_obj.request_id = recv_obj.group_req_id + delta_id
                         self.req_id_to_out[recv_obj.request_id] = copy.deepcopy(recv_obj)
-                        print()
 
                 if isinstance(recv_obj, AbortReq):
                     delete_group_req_id = recv_obj.group_req_id
@@ -73,7 +72,7 @@ class DeTokenizationManager:
                     for req_id, new_token_id, new_gen_metadata, finish_status in recv_obj.reqs_infs:
                         if req_id not in self.req_id_to_out:
                             continue
-                        
+
                         req_out: ReqDetokenizationState = self.req_id_to_out[req_id]
                         req_out.output_ids.append(new_token_id)
                         new_gen_metadata["special"] = new_token_id in self.all_special_ids
