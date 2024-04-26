@@ -6,7 +6,7 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq,
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.tokenizer import get_tokenizer
-from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend.beamsearch.pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 
 

@@ -1,4 +1,5 @@
 """Sampling parameters for text generation."""
+import os
 from typing import List, Optional, Union, Tuple
 from .req_id_generator import MAX_BEST_OF
 
@@ -24,6 +25,7 @@ class SamplingParams:
         skip_special_tokens: bool = True,  # whether to skip special tokens when decoding
         add_spaces_between_special_tokens: bool = True,  # whether to add spaces between special tokens when decoding
         print_eos_token: bool = False,  # eos_id will be always ignored except the value is set to True
+        input_penalty: bool = False, #Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
     ) -> None:
         self.best_of = best_of
         self.do_sample = do_sample
@@ -50,6 +52,7 @@ class SamplingParams:
         ):  # temperature is too slow, change to greedy search
             self.temperature = 1.0
             self.top_k = 1
+        self.input_penalty = os.getenv("INPUT_PENALTY",  "1").upper() in ["ON", "TRUE", "1"] or input_penalty
         return
 
     def verify(self):
@@ -131,4 +134,5 @@ class SamplingParams:
         ret["max_new_tokens"] = self.max_new_tokens
         ret["stop_sequences"] = self.stop_sequences
         ret["best_of"] = self.best_of
+        ret["input_penalty"] = self.input_penalty
         return ret

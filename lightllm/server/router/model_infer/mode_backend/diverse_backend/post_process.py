@@ -86,7 +86,7 @@ def diverse_sample(probs, req_group, is_prefill, req_manager):
     else:
         req_group.has_beam = True
     if is_prefill:
-        req_manager.beam_copy(req_group, is_prefill)
+        req_group.beam_copy(req_manager, is_prefill)
     return next_token_id, next_token_logprob
 
 def _get_post_sample_tensors(req_groups, is_prefill):

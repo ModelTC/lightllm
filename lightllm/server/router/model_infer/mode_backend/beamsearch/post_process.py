@@ -110,8 +110,8 @@ def beam_sample(probs, req_group, is_prefill, eos_id, vocab_size, req_manager):
         valid_beams += 1
         if valid_beams == best_of:
             break
-    req_manager.beam_copy(req_group, is_prefill)
-    req_group.beam_copy()
+    # req_manager.beam_copy(req_group, is_prefill)
+    req_group.beam_copy(req_manager, is_prefill)
     req_group.update_finish_status(best_score)
     return next_token_id, next_token_logprob, next_cumlogprob
 

@@ -37,25 +37,3 @@ class ReqManager:
     def free_all(self):
         self.can_use_req_size = len(self.req_state)
         self.req_state[:] = 0
-
-    def beam_copy(self, req_group, is_prefill):
-        cache_req_to_token = {}
-        if is_prefill:
-            req_0 =  req_group.get_req(0)
-            cache_req_to_token[0] = self.req_to_token_indexs[req_0.req_idx][:len(req_0.input_token_ids)].clone()
-            self.mem_manager.free(cache_req_to_token[0])
-        else:
-            for i in range(req_group.best_of):
-                req = req_group.get_req(i)
-                prev_beamid = req_group.prev_beamid[i]
-                prev_req =req_group.get_req(prev_beamid)
-                prev_tokens =  self.req_to_token_indexs[prev_req.req_idx][:len(prev_req.input_token_ids)].clone()
-                cache_req_to_token[prev_beamid] = prev_tokens
-                self.mem_manager.free(self.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)])
-        for i in range(req_group.best_of):
-            req = req_group.get_req(i)
-            prev_beamid = req_group.prev_beamid[i]
-            prev_req =req_group.get_req(prev_beamid)
-            self.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)] = cache_req_to_token[prev_beamid]
-            self.mem_manager.add_refs(cache_req_to_token[prev_beamid])
-            

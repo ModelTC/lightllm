@@ -80,12 +80,14 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     nopad_b_req_idx = []
     nopad_b_start_loc = []
     nopad_b_seq_len = []
+    group_tag = {}
     for request_id in batch.request_ids:
         req: InferReq = requests_mapping[request_id]
         assert req.req_status == ReqRunStatus.RUNNING
         group_req_id = req.group_req_id
-        if request_id == group_req_id:
+        if group_req_id not in group_tag:
             run_req_groups.append(group_mapping[group_req_id])
+            group_tag[group_req_id] = True
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
         input_id = req.input_token_ids[-1]

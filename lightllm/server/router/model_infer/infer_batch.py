@@ -16,12 +16,8 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 logger = init_logger(__name__)
-
-
 requests_mapping = {}
 group_mapping = {}
-INPUT_PENALTY = os.getenv("INPUT_PENALTY", "1").upper() in ["ON", "TRUE", "1"]
-
 
 class InferSamplingParams:
     def __init__(
@@ -40,6 +36,7 @@ class InferSamplingParams:
         max_new_tokens: int = 16,
         ignore_eos: bool = False,
         stop_sequences: List[List[int]] = [],
+        input_penalty: bool = False,
     ) -> None:
         self.best_of = best_of
         self.do_sample = do_sample
@@ -56,6 +53,7 @@ class InferSamplingParams:
         self.stop_sequences = stop_sequences
         if self.top_k == -1:
             self.top_k = vocab_size
+        self.input_penalty = input_penalty
         return
 
 
@@ -65,7 +63,6 @@ class InferReq:
         r_id,
         group_req_id,
         input_token_ids=[],
-        out_token_id_count={},
         sampling_param=None,
         req_idx=-1,
         prompt_len=0,
@@ -74,7 +71,6 @@ class InferReq:
     ) -> None:
         self.r_id = r_id
         self.group_req_id = group_req_id
-        self.out_token_id_count = out_token_id_count
         self.sampling_param = sampling_param
         self.multimodal_params = multimodal_params
         self.req_idx = req_idx
@@ -84,8 +80,13 @@ class InferReq:
         self.cur_kv_len = 0  # 当前已经占用掉 token 现存的 kv len 长度
         self.shared_kv_node = None
         self.finish_status = FinishStatus.NO_FINISH
-        self.logprobs = []
-        self.cum_logprob = 0.
+        self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
+        self.cum_logprob = 0. # cumulative logprob of each token, using for beamsearch and diverse_backend
+        if self.sampling_param.input_penalty:
+            self.out_token_id_count = collections.Counter(input_token_ids)
+        else:
+            self.out_token_id_count = collections.defaultdict(int)
+
         return
 
     def get_output_len(self):
@@ -125,12 +126,12 @@ class InferReqGroup:
         self.best_of = best_of
         self.refs = best_of
         self.group_req_id = group_req_id
-        self.prev_beamid = [0] * best_of
-        self.min_score = 1e9
+        self.prev_beamid = [0] * best_of  # Record which beam the current token came from.
+        self.min_score = 1e9 # The min score of beam results
         self.req_group = []
-        self.res = []
-        self.finish_status = False
-        self.has_beam = False
+        self.res = []  # Results already finished
+        self.finish_status = False # If beamsearch is done
+        self.has_beam = False 
     
     def get_req(self, index):
         return requests_mapping[self.req_group[index]]
@@ -159,12 +160,22 @@ class InferReqGroup:
             else:
                 self.min_score = min(score, self.min_score)
     
-    def beam_copy(self):
+    def beam_copy(self, req_manager, is_prefill):
         cache_req = {}
+        cache_req_to_token = {}
 
-        for prev_ in self.prev_beamid :
+        # record previous status
+        for i, prev_ in enumerate(self.prev_beamid):
             prev_req = requests_mapping[self.req_group[prev_]]
-            cache_req[prev_] =copy.deepcopy(prev_req)
+            if prev_ not in cache_req_to_token:
+                cache_req[prev_] =copy.deepcopy(prev_req)
+                prev_tokens =  req_manager.req_to_token_indexs[prev_req.req_idx][:len(prev_req.input_token_ids)].clone()
+                cache_req_to_token[prev_] = prev_tokens
+            req = self.get_req(i)
+            if not is_prefill or i == 0:
+                req_manager.mem_manager.free(req_manager.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)])
+        
+        # update the InferReq status and mem_manager status for cache sharing
         for i, req_id in enumerate(self.req_group):
             prev_ = self.prev_beamid[i]
             prev_req = cache_req[prev_]
@@ -173,7 +184,9 @@ class InferReqGroup:
             req.out_token_id_count = copy.deepcopy(req.out_token_id_count)
             req.logprobs = copy.deepcopy(req.logprobs)
             req.finish_status = FinishStatus.NO_FINISH
-    
+            req_manager.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)] = cache_req_to_token[prev_]
+            req_manager.mem_manager.add_refs(cache_req_to_token[prev_])           
+           
     def update_finish_status(self, best_new_score):
         if len(self.res) < self.best_of:
             self.finish_status = False
@@ -219,15 +232,10 @@ class InferBatch:
                 sampling_param["vocab_size"] = vocab_size
                 assert r["req_status"] == ReqRunStatus.WAIT_IN_QUEUE
                 group_req_id = r["group_req_id"]
-                out_token_id_count = collections.defaultdict(int)
-                if INPUT_PENALTY:
-                    for token_id in tokenized_input:
-                        out_token_id_count[token_id] +=1
                 r_obj = InferReq(
                     r_id,
                     group_req_id,
                     input_token_ids=tokenized_input,
-                    out_token_id_count=out_token_id_count,
                     sampling_param=InferSamplingParams(**sampling_param),
                     multimodal_params=multimodal_params,
                     req_idx=nopad_b_req_idx[index],
