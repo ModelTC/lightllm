@@ -88,11 +88,23 @@ def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
+@app.get("/liveness")
+@app.post("/liveness")
+def liveness():
+    return {"status": "ok"}
+
+
+@app.get("/readiness")
+@app.post("/readiness")
+def readiness():
+    return {"status": "ok"}
+
+
 @app.get("/healthz")
 @app.get("/health")
-def healthcheck(request: Request):
+@app.head("/health")
+async def healthcheck(request: Request):
     first_set_handle_loop()
-
     if os.environ.get("DEBUG_HEALTHCHECK_RETURN_FAIL") == "true":
         return JSONResponse({"message": "Error"}, status_code=404)
 
@@ -102,11 +114,6 @@ def healthcheck(request: Request):
         return JSONResponse({"message": "Ok"}, status_code=200)
     else:
         return JSONResponse({"message": "Error"}, status_code=404)
-
-
-@app.head("/health")
-def healthcheckhead():
-    return None
 
 
 @app.post("/generate")

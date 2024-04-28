@@ -41,6 +41,8 @@ def health_monitor(url):
             if child.pid != os.getpid():
                 os.kill(child.pid, signal.SIGKILL)
                 logger.debug(f"Killing process with PID: {child.pid}")
+        os.kill(os.getppid(), signal.SIGKILL)
+        logger.debug(f"Killing process with PID: {os.getppid()}")
         sys.exit(-1)
     return
 
@@ -56,8 +58,9 @@ def start_health_check_process(args, pipe_writer):
     global consecutive_failures
     host, port = args.host, args.port
     url = f"http://{host}:{port}/health".format(host=host, port=port)
-    interval_seconds = 88
+    interval_seconds = int(os.environ.get("HEALTH_CHECK_INTERVAL_SECONDS", 88))
     logger.info("Waiting for the server to start up.")
+    logger.info(f"check interval seconds {interval_seconds}")
     time.sleep(6)
 
     logger.info("Server has started, starting the health check process.")
