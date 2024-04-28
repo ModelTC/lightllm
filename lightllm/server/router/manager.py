@@ -392,6 +392,12 @@ class RouterManager:
 
 
 def start_router_process(args, router_port, detokenization_port, model_rpc_ports, pipe_writer):
+    # 注册graceful 退出的处理
+    from lightllm.utils.graceful_utils import graceful_registry
+    import inspect
+
+    graceful_registry(inspect.currentframe().f_code.co_name)
+
     try:
         router = RouterManager(
             args, router_port=router_port, detokenization_port=detokenization_port, model_rpc_ports=model_rpc_ports

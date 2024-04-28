@@ -105,6 +105,12 @@ class DeTokenizationManager:
 
 
 def start_detokenization_process(args, detokenization_port, httpserver_port, pipe_writer):
+    # 注册graceful 退出的处理
+    from lightllm.utils.graceful_utils import graceful_registry
+    import inspect
+
+    graceful_registry(inspect.currentframe().f_code.co_name)
+
     try:
         router = DeTokenizationManager(
             args.eos_id,

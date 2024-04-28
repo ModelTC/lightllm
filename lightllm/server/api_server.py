@@ -22,6 +22,7 @@ import time
 import torch
 import uvloop
 import sys
+import os
 
 from .build_prompt import build_prompt
 
@@ -68,8 +69,9 @@ TIMEOUT_KEEP_ALIVE = 5  # seconds.
 
 g_id_gen = ReqIDGenerator()
 app = FastAPI()
-g_use_tgi_api = False
+server = uvicorn.Server(uvicorn.Config(app))
 
+g_use_tgi_api = False
 isFirst = True
 
 
@@ -88,8 +90,18 @@ def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse
 
 @app.get("/healthz")
 @app.get("/health")
-def healthcheck():
-    return "OK"
+def healthcheck(request: Request):
+    first_set_handle_loop()
+
+    if os.environ.get("DEBUG_HEALTHCHECK_RETURN_FAIL") == "true":
+        return JSONResponse({"message": "Error"}, status_code=404)
+
+    from lightllm.utils.health_check import health_check
+
+    if health_check(httpserver_manager, g_id_gen, request):
+        return JSONResponse({"message": "Ok"}, status_code=200)
+    else:
+        return JSONResponse({"message": "Error"}, status_code=404)
 
 
 @app.head("/health")
@@ -306,6 +318,25 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
 
+@app.on_event("shutdown")
+async def shutdown():
+    logger.info("Received signal to shutdown. Performing graceful shutdown...")
+    await asyncio.sleep(3)
+    logger.info("Graceful shutdown completed.")
+
+    # 杀掉所有子进程
+    import psutil
+    import signal
+
+    parent = psutil.Process(os.getpid())
+    children = parent.children(recursive=True)
+    for child in children:
+        os.kill(child.pid, signal.SIGKILL)
+
+    server.should_exit = True
+    return
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="127.0.0.1")
@@ -423,6 +454,9 @@ def main():
                         center : remove some tokens in center loc to make input token len <= max_req_input_len""",
     )
     parser.add_argument("--use_tgi_api", action="store_true", help="use tgi input and ouput format")
+    parser.add_argument(
+        "--health_monitor", action="store_true", help="check the health of service and restart when error"
+    )
 
     args = parser.parse_args()
 
@@ -499,6 +533,12 @@ def main():
 
         s3_model_clear(args.model_dir)
 
+    if args.health_monitor:
+        from lightllm.server.health_monitor.manager import start_health_check_process
+
+        start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
+
+    server.install_signal_handlers()
     uvicorn.run(
         app,
         host=args.host,

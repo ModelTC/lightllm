@@ -138,6 +138,12 @@ class VisualManager:
 
 
 def start_visual_process(args, router_port, visual_port, client_port, pipe_writer):
+    # 注册graceful 退出的处理
+    from lightllm.utils.graceful_utils import graceful_registry
+    import inspect
+
+    graceful_registry(inspect.currentframe().f_code.co_name)
+
     try:
         visualserver = VisualManager(args, router_port, visual_port, client_port)
         asyncio.run(visualserver.wait_to_model_ready())

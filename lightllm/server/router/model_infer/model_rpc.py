@@ -8,7 +8,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     ReturnPromptLogProbBackend,
     SplitFuseBackend,
     BeamSearchBackend,
-    DiversehBackend
+    DiversehBackend,
 )
 from lightllm.utils.log_utils import init_logger
 
@@ -195,6 +195,12 @@ class ModelRpcClient:
 
 
 def _init_env(port):
+    # 注册graceful 退出的处理
+    from lightllm.utils.graceful_utils import graceful_registry
+    import inspect
+
+    graceful_registry(inspect.currentframe().f_code.co_name)
+
     from rpyc.utils.server import ThreadedServer
 
     t = ThreadedServer(ModelRpcServer(), port=port, protocol_config={"allow_pickle": True})
