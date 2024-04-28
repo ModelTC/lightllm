@@ -45,6 +45,7 @@ class ContinuesBatchQueue(BaseQueue):
         ok_prefill = new_batch_first_router_need_tokens <= self.batch_max_tokens
 
         if ok_token_num and ok_req_num and ok_prefill:
+            self.router.shared_token_load.set_dynamic_max_load(need_max_token_num / self.max_total_tokens)
             return True, new_batch_first_router_need_tokens
         else:
             return False, new_batch_first_router_need_tokens
@@ -86,3 +87,16 @@ class ContinuesBatchQueue(BaseQueue):
             return new_batch
         else:
             return None
+
+    def calcu_batch_token_load(self, current_batch: Batch):
+        if current_batch is None:
+            return 0.0
+        is_busy = self.is_busy()
+        self._init_cache_list(current_batch, is_busy)
+        self.cache_len_list.sort(key=lambda x: -x[1])
+        left_out_len_array = np.array([e[1] for e in self.cache_len_list])
+        has_run_len_array = np.array([e[0] for e in self.cache_len_list])
+        cum_run_len_array = np.cumsum(has_run_len_array)
+        size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
+        need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
+        return need_max_token_num / self.max_total_tokens

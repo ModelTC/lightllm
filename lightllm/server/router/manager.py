@@ -22,6 +22,7 @@ from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
 from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
+from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 logger = init_logger(__name__)
@@ -41,6 +42,12 @@ class RouterManager:
         self.radix_cache_client = None
         if self.args.use_dynamic_prompt_cache:
             self.radix_cache_client = RadixCacheReadOnlyClient(str(args.nccl_port), self.max_total_token_num, tp_id=0)
+
+        # 共享变量，用于存储router端调度分析得到的机器负载信息
+        self.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load")
+        self.shared_token_load.set_current_load(0.0)
+        self.shared_token_load.set_logical_max_load(0.0)
+        self.shared_token_load.set_dynamic_max_load(0.0)
 
         self.pause_strategy = Fcfs()
         self.running_batch: Batch = None
@@ -164,8 +171,13 @@ class RouterManager:
                         f"token used ratio: {token_ratio1} not contain prompt cache tree unrefed tokens\n"
                         f"token used ratio: {token_ratio2} contain prompt cache tree unrefed tokens"
                     )
+                    self.shared_token_load.set_current_load(token_ratio1)
+                    self.req_queue.update_token_load(self.running_batch)
                     pass
                 self.stats_tool.print_stats()
+            else:
+                self.shared_token_load.set_dynamic_max_load(0.0)
+                self.shared_token_load.set_current_load(0.0)
 
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
@@ -304,15 +316,6 @@ class RouterManager:
             return
 
     def _update_init_status_to_batch(self, batch: Batch, req_to_req_status):
-        # # 更新请求状态
-        # new_batch_decode_need_tokens = 0  # 只有在 splitfuse 模式下有意义
-        # for req_id, (req_status, cur_kv_len) in req_to_req_status.items():
-        #     r_obj = batch.id_to_reqs[req_id]
-        #     r_obj.req_status = req_status
-        #     r_obj.cur_kv_len = cur_kv_len
-        #     new_batch_decode_need_tokens += r_obj.get_decode_need_tokens()
-
-        # batch.batch_decode_need_tokens = new_batch_decode_need_tokens
         self._update_out_status_to_batch(batch, req_to_req_status)
         return
 

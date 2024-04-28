@@ -116,6 +116,21 @@ async def healthcheck(request: Request):
         return JSONResponse({"message": "Error"}, status_code=404)
 
 
+@app.get("/token_load")
+async def token_load(request: Request):
+    return JSONResponse(
+        {
+            # 当前使用token量，估计的负载
+            "current_load": float(shared_token_load.get_current_load()),
+            # 朴素估计的负载，简单将当前请求的输入和输出长度想加得到,目前已未使用，其值与dynamic_max_load一样。
+            "logical_max_load": float(shared_token_load.get_logical_max_load()),
+            # 动态估计的最大负载，考虑请求中途退出的情况的负载
+            "dynamic_max_load": float(shared_token_load.get_dynamic_max_load()),
+        },
+        status_code=200,
+    )
+
+
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     first_set_handle_loop()
@@ -544,6 +559,12 @@ def main():
         from lightllm.server.health_monitor.manager import start_health_check_process
 
         start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
+
+    # 共享变量，用于获取router端调度分析得到的机器负载信息
+    from lightllm.server import TokenLoad
+
+    global shared_token_load
+    shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load")
 
     server.install_signal_handlers()
     uvicorn.run(

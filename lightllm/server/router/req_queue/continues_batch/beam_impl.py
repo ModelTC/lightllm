@@ -64,6 +64,7 @@ class BeamContinuesBatchQueue(BaseQueue):
         ok_prefill = new_batch_first_router_need_tokens <= self.batch_max_tokens
 
         if ok_token_num and ok_req_num and ok_prefill:
+            self.router.shared_token_load.set_dynamic_max_load(need_max_token_num / self.max_total_tokens)
             return True, new_batch_first_router_need_tokens
         else:
             return False, new_batch_first_router_need_tokens
@@ -134,3 +135,24 @@ class BeamContinuesBatchQueue(BaseQueue):
                 return True
             else:
                 return False
+
+    def calcu_batch_token_load(self, current_batch: Batch):
+        if current_batch is None:
+            return 0.0
+        is_busy = self.is_busy()
+        self._init_cache_list(current_batch, is_busy)
+        self.cache_len_list.sort(key=lambda x: -x[1][1])
+        need_max_token_num = 0
+        cumsum_len = 0
+        exist_group_req_set = set()
+        for index, (req, (cur_input_len, cur_ouput_len)) in enumerate(self.cache_len_list, 1):
+            if req.group_req_id not in exist_group_req_set:
+                exist_group_req_set.add(req.group_req_id)
+                cumsum_len += cur_input_len
+                need_max_token_num = max(need_max_token_num, cumsum_len + index * cur_ouput_len)
+            else:
+                # 因为有共享的token，所以
+                assert cur_input_len - req.input_len >= 0
+                cumsum_len += cur_input_len - req.input_len  # 减去共享的部分
+                need_max_token_num = max(need_max_token_num, cumsum_len + index * cur_ouput_len)
+        return need_max_token_num / self.max_total_tokens

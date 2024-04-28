@@ -49,3 +49,11 @@ class BaseQueue:
 
     def generate_new_batch(self, current_batch: Batch):
         raise NotImplementedError()
+
+    def calcu_batch_token_load(self, current_batch: Batch):
+        raise NotImplementedError()
+
+    def update_token_load(self, current_batch: Batch):
+        if self.router.shared_token_load.need_update_dynamic_max_load():
+            self.router.shared_token_load.set_dynamic_max_load(self.calcu_batch_token_load(current_batch))
+        return
