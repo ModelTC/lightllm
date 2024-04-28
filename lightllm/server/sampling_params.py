@@ -10,6 +10,7 @@ class SamplingParams:
     def __init__(
         self,
         best_of: int = 1,
+        n: int = 1, # number of results
         do_sample: bool = False,
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0,
@@ -28,6 +29,7 @@ class SamplingParams:
         input_penalty: bool = False, #Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
     ) -> None:
         self.best_of = best_of
+        self.n = n
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty
@@ -58,6 +60,8 @@ class SamplingParams:
     def verify(self):
         if self.best_of <= 0 or self.best_of > MAX_BEST_OF:
             raise ValueError(f"need 0 < best_of <= {MAX_BEST_OF}, but get {self.best_of}")
+        if self.n <= 0 or self.n > MAX_BEST_OF or self.n > self.best_of:
+            raise ValueError(f"need 0 < n <= {MAX_BEST_OF}, n <= {self.best_of}, but get {self.n}")
         if self.presence_penalty < 0.0:
             raise ValueError(f"presence_penalty must >= 0.0, got {self.presence_penalty}")
         if self.frequency_penalty < 0.0:

@@ -164,8 +164,8 @@ async def generate(request: Request) -> Response:
 
         if finish_status.is_finished():
             finish_reason_dict[sub_req_id] = finish_status
-
-    sub_ids = list(final_output_dict.keys())
+    n = sampling_params.n
+    sub_ids = list(final_output_dict.keys())[:n]
     final_output_list = ["".join(final_output_dict[sub_id]) for sub_id in sub_ids]
     count_output_tokens_list = [count_output_tokens_dict[sub_id] for sub_id in sub_ids]
     finish_reson_list = [finish_reason_dict[sub_id].get_finish_reason() for sub_id in sub_ids]

@@ -192,6 +192,9 @@ class InferReqGroup:
             self.finish_status = False
         else:
             self.finish_status = best_new_score <= self.min_score
+        
+        if self.finish_status:
+            self.res = sorted(self.res, key = lambda i: i[0])
 
 
 @dataclass
