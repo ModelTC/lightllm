@@ -24,6 +24,7 @@ from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
+from lightllm.server.metrics import init_router_monitor, gauge_set
 
 logger = init_logger(__name__)
 
@@ -175,9 +176,13 @@ class RouterManager:
                     self.req_queue.update_token_load(self.running_batch)
                     pass
                 self.stats_tool.print_stats()
+                gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
+                gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
             else:
                 self.shared_token_load.set_dynamic_max_load(0.0)
                 self.shared_token_load.set_current_load(0.0)
+                gauge_set("lightllm_batch_current_size", 0.0)
+                gauge_set("lightllm_batch_pause_size", 0.0)
 
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
@@ -418,7 +423,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
         raise
 
     pipe_writer.send("init ok")
-
+    init_router_monitor()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(router.loop_for_fwd())

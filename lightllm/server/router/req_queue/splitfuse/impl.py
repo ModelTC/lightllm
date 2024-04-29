@@ -4,6 +4,7 @@ from typing import List
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.io_struct import Batch, Req
 from lightllm.server.io_struct import ReqRunStatus
+from lightllm.server.metrics import gauge_set, histogram_observe
 from lightllm.server.router.req_queue.base_queue import BaseQueue
 
 
@@ -82,7 +83,9 @@ class SplitFuseQueue(BaseQueue):
                     self.pause_req_dict.pop(req.request_id)
             else:
                 break
-
+        
+        gauge_set("lightllm_queue_size", len(self.waiting_req_list))
+        histogram_observe("lightllm_batch_next_size", len(can_run_list))
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list)
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]

@@ -12,7 +12,7 @@ from ..io_struct import BatchStrOut, AbortReq, FinishStatus
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
 from ..sampling_params import SamplingParams
-
+from ..metrics import histogram_observe, init_httpserver_monitor
 
 class HttpServerManager:
     def __init__(
@@ -45,7 +45,7 @@ class HttpServerManager:
         self.total_token_num = args.max_total_token_num
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
-
+        init_httpserver_monitor(args)
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -86,6 +86,8 @@ class HttpServerManager:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
             prompt_ids = self.tokenizer.encode(prompt, multimodal_params)
+            histogram_observe("lightllm_request_input_length", len(prompt_ids))
+            histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
         else:
             prompt_ids = self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)

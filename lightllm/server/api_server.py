@@ -63,6 +63,9 @@ from .api_models import (
 
 from lightllm.utils.log_utils import init_logger
 
+from .metrics import histogram_timer, init_api_server_monitor, counter_inc
+from prometheus_client import generate_latest
+
 logger = init_logger(__name__)
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
@@ -131,11 +134,13 @@ async def token_load(request: Request):
     )
 
 
+@histogram_timer("lightllm_request_duration")
 @app.post("/generate")
 async def generate(request: Request) -> Response:
+    counter_inc("lightllm_request_count")
     first_set_handle_loop()
     if g_use_tgi_api:
-        return await tgi_generate_impl(request, g_id_gen, httpserver_manager)
+        return await tgi_generate_impl(request, g_id_gen, httpserver_manager, sucess_request_counter)
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -200,14 +205,17 @@ async def generate(request: Request) -> Response:
         ret["prompt_token_ids"] = prompt_token_ids
     if prompt_logprobs is not None:
         ret["prompt_logprobs"] = prompt_logprobs
+    counter_inc("lightllm_request_success")
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
+@histogram_timer("lightllm_request_duration")
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
+    counter_inc("lightllm_request_count")
     first_set_handle_loop()
     if g_use_tgi_api:
-        return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager)
+        return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager, sucess_request_counter)
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -251,12 +259,14 @@ async def generate_stream(request: Request) -> Response:
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
     background_tasks.add_task(abort_request)
-
+    counter_inc("lightllm_request_success")
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
 
+@histogram_timer("lightllm_request_duration")
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
+    counter_inc("lightllm_request_count")
     first_set_handle_loop()
 
     if request.logit_bias is not None:
@@ -336,9 +346,15 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
     background_tasks.add_task(abort_request)
-
+    counter_inc("lightllm_request_success")
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
+@app.get("/metrics")
+async def metrics() -> Response:
+    metrics_data = generate_latest()
+    response = Response(metrics_data)
+    response.mimetype = 'text/plain'
+    return response
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -488,6 +504,7 @@ def main():
 
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num
+    init_api_server_monitor(args)
 
     if not args.splitfuse_mode:
         # 普通模式下

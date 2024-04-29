@@ -51,7 +51,7 @@ def format_tgi_params(params):
     return params
 
 
-async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> Response:
+async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager, sucess_request_counter) -> Response:
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
     sample_params_dict = format_tgi_params(request_dict["parameters"])
@@ -118,10 +118,11 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
             ret["prompt_logprobs"] = prompt_logprobs
     # wrap generation inside a Vec to match api-inference
     json_compatible_item_data = jsonable_encoder(rets)
+    sucess_request_counter.inc()
     return JSONResponse(content=json_compatible_item_data)
 
 
-async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manager) -> Response:
+async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manager, sucess_request_counter) -> Response:
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
     sample_params_dict = format_tgi_params(request_dict["parameters"])
@@ -172,5 +173,5 @@ async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manage
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
     background_tasks.add_task(abort_request)
-
+    sucess_request_counter.inc()
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
