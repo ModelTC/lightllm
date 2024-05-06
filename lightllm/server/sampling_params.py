@@ -5,13 +5,15 @@ from .metrics import monitor
 from .req_id_generator import MAX_BEST_OF
 
 _SAMPLING_EPS = 1e-5
+# 用环境变量控制是否进行输入惩罚的默认值
+DEFAULT_INPUT_PENALTY = os.getenv("INPUT_PENALTY", "False").upper() in ["ON", "TRUE", "1"]
 
 
 class SamplingParams:
     def __init__(
         self,
         best_of: int = 1,
-        n: int = 1, # number of results
+        n: int = 1,  # number of results
         do_sample: bool = False,
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0,
@@ -27,7 +29,8 @@ class SamplingParams:
         skip_special_tokens: bool = True,  # whether to skip special tokens when decoding
         add_spaces_between_special_tokens: bool = True,  # whether to add spaces between special tokens when decoding
         print_eos_token: bool = False,  # eos_id will be always ignored except the value is set to True
-        input_penalty: bool = False, #Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
+        # Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
+        input_penalty: bool = DEFAULT_INPUT_PENALTY,
     ) -> None:
         self.best_of = best_of
         self.n = n
@@ -55,13 +58,15 @@ class SamplingParams:
         ):  # temperature is too slow, change to greedy search
             self.temperature = 1.0
             self.top_k = 1
-        self.input_penalty = os.getenv("INPUT_PENALTY",  "1").upper() in ["ON", "TRUE", "1"] or input_penalty
+        self.input_penalty = input_penalty
         return
 
     @monitor.histogram_timer("lightllm_request_validation_duration")
     def verify(self):
         if self.best_of <= 0 or self.best_of > MAX_BEST_OF:
             raise ValueError(f"need 0 < best_of <= {MAX_BEST_OF}, but get {self.best_of}")
+        if self.n != self.best_of:
+            raise ValueError("current only supported n == best_of")
         if self.n <= 0 or self.n > MAX_BEST_OF or self.n > self.best_of:
             raise ValueError(f"need 0 < n <= {MAX_BEST_OF}, n <= {self.best_of}, but get {self.n}")
         if self.presence_penalty < 0.0:
