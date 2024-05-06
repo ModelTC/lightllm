@@ -1,3 +1,4 @@
+import sys
 import zmq
 import zmq.asyncio
 import asyncio
@@ -13,6 +14,10 @@ from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
 from ..sampling_params import SamplingParams
 from ..metrics import histogram_observe, init_httpserver_monitor
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
+
 
 class HttpServerManager:
     def __init__(
@@ -82,6 +87,12 @@ class HttpServerManager:
     async def generate(
         self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None
     ):
+        # 统计信息变量
+        start_time = time.time()
+        out_token_counter = 0
+        first_token_cost_ms = sys.float_info.max
+        is_first_token = True
+
         if self.enable_multimodal:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
@@ -147,6 +158,10 @@ class HttpServerManager:
 
                 for sub_req_id, out_str, metadata, finish_status in req_status.out_token_info_list:
                     metadata["prompt_tokens"] = prompt_tokens
+                    out_token_counter += 1
+                    first_token_cost_ms = (time.time() - start_time) * 1000 if is_first_token else first_token_cost_ms
+                    is_first_token = False
+
                     yield sub_req_id, out_str, metadata, finish_status
 
                     # 如果有子请求完成，就更新计数
@@ -160,6 +175,12 @@ class HttpServerManager:
                             await self._release_multimodal_resources(multimodal_params)
                         except:
                             pass
+                        total_cost_time_ms = (time.time() - start_time) * 1000
+                        logger.debug(
+                            f"req_id:{group_request_id},start:{start_time}s,first_token_cost:{first_token_cost_ms}ms\n"
+                            f"total_cost_time:{total_cost_time_ms}ms,out_token_counter:{out_token_counter}\n"
+                            f"mean_per_token_cost_time: {total_cost_time_ms/out_token_counter}ms"
+                        )
                         return
                 req_status.out_token_info_list.clear()
         return
@@ -175,6 +196,7 @@ class HttpServerManager:
             del self.req_id_to_out_inf[group_request_id]
         except:
             pass
+        logger.warning(f"aborted group_request_id {group_request_id}")
         return
 
     async def handle_loop(self):
