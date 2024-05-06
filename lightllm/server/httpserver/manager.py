@@ -17,7 +17,6 @@ from ..metrics import monitor
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
-monitor.init_httpserver_monitor(args)
 
 
 class HttpServerManager:
@@ -51,6 +50,8 @@ class HttpServerManager:
         self.total_token_num = args.max_total_token_num
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
+        monitor.init_httpserver_monitor(args)
+
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -134,9 +135,9 @@ class HttpServerManager:
         self.req_id_to_out_inf[group_request_id] = req_status
 
         if self.enable_multimodal:
-            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id, start_time))
+            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
         else:
-            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id, start_time))
+            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
 
         unfinished_count = sampling_params.best_of
 
@@ -170,8 +171,6 @@ class HttpServerManager:
                     # 所有子请求完成后，就删除占用的资源
                     if unfinished_count == 0:
                         try:
-                            print(self.req_id_to_out_inf[group_request_id])
-                            print(len(self.req_id_to_out_inf[group_request_id]))
                             del self.req_id_to_out_inf[group_request_id]
                             await self._release_multimodal_resources(multimodal_params)
                         except:

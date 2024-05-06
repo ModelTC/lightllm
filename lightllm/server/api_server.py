@@ -140,7 +140,7 @@ async def generate(request: Request) -> Response:
     monitor.counter_inc("lightllm_request_count")
     first_set_handle_loop()
     if g_use_tgi_api:
-        return await tgi_generate_impl(request, g_id_gen, httpserver_manager, sucess_request_counter)
+        return await tgi_generate_impl(request, g_id_gen, httpserver_manager)
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -215,7 +215,7 @@ async def generate_stream(request: Request) -> Response:
     monitor.counter_inc("lightllm_request_count")
     first_set_handle_loop()
     if g_use_tgi_api:
-        return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager, sucess_request_counter)
+        return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager)
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")

@@ -113,7 +113,6 @@ class RouterManager:
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
         group_req_id: int,
-        begin_time,
     ):
         req_group = []
         for i in range(sampling_params.best_of):
@@ -127,7 +126,6 @@ class RouterManager:
                 )
             else:
                 req = NormalReq(group_req_id + i, copy.deepcopy(prompt_ids), sampling_params, multimodal_params)
-            req.begin_time = begin_time
             req_group.append(req)
 
         self.req_queue.extend(req_group)
@@ -249,6 +247,9 @@ class RouterManager:
             req_to_req_status = ans[0]
 
         self._update_init_status_to_batch(batch, req_to_req_status)
+        logger.debug(
+            f"Init Batch: {batch.__repr__} \n"
+        )
         return
 
     async def _prefill_batch(self, batch: Batch):
@@ -385,9 +386,9 @@ class RouterManager:
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
-            if isinstance(recv_req, tuple) and len(recv_req) == 5:
-                prompt_ids, sampling_params, multimodal_params, group_req_id, begin_time = recv_req
-                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id, begin_time)
+            if isinstance(recv_req, tuple) and len(recv_req) == 4:
+                prompt_ids, sampling_params, multimodal_params, group_req_id = recv_req
+                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id)
             elif isinstance(recv_req, AbortReq):
                 abort_req = recv_req
                 group_req_id = abort_req.group_req_id

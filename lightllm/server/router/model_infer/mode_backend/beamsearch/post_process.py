@@ -106,7 +106,7 @@ def beam_sample(probs, req_group, is_prefill, eos_id, vocab_size, req_manager):
         next_cumlogprob.append(float(next_logprobs[i]))
         next_token_id.append(next_tokens[i])
         next_token_logprob.append(next_logprobs[i] - req_obj.cum_logprob)
-        best_score = max(next_logprobs[i] / min(req_obj.get_output_len(), 1), best_score)
+        best_score = max(next_logprobs[i] / max(req_obj.get_output_len(), 1), best_score)
         valid_beams += 1
         if valid_beams == best_of:
             break

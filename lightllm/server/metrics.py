@@ -6,7 +6,6 @@ MONITOR_INFO = {
     "lightllm_request_success": "The total number of requests",
     "lightllm_request_duration": "Duration of the request",
     "lightllm_request_validation_duration": "Validation time of the request",
-    "lightllm_request_queue_duration": "Queue time of the request",
     "lightllm_request_inference_duration": "Inference time of the request",
     "lightllm_request_mean_time_per_token_duration": "Per token time of the request",
     "lightllm_request_first_token_duration": "First token time of the request",
@@ -47,7 +46,7 @@ class Monitor:
         generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
         self.create_histogram("lightllm_request_max_new_tokens", generate_tokens_buckets)
         self.create_histogram("lightllm_request_generated_tokens", generate_tokens_buckets)
-        
+
         self.create_histogram("lightllm_request_inference_duration", self.duration_buckets)
         self.create_histogram("lightllm_request_mean_time_per_token_duration", self.duration_buckets)
         self.create_histogram("lightllm_request_first_token_duration", self.duration_buckets)
@@ -56,7 +55,6 @@ class Monitor:
         self.create_gauge("lightllm_queue_size")
         self.create_gauge("lightllm_batch_current_size")
         self.create_gauge("lightllm_batch_pause_size")
-        self.create_histogram("lightllm_request_queue_duration", self.duration_buckets)
         batch_size_buckets = [i + 1 for i in range(0, 1024)]
         self.create_histogram("lightllm_batch_next_size", batch_size_buckets)
 

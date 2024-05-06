@@ -5,7 +5,6 @@ from typing import List
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.io_struct import Batch, Req
 from lightllm.server.io_struct import ReqRunStatus
-from lightllm.server.metrics import monitor
 from lightllm.server.router.req_queue.base_queue import BaseQueue
 
 
@@ -119,9 +118,6 @@ class BeamContinuesBatchQueue(BaseQueue):
                 for req in cur_group_reqs:
                     if req.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                         self.pause_req_dict.pop(req.request_id)
-                    else:
-                        queue_time = time.time()
-                        monitor.histogram_observe("lightllm_request_queue_duration", queue_time - req.begin_time)
 
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list)
