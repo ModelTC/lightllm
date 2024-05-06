@@ -349,12 +349,14 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     monitor.counter_inc("lightllm_request_success")
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
+
 @app.get("/metrics")
 async def metrics() -> Response:
     metrics_data = generate_latest()
     response = Response(metrics_data)
-    response.mimetype = 'text/plain'
+    response.mimetype = "text/plain"
     return response
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -452,6 +454,13 @@ def main():
     parser.add_argument("--router_token_ratio", type=float, default=0.0, help="token ratio to control router dispatch")
     parser.add_argument(
         "--router_max_new_token_len", type=int, default=1024, help="the request max new token len for router"
+    )
+
+    parser.add_argument(
+        "--router_max_wait_tokens",
+        type=int,
+        default=10,
+        help="schedule new requests after every router_max_wait_tokens decode steps.",
     )
 
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")

@@ -1,3 +1,4 @@
+import time
 import asyncio
 import enum
 from .sampling_params import SamplingParams
@@ -290,6 +291,9 @@ class Batch:
 
     def __repr__(self):
         return f"batch_id={self.batch_id}, " f"reqs={self.reqs}, "
+
+    def simple_log(self):
+        return f"batch_id={self.batch_id}, time:{time.time()}s req_ids:{[req.request_id for req in self.reqs]}"
 
 
 class BatchTokenIdOut:

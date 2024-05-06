@@ -25,6 +25,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.server.metrics import monitor
+
 monitor.init_router_monitor()
 logger = init_logger(__name__)
 
@@ -54,7 +55,7 @@ class RouterManager:
         self.running_batch: Batch = None
         self.eos_id = args.eos_id
         self.has_wait_tokens = 0
-        self.max_wait_tokens = 10
+        self.max_wait_tokens = args.router_max_wait_tokens
 
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
@@ -186,7 +187,6 @@ class RouterManager:
                 monitor.gauge_set("lightllm_batch_pause_size", 0.0)
                 monitor.gauge_set("lightllm_queue_size", 0.0)
 
-
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
 
@@ -247,9 +247,7 @@ class RouterManager:
             req_to_req_status = ans[0]
 
         self._update_init_status_to_batch(batch, req_to_req_status)
-        logger.debug(
-            f"Init Batch: {batch.__repr__} \n"
-        )
+        logger.debug(f"Init Batch: {batch.simple_log()} \n")
         return
 
     async def _prefill_batch(self, batch: Batch):
