@@ -12,7 +12,7 @@ from ..io_struct import BatchStrOut, AbortReq, FinishStatus
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
 from ..sampling_params import SamplingParams
-from ..metrics import histogram_observe, init_httpserver_monitor
+from ..metrics import monitor
 
 class HttpServerManager:
     def __init__(
@@ -45,7 +45,7 @@ class HttpServerManager:
         self.total_token_num = args.max_total_token_num
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
-        init_httpserver_monitor(args)
+        monitor.init_httpserver_monitor(args)
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -82,16 +82,16 @@ class HttpServerManager:
     async def generate(
         self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None
     ):
+        begin_time = time.time()
         if self.enable_multimodal:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
             prompt_ids = self.tokenizer.encode(prompt, multimodal_params)
-            histogram_observe("lightllm_request_input_length", len(prompt_ids))
-            histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
         else:
             prompt_ids = self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)
-
+        monitor.histogram_observe("lightllm_request_input_length", prompt_tokens)
+        monitor.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
         if prompt_tokens > self.max_req_input_len:
             # use long_truncation_mode to truncate long input len req.
             if self.args.long_truncation_mode is None:
@@ -124,9 +124,9 @@ class HttpServerManager:
         self.req_id_to_out_inf[group_request_id] = req_status
 
         if self.enable_multimodal:
-            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
+            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id, begin_time))
         else:
-            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
+            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id, begin_time))
 
         unfinished_count = sampling_params.best_of
 
@@ -156,6 +156,8 @@ class HttpServerManager:
                     # 所有子请求完成后，就删除占用的资源
                     if unfinished_count == 0:
                         try:
+                            print(self.req_id_to_out_inf[group_request_id])
+                            print(len(self.req_id_to_out_inf[group_request_id]))
                             del self.req_id_to_out_inf[group_request_id]
                             await self._release_multimodal_resources(multimodal_params)
                         except:

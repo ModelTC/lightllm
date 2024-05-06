@@ -101,7 +101,7 @@ class VisualManager:
                 uuids_need_infer = []
                 while cur_batch_size < self.infer_batch_size and len(self.waiting_reqs) > 0:
                     req = self.waiting_reqs.pop(0)
-                    _, _, multimodal_params, _ = req
+                    _, _, multimodal_params, _, _ = req
                     for img in multimodal_params.images:
                         if not self.cache_client.root.get_item_embed(img.uuid):
                             cur_batch_size += 1

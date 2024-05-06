@@ -24,7 +24,7 @@ from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
-from lightllm.server.metrics import init_router_monitor, gauge_set
+from lightllm.server.metrics import monitor
 
 logger = init_logger(__name__)
 
@@ -113,6 +113,7 @@ class RouterManager:
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
         group_req_id: int,
+        begin_time,
     ):
         req_group = []
         for i in range(sampling_params.best_of):
@@ -126,6 +127,7 @@ class RouterManager:
                 )
             else:
                 req = NormalReq(group_req_id + i, copy.deepcopy(prompt_ids), sampling_params, multimodal_params)
+            req.begin_time = begin_time
             req_group.append(req)
 
         self.req_queue.extend(req_group)
@@ -176,13 +178,13 @@ class RouterManager:
                     self.req_queue.update_token_load(self.running_batch)
                     pass
                 self.stats_tool.print_stats()
-                gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
-                gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
+                monitor.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
+                monitor.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
             else:
                 self.shared_token_load.set_dynamic_max_load(0.0)
                 self.shared_token_load.set_current_load(0.0)
-                gauge_set("lightllm_batch_current_size", 0.0)
-                gauge_set("lightllm_batch_pause_size", 0.0)
+                monitor.gauge_set("lightllm_batch_current_size", 0.0)
+                monitor.gauge_set("lightllm_batch_pause_size", 0.0)
 
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
@@ -380,9 +382,9 @@ class RouterManager:
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
-            if isinstance(recv_req, tuple) and len(recv_req) == 4:
-                prompt_ids, sampling_params, multimodal_params, group_req_id = recv_req
-                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id)
+            if isinstance(recv_req, tuple) and len(recv_req) == 5:
+                prompt_ids, sampling_params, multimodal_params, group_req_id, begin_time = recv_req
+                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id, begin_time)
             elif isinstance(recv_req, AbortReq):
                 abort_req = recv_req
                 group_req_id = abort_req.group_req_id
@@ -423,7 +425,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
         raise
 
     pipe_writer.send("init ok")
-    init_router_monitor()
+    monitor.init_router_monitor()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(router.loop_for_fwd())

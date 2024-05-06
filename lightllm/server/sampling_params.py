@@ -1,7 +1,7 @@
 """Sampling parameters for text generation."""
 import os
 from typing import List, Optional, Union, Tuple
-from .metrics import histogram_timer
+from .metrics import monitor
 from .req_id_generator import MAX_BEST_OF
 
 _SAMPLING_EPS = 1e-5
@@ -58,7 +58,7 @@ class SamplingParams:
         self.input_penalty = os.getenv("INPUT_PENALTY",  "1").upper() in ["ON", "TRUE", "1"] or input_penalty
         return
 
-    @histogram_timer("lightllm_request_validation_duration")
+    @monitor.histogram_timer("lightllm_request_validation_duration")
     def verify(self):
         if self.best_of <= 0 or self.best_of > MAX_BEST_OF:
             raise ValueError(f"need 0 < best_of <= {MAX_BEST_OF}, but get {self.best_of}")

@@ -1,7 +1,7 @@
 import time
-from prometheus_client import Histogram, Counter, Gauge
-monitor_registry = {}
-monitor_info = {
+from prometheus_client import Histogram, Counter, Gauge, start_http_server, push_to_gateway
+
+MONITOR_INFO = {
     "lightllm_request_count": "The total number of requests",
     "lightllm_request_success": "The total number of requests",
     "lightllm_request_duration": "Duration of the request",
@@ -19,70 +19,77 @@ monitor_info = {
     "lightllm_queue_size": "Queue size"
 }
 
-def histogram_timer(name):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            start_time = time.time() 
-            result = func(*args, **kwargs)  
-            elapsed_time = time.time() - start_time  
-            monitor_registry[name].observe(elapsed_time) 
-            return result
-        return wrapper
-    return decorator
-
-def init_api_server_monitor(args):
-    duration_buckets = []
-    value = 0.001
-    n_duration_buckets = 35
-    for _ in range(n_duration_buckets):
-        value *= 1.5
-        duration_buckets.append(value)
+class Monitor:
     
-    for k, v in monitor_info.items():
-        if "duration" in k:
-            histogram = Histogram(k, v, buckets=duration_buckets)
-            monitor_registry[k] = histogram
+    def __init__(self):
+        duration_buckets = []
+        value = 0.001
+        n_duration_buckets = 35
+        for _ in range(n_duration_buckets):
+            value *= 1.5
+            duration_buckets.append(value)
+        self.duration_buckets = duration_buckets
+        self.monitor_registry = {}
 
-    max_req_total_len = args.max_req_total_len
-    generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
-    create_histogram("lightllm_request_generated_tokens", generate_tokens_buckets)
+    def init_api_server_monitor(self, args):
+        
+        self.create_histogram("lightllm_request_duration", self.duration_buckets)
+        self.create_histogram("lightllm_request_validation_duration", self.duration_buckets)
 
-    create_counter("lightllm_request_count")
-    create_counter("lightllm_request_success")
+        max_req_total_len = args.max_req_total_len
+        generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
+        self.create_histogram("lightllm_request_generated_tokens", generate_tokens_buckets)
 
-def init_httpserver_monitor(args):
-    max_req_input_len = args.max_req_input_len
-    input_len_buckets = [max_req_input_len / 100. * (i + 1) for i in range(0, 100)]
-    create_histogram("lightllm_request_input_length", input_len_buckets)
-    
-    max_req_total_len = args.max_req_total_len
-    generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
-    create_histogram("lightllm_request_max_new_tokens", generate_tokens_buckets)
+        self.create_counter("lightllm_request_count")
+        self.create_counter("lightllm_request_success")
 
-def init_router_monitor():
-    create_gauge("lightllm_queue_size")
-    create_gauge("lightllm_batch_current_size")
-    create_gauge("lightllm_batch_pause_size")
-    batch_size_buckets = [i + 1 for i in range(0, 1024)]
-    create_histogram("lightllm_batch_next_size", batch_size_buckets)
+    def init_httpserver_monitor(self, args):
+        max_req_input_len = args.max_req_input_len
+        input_len_buckets = [max_req_input_len / 100. * (i + 1) for i in range(0, 100)]
+        self.create_histogram("lightllm_request_input_length", input_len_buckets)
+        
+        max_req_total_len = args.max_req_total_len
+        generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
+        self.create_histogram("lightllm_request_max_new_tokens", generate_tokens_buckets)
 
-def create_histogram(name, buckets):
-    histogram = Histogram(name, monitor_info[name], buckets=buckets)
-    monitor_registry[name] = histogram 
+    def init_router_monitor(self):
+        self.create_gauge("lightllm_queue_size")
+        self.create_gauge("lightllm_batch_current_size")
+        self.create_gauge("lightllm_batch_pause_size")
+        self.create_histogram("lightllm_request_queue_duration", self.duration_buckets)
+        batch_size_buckets = [i + 1 for i in range(0, 1024)]
+        self.create_histogram("lightllm_batch_next_size", batch_size_buckets)
 
-def create_counter(name):
-    histogram = Counter(name, monitor_info[name])
-    monitor_registry[name] = histogram 
+    def create_histogram(self, name, buckets):
+        histogram = Histogram(name, MONITOR_INFO[name], buckets=buckets)
+        self.monitor_registry[name] = histogram 
 
-def create_gauge(name):
-    gauge = Gauge(name,  monitor_info[name])
-    monitor_registry[name] = gauge 
+    def create_counter(self, name):
+        histogram = Counter(name, MONITOR_INFO[name])
+        self.monitor_registry[name] = histogram 
 
-def counter_inc(name):
-    monitor_registry[name].inc()
+    def create_gauge(self, name):
+        gauge = Gauge(name,  MONITOR_INFO[name])
+        self.monitor_registry[name] = gauge 
 
-def histogram_observe(name, value):
-    monitor_registry[name].observe(value) 
+    def counter_inc(self, name):
+        self.monitor_registry[name].inc()
 
-def gauge_set(name, value):
-    monitor_registry[name].set(value) 
+    def histogram_observe(self, name, value):
+        self.monitor_registry[name].observe(value) 
+
+    def gauge_set(self, name, value):
+        self.monitor_registry[name].set(value) 
+
+    def histogram_timer(self, name):
+        def decorator(func):
+            def wrapper(*args, **kwargs):
+                start_time = time.time() 
+                result = func(*args, **kwargs)  
+                elapsed_time = time.time() - start_time  
+                self.monitor_registry[name].observe(elapsed_time) 
+                return result
+            return wrapper
+        return decorator
+
+monitor = Monitor()
