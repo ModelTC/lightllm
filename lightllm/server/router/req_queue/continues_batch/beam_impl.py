@@ -123,9 +123,6 @@ class BeamContinuesBatchQueue(BaseQueue):
                         queue_time = time.time()
                         monitor.histogram_observe("lightllm_request_queue_duration", queue_time - req.begin_time)
 
-        monitor.gauge_set("lightllm_queue_size", len(self.waiting_req_list))
-        monitor.histogram_observe("lightllm_batch_next_size", len(can_run_list))
-        print("observe lightllm_batch_next_size\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list)
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]

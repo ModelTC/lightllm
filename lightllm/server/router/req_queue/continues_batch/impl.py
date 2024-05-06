@@ -80,10 +80,11 @@ class ContinuesBatchQueue(BaseQueue):
                 can_run_list.append(req)
                 if req.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                     self.pause_req_dict.pop(req.request_id)
+                else:
+                    queue_time = time.time()
+                    monitor.histogram_observe("lightllm_request_queue_duration", queue_time - req.begin_time)
             else:
                 break
-        monitor.gauge_set("lightllm_queue_size", len(self.waiting_req_list))
-        monitor.histogram_observe("lightllm_batch_next_size", len(can_run_list))
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list)
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]

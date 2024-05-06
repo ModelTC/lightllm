@@ -17,6 +17,7 @@ from ..metrics import monitor
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
+monitor.init_httpserver_monitor(args)
 
 
 class HttpServerManager:
@@ -50,7 +51,6 @@ class HttpServerManager:
         self.total_token_num = args.max_total_token_num
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
-        monitor.init_httpserver_monitor(args)
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -182,6 +182,10 @@ class HttpServerManager:
                             f"total_cost_time:{total_cost_time_ms}ms,out_token_counter:{out_token_counter}\n"
                             f"mean_per_token_cost_time: {total_cost_time_ms/out_token_counter}ms"
                         )
+                        monitor.histogram_observe("lightllm_request_inference_duration", total_cost_time_ms)
+                        monitor.histogram_observe("lightllm_request_mean_time_per_token_duration", total_cost_time_ms/out_token_counter)
+                        monitor.histogram_observe("lightllm_request_first_token_duration", first_token_cost_ms)
+                        monitor.histogram_observe("lightllm_request_generated_tokens", out_token_counter)
                         return
                 req_status.out_token_info_list.clear()
         return

@@ -35,11 +35,6 @@ class Monitor:
         
         self.create_histogram("lightllm_request_duration", self.duration_buckets)
         self.create_histogram("lightllm_request_validation_duration", self.duration_buckets)
-
-        max_req_total_len = args.max_req_total_len
-        generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
-        self.create_histogram("lightllm_request_generated_tokens", generate_tokens_buckets)
-
         self.create_counter("lightllm_request_count")
         self.create_counter("lightllm_request_success")
 
@@ -51,6 +46,11 @@ class Monitor:
         max_req_total_len = args.max_req_total_len
         generate_tokens_buckets = [max_req_total_len / 100. * (i + 1) for i in range(0, 100)]
         self.create_histogram("lightllm_request_max_new_tokens", generate_tokens_buckets)
+        self.create_histogram("lightllm_request_generated_tokens", generate_tokens_buckets)
+        
+        self.create_histogram("lightllm_request_inference_duration", self.duration_buckets)
+        self.create_histogram("lightllm_request_mean_time_per_token_duration", self.duration_buckets)
+        self.create_histogram("lightllm_request_first_token_duration", self.duration_buckets)
 
     def init_router_monitor(self):
         self.create_gauge("lightllm_queue_size")
