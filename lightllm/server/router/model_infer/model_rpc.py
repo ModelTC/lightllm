@@ -5,6 +5,7 @@ import torch
 from datetime import timedelta
 from typing import Dict, List, Tuple
 from transformers.configuration_utils import PretrainedConfig
+from lightllm.models.cohere.model import CohereTpPartModel
 from lightllm.models.mixtral.model import MixtralTpPartModel
 from lightllm.models.qwen2.model import Qwen2TpPartModel
 from lightllm.server.router.model_infer.infer_batch import InferBatch
@@ -112,7 +113,7 @@ class ModelRpcServer(rpyc.Service):
                     self.model = LlamaTpPartModelWQuant(model_kvargs)
                 elif any("w8a8" in mode_ for mode_ in self.mode):
                     self.model = LlamaTpPartModelAWQuant(model_kvargs)
-                elif any('quik_activation_weight' in mode_ for mode_ in self.mode):
+                elif any("quik_activation_weight" in mode_ for mode_ in self.mode):
                     # Supports both w4a4 and w8a8 modes, with automatic mode selection upon model loading.
                     self.model = LlamaTpPartModelQuik(model_kvargs)
                 else:
@@ -177,6 +178,8 @@ class ModelRpcServer(rpyc.Service):
                 self.model = Qwen2TpPartModel(model_kvargs)
             elif self.model_type == "gemma":
                 self.model = Gemma_2bTpPartModel(model_kvargs)
+            elif self.model_type == "cohere":
+                self.model = CohereTpPartModel(model_kvargs)
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
