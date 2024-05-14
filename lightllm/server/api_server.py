@@ -415,6 +415,14 @@ def main():
 
     # 这些模式不能同时设置。
     assert [args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
+    # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
+    if args.use_dynamic_prompt_cache:
+        assert args.beam_mode is False
+        assert args.token_healing_mode is False
+
+    # 部分模式还不能支持与高级动态调度算法协同，to do.
+    if args.beam_mode or args.diverse_mode:
+        assert args.router_token_ratio == 0.0
 
     if not args.splitfuse_mode:
         # 普通模式下
