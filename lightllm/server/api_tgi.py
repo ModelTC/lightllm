@@ -119,6 +119,7 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
             ret["prompt_token_ids"] = prompt_token_ids
         if prompt_logprobs is not None:
             ret["prompt_logprobs"] = prompt_logprobs
+        rets.append(ret)
     # wrap generation inside a Vec to match api-inference
     json_compatible_item_data = jsonable_encoder(rets)
     monitor.counter_inc("lightllm_request_success")

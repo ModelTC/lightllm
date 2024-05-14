@@ -148,7 +148,7 @@ class HttpServerManager:
                 pass
 
             if request is not None and await request.is_disconnected():
-                self.abort(group_request_id)
+                await self.abort(group_request_id)
                 raise Exception(f"req_id {group_request_id} disconnected")
 
             async with req_status.lock:
@@ -182,7 +182,9 @@ class HttpServerManager:
                             f"mean_per_token_cost_time: {total_cost_time_ms/out_token_counter}ms"
                         )
                         monitor.histogram_observe("lightllm_request_inference_duration", total_cost_time_ms)
-                        monitor.histogram_observe("lightllm_request_mean_time_per_token_duration", total_cost_time_ms/out_token_counter)
+                        monitor.histogram_observe(
+                            "lightllm_request_mean_time_per_token_duration", total_cost_time_ms / out_token_counter
+                        )
                         monitor.histogram_observe("lightllm_request_first_token_duration", first_token_cost_ms)
                         monitor.histogram_observe("lightllm_request_generated_tokens", out_token_counter)
                         return
