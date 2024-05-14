@@ -138,14 +138,20 @@ async def token_load(request: Request):
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     first_set_handle_loop()
-    return await g_generate_func(request, g_id_gen, httpserver_manager)
+    try:
+        return await g_generate_func(request, g_id_gen, httpserver_manager)
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
 @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
     first_set_handle_loop()
-    return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
+    try:
+        return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
 @monitor.histogram_timer("lightllm_request_duration")
@@ -409,6 +415,14 @@ def main():
 
     # 这些模式不能同时设置。
     assert [args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
+    # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
+    if args.use_dynamic_prompt_cache:
+        assert args.beam_mode is False
+        assert args.token_healing_mode is False
+
+    # 部分模式还不能支持与高级动态调度算法协同，to do.
+    if args.beam_mode or args.diverse_mode:
+        assert args.router_token_ratio == 0.0
 
     if not args.splitfuse_mode:
         # 普通模式下
