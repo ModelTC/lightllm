@@ -130,6 +130,7 @@ class InferReqGroup:
         self.min_score = 1e9 # The min score of beam results
         self.req_group = []
         self.res = []  # Results already finished
+        self.filter_reqs_id = [] # filtered reqs
         self.finish_status = False # If beamsearch is done
         self.has_beam = False 
     
@@ -145,9 +146,16 @@ class InferReqGroup:
     def get_cumlogprobs(self):
         return [requests_mapping[r_id].cum_logprob for r_id in self.req_group]
     
-    def decrease_refs(self):
+    def decrease_refs(self, req_id):
         self.refs -= 1
+        self.filter_reqs_id.append(req_id)
         return self.refs == 0
+
+    def update_filter(self):
+        filter_reqs_id_set = set(self.filter_reqs_id)
+        new_req_group = [req_id for req_id in self.req_group if req_id not in filter_reqs_id_set]
+        self.req_group = new_req_group
+        self.best_of = len(self.req_group)
     
     def add_res(self, output_ids, logprobs, cum_logprob, finish_status):
         score = cum_logprob / len(output_ids)
@@ -163,7 +171,6 @@ class InferReqGroup:
     def beam_copy(self, req_manager, is_prefill):
         cache_req = {}
         cache_req_to_token = {}
-
         # record previous status
         for i, prev_ in enumerate(self.prev_beamid):
             prev_req = requests_mapping[self.req_group[prev_]]
@@ -306,7 +313,7 @@ class InferBatch:
             req: InferReq = requests_mapping.pop(request_id)
             group_req_id = convert_sub_id_to_group_id(req.r_id)
             if group_req_id in group_mapping:
-                is_empty = group_mapping[group_req_id].decrease_refs()
+                is_empty = group_mapping[group_req_id].decrease_refs(req.r_id)
                 if is_empty:
                     del group_mapping[group_req_id]
             free_req_index.append(req.req_idx)
@@ -347,7 +354,7 @@ class InferBatch:
             req: InferReq = requests_mapping.pop(request_id)
             group_req_id = convert_sub_id_to_group_id(req.r_id)
             if group_req_id in group_mapping:
-                is_empty = group_mapping[group_req_id].decrease_refs()
+                is_empty = group_mapping[group_req_id].decrease_refs(req.r_id)
                 if is_empty:
                     del group_mapping[group_req_id]
             free_req_index.append(req.req_idx)

@@ -8,4 +8,6 @@ def build_req_queue(args, router):
         return SplitFuseQueue(args, router)
     if args.beam_mode:
         return BeamContinuesBatchQueue(args, router)
+    if args.diverse_mode:
+        return BeamContinuesBatchQueue(args, router)
     return ContinuesBatchQueue(args, router)

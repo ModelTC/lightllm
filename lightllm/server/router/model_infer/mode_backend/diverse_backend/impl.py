@@ -50,6 +50,8 @@ class DiversehBackend(ModeBackend):
         for req_group_obj, next_token_id_group, next_token_logprob_group in zip(run_reqs, next_token_id_groups, next_token_logprob_groups):
             # prefill and decode is same
             alive_req_id = []
+            if req_group_obj.best_of != req_group_obj.refs:
+                req_group_obj.update_filter()
             for i in range(req_group_obj.best_of):
                 req_obj = req_group_obj.get_req(i)
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
