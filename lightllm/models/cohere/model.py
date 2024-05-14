@@ -43,6 +43,10 @@ class CohereTpPartModel(TpPartBaseModel):
         assert self.config["num_key_value_heads"] % self.world_size_ == 0
         assert self.config["num_attention_heads"] % self.world_size_ == 0
         return
+    
+    def _init_config(self):
+        super()._init_config()
+        self.config['rms_norm_eps'] = self.config['layer_norm_eps']
 
     def _init_to_get_rotary(self, default_base=10000):
         partial_head_dim = int(self.config.get("partial_rotary_factor", 1) * self.head_dim_)

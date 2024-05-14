@@ -13,6 +13,26 @@ from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
 
 
 class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
+    def _bind_norm(self):
+        self._att_norm = partial(CohereTransformerLayerInfer._att_norm, self)
+        self._ffn_norm = partial(CohereTransformerLayerInfer._ffn_norm, self)
+        return
+
+    def _att_norm(
+        self,
+        hidden_states,
+        infer_state: LlamaInferStateInfo,
+        layer_weight: CohereTransformerLayerWeight,
+    ):
+        return hidden_states
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        mean = hidden_states.mean(-1, keepdim=True)
+        variance = (hidden_states - mean).pow(2).mean(-1, keepdim=True)
+        hidden_states = (hidden_states - mean) * torch.rsqrt(variance + self.eps_)
+        hidden_states = layer_weight.att_norm_weight_.to(torch.float32) * hidden_states
+        return hidden_states.to(input_dtype)
+    
     def _cohere_layernorm(
         self,
         q: torch.Tensor,
@@ -34,16 +54,17 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
 
         q = (q - q_mean) * torch.rsqrt(q_variance + eps)
         k = (k - k_mean) * torch.rsqrt(k_variance + eps)
+        
+        q = layer_weight.q_norm_.to(torch.float32).view(-1) * q
+        k = layer_weight.k_norm_.to(torch.float32).view(-1) * k
 
-        q = layer_weight.q_norm_.to(torch.float32) * q
-        k = layer_weight.k_norm_.to(torch.float32) * k
-
-        return q.to(q_dtype), k.to(k_dtype)
+        k = k.to(k_dtype)
+        return q.to(q_dtype)
 
     def _ffn_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: CohereTransformerLayerWeight
     ) -> torch.Tensor:
-        pass
+        return input
 
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: CohereTransformerLayerWeight
@@ -60,4 +81,5 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
             infer_state.position_cos,
             infer_state.position_sin,
         )
-        return self._cohere_layernorm(q, cache_kv, layer_weight)
+        #q = self._cohere_layernorm(q, cache_kv[:, 0 : self.tp_k_head_num_, :], layer_weight)
+        return q, cache_kv

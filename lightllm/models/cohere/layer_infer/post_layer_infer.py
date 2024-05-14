@@ -18,7 +18,7 @@ class CoherePostLayerInfer(PostLayerInferTpl):
 
     def __init__(self, tp_rank, world_size, network_config, mode):
         super().__init__(tp_rank, world_size, network_config, mode)
-        self.eps_ = network_config["rms_norm_eps"]
+        self.eps_ = network_config["layer_norm_eps"]
         self.vocab_size_ = network_config["vocab_size"]
         self.embed_dim_ = network_config["n_embed"]
         self.logit_scale = network_config["logit_scale"]
@@ -81,7 +81,8 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         input_embdings = None
         last_input = self._norm(last_input, infer_state, layer_weight)
         last_input = rearrange(last_input, "batch embed_dim -> embed_dim batch").contiguous().reshape(-1, token_num)
-        logic_batch = last_input * self.logit_scale
+        last_input = last_input * self.logit_scale
+        logic_batch = torch.mm(layer_weight.wte_weight_, last_input)
 
         last_input = None
         if self.world_size_ == 1:
