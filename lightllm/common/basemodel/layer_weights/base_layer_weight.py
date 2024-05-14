@@ -47,6 +47,6 @@ class BaseLayerWeight:
                     else:
                         ans = self._cuda(ans)
                     setattr(self, dest_name, ans)
-                    for name in source_tensor_names:
-                        delattr(self, name)
+                    # for name in source_tensor_names:
+                    #    delattr(self, name)
         return

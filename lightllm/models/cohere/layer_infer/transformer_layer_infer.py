@@ -40,6 +40,11 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
 
         return q.to(q_dtype), k.to(k_dtype)
 
+    def _ffn_norm(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: CohereTransformerLayerWeight
+    ) -> torch.Tensor:
+        pass
+
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: CohereTransformerLayerWeight
     ) -> torch.Tensor:

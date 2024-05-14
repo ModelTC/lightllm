@@ -41,8 +41,8 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
                     self.int4_q_group_size = int(_mode[1:])
             self.quantize_weight = partial(quantize_int4_ppl, group_size=self.int4_q_group_size, tp_rank=self.tp_rank_)
         elif "flash_llm_w6a16" in self.mode:
-             # per channel 
-             self.quantize_weight = partial(fp6_quant, tp_rank=self.tp_rank_)
+            # per channel
+            self.quantize_weight = partial(fp6_quant, tp_rank=self.tp_rank_)
         else:
             raise Exception(f"error mode {self.mode}")
 
@@ -127,6 +127,9 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
             self.up_proj = up_proj.transpose(0, 1).to(self.data_type_)
 
         self._try_cat_to(["gate_proj", "up_proj"], "gate_up_proj", cat_dim=1, handle_func=self.quantize_weight)
+
+        self.up_proj = self.quantize_weight(self.up_proj)
+        self.gate_proj = self.quantize_weight(self.gate_proj)
 
         if f"model.layers.{self.layer_num_}.mlp.down_proj.weight" in weights:
             self.down_proj = weights[f"model.layers.{self.layer_num_}.mlp.down_proj.weight"][

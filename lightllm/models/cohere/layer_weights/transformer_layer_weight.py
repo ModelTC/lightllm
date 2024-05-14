@@ -23,7 +23,6 @@ class CohereTransformerLayerWeight(TransformerLayerWeight):
             self.q_norm_,
             self.k_norm_,
             self.o_weight_,
-            self.ffn_norm_weight_,
             self.gate_up_proj,
             self.down_proj,
         ]
@@ -84,11 +83,6 @@ class CohereTransformerLayerWeight(TransformerLayerWeight):
         return
 
     def _load_ffn_weights(self, weights):
-        if f"model.layers.{self.layer_num_}.post_attention_layernorm.weight" in weights:
-            self.ffn_norm_weight_ = self._cuda(
-                weights[f"model.layers.{self.layer_num_}.post_attention_layernorm.weight"]
-            )
-
         inter_size = self.network_config_["intermediate_size"]
         split_inter_size = inter_size // self.world_size_
 

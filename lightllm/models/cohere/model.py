@@ -1,6 +1,8 @@
 import os
 import json
 import torch
+from lightllm.models.cohere.layer_infer.post_layer_infer import CoherePostLayerInfer
+from lightllm.models.cohere.layer_weights.pre_and_post_layer_weight import CoherePreAndPostLayerWeight
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
 from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
 from lightllm.models.cohere.layer_infer.transformer_layer_infer import CohereTransformerLayerInfer
@@ -20,12 +22,12 @@ logger = init_logger(__name__)
 
 class CohereTpPartModel(TpPartBaseModel):
     # weight class
-    pre_and_post_weight_class = LlamaPreAndPostLayerWeight
+    pre_and_post_weight_class = CoherePreAndPostLayerWeight
     transformer_weight_class = CohereTransformerLayerWeight
 
     # infer class
     pre_layer_infer_class = LlamaPreLayerInfer
-    post_layer_infer_class = LlamaPostLayerInfer
+    post_layer_infer_class = CoherePostLayerInfer
     transformer_layer_infer_class = CohereTransformerLayerInfer
 
     # infer state class
