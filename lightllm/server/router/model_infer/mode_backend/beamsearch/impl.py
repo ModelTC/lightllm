@@ -71,6 +71,14 @@ class BeamSearchBackend(ModeBackend):
                         req_obj.input_token_ids.append(next_token_id_group[i])
                         req_obj.logprobs.append(next_token_logprob_group[i])
                         req_obj.out_token_id_count[next_token_id_group[i]] += 1
+                        output_dict[req_obj.r_id] = (
+                            req_obj.req_status,
+                            req_obj.cur_kv_len,
+                            req_obj.get_output_len(),
+                            [], # empty meta
+                            0,  # unfinished
+                            None,
+                        )  # 请求
                         continue
                     score, output_ids, logprobs, finish_status_value = req_group_obj.res[i]
                     next_token_metas = []

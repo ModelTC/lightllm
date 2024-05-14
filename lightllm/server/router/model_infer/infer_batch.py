@@ -201,8 +201,6 @@ class InferReqGroup:
             cur_kv_len = requests_mapping[self.req_group[0]].cur_kv_len
             max_new_tokens = requests_mapping[self.req_group[0]].sampling_param.max_new_tokens
             self.finish_status = best_new_score <= self.min_score or cur_kv_len == max_new_tokens - 1
-
-
         
         if self.finish_status:
             self.res = sorted(self.res, key = lambda i: i[0])
