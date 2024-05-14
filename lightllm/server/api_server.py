@@ -138,14 +138,20 @@ async def token_load(request: Request):
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     first_set_handle_loop()
-    return await g_generate_func(request, g_id_gen, httpserver_manager)
+    try:
+        return await g_generate_func(request, g_id_gen, httpserver_manager)
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
 @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
     first_set_handle_loop()
-    return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
+    try:
+        return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
 @monitor.histogram_timer("lightllm_request_duration")
