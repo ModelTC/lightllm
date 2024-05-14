@@ -46,6 +46,7 @@ from .embed_cache.manager import start_cache_manager
 from .visualserver.manager import start_visual_process
 from .req_id_generator import ReqIDGenerator
 from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
+from .api_lightllm import lightllm_generate, lightllm_generate_stream
 
 from lightllm.utils.net_utils import alloc_can_use_network_port
 from lightllm.utils.start_utils import start_submodule_processes
@@ -74,7 +75,6 @@ g_id_gen = ReqIDGenerator()
 app = FastAPI()
 server = uvicorn.Server(uvicorn.Config(app))
 
-g_use_tgi_api = False
 isFirst = True
 
 
@@ -137,130 +137,15 @@ async def token_load(request: Request):
 @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate")
 async def generate(request: Request) -> Response:
-    monitor.counter_inc("lightllm_request_count")
     first_set_handle_loop()
-    if g_use_tgi_api:
-        return await tgi_generate_impl(request, g_id_gen, httpserver_manager)
-
-    request_dict = await request.json()
-    prompt = request_dict.pop("inputs")
-    sample_params_dict = request_dict["parameters"]
-    return_details = sample_params_dict.pop("return_details", False)
-    sampling_params = SamplingParams(**sample_params_dict)
-    sampling_params.verify()
-    multimodal_params_dict = request_dict.get("multimodal_params", {})
-    multimodal_params = MultimodalParams(**multimodal_params_dict)
-
-    group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(
-        prompt, sampling_params, group_request_id, multimodal_params, request=request
-    )
-
-    # Non-streaming case
-    final_output_dict = collections.defaultdict(list)
-    count_output_tokens_dict = collections.defaultdict(lambda: 0)
-    tokens_dict = collections.defaultdict(list)
-    finish_reason_dict = {}
-    prompt_logprobs = None
-    prompt_token_ids = None
-    is_first_metadata = True
-    async for sub_req_id, request_output, metadata, finish_status in results_generator:
-        # when set "--return_all_prompt_logprobs", the first token metadata will contains
-        # prompt_logprobs and prompt_token_ids
-        if is_first_metadata:
-            prompt_logprobs = metadata.get("prompt_logprobs", None)
-            prompt_token_ids = metadata.get("prompt_token_ids", None)
-            if prompt_logprobs is not None:
-                del metadata["prompt_logprobs"]
-            if prompt_token_ids is not None:
-                del metadata["prompt_token_ids"]
-            is_first_metadata = False
-
-        count_output_tokens_dict[sub_req_id] += 1
-        final_output_dict[sub_req_id].append(request_output)
-        if return_details:
-            metadata["text"] = request_output
-            tokens_dict[sub_req_id].append(metadata)
-
-        if finish_status.is_finished():
-            finish_reason_dict[sub_req_id] = finish_status
-    n = sampling_params.n
-    sub_ids = list(final_output_dict.keys())[:n]
-    final_output_list = ["".join(final_output_dict[sub_id]) for sub_id in sub_ids]
-    count_output_tokens_list = [count_output_tokens_dict[sub_id] for sub_id in sub_ids]
-    finish_reson_list = [finish_reason_dict[sub_id].get_finish_reason() for sub_id in sub_ids]
-    tokens_list = [tokens_dict[sub_id] for sub_id in sub_ids]
-    only_one = len(sub_ids) == 1
-
-    ret_data_format = lambda data_list: data_list[0] if only_one else data_list
-
-    ret = {
-        "generated_text": final_output_list,
-        "count_output_tokens": ret_data_format(count_output_tokens_list),
-        "finish_reason": ret_data_format(finish_reson_list),
-    }
-    if return_details:
-        ret["tokens"] = ret_data_format(tokens_list)
-    if prompt_token_ids is not None:
-        ret["prompt_token_ids"] = prompt_token_ids
-    if prompt_logprobs is not None:
-        ret["prompt_logprobs"] = prompt_logprobs
-    monitor.counter_inc("lightllm_request_success")
-    return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
+    return await g_generate_func(request, g_id_gen, httpserver_manager)
 
 
 @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
-    monitor.counter_inc("lightllm_request_count")
     first_set_handle_loop()
-    if g_use_tgi_api:
-        return await tgi_generate_stream_impl(request, g_id_gen, httpserver_manager)
-
-    request_dict = await request.json()
-    prompt = request_dict.pop("inputs")
-    sample_params_dict = request_dict["parameters"]
-    _ = sample_params_dict.pop("return_details", False)
-    sampling_params = SamplingParams(**sample_params_dict)
-    sampling_params.verify()
-    if sampling_params.best_of != 1:
-        raise Exception("stream api only support best_of == 1")
-
-    multimodal_params_dict = request_dict.get("multimodal_params", {})
-    multimodal_params = MultimodalParams(**multimodal_params_dict)
-
-    group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(
-        prompt, sampling_params, group_request_id, multimodal_params, request=request
-    )
-
-    # Streaming case
-    async def stream_results() -> AsyncGenerator[bytes, None]:
-        async for _, request_output, metadata, finish_status in results_generator:
-            ret = {
-                "token": {
-                    "id": metadata.get("id", None),
-                    "text": request_output,
-                    "logprob": metadata.get("logprob", None),
-                    "special": metadata.get("special", False),
-                    "count_output_tokens": metadata.get("count_output_tokens", 0),
-                },
-                "generated_text": None,
-                "finished": finish_status.is_finished(),
-                "finish_reason": finish_status.get_finish_reason(),
-                "details": None,
-            }
-
-            yield ("data:" + json.dumps(ret, ensure_ascii=False) + "\n\n").encode("utf-8")
-
-    async def abort_request() -> None:
-        await httpserver_manager.abort(group_request_id)
-
-    background_tasks = BackgroundTasks()
-    # Abort the request if the client disconnects.
-    background_tasks.add_task(abort_request)
-    monitor.counter_inc("lightllm_request_success")
-    return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
+    return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
 
 
 @monitor.histogram_timer("lightllm_request_duration")
@@ -465,12 +350,12 @@ def main():
 
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
 
-    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
-
     parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
 
+    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
     parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
-    parser.add_argument("--diverse_mode", action="store_true", help="use beamsearch mode")
+    parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
+    parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
 
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
@@ -489,7 +374,7 @@ def main():
         help="the data type of the model weight",
     )
     parser.add_argument("--return_all_prompt_logprobs", action="store_true", help="return all prompt tokens logprobs")
-    parser.add_argument("--token_healing", action="store_true", help="code model infer mode")
+
     parser.add_argument(
         "--long_truncation_mode",
         type=str,
@@ -507,13 +392,23 @@ def main():
 
     args = parser.parse_args()
 
-    global g_use_tgi_api
-    g_use_tgi_api = args.use_tgi_api
-    logger.info(f"use tgi api: {g_use_tgi_api}")
+    global g_generate_func
+    global g_generate_stream_func
+    if args.use_tgi_api:
+        g_generate_func = tgi_generate_impl
+        g_generate_stream_func = tgi_generate_stream_impl
+    else:
+        g_generate_func = lightllm_generate
+        g_generate_stream_func = lightllm_generate_stream
+
+    logger.info(f"use tgi api: {args.use_tgi_api}")
 
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num
     monitor.init_api_server_monitor(args)
+
+    # 这些模式不能同时设置。
+    assert [args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
 
     if not args.splitfuse_mode:
         # 普通模式下
