@@ -35,6 +35,7 @@ from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.models.minicpm.model import MiniCPMTpPartModel
 from lightllm.models.llava.model import LlavaTpPartModel
 from lightllm.models.qwen_vl.model import QWenVLTpPartModel
+from lightllm.models.cohere.model import CohereTpPartModel
 from lightllm.models.internlm_xcomposer.model import InternlmComposerTpPartModel
 from lightllm.models.gemma_2b.model import Gemma_2bTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
@@ -171,6 +172,8 @@ class ModeBackend:
                 self.model = Qwen2TpPartModel(model_kvargs)
             elif self.model_type == "gemma":
                 self.model = Gemma_2bTpPartModel(model_kvargs)
+            elif self.model_type == "cohere":
+                self.model = CohereTpPartModel(model_kvargs)
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
