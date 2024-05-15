@@ -366,7 +366,7 @@ class RouterManager:
                 if idx == len(token_info_list) - 1:
                     batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, req.finish_status.value))
                 else:
-                    batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, 0))
+                    batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, FinishStatus.NO_FINISH))
 
         self.send_to_detokenization.send_pyobj(batch_out)
         return

@@ -21,6 +21,7 @@ class MemoryManager:
         self.can_use_mem_size = size
         # 用共享内存进行共享，router 模块读取进行精确的调度估计, nccl port 作为一个单机中单实列的标记。防止冲突。
         nccl_port = os.environ.get("_NCCL_PORT_", None)
+        assert nccl_port is not None
         logger.info(f"mem manger get nccl port: {str(nccl_port)}")
         self.shared_can_use_token_num = SharedInt(f"{str(nccl_port)}_mem_manger_can_use_token_num")
 

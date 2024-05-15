@@ -152,7 +152,7 @@ class BeamContinuesBatchQueue(BaseQueue):
                 cumsum_len += cur_input_len
                 need_max_token_num = max(need_max_token_num, cumsum_len + index * cur_ouput_len)
             else:
-                # 因为有共享的token，所以
+                # 因为有共享的token
                 assert cur_input_len - req.input_len >= 0
                 cumsum_len += cur_input_len - req.input_len  # 减去共享的部分
                 need_max_token_num = max(need_max_token_num, cumsum_len + index * cur_ouput_len)
