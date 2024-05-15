@@ -105,7 +105,6 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
-        if self.layer_num_ == 0: print(o.view(-1, self.embed_dim_))
         return o.view(-1, self.embed_dim_)
 
     # this impl dont to use @mark_cost_time
