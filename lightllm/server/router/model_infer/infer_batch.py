@@ -19,6 +19,7 @@ logger = init_logger(__name__)
 requests_mapping = {}
 group_mapping = {}
 
+
 class InferSamplingParams:
     def __init__(
         self,
@@ -81,7 +82,7 @@ class InferReq:
         self.shared_kv_node = None
         self.finish_status = FinishStatus.NO_FINISH
         self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
-        self.cum_logprob = 0. # cumulative logprob of each token, using for beamsearch and diverse_backend
+        self.cum_logprob = 0.0  # cumulative logprob of each token, using for beamsearch and diverse_backend
         if self.sampling_param.input_penalty:
             self.out_token_id_count = collections.Counter(input_token_ids)
         else:
@@ -117,23 +118,22 @@ class InferReq:
 
 
 class InferReqGroup:
-
     def __init__(
         self,
         group_req_id,
-        best_of = 1,
+        best_of=1,
     ) -> None:
         self.best_of = best_of
         self.refs = best_of
         self.group_req_id = group_req_id
         self.prev_beamid = [0] * best_of  # Record which beam the current token came from.
-        self.min_score = 1e9 # The min score of beam results
+        self.min_score = 1e9  # The min score of beam results
         self.req_group = []
         self.res = []  # Results already finished
-        self.filter_reqs_id = [] # filtered reqs
-        self.finish_status = False # If beamsearch is done
-        self.has_beam = False 
-    
+        self.filter_reqs_id = []  # filtered reqs
+        self.finish_status = False  # If beamsearch is done
+        self.has_beam = False
+
     def get_req(self, index):
         return requests_mapping[self.req_group[index]]
 
@@ -142,10 +142,10 @@ class InferReqGroup:
 
     def add_req(self, req_id):
         self.req_group.append(req_id)
-    
+
     def get_cumlogprobs(self):
         return [requests_mapping[r_id].cum_logprob for r_id in self.req_group]
-    
+
     def decrease_refs(self, req_id):
         self.refs -= 1
         self.filter_reqs_id.append(req_id)
@@ -156,7 +156,7 @@ class InferReqGroup:
         new_req_group = [req_id for req_id in self.req_group if req_id not in filter_reqs_id_set]
         self.req_group = new_req_group
         self.best_of = len(self.req_group)
-    
+
     def add_res(self, output_ids, logprobs, cum_logprob, finish_status):
         score = cum_logprob / len(output_ids)
         if len(self.res) < self.best_of or score < self.min_score:
@@ -167,7 +167,7 @@ class InferReqGroup:
                 self.min_score = sorted_scores[1][0]
             else:
                 self.min_score = min(score, self.min_score)
-    
+
     def beam_copy(self, req_manager, is_prefill):
         cache_req = {}
         cache_req_to_token = {}
@@ -175,35 +175,36 @@ class InferReqGroup:
         for i, prev_ in enumerate(self.prev_beamid):
             prev_req = requests_mapping[self.req_group[prev_]]
             if prev_ not in cache_req_to_token:
-                cache_req[prev_] =copy.deepcopy(prev_req)
-                prev_tokens =  req_manager.req_to_token_indexs[prev_req.req_idx][:len(prev_req.input_token_ids)].clone()
+                cache_req[prev_] = copy.deepcopy(prev_req)
+                prev_tokens = req_manager.req_to_token_indexs[prev_req.req_idx][: len(prev_req.input_token_ids)].clone()
                 cache_req_to_token[prev_] = prev_tokens
             req = self.get_req(i)
             if not is_prefill or i == 0:
-                req_manager.mem_manager.free(req_manager.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)])
-        
+                req_manager.mem_manager.free(req_manager.req_to_token_indexs[req.req_idx][: len(req.input_token_ids)])
+
         # update the InferReq status and mem_manager status for cache sharing
         for i, req_id in enumerate(self.req_group):
             prev_ = self.prev_beamid[i]
             prev_req = cache_req[prev_]
-            req =requests_mapping[req_id]
+            req = requests_mapping[req_id]
             req.input_token_ids = copy.deepcopy(prev_req.input_token_ids)
             req.out_token_id_count = copy.deepcopy(req.out_token_id_count)
             req.logprobs = copy.deepcopy(req.logprobs)
             req.finish_status = FinishStatus.NO_FINISH
-            req_manager.req_to_token_indexs[req.req_idx][:len(req.input_token_ids)] = cache_req_to_token[prev_]
-            req_manager.mem_manager.add_refs(cache_req_to_token[prev_])           
-           
+            req_manager.req_to_token_indexs[req.req_idx][: len(req.input_token_ids)] = cache_req_to_token[prev_]
+            req_manager.mem_manager.add_refs(cache_req_to_token[prev_])
+
     def update_finish_status(self, best_new_score):
         if len(self.res) < self.best_of:
             self.finish_status = False
         else:
-            cur_kv_len = requests_mapping[self.req_group[0]].cur_kv_len
-            max_new_tokens = requests_mapping[self.req_group[0]].sampling_param.max_new_tokens
-            self.finish_status = best_new_score <= self.min_score or cur_kv_len == max_new_tokens - 1
-        
+            req_obj = requests_mapping[self.req_group[0]]
+            max_new_tokens = req_obj.sampling_param.max_new_tokens
+            has_output_len = req_obj.cur_kv_len + 1 - req_obj.prompt_len  # 这个地方只能用 cur_kv_len 来计算，有beam流程函数存在依赖
+            self.finish_status = best_new_score <= self.min_score or has_output_len >= max_new_tokens
+
         if self.finish_status:
-            self.res = sorted(self.res, key = lambda i: i[0])
+            self.res = sorted(self.res, key=lambda i: i[0])
 
 
 @dataclass
