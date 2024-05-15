@@ -5,6 +5,7 @@ import numpy as np
 from lightllm.common.basemodel.layer_weights.base_layer_weight import BaseLayerWeight
 from lightllm.common.basemodel.splitfuse_infer_struct import SplitFuseInferStateInfo
 
+from lightllm.models.cohere.layer_weights.transformer_layer_weight import CohereTransformerLayerWeight
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from einops import rearrange
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
@@ -24,8 +25,19 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         self.logit_scale = network_config["logit_scale"]
         return
 
-    def _norm(self, input, infer_state, layer_weight: LlamaPreAndPostLayerWeight) -> torch.Tensor:
-        return rmsnorm_forward(input, layer_weight.final_norm_weight_, eps=self.eps_)
+    def _norm(
+        self,
+        hidden_states,
+        infer_state: LlamaInferStateInfo,
+        layer_weight: CohereTransformerLayerWeight,
+    ) -> torch.Tensor:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        mean = hidden_states.mean(-1, keepdim=True)
+        variance = (hidden_states - mean).pow(2).mean(-1, keepdim=True)
+        hidden_states = (hidden_states - mean) * torch.rsqrt(variance + self.eps_)
+        hidden_states = layer_weight.final_norm_weight_.to(torch.float32) * hidden_states
+        return hidden_states.to(input_dtype)
 
     def _slice_get_last_input(self, input_embdings, infer_state: LlamaInferStateInfo):
         if infer_state.is_splitfuse:
@@ -76,13 +88,14 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         layer_weight: LlamaPreAndPostLayerWeight,
         return_logics=False,
     ):
+        #print(input_embdings)
         last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)
         input_embdings_dtype = input_embdings.dtype
         input_embdings = None
         last_input = self._norm(last_input, infer_state, layer_weight)
         last_input = rearrange(last_input, "batch embed_dim -> embed_dim batch").contiguous().reshape(-1, token_num)
-        last_input = last_input * self.logit_scale
         logic_batch = torch.mm(layer_weight.wte_weight_, last_input)
+        logic_batch = logic_batch * self.logit_scale
 
         last_input = None
         if self.world_size_ == 1:

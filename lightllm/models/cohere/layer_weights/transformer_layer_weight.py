@@ -55,7 +55,7 @@ class CohereTransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.q_norm.weight" in weights:
             self.q_norm_ = self._cuda(weights[f"model.layers.{self.layer_num_}.self_attn.q_norm.weight"])
             self.q_norm_ = self.q_norm_[q_split_n_head * self.tp_rank_ : q_split_n_head * (self.tp_rank_ + 1)]
-            self.q_norm_ = self._cuda(self.q_norm_.transpose(0, 1))
+            self.q_norm_ = self._cuda(self.q_norm_)
 
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
             k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
@@ -65,7 +65,7 @@ class CohereTransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.k_norm.weight" in weights:
             self.k_norm_ = self._cuda(weights[f"model.layers.{self.layer_num_}.self_attn.k_norm.weight"])
             self.k_norm_ = self.k_norm_[kv_split_n_head * self.tp_rank_ : kv_split_n_head * (self.tp_rank_ + 1)]
-            self.k_norm_ = self._cuda(self.k_norm_.transpose(0, 1))
+            self.k_norm_ = self._cuda(self.k_norm_)
 
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
             v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]

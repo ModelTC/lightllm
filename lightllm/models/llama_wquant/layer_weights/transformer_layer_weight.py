@@ -128,9 +128,6 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
 
         self._try_cat_to(["gate_proj", "up_proj"], "gate_up_proj", cat_dim=1, handle_func=self.quantize_weight)
 
-        self.up_proj = self.quantize_weight(self.up_proj)
-        self.gate_proj = self.quantize_weight(self.gate_proj)
-
         if f"model.layers.{self.layer_num_}.mlp.down_proj.weight" in weights:
             self.down_proj = weights[f"model.layers.{self.layer_num_}.mlp.down_proj.weight"][
                 :, split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1)

@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+from lightllm.common.mem_manager import MemoryManager
 from lightllm.models.cohere.layer_infer.post_layer_infer import CoherePostLayerInfer
 from lightllm.models.cohere.layer_weights.pre_and_post_layer_weight import CoherePreAndPostLayerWeight
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
@@ -36,6 +37,15 @@ class CohereTpPartModel(TpPartBaseModel):
     def __init__(self, kvargs):
         super().__init__(kvargs)
         self._init_to_get_rotary()
+        return
+
+    def _init_mem_manager(self):
+        self.mem_manager = MemoryManager(self.max_total_token_num,
+                                        dtype=self.data_type,
+                                        head_num=self.config["num_key_value_heads"] // self.world_size_,
+                                        head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
+                                        layer_num=self.config["num_hidden_layers"],
+                                        always_copy=False)       
         return
 
     def _verify_params(self):
@@ -75,12 +85,13 @@ class CohereTpPartModel(TpPartBaseModel):
             base = base * (ntk_alpha ** (partial_head_dim / (partial_head_dim - 2)))  # Base change formula
         except:
             pass
-
+        
         inv_freq = 1.0 / (
             base ** (torch.arange(0, partial_head_dim, 2, device="cpu", dtype=torch.float32) / partial_head_dim)
         )
         t = torch.arange(max_seq_len + 1024 * 128, device="cpu", dtype=torch.float32) / rope_scaling_factor
         freqs = torch.outer(t, inv_freq)
+        freqs = torch.repeat_interleave(freqs, 2, dim=-1)
 
         self._cos_cached = torch.cos(freqs).to(self.data_type).cuda()
         self._sin_cached = torch.sin(freqs).to(self.data_type).cuda()

@@ -15,8 +15,6 @@ from lightllm.common.basemodel import TpPartBaseModel
 from lightllm.common.mem_utils import select_mem_manager_class
 from lightllm.utils.log_utils import init_logger
 
-from safetensors.torch import save_file
-
 logger = init_logger(__name__)
 
 
@@ -111,40 +109,6 @@ class LlamaTpPartModel(TpPartBaseModel):
             )
         self.pre_post_weight.verify_load()
         [weight.verify_load() for weight in self.trans_layers_weight]
-
-        # save the quantized model weight
-        tensor = {}
-        for i, weight in enumerate(self.trans_layers_weight):
-            tensor[f"model.layers.{i}.self_attn.q_proj.qweight"] = self.trans_layers_weight[i].q_weight_[0]
-            tensor[f"model.layers.{i}.self_attn.q_proj.scales"] = self.trans_layers_weight[i].q_weight_[1]
-            tensor[f"model.layers.{i}.self_attn.q_proj.qzeros"] = self.trans_layers_weight[i].q_weight_[2]
-
-            tensor[f"model.layers.{i}.self_attn.k_proj.qweight"] = self.trans_layers_weight[i].k_weight_[0]
-            tensor[f"model.layers.{i}.self_attn.k_proj.scales"] = self.trans_layers_weight[i].k_weight_[1]
-            tensor[f"model.layers.{i}.self_attn.k_proj.qzeros"] = self.trans_layers_weight[i].k_weight_[2]
-
-            tensor[f"model.layers.{i}.self_attn.v_proj.qweight"] = self.trans_layers_weight[i].v_weight_[0]
-            tensor[f"model.layers.{i}.self_attn.v_proj.scales"] = self.trans_layers_weight[i].v_weight_[1]
-            tensor[f"model.layers.{i}.self_attn.v_proj.qzeros"] = self.trans_layers_weight[i].v_weight_[2]
-
-            tensor[f"model.layers.{i}.self_attn.o_proj.qweight"] = self.trans_layers_weight[i].o_weight_[0]
-            tensor[f"model.layers.{i}.self_attn.o_proj.scales"] = self.trans_layers_weight[i].o_weight_[1]
-            tensor[f"model.layers.{i}.self_attn.o_proj.qzeros"] = self.trans_layers_weight[i].o_weight_[2]
-
-            tensor[f"model.layers.{i}.mlp.up_proj.qweight"] = self.trans_layers_weight[i].up_proj[0]
-            tensor[f"model.layers.{i}.mlp.up_proj.scales"] = self.trans_layers_weight[i].up_proj[1]
-            tensor[f"model.layers.{i}.mlp.up_proj.qzeros"] = self.trans_layers_weight[i].up_proj[2]
-
-            tensor[f"model.layers.{i}.mlp.gate_proj.qweight"] = self.trans_layers_weight[i].gate_proj[0]
-            tensor[f"model.layers.{i}.mlp.gate_proj.scales"] = self.trans_layers_weight[i].gate_proj[1]
-            tensor[f"model.layers.{i}.mlp.gate_proj.qzeros"] = self.trans_layers_weight[i].gate_proj[2]
-
-            tensor[f"model.layers.{i}.mlp.down_proj.qweight"] = self.trans_layers_weight[i].down_proj[0]
-            tensor[f"model.layers.{i}.mlp.down_proj.scales"] = self.trans_layers_weight[i].down_proj[1]
-            tensor[f"model.layers.{i}.mlp.down_proj.qzeros"] = self.trans_layers_weight[i].down_proj[2]
-
-        save_file(tensor, "/nvme/chenjunyi/quant_fix.safetensors")
-
         return
 
     def _init_to_get_rotary(self, default_base=10000):
