@@ -13,7 +13,7 @@ class SamplingParams:
     def __init__(
         self,
         best_of: int = 1,
-        n: int = 1,  # number of results
+        n: int = None,  # number of results
         do_sample: bool = False,
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0,
@@ -59,6 +59,8 @@ class SamplingParams:
             self.temperature = 1.0
             self.top_k = 1
         self.input_penalty = input_penalty
+        if self.n is None:
+            self.n = self.best_of
         return
 
     @monitor.histogram_timer("lightllm_request_validation_duration")

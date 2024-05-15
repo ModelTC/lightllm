@@ -40,7 +40,7 @@ def format_tgi_params(params):
     if "stop_sequences" not in params:
         params["stop_sequences"] = params.pop("stop", None)
     # remove keys lightllm not used
-    params.pop("best_of", 1)
+    # params.pop("best_of", 1)
     params.pop("typical_p", 0.0)
     params.pop("return_full_text", False)
     params.pop("stop", None)
