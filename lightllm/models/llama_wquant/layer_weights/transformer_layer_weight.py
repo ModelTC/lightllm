@@ -41,8 +41,8 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
                     self.int4_q_group_size = int(_mode[1:])
             self.quantize_weight = partial(quantize_int4_ppl, group_size=self.int4_q_group_size, tp_rank=self.tp_rank_)
         elif "flash_llm_w6a16" in self.mode:
-            # per channel
-            self.quantize_weight = partial(fp6_quant, tp_rank=self.tp_rank_)
+             # per channel 
+             self.quantize_weight = partial(fp6_quant, tp_rank=self.tp_rank_)
         else:
             raise Exception(f"error mode {self.mode}")
 
