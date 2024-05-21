@@ -198,3 +198,4 @@ class LlamaTpPartModel(TpPartBaseModel):
         self._sin_cached = emb.sin().to(self.data_type).cuda() * mscale
 
         return
+
