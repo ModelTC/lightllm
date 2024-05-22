@@ -111,6 +111,18 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
         input_embdings = residual + attn_out + ffn_out
         return input_embdings
 
+    def _cohere_rotary_emb(self, x, cos, sin):
+        dtype = x.dtype
+        seq_len, h, dim = x.shape
+        x = x.float()
+        x1 = x[:, :, ::2]
+        x2 = x[:, :, 1::2]
+        rot_x = torch.stack([-x2, x1], dim=-1).flatten(-2)
+        cos = cos.view((seq_len, 1, dim))
+        sin = sin.view((seq_len, 1, dim))
+        o = (x * cos) + (rot_x * sin)
+        return o.to(dtype=dtype)
+
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: CohereTransformerLayerWeight
     ) -> torch.Tensor:
@@ -130,8 +142,12 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
             layer_weight.k_norm_,
             self.eps_,
         )
-        rotary_emb_fwd(
+        q = self._cohere_rotary_emb(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
+            infer_state.position_cos,
+            infer_state.position_sin,
+        )
+        cache_kv[:, 0 : self.tp_k_head_num_, :] = self._cohere_rotary_emb(
             cache_kv[:, 0 : self.tp_k_head_num_, :],
             infer_state.position_cos,
             infer_state.position_sin,
