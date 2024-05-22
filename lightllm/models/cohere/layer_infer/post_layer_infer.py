@@ -1,11 +1,13 @@
 import torch
 import torch.functional as F
 import torch.distributed as dist
+from torch.nn.functional import layer_norm
 import numpy as np
 from lightllm.common.basemodel.layer_weights.base_layer_weight import BaseLayerWeight
 from lightllm.common.basemodel.splitfuse_infer_struct import SplitFuseInferStateInfo
 
 from lightllm.models.cohere.layer_weights.transformer_layer_weight import CohereTransformerLayerWeight
+from lightllm.models.cohere.triton_kernel.cohere_layernorm import layer_norm_fwd
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from einops import rearrange
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
@@ -31,13 +33,12 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         infer_state: LlamaInferStateInfo,
         layer_weight: CohereTransformerLayerWeight,
     ) -> torch.Tensor:
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        mean = hidden_states.mean(-1, keepdim=True)
-        variance = (hidden_states - mean).pow(2).mean(-1, keepdim=True)
-        hidden_states = (hidden_states - mean) * torch.rsqrt(variance + self.eps_)
-        hidden_states = layer_weight.final_norm_weight_.to(torch.float32) * hidden_states
-        return hidden_states.to(input_dtype)
+        layer_norm_fwd(
+            hidden_states.unsqueeze(1),
+            layer_weight.final_norm_weight_.unsqueeze(0),
+            self.eps_
+        )
+        return hidden_states
 
     def _slice_get_last_input(self, input_embdings, infer_state: LlamaInferStateInfo):
         if infer_state.is_splitfuse:

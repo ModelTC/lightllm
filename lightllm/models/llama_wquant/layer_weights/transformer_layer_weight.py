@@ -50,6 +50,8 @@ class LlamaTransformerLayerWeightQuantized(TransformerLayerWeight):
         self._load_qkvo_weights(weights)
         self._load_ffn_weights(weights)
 
+
+
     def verify_load(self):
         errors = "weights load not ok"
         weights = [
