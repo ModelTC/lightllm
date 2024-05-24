@@ -158,8 +158,6 @@ async def generate_stream(request: Request) -> Response:
 async def compat_generate(request: Request) -> Response:
     request_dict = await request.json()
     stream = request_dict.pop("stream", False)
-    print(request.stream)
-    print(g_generate_stream_func)
     if stream:
         return await generate_stream(request)
     else:
