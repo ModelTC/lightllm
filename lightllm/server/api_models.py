@@ -45,7 +45,8 @@ class ChatCompletionResponseChoice(BaseModel):
 
 
 class ChatCompletionResponse(BaseModel):
-    id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex}")
+    # id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex}")
+    id: int
     object: str = "chat.completion"
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
@@ -65,7 +66,8 @@ class ChatCompletionStreamResponseChoice(BaseModel):
 
 
 class ChatCompletionStreamResponse(BaseModel):
-    id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex}")
+    # id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex}")
+    id: int
     object: str = "chat.completion.chunk"
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str

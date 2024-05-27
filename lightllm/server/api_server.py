@@ -196,7 +196,8 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
 
-    request_id = f"chatcmpl-{uuid.uuid4().hex}"
+    # request_id = f"chatcmpl-{uuid.uuid4().hex}"
+    request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(
         prompt, sampling_params, request_id, multimodal_params, request=raw_request
     )
