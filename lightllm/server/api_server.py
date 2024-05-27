@@ -153,7 +153,6 @@ async def generate_stream(request: Request) -> Response:
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
-@monitor.histogram_timer("lightllm_request_duration")
 @app.post("/")
 async def compat_generate(request: Request) -> Response:
     request_dict = await request.json()
