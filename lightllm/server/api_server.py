@@ -24,7 +24,7 @@ import uvloop
 import sys
 import os
 
-from .build_prompt import build_prompt
+from .build_prompt import build_prompt, build_prompt_v2
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import argparse
@@ -181,7 +181,8 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         return create_error_response(HTTPStatus.BAD_REQUEST, "The function call feature is not supported")
 
     created_time = int(time.time())
-    prompt = await build_prompt(request)
+    # prompt = await build_prompt(request)
+    prompt = await build_prompt_v2(request, httpserver_manager.tokenizer)
     sampling_params = SamplingParams(
         do_sample=request.do_sample,
         presence_penalty=request.presence_penalty,

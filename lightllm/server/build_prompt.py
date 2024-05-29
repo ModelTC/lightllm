@@ -1,4 +1,6 @@
 from packaging import version
+from lightllm.server.api_models import ChatMessage
+from typing import List, Dict
 
 try:
     import fastchat
@@ -8,6 +10,42 @@ try:
     _fastchat_available = True
 except ImportError:
     _fastchat_available = False
+
+
+# only consider str message content
+def parse_chat_message_content(
+    message: Dict[str, str],
+) -> List[ChatMessage]:
+    role = message["role"]
+    content = message.get("content")
+
+    if content is None:
+        return []
+    if isinstance(content, str):
+        messages = [{"role":role, "content":content}]
+        return messages
+
+    return []
+
+
+async def build_prompt_v2(request, tokenizer) -> str:
+    conversation = []
+
+    for msg in request.messages:
+        parsed_msg = parse_chat_message_content(msg)
+        conversation.extend(parsed_msg)
+    
+    if tokenizer.chat_template:
+        prompt = tokenizer.apply_chat_template(
+                    conversation=conversation,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                 )
+    else: 
+        return build_prompt(request)
+    
+    print(f"Prompt: {prompt}")
+    return prompt
 
 
 async def build_prompt(request) -> str:
