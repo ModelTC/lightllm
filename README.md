@@ -408,4 +408,4 @@ We learned a lot from the following projects when developing LightLLM.
 - [Flash Attention 1&2](https://github.com/Dao-AILab/flash-attention)
 - [OpenAI Triton](https://github.com/openai/triton)
 
-<a href="https://info.flagcounter.com/naP2"><img src="https://s01.flagcounter.com/map/naP2/size_m/txt_000000/border_CCCCCC/pageviews_1/viewers_0/flags_0/" alt="Flag Counter" border="0"></a>
+![](https://komarev.com/ghpvc/?username=lightllm&label=visitors)
