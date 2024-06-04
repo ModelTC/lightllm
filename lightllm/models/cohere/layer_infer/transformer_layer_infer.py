@@ -6,7 +6,6 @@ from torch.nn.functional import layer_norm
 import numpy as np
 from typing import Tuple
 from functools import partial
-import triton
 
 from lightllm.common.basemodel.infer_struct import InferStateInfo
 from lightllm.models.cohere.layer_weights.transformer_layer_weight import CohereTransformerLayerWeight
@@ -14,6 +13,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.cohere.triton_kernel.cohere_layernorm import layer_norm_fwd
+from lightllm.models.cohere.triton_kernel.cohere_rotary_embed import cohere_rotary_emb_fwd
 from lightllm.utils.infer_utils import mark_cost_time
 
 
@@ -110,19 +110,7 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
         ffn_out = self._token_ffn(input_embdings, infer_state, layer_weight)
         input_embdings = residual + attn_out + ffn_out
         return input_embdings
-
-    def _cohere_rotary_emb(self, x, cos, sin):
-        dtype = x.dtype
-        seq_len, h, dim = x.shape
-        x = x.float()
-        x1 = x[:, :, ::2]
-        x2 = x[:, :, 1::2]
-        rot_x = torch.stack([-x2, x1], dim=-1).flatten(-2)
-        cos = cos.view((seq_len, 1, dim))
-        sin = sin.view((seq_len, 1, dim))
-        o = (x * cos) + (rot_x * sin)
-        return o.to(dtype=dtype)
-
+    
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: CohereTransformerLayerWeight
     ) -> torch.Tensor:
@@ -142,12 +130,8 @@ class CohereTransformerLayerInfer(LlamaTransformerLayerInfer):
             layer_weight.k_norm_,
             self.eps_,
         )
-        q = self._cohere_rotary_emb(
+        cohere_rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
-            infer_state.position_cos,
-            infer_state.position_sin,
-        )
-        cache_kv[:, 0 : self.tp_k_head_num_, :] = self._cohere_rotary_emb(
             cache_kv[:, 0 : self.tp_k_head_num_, :],
             infer_state.position_cos,
             infer_state.position_sin,
