@@ -17,38 +17,59 @@ class LlavaVisionModel:
 
         # for llava-v1.5-7b-hf model, should load config from transformers
         if "text_config" in config:
-            from transformers import AutoConfig, AutoProcessor, LlavaForConditionalGeneration
-            config = AutoConfig.from_pretrained(weight_dir, trust_remote_code=True)
-            self.select_layer = config.vision_feature_layer
-            self.select_feature = config.vision_feature_select_strategy
-            processor = AutoProcessor.from_pretrained(weight_dir)
-            self.image_processor = processor.image_processor
-            model = LlavaForConditionalGeneration.from_pretrained(
-                weight_dir,
-                torch_dtype=torch.float16,
-            )
-            self.vision_tower = model.vision_tower
-            model.multi_modal_projector = None
-            model.language_model = None
-
+            self.load_hf_model(config, weight_dir)
         else:
-            self.select_layer = config.get("mm_vision_select_layer", -2)
-            self.select_feature = config.get("mm_vision_select_feature", "patch")
-
-            # load clip vision model by cfg['mm_vision_tower']:
-            #   huggingface_name or path_of_clip_relative_to_llava_model_dir
-            vision_path = config.get("mm_vision_tower", "openai/clip-vit-large-patch14-336")
-            if isinstance(vision_path, list):
-                vision_path = vision_path[0]
-            if vision_path.startswith("./"):
-                vision_path = os.path.join(weight_dir, vision_path)
-
-            from transformers import CLIPVisionModel, CLIPImageProcessor
-            self.image_processor = CLIPImageProcessor.from_pretrained(vision_path)
-            self.vision_tower = CLIPVisionModel.from_pretrained(vision_path).half()
+            self.load_bin_model(config, weight_dir)
 
         self.vision_tower.requires_grad_(False)
         self.device = torch.device("cpu")
+
+        assert "model.mm_projector.0.weight" in self.projector_weights
+        assert "model.mm_projector.0.bias" in self.projector_weights
+        assert "model.mm_projector.2.weight" in self.projector_weights
+        assert "model.mm_projector.2.bias" in self.projector_weights
+
+    def load_hf_model(self, config, weight_dir):
+        from transformers import AutoConfig, AutoProcessor, LlavaForConditionalGeneration
+        config = AutoConfig.from_pretrained(weight_dir, trust_remote_code=True)
+        self.select_layer = config.vision_feature_layer
+        self.select_feature = config.vision_feature_select_strategy
+        processor = AutoProcessor.from_pretrained(weight_dir)
+        self.image_processor = processor.image_processor
+        model = LlavaForConditionalGeneration.from_pretrained(
+            weight_dir,
+            torch_dtype=torch.float16,
+        )
+        self.vision_tower = model.vision_tower
+        model.multi_modal_projector = None
+        model.language_model = None
+
+        # load projector weights
+        self.projector_weights = {}
+        for f in os.listdir(weight_dir):
+            if f.endswith(".safetensors"):
+                d = safe_open(os.path.join(weight_dir, f), 'pt', 'cpu')
+                for k in d.keys():
+                    if "multi_modal_projector.linear_1" in k:
+                        self.projector_weights[k.replace("multi_modal_projector.linear_1", "model.mm_projector.0")] = d.get_tensor(k).half()
+                    if "multi_modal_projector.linear_2" in k:
+                        self.projector_weights[k.replace("multi_modal_projector.linear_2", "model.mm_projector.2")] = d.get_tensor(k).half()
+
+    def load_bin_model(self, config, weight_dir):
+        self.select_layer = config.get("mm_vision_select_layer", -2)
+        self.select_feature = config.get("mm_vision_select_feature", "patch")
+
+        # load clip vision model by cfg['mm_vision_tower']:
+        #   huggingface_name or path_of_clip_relative_to_llava_model_dir
+        vision_path = config.get("mm_vision_tower", "openai/clip-vit-large-patch14-336")
+        if isinstance(vision_path, list):
+            vision_path = vision_path[0]
+        if vision_path.startswith("./"):
+            vision_path = os.path.join(weight_dir, vision_path)
+
+        from transformers import CLIPVisionModel, CLIPImageProcessor
+        self.image_processor = CLIPImageProcessor.from_pretrained(vision_path)
+        self.vision_tower = CLIPVisionModel.from_pretrained(vision_path).half()
 
         # load projector weights
         self.projector_weights = {}
@@ -58,19 +79,6 @@ class LlavaVisionModel:
                 for k, v in d.items():
                     if "model.mm_projector" in k:
                         self.projector_weights[k] = v.half()
-            if f.endswith(".safetensors"):
-                d = safe_open(os.path.join(weight_dir, f), 'pt', 'cpu')
-                for k in d.keys():
-                    if "multi_modal_projector.linear_1" in k:
-                        self.projector_weights[k.replace("multi_modal_projector.linear_1", "model.mm_projector.0")] = d.get_tensor(k).half()
-                    if "multi_modal_projector.linear_2" in k:
-                        self.projector_weights[k.replace("multi_modal_projector.linear_2", "model.mm_projector.2")] = d.get_tensor(k).half()
-
-        assert "model.mm_projector.0.weight" in self.projector_weights
-        assert "model.mm_projector.0.bias" in self.projector_weights
-        assert "model.mm_projector.2.weight" in self.projector_weights
-        assert "model.mm_projector.2.bias" in self.projector_weights
-
 
     def cuda(self):
         self.vision_tower = self.vision_tower.cuda()
