@@ -153,6 +153,14 @@ async def generate_stream(request: Request) -> Response:
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
+@app.post("/")
+async def compat_generate(request: Request) -> Response:
+    request_dict = await request.json()
+    stream = request_dict.pop("stream", False)
+    if stream:
+        return await generate_stream(request)
+    else:
+        return await generate(request)
 
 @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
@@ -335,7 +343,7 @@ def main():
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
                         | triton_gqa_attention | triton_gqa_flashdecoding]
-                        [triton_w4a16 | triton_w8a16 | lmdeploy_w4a16 | ppl_w4a16 | ppl_w8a8],
+                        [triton_w4a16 | triton_w8a16 | triton_w8a8 | lmdeploy_w4a16 | ppl_w4a16 | ppl_w8a8],
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
