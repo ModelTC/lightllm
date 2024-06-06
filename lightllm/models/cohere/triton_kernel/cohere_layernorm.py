@@ -115,6 +115,3 @@ def test_layernorm(eps=1e-5):
     print("max delta:", torch.max(torch.abs(x - y_ref)))
     assert torch.allclose(x, y_ref, atol=1e-2, rtol=0)
     return
-
-if __name__ == '__main__':
-    test_layernorm()
