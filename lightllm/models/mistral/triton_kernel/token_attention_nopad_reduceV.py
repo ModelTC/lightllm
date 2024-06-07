@@ -13,7 +13,6 @@ def _fwd_kernel_token_att2(
     B_req_idx,
     B_Start_Loc,
     B_Seqlen,
-    B_Start_Loc_Window,
     B_Att_Start_Loc,
     B_Att_Seqlen,
     stride_req_to_tokens_b,
@@ -76,7 +75,7 @@ def _fwd_kernel_token_att2(
 
 @torch.no_grad()
 def token_att_fwd2(
-    prob, v, out, Req_to_tokens, B_req_idx, B_Start_Loc, B_Seqlen, B_Start_Loc_Window, B_Att_Start_Loc, B_Att_Seqlen, sliding_window
+    prob, v, out, Req_to_tokens, B_req_idx, B_Start_Loc, B_Seqlen, B_Att_Start_Loc, B_Att_Seqlen, sliding_window
 ):
     BLOCK = 128
     # BLOCK = 64 # for triton 2.0.0dev
@@ -95,7 +94,6 @@ def token_att_fwd2(
         B_req_idx,
         B_Start_Loc,
         B_Seqlen,
-        B_Start_Loc_Window,
         B_Att_Start_Loc,
         B_Att_Seqlen,
         Req_to_tokens.stride(0),
