@@ -3,6 +3,7 @@ import numpy as np
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.req_manager import ReqManager
 from lightllm.models.mistral.infer_struct import MistralInferStateInfo
+from lightllm.models.mistral.triton_kernel.init_att_sliding_window_info import init_att_window_info_fwd
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -11,7 +12,6 @@ class MixtralInferStateInfo(MistralInferStateInfo):
     def __init__(self):
         super().__init__()
         self.sliding_window = None
-        self.b_start_loc_window = None
         self.b_att_seq_len = None
         self.b_att_start_loc = None
         self.total_cache_num = None
@@ -38,17 +38,8 @@ class MixtralInferStateInfo(MistralInferStateInfo):
             # b_loc[0, max_len_in_batch - 1].item()
 
             # [SYM] still reserve all kv cache
-            self.b_att_seq_len = self.b_seq_len.clone()
-            self.b_att_start_loc = self.b_start_loc.clone()
-            self.b_start_loc_window = self.b_start_loc.clone()
-            self.total_cache_num = 0
-            for i in range(0, self.batch_size):
-                if self.sliding_window < self.b_seq_len[i]:
-                    self.b_start_loc_window[i] = self.b_seq_len[i] - self.sliding_window
-                    self.b_att_seq_len[i] = self.sliding_window
-                else:
-                    self.b_start_loc_window[i] = 0
-                    self.b_att_seq_len[i] = self.b_seq_len[i]
-                self.b_att_start_loc[i] = self.total_cache_num
-                self.total_cache_num += self.b_att_seq_len[i]
+            self.b_att_seq_len = torch.zeros_like(self.b_seq_len)
+            init_att_window_info_fwd(self.batch_size, self.b_seq_len, self.b_att_seq_len, self.sliding_window)
+            self.b_att_start_loc = torch.cumsum(self.b_att_seq_len, 0) - self.b_att_seq_len
+            self.total_cache_num = torch.sum(self.b_att_seq_len).item()
         return
