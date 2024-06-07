@@ -8,7 +8,7 @@ import math
 @triton.jit
 def _fwd_kernel_token_att1(
     Q, K, sm_scale, Req_to_tokens, B_req_idx, B_Start_Loc, B_Seqlen, 
-    B_Start_Loc_Window, B_Att_Start_Loc, B_Att_Seqlen,
+    B_Att_Start_Loc, B_Att_Seqlen,
     Att_Out,
     stride_req_to_tokens_b, stride_req_to_tokens_s,
     stride_qbs, stride_qh, stride_qd,
@@ -31,7 +31,7 @@ def _fwd_kernel_token_att1(
     cur_att_seq_len = tl.load(B_Att_Seqlen + cur_batch)
 
     # use new start index of k value
-    cur_batch_start_index = tl.load(B_Start_Loc_Window + cur_batch)
+    cur_batch_start_index = tl.maximum(cur_batch_seq_len - sliding_window, 0)
     cur_batch_end_index = cur_batch_seq_len
 
     off_q = cur_batch * stride_qbs + cur_head * stride_qh + offs_d * stride_qd # [D]
@@ -59,7 +59,7 @@ def _fwd_kernel_token_att1(
 @torch.no_grad()
 def token_att_fwd(
     q, k, att_out, Req_to_tokens, B_req_idx, B_Start_Loc, B_Seqlen, 
-    B_Start_Loc_Window, B_Att_Start_Loc, B_Att_Seqlen, sliding_window):
+    B_Att_Start_Loc, B_Att_Seqlen, sliding_window):
     BLOCK = 32
     # shape constraints
     Lq, Lk = q.shape[-1], k.shape[-1]
@@ -79,7 +79,7 @@ def token_att_fwd(
 
     _fwd_kernel_token_att1[grid](
         q, k, sm_scale, Req_to_tokens, B_req_idx, B_Start_Loc, B_Seqlen, 
-        B_Start_Loc_Window, B_Att_Start_Loc, B_Att_Seqlen,
+        B_Att_Start_Loc, B_Att_Seqlen,
         att_out,
         Req_to_tokens.stride(0), Req_to_tokens.stride(1),
         q.stride(0), q.stride(1), q.stride(2),

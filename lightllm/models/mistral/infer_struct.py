@@ -8,7 +8,6 @@ class MistralInferStateInfo(LlamaInferStateInfo):
     def __init__(self):
         super().__init__()
         self.sliding_window = None
-        self.b_start_loc_window = None
         self.b_att_seq_len = None
         self.b_att_start_loc = None
         self.total_cache_num = None
@@ -32,8 +31,7 @@ class MistralInferStateInfo(LlamaInferStateInfo):
 
             # [SYM] still reserve all kv cache
             self.b_att_seq_len = torch.zeros_like(self.b_seq_len)
-            self.b_start_loc_window = torch.zeros_like(self.b_start_loc)
-            init_att_window_info_fwd(self.batch_size, self.b_seq_len, self.b_start_loc_window, self.b_att_seq_len, self.sliding_window)
+            init_att_window_info_fwd(self.batch_size, self.b_seq_len, self.b_att_seq_len, self.sliding_window)
             self.b_att_start_loc = torch.cumsum(self.b_att_seq_len, 0) - self.b_att_seq_len
             self.total_cache_num = torch.sum(self.b_att_seq_len).item()
         return
