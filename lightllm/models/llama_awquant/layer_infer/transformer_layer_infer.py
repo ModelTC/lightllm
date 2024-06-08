@@ -226,34 +226,22 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         if input.dtype == torch.float16:
             input, token_scale = dynamic_channelwise_quant_fp16_i8_ppl(input.transpose(0, 1))
         assert has_act is False
-        if is_prefill:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
-        else:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
+        qweight, qscale = quant_weight_params
+        out = matmul_i8_i32_ppl(input, qweight)
         out = channel_token_dequant_i32_fp16_ppl(out, token_scale, qscale)
-        if bias is None:
-            return out
-        else:
+        if bias is not None:
             out.add_(bias)
-            return out
+        return out
 
     def _awquant_matmul_ppl_int8_quant(
         self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False
     ):
         assert has_act is False
-        if is_prefill:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
-        else:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
-        if bias is None:
-            return out
-        else:
+        qweight, qscale = quant_weight_params
+        out = matmul_i8_i32_ppl(input, qweight)
+        if bias is not None:
             out.add_(bias)
-            return out
+        return out
 
     def _awquant_att_norm_ppl_int8(self, input, infer_state: LlamaInferStateInfo, layer_weight):
         if getattr(infer_state, "skip", None) is None:
@@ -449,17 +437,11 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         self, input, quant_weight_params, is_prefill, token_scale=None, out=None, bias=None, has_act=False
     ):
         assert has_act is False
-        if is_prefill:
-            qweight, qscale = quant_weight_params
-            out = matmul_quantize_int8(input, qweight, qscale)
-        else:
-            qweight, qscale = quant_weight_params
-            out = matmul_quantize_int8(input, qweight, qscale)
-        if bias is None:
-            return out
-        else:
+        qweight, qscale = quant_weight_params
+        out = matmul_quantize_int8(input, qweight, qscale)
+        if bias is not None:
             out.add_(bias)
-            return out
+        return out
 
     def _awquant_matmul_ppl_int8_quant_dequant(
         self, input, quant_weight_params, is_prefill, token_scale=None, out=None, bias=None, has_act=False
@@ -467,34 +449,22 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         if input.dtype == torch.float16:
             input, token_scale = dynamic_channelwise_quant_fp16_i8_ppl(input.transpose(0, 1))
         assert has_act is False
-        if is_prefill:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
-        else:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
+        qweight, qscale = quant_weight_params
+        out = matmul_i8_i32_ppl(input, qweight)
         out = channel_token_dequant_i32_fp16_ppl(out, token_scale, qscale)
-        if bias is None:
-            return out
-        else:
+        if bias is not None:
             out.add_(bias)
-            return out
+        return out
 
     def _awquant_matmul_ppl_int8_quant(
         self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False
     ):
         assert has_act is False
-        if is_prefill:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
-        else:
-            qweight, qscale = quant_weight_params
-            out = matmul_i8_i32_ppl(input, qweight)
-        if bias is None:
-            return out
-        else:
+        qweight, qscale = quant_weight_params
+        out = matmul_i8_i32_ppl(input, qweight)
+        if bias is not None:
             out.add_(bias)
-            return out
+        return out
 
     def _awquant_att_norm_ppl_int8(self, input, infer_state: LlamaInferStateInfo, layer_weight):
         if getattr(infer_state, "skip", None) is None:
