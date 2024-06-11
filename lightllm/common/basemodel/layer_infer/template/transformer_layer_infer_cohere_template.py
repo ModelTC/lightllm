@@ -1,3 +1,4 @@
+import copy
 from functools import partial
 from typing import Tuple
 
@@ -55,7 +56,12 @@ class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
             k = cache_kv[:, 0 : self.tp_k_head_num_, :]
             q = self._q_norm(q, infer_state, layer_weight)
             cache_kv[:, 0 : self.tp_k_head_num_, :] = self._k_norm(k, infer_state, layer_weight)
-        self._rotary_emb_fwd(q, cache_kv, infer_state.position_cos, infer_state.position_sin)
+        self._rotary_emb_fwd(
+            q.view(-1, self.tp_q_head_num_, self.head_dim_), 
+            cache_kv[:, 0 : self.tp_k_head_num_, :], 
+            infer_state.position_cos, 
+            infer_state.position_sin
+        )
         return q, cache_kv
 
     def _context_attention_kernel(self, q, kv, infer_state: InferStateInfo, layer_weight, out=None) -> torch.Tensor:
@@ -152,22 +158,25 @@ class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
         )
 
     def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        residual = copy.deepcopy(input_embdings)
         input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         self._context_attention(input1, infer_state, layer_weight=layer_weight)
         self._context_ffn(input1, infer_state, layer_weight)
-        self._cohere_residual(input_embdings, infer_state)
-        return input_embdings
+        self._cohere_residual(residual, infer_state)
+        return residual
 
     def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        residual = copy.deepcopy(input_embdings)
         input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         self._token_attention(input1, infer_state, layer_weight=layer_weight)
         self._token_ffn(input1, infer_state, layer_weight)
-        self._cohere_residual(input_embdings, infer_state)
-        return input_embdings
+        self._cohere_residual(residual, infer_state)
+        return residual
 
     def splitfuse_forward(self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight):
+        residual = copy.deepcopy(input_embdings)
         input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         self._splitfuse_attention(input1, infer_state, layer_weight=layer_weight)
         self._splitfuse_ffn(input1, infer_state, layer_weight)
-        self._cohere_residual(input_embdings, infer_state)
-        return input_embdings
+        self._cohere_residual(residual, infer_state)
+        return residual
