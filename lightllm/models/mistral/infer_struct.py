@@ -4,6 +4,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.req_manager import ReqManager
 from lightllm.models.mistral.triton_kernel.init_att_sliding_window_info import init_att_window_info_fwd
 
+
 class MistralInferStateInfo(LlamaInferStateInfo):
     def __init__(self):
         super().__init__()
@@ -13,12 +14,13 @@ class MistralInferStateInfo(LlamaInferStateInfo):
         self.total_cache_num = None
         # self.window_postion = None
 
-    def init_some_extra_state(self, model, input_ids : torch.Tensor):
+    def init_some_extra_state(self, model, input_ids: torch.Tensor):
         self.sliding_window = model.config["sliding_window"]
         if self.is_prefill:
             b_seq_len_numpy = self.b_seq_len.cpu().numpy()
-            position_ids = torch.from_numpy(np.concatenate([np.arange(0, b_seq_len_numpy[i])
-                                            for i in range(len(b_seq_len_numpy))], axis=0)).cuda()
+            position_ids = torch.from_numpy(
+                np.concatenate([np.arange(0, b_seq_len_numpy[i]) for i in range(len(b_seq_len_numpy))], axis=0)
+            ).cuda()
             self.position_cos = torch.index_select(model._cos_cached, 0, position_ids).view(position_ids.shape[0], -1)
             self.position_sin = torch.index_select(model._sin_cached, 0, position_ids).view(position_ids.shape[0], -1)
             position_ids = None

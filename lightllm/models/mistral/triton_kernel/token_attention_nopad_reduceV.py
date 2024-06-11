@@ -38,7 +38,7 @@ def _fwd_kernel_token_att2(
     offs_n = tl.arange(0, BLOCK_N)  # [64]
     offs_d = tl.arange(0, BLOCK_DMODEL)  # [D]
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
-    cur_batch_start_index = tl.maximum(cur_batch_seq_len - sliding_window, 0) # new index
+    cur_batch_start_index = tl.maximum(cur_batch_seq_len - sliding_window, 0)  # new index
     # cur_batch_end_index = cur_batch_seq_len
     cur_batch_in_all_start_index = tl.load(B_Att_Start_Loc + cur_batch)  # new index
     cur_batch_req_idx = tl.load(B_req_idx + cur_batch)
