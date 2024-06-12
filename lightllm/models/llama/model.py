@@ -69,6 +69,8 @@ class LlamaTpPartModel(TpPartBaseModel):
             self._init_to_get_yarn_rotary()
         elif self.config.get("use_dynamic_ntk", False) or (self.config.get("rope_scaling", None) is not None and self.config.get("rope_scaling", {}).get("type", "base") == "dynamic"):
             self._init_to_get_dynamic_ntk_rotary()
+        elif self.config.get("rope_scaling", None) is not None and self.config.get("rope_scaling", {}).get("type", "base") == "su":
+            self._init_to_su_rotary()
         else:
             self._init_to_get_rotary()
         return
@@ -199,4 +201,37 @@ class LlamaTpPartModel(TpPartBaseModel):
 
         return
 
+    def _init_to_su_rotary(self):
+        rope_scaling = self.config["rope_scaling"]
+        short_factor = rope_scaling['short_factor']
+        long_factor = rope_scaling['long_factor']
+        original_max_position_embeddings = self.config["original_max_position_embeddings"]
+        max_position_embeddings = self.config.get("max_position_embeddings", original_max_position_embeddings)
+        base = self.config.get("rope_theta", 10000.0)
+        short_factor = torch.tensor(short_factor, dtype=torch.float32, device="cpu")
+        long_factor = torch.tensor(long_factor, dtype=torch.float32, device="cpu")
 
+        scale = max_position_embeddings / original_max_position_embeddings
+        if scale <=1.0:
+            rope_scaling_factor = 1.0
+        else:
+            rope_scaling_factor = math.sqrt(1 + math.log(scale) / math.log(original_max_position_embeddings))
+
+        max_seq_len = max(self.max_seq_length, max_position_embeddings)
+        self._cos_cached = torch.zeros((max_seq_len, self.head_dim_ // 2), dtype=self.data_type, device="cuda")
+        self._sin_cached = torch.zeros((max_seq_len, self.head_dim_ // 2), dtype=self.data_type, device="cuda")
+        
+        inv_freq = 1.0 / (short_factor * base ** (torch.arange(0, self.head_dim_, 2, device="cpu", dtype=torch.float32) / self.head_dim_))
+        t = torch.arange(original_max_position_embeddings, device="cpu", dtype=torch.float32)
+        freqs = torch.outer(t, inv_freq)
+        self._cos_cached[0:original_max_position_embeddings, :] = (torch.cos(freqs) * rope_scaling_factor).to(self.data_type).cuda()
+        self._sin_cached[0:original_max_position_embeddings, :] = (torch.sin(freqs) * rope_scaling_factor).to(self.data_type).cuda()
+
+
+        inv_freq = 1.0 / (long_factor * base ** (torch.arange(0, self.head_dim_, 2, device="cpu", dtype=torch.float32) / self.head_dim_))
+        t = torch.arange(original_max_position_embeddings, max_seq_len, device="cpu", dtype=torch.float32)
+        freqs = torch.outer(t, inv_freq)
+        self._cos_cached[original_max_position_embeddings:, :] = (torch.cos(freqs) * rope_scaling_factor).to(self.data_type).cuda()
+        self._sin_cached[original_max_position_embeddings:, :] = (torch.sin(freqs) * rope_scaling_factor).to(self.data_type).cuda()
+
+        return
