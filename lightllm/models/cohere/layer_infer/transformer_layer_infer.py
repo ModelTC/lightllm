@@ -44,7 +44,7 @@ class CohereTransformerLayerInfer(TransformerLayerCohereInferTpl):
     def _att_norm(self, input, infer_state, layer_weight):
         layernorm_forward(input.unsqueeze(1), layer_weight.att_norm_weight_.unsqueeze(0), self.eps_)
         return input
-        
+
     def _q_norm(self, input, infer_state, layer_weight):
         layernorm_forward(input, layer_weight.q_norm_weight_, self.eps_)
         return input

@@ -3,6 +3,7 @@ import torch
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def _rotary_kernel(
     Q,
@@ -137,7 +138,7 @@ def torch_cohere_rotary_emb(x, cos, sin):
 
 
 @torch.no_grad()
-def rotary_emb_fwd(q, k, cos, sin, partial_rotary_factor=1.):
+def rotary_emb_fwd(q, k, cos, sin, partial_rotary_factor=1.0):
     total_len = q.shape[0]
     head_num_q, head_num_k = q.shape[1], k.shape[1]
     head_dim = int(q.shape[2] * partial_rotary_factor)
@@ -177,6 +178,7 @@ def rotary_emb_fwd(q, k, cos, sin, partial_rotary_factor=1.):
         num_stages=1,
     )
     return
+
 
 def test_rotary_emb(SEQ_LEN, H, D, dtype, eps=1e-5, device="cuda"):
     # create data
