@@ -16,6 +16,7 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
+
 class CohereTpPartModel(LlamaTpPartModel):
     pre_and_post_weight_class = CoherePreAndPostLayerWeight
     transformer_weight_class = CohereTransformerLayerWeight
