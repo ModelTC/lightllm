@@ -32,8 +32,6 @@ def _rotary_kernel(
     cur_head_range = cur_head_index * BLOCK_HEAD + tl.arange(0, BLOCK_HEAD)
     cur_seq_range = cur_seq_index * BLOCK_SEQ + tl.arange(0, BLOCK_SEQ)
 
-    dim_range = tl.arange(0, BLOCK_DMODEL)
-
     dim_range0 = tl.arange(0, BLOCK_DMODEL // 2) * 2
     dim_range1 = tl.arange(0, BLOCK_DMODEL // 2) * 2 + 1
 
