@@ -9,6 +9,7 @@ import triton.language as tl
 def _layer_norm_fwd_kernel(
     X,  # pointer to the input
     W,  # pointer to the weights
+    Y,
     stride_x_N,
     stride_x_hn,
     stride_x_hd,
@@ -22,6 +23,7 @@ def _layer_norm_fwd_kernel(
     H = tl.program_id(1)
 
     X += Seq * stride_x_N + H * stride_x_hn
+    Y += Seq * stride_x_N + H * stride_x_hn
     W += H * stride_w_hn
 
     _mean = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
@@ -48,7 +50,7 @@ def _layer_norm_fwd_kernel(
         x_hat = (x - mean) * rstd
         y = x_hat * w
 
-        tl.store(X + cols, y.to(X.dtype.element_ty), mask=mask)
+        tl.store(Y + cols, y.to(X.dtype.element_ty), mask=mask)
 
 
 def layernorm_forward(
@@ -69,10 +71,13 @@ def layernorm_forward(
     N = X.shape[-1]
     BLOCK_SIZE = 128
 
+    Y = torch.empty_like(X)
+
     grid = (X.shape[0], X.shape[1])
     _layer_norm_fwd_kernel[grid](
         X,
         W,
+        Y,
         stride_x_N,
         stride_x_hn,
         stride_x_hd,
@@ -82,6 +87,8 @@ def layernorm_forward(
         eps,
         BLOCK_SIZE,
     )
+
+    return Y
 
 
 def torch_layernorm(x, weight, eps):

@@ -158,25 +158,25 @@ class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
         )
 
     def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
-        residual = copy.deepcopy(input_embdings)
+        # residual = copy.deepcopy(input_embdings)
         input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         self._context_attention(input1, infer_state, layer_weight=layer_weight)
         self._context_ffn(input1, infer_state, layer_weight)
-        self._cohere_residual(residual, infer_state)
-        return residual
+        self._cohere_residual(input_embdings, infer_state)
+        return input_embdings
 
     def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
-        residual = copy.deepcopy(input_embdings)
+        # residual = copy.deepcopy(input_embdings)
         input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         self._token_attention(input1, infer_state, layer_weight=layer_weight)
         self._token_ffn(input1, infer_state, layer_weight)
-        self._cohere_residual(residual, infer_state)
-        return residual
+        self._cohere_residual(input_embdings, infer_state)
+        return input_embdings
 
     def splitfuse_forward(self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight):
-        residual = copy.deepcopy(input_embdings)
+        # residual = copy.deepcopy(input_embdings)
         input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         self._splitfuse_attention(input1, infer_state, layer_weight=layer_weight)
         self._splitfuse_ffn(input1, infer_state, layer_weight)
-        self._cohere_residual(residual, infer_state)
-        return residual
+        self._cohere_residual(input_embdings, infer_state)
+        return input_embdings
