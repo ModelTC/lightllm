@@ -33,9 +33,7 @@ class Phi3TransformerLayerWeight(LlamaTransformerLayerWeight):
         n_embed = self.network_config_["hidden_size"]
         q_split_n_embed = n_embed // self.world_size_
         kv_n_embed = (
-            n_embed
-            // self.network_config_["num_attention_heads"]
-            * self.network_config_["num_key_value_heads"]
+            n_embed // self.network_config_["num_attention_heads"] * self.network_config_["num_key_value_heads"]
         )
         kv_split_n_embed = (
             n_embed
@@ -57,9 +55,7 @@ class Phi3TransformerLayerWeight(LlamaTransformerLayerWeight):
             k_weight_ = qkv_weight_[:, n_embed : n_embed + kv_n_embed]
             self.k_weight_ = k_weight_[:, kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1)]
 
-            v_weight_ = qkv_weight_[
-                :, n_embed + kv_n_embed : n_embed + 2 * kv_n_embed
-            ]
+            v_weight_ = qkv_weight_[:, n_embed + kv_n_embed : n_embed + 2 * kv_n_embed]
             self.v_weight_ = v_weight_[:, kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1)]
 
         self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
@@ -83,12 +79,12 @@ class Phi3TransformerLayerWeight(LlamaTransformerLayerWeight):
 
         if f"model.layers.{self.layer_num_}.mlp.gate_up_proj.weight" in weights:
             gate_up_proj = weights[f"model.layers.{self.layer_num_}.mlp.gate_up_proj.weight"]
-            gate_proj = gate_up_proj[0: inter_size][
+            gate_proj = gate_up_proj[0:inter_size][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
             self.gate_proj = gate_proj.transpose(0, 1)
-            
-            up_proj = gate_up_proj[inter_size : ][
+
+            up_proj = gate_up_proj[inter_size:][
                 split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :
             ]
             self.up_proj = up_proj.transpose(0, 1)

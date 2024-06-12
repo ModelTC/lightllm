@@ -15,4 +15,3 @@ class Phi3TpPartModel(LlamaTpPartModel):
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
-    

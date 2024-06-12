@@ -82,7 +82,9 @@ def _fwd_kernel(
             other=0,
         )
         off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
-        k = tl.load(K + off_k, mask=((start_n + offs_n[None, :]) < block_end_loc) & (offs_d[:, None] < head_dim), other=0.0)
+        k = tl.load(
+            K + off_k, mask=((start_n + offs_n[None, :]) < block_end_loc) & (offs_d[:, None] < head_dim), other=0.0
+        )
 
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         qk += tl.dot(q, k)
@@ -108,7 +110,9 @@ def _fwd_kernel(
         acc = acc * acc_scale[:, None]
         # update acc
         off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
-        v = tl.load(V + off_v, mask=((start_n + offs_n[:, None]) < block_end_loc) & (offs_d[None, :] < head_dim), other=0.0)
+        v = tl.load(
+            V + off_v, mask=((start_n + offs_n[:, None]) < block_end_loc) & (offs_d[None, :] < head_dim), other=0.0
+        )
         p = p.to(v.dtype)
         acc += tl.dot(p, v)
         # update m_i and l_i
@@ -133,8 +137,8 @@ def context_attention_fwd(
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
     assert Lq == Lk and Lk == Lv
-    head_dim = Lq 
-    BLOCK_DMODEL = triton.next_power_of_2(head_dim)    
+    head_dim = Lq
+    BLOCK_DMODEL = triton.next_power_of_2(head_dim)
 
     sm_scale = 1.0 / (Lq ** 0.5)  # 计算scale系数
     batch, head = b_seq_len.shape[0], q.shape[1]
@@ -301,7 +305,7 @@ def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, ma
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
     assert Lq == Lk and Lk == Lv
-    head_dim = Lq 
+    head_dim = Lq
     BLOCK_DMODEL = triton.next_power_of_2(head_dim)
     sm_scale = 1.0 / (Lq ** 0.5)  # 计算scale系数
     batch, head = b_seq_len.shape[0], q.shape[1]
@@ -382,7 +386,7 @@ def test():
     b_prompt_cache_len[0] = 0
     prompt_cache_len = 0
 
-    b_seq_len[0] = 500 
+    b_seq_len[0] = 500
     b_req_idx[0] = 0
     req_to_token_indexs[0][: prompt_cache_len + N_CTX] = torch.tensor(
         np.arange(prompt_cache_len + N_CTX), dtype=torch.int32
@@ -408,13 +412,22 @@ def test():
     torch_out = torch.cat(torch_out, dim=0)
 
     context_attention_fwd(
-        q, k, v, o, b_req_idx, b_start_loc, b_seq_len + prompt_cache_len, b_prompt_cache_len, max_input_len, req_to_token_indexs
+        q,
+        k,
+        v,
+        o,
+        b_req_idx,
+        b_start_loc,
+        b_seq_len + prompt_cache_len,
+        b_prompt_cache_len,
+        max_input_len,
+        req_to_token_indexs,
     )
-    
+
     # context_attention_fwd_no_prompt_cache(
     #         q, k, v, o, b_start_loc, b_seq_len, max_input_len
     #     )
-    
+
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)

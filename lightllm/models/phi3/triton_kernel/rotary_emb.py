@@ -56,12 +56,16 @@ def _rotary_kernel(
 
     q0 = tl.load(
         Q + off_q0,
-        mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_Q) & (dim_range0[None, None, :] < rot_dim),
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_Q)
+        & (dim_range0[None, None, :] < rot_dim),
         other=0.0,
     )
     q1 = tl.load(
         Q + off_q1,
-        mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_Q) & (dim_range1[None, None, :] < head_dim),
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_Q)
+        & (dim_range1[None, None, :] < head_dim),
         other=0.0,
     )
 
@@ -71,12 +75,19 @@ def _rotary_kernel(
     out0 = q0 * cos - q1 * sin
     out1 = q0 * sin + q1 * cos
 
-
     tl.store(
-        Q + off_q0, out0, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_Q) & (dim_range0[None, None, :] < rot_dim)
+        Q + off_q0,
+        out0,
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_Q)
+        & (dim_range0[None, None, :] < rot_dim),
     )
     tl.store(
-        Q + off_q1, out1, mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_Q) & (dim_range1[None, None, :] < head_dim)
+        Q + off_q1,
+        out1,
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_Q)
+        & (dim_range1[None, None, :] < head_dim),
     )
 
     off_k0 = (
@@ -94,12 +105,16 @@ def _rotary_kernel(
 
     k0 = tl.load(
         K + off_k0,
-        mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_K) & (dim_range0[None, None, :] < rot_dim),
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_K)
+        & (dim_range0[None, None, :] < rot_dim),
         other=0.0,
     )
     k1 = tl.load(
         K + off_k1,
-        mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_K) & (dim_range1[None, None, :] < head_dim),
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_K)
+        & (dim_range1[None, None, :] < head_dim),
         other=0.0,
     )
     cos = tl.load(Cos + off_dimcos_sin, mask=cur_seq_range[:, None, None] < max_total_len, other=0.0)
@@ -111,18 +126,22 @@ def _rotary_kernel(
     tl.store(
         K + off_k0,
         out_k0,
-        mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_K) & (dim_range0[None, None, :] < rot_dim),
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_K)
+        & (dim_range0[None, None, :] < rot_dim),
     )
     tl.store(
         K + off_k1,
         out_k1,
-        mask=(cur_seq_range[:, None, None] < max_total_len) & (cur_head_range[None, :, None] < HEAD_K) & (dim_range1[None, None, :] < head_dim),
+        mask=(cur_seq_range[:, None, None] < max_total_len)
+        & (cur_head_range[None, :, None] < HEAD_K)
+        & (dim_range1[None, None, :] < head_dim),
     )
     return
 
 
 @torch.no_grad()
-def rotary_emb_fwd(q, k, cos, sin, partial_rotary_factor=1.):
+def rotary_emb_fwd(q, k, cos, sin, partial_rotary_factor=1.0):
     total_len = q.shape[0]
     head_num_q, head_num_k = q.shape[1], k.shape[1]
     head_dim = int(q.shape[2] * partial_rotary_factor)

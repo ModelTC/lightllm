@@ -25,15 +25,11 @@ class Phi3TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _bind_attention(self):
         self._context_attention_kernel = partial(Phi3TransformerLayerInfer._context_attention_kernel, self)
         self._copy_kv_to_mem_cache = partial(Phi3TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
-        self._token_attention_kernel = partial(
-            Phi3TransformerLayerInfer._token_decode_attention_flashdecoding, self
-        )
+        self._token_attention_kernel = partial(Phi3TransformerLayerInfer._token_decode_attention_flashdecoding, self)
         return
 
     def _get_qkv(self, input_emb, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: Phi3TransformerLayerWeight):
-        q = torch.mm(
-            input_emb.view(-1, self.embed_dim_), layer_weight.q_weight_
-        )
+        q = torch.mm(input_emb.view(-1, self.embed_dim_), layer_weight.q_weight_)
         torch.mm(
             input_emb.view(-1, self.embed_dim_),
             layer_weight.kv_weight_,
@@ -46,7 +42,7 @@ class Phi3TransformerLayerInfer(LlamaTransformerLayerInfer):
             infer_state.position_sin,
         )
         return q, cache_kv
-    
+
     def _copy_kv_to_mem_cache(self, buffer, mem_index, mem_manager):
         destindex_copy_kv(buffer, mem_index, mem_manager.kv_buffer[self.layer_num_])
         return
