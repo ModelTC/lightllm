@@ -22,10 +22,9 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         return
 
     def _norm(self, input, infer_state, layer_weight: CoherePreAndPostLayerWeight) -> torch.Tensor:
-        input = layernorm_forward(
+        return layernorm_forward(
             input.unsqueeze(1), layer_weight.final_norm_weight_.unsqueeze(0), eps=self.eps_
-        ).squeeze_(1)
-        return input
+        ).squeeze(1)
 
     def _slice_get_last_input(self, input_embdings, infer_state: CohereInferStateInfo):
         if infer_state.is_splitfuse:

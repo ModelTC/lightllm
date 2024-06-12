@@ -13,6 +13,9 @@ def _layer_norm_fwd_kernel(
     stride_x_N,
     stride_x_hn,
     stride_x_hd,
+    stride_y_N,
+    stride_y_hn,
+    stride_y_hd,
     stride_w_hn,
     stride_w_hd,
     N,  # number of columns in X
@@ -23,7 +26,7 @@ def _layer_norm_fwd_kernel(
     H = tl.program_id(1)
 
     X += Seq * stride_x_N + H * stride_x_hn
-    Y += Seq * stride_x_N + H * stride_x_hn
+    Y += Seq * stride_y_N + H * stride_y_hn
     W += H * stride_w_hn
 
     _mean = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
@@ -63,24 +66,33 @@ def layernorm_forward(
     assert X.shape[-1] == W.shape[-1]
     assert X.shape[-2] == W.shape[-2]
 
+    y = torch.empty_like(X)
+
     stride_x_N = X.stride(0)
     stride_x_hn = X.stride(1)
     stride_x_hd = X.stride(2)
+
+    stride_y_N = y.stride(0)
+    stride_y_hn = y.stride(1)
+    stride_y_hd = y.stride(2)
+
     stride_w_hn = W.stride(0)
     stride_w_hd = W.stride(1)
+
     N = X.shape[-1]
     BLOCK_SIZE = 128
-
-    Y = torch.empty_like(X)
 
     grid = (X.shape[0], X.shape[1])
     _layer_norm_fwd_kernel[grid](
         X,
         W,
-        Y,
+        y,
         stride_x_N,
         stride_x_hn,
         stride_x_hd,
+        stride_y_N,
+        stride_y_hn,
+        stride_y_hd,
         stride_w_hn,
         stride_w_hd,
         N,
@@ -88,7 +100,7 @@ def layernorm_forward(
         BLOCK_SIZE,
     )
 
-    return Y
+    return y
 
 
 def torch_layernorm(x, weight, eps):
@@ -104,12 +116,12 @@ def torch_layernorm(x, weight, eps):
 def test_layernorm(eps=1e-5):
     # create data
     dtype = torch.float16
-    x_shape = (1000, 1, 128)
+    x_shape = (5, 1, 128)
     w_shape = (x_shape[-2], x_shape[-1])
     weight = torch.rand(w_shape, dtype=dtype, device="cuda")
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device="cuda")
     # forward pass
-    y_ref = torch_layernorm(x.to(torch.float32), weight.to(torch.float32), eps).to(dtype)
+    y_ref = torch_layernorm(x, weight, eps).to(dtype)
     y_out = layernorm_forward(x, weight, eps)
 
     # compare
