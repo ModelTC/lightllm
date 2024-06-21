@@ -151,7 +151,7 @@ def _fwd_kernel(
 
 @torch.no_grad()
 def context_attention_fwd(
-    q_nope, q_rope, kv_nope, kv_rope, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs
+    q_nope, q_rope, kv_nope, kv_rope, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs, q_head_dim
 ):
     BLOCK = 128 if not TESLA else 64
     q_nope_dim = q_nope.shape[-1]
@@ -162,7 +162,7 @@ def context_attention_fwd(
     assert q_rope_dim in {16, 32, 64, 128, 256}
     
     # 这个 scale 系数的计算可能存在等效问题，to do
-    sm_scale = 1.0 / ((q_nope_dim + q_rope_dim) ** 0.5)  # 计算scale系数
+    sm_scale = 1.0 / ((q_head_dim + q_rope_dim) ** 0.5)  # 计算scale系数
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
     kv_group_num = q_nope.shape[1]  # deepseekv2 的 group 就是q的head数量，类似于MQA
 
@@ -342,7 +342,7 @@ def _fwd_kernel_no_prompt_cache(
 
 
 @torch.no_grad()
-def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len):
+def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len, q_head_dim):
     BLOCK = 128 if not TESLA else 64
     # shape constraints
     BLOCK = 128 if not TESLA else 64
@@ -354,7 +354,7 @@ def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b
     assert q_rope_dim in {16, 32, 64, 128, 256}
     
     # 这个 scale 系数的计算可能存在等效问题，to do
-    sm_scale = 1.0 / ((q_nope_dim + q_rope_dim) ** 0.5)  # 计算scale系数
+    sm_scale = 1.0 / ((q_head_dim + q_rope_dim) ** 0.5)  # 计算scale系数
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
     kv_group_num = q_nope.shape[1]
 
@@ -395,85 +395,79 @@ def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b
     )
     return
 
+def torch_att(q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_head_dim):
 
-def torch_att(xq, xk, xv, bs, seqlen, num_head, head_dim, prompt_cache_len):
-    xq = xq.view(bs, seqlen, num_head, head_dim)
-    xk = xk.view(bs, seqlen + prompt_cache_len, num_head, head_dim)
-    xv = xv.view(bs, seqlen + prompt_cache_len, num_head, head_dim)
-    mask_cache = torch.ones((seqlen, prompt_cache_len)).cuda().unsqueeze(0).unsqueeze(0).cuda()
+    xq = torch.cat([q, q_rope], dim=2).view(bs, seqlen, num_head, -1)
+    xk = torch.cat([kv, kv_rope], dim=2).view(bs, seqlen, 1, -1)
+    xv = kv.view(bs, seqlen, 1, -1)
+
     mask = torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).cuda()
     mask[mask == 0.0] = -100000000.0
-    mask = torch.cat([mask_cache, mask], dim=-1)
     mask = mask.repeat(bs, num_head, 1, 1)
     keys = xk
     values = xv
     xq = xq.transpose(1, 2)
     keys = keys.transpose(1, 2)
     values = values.transpose(1, 2)
-    scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)
+    # print(xq.shape, keys.transpose(2, 3).shape)
+    scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(q_head_dim + rope_head_dim)
     scores = F.softmax(scores.float() + mask, dim=-1).type_as(xq)
-    output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, head_dim)
+    output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, q_head_dim)
     return output
-
 
 def test():
     import torch
     import numpy as np
 
-    Z, H, N_CTX, D_HEAD = 1, 6, 500, 128
+    Z, H, N_CTX, D_HEAD, ROPE_HEAD = 1, 6, 500, 128, 64
     dtype = torch.float16
     Z = 1
-    q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
-    k = torch.empty((Z * N_CTX + 7000, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.4, std=0.2)
-    v = torch.empty((Z * N_CTX + 7000, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    req_to_token_indexs = torch.zeros((10, Z * N_CTX + 7000), dtype=torch.int32, device="cuda")
+    q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
+    q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
+    
+
+    kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
+    kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
+
+    o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.7, std=0.2)
+    o1 = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.7, std=0.2)
+
+    req_to_token_indexs = torch.zeros((10, Z * N_CTX), dtype=torch.int32, device="cuda")
     max_input_len = N_CTX
     Z = 1
     b_start_loc = torch.zeros((Z,), dtype=torch.int32, device="cuda")
     b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda")
     b_req_idx = torch.ones((Z,), dtype=torch.int32, device="cuda")
     b_prompt_cache_len = torch.zeros(1, dtype=torch.int32, device="cuda")
-    b_prompt_cache_len[0] = 10
-    prompt_cache_len = 10
+    b_prompt_cache_len[0] = 0
+    prompt_cache_len = 0
 
-    b_seq_len[0] = 500
+    b_seq_len[0] = N_CTX
     b_req_idx[0] = 0
     req_to_token_indexs[0][: prompt_cache_len + N_CTX] = torch.tensor(
         np.arange(prompt_cache_len + N_CTX), dtype=torch.int32
     ).cuda()
 
-    torch_out = []
-    start = 0
-    for i in range(Z):
-        end = start + b_seq_len[i]
-        torch_o = torch_att(
-            q[start:end],
-            k[start : end + prompt_cache_len],
-            v[start : end + prompt_cache_len],
-            1,
-            b_seq_len[i],
-            H,
-            D_HEAD,
-            prompt_cache_len,
-        )
-        start = end
-        torch_out.append(torch_o)
+    torch_out = torch_att(q, q_rope, kv, kv_rope, Z, N_CTX, H, D_HEAD, ROPE_HEAD)
 
-    torch_out = torch.cat(torch_out, dim=0)
-    import time
+    context_attention_fwd_no_prompt_cache(
+        q, q_rope, kv, kv_rope, o, b_start_loc, b_seq_len, max_input_len, D_HEAD
+    )
 
-    torch.cuda.synchronize()
-    a = time.time()
-    for i in range(10000):
-        context_attention_fwd(
-            q, k, v, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs
-        )
-    torch.cuda.synchronize()
-    b = time.time()
-    # print(o.shape, torch_out.shape)
-    print((b - a) / 10000)
+    context_attention_fwd(q, q_rope, kv, kv_rope, o1, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, N_CTX, req_to_token_indexs, D_HEAD)
 
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
+
+    print("max ", torch.max(torch.abs(torch_out - o1)))
+    print("mean ", torch.mean(torch.abs(torch_out - o1)))
+    assert torch.allclose(torch_out, o1, atol=1e-2, rtol=0)
+
+    print("max ", torch.max(torch.abs(o - o1)))
+    print("mean ", torch.mean(torch.abs(o - o1)))
+    assert torch.allclose(o, o1, atol=1e-2, rtol=0)
+
+
+if __name__ == "__main__":
+    test()
