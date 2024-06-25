@@ -3,6 +3,7 @@ import time
 import uuid
 import uvloop
 import asyncio
+import rpyc
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
@@ -24,14 +25,12 @@ from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
-from lightllm.server.metrics import monitor
 
-monitor.init_router_monitor()
 logger = init_logger(__name__)
 
 
 class RouterManager:
-    def __init__(self, args, router_port, detokenization_port, model_rpc_ports):
+    def __init__(self, args, router_port, detokenization_port, model_rpc_ports, metric_port):
         self.args = args
         self.model_weightdir = args.model_dir
         self.world_size = args.tp
@@ -69,6 +68,7 @@ class RouterManager:
         self.splitfuse_block_size = args.splitfuse_block_size
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
+        self.metric_client = rpyc.connect("localhost", metric_port)
         return
 
     async def wait_to_model_ready(self):
@@ -177,15 +177,15 @@ class RouterManager:
                     self.req_queue.update_token_load(self.running_batch)
                     pass
                 self.stats_tool.print_stats()
-                monitor.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
-                monitor.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
-                monitor.gauge_set("lightllm_queue_size", len(self.req_queue.waiting_req_list))
+                self.metric_client.root.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
+                self.metric_client.root.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
+                self.metric_client.root.gauge_set("lightllm_queue_size", len(self.req_queue.waiting_req_list))
             else:
                 self.shared_token_load.set_dynamic_max_load(0.0)
                 self.shared_token_load.set_current_load(0.0)
-                monitor.gauge_set("lightllm_batch_current_size", 0.0)
-                monitor.gauge_set("lightllm_batch_pause_size", 0.0)
-                monitor.gauge_set("lightllm_queue_size", 0.0)
+                self.metric_client.root.gauge_set("lightllm_batch_current_size", 0.0)
+                self.metric_client.root.gauge_set("lightllm_batch_pause_size", 0.0)
+                self.metric_client.root.gauge_set("lightllm_queue_size", 0.0)
 
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
@@ -403,7 +403,7 @@ class RouterManager:
         return
 
 
-def start_router_process(args, router_port, detokenization_port, model_rpc_ports, pipe_writer):
+def start_router_process(args, router_port, detokenization_port, model_rpc_ports, metric_port, pipe_writer):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -412,7 +412,11 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
 
     try:
         router = RouterManager(
-            args, router_port=router_port, detokenization_port=detokenization_port, model_rpc_ports=model_rpc_ports
+            args,
+            router_port=router_port,
+            detokenization_port=detokenization_port,
+            model_rpc_ports=model_rpc_ports,
+            metric_port=metric_port,
         )
 
         asyncio.run(router.wait_to_model_ready())

@@ -13,7 +13,6 @@ from ..io_struct import BatchStrOut, AbortReq, FinishStatus
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
 from ..sampling_params import SamplingParams
-from ..metrics import monitor
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -27,6 +26,7 @@ class HttpServerManager:
         cache_port,
         httpserver_port,
         visual_port,
+        metric_port,
         enable_multimodal,
     ):
         self.args = args
@@ -50,8 +50,7 @@ class HttpServerManager:
         self.total_token_num = args.max_total_token_num
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
-        monitor.init_httpserver_monitor(args)
-
+        self.metric_client = rpyc.connect("localhost", metric_port)
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -105,8 +104,8 @@ class HttpServerManager:
         else:
             prompt_ids = self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)
-        monitor.histogram_observe("lightllm_request_input_length", prompt_tokens)
-        monitor.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
+        self.metric_client.root.histogram_observe("lightllm_request_input_length", prompt_tokens)
+        self.metric_client.root.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
         if prompt_tokens > self.max_req_input_len:
             # use long_truncation_mode to truncate long input len req.
             if self.args.long_truncation_mode is None:
@@ -187,12 +186,21 @@ class HttpServerManager:
                             f"mean_per_token_cost_time: {mean_per_token_cost_time_ms}ms\n"
                             f"prompt_token_num:{prompt_tokens}"
                         )
-                        monitor.histogram_observe("lightllm_request_inference_duration", total_cost_time_ms)
-                        monitor.histogram_observe(
-                            "lightllm_request_mean_time_per_token_duration", total_cost_time_ms / out_token_counter
+                        print(
+                            "lightllm_request_inference_duration ",
                         )
-                        monitor.histogram_observe("lightllm_request_first_token_duration", first_token_cost_ms)
-                        monitor.histogram_observe("lightllm_request_generated_tokens", out_token_counter)
+                        self.metric_client.root.histogram_observe(
+                            "lightllm_request_inference_duration", total_cost_time_ms
+                        )
+                        self.metric_client.root.histogram_observe(
+                            "lightllm_request_mean_time_per_token_duration", mean_per_token_cost_time_ms
+                        )
+                        self.metric_client.root.histogram_observe(
+                            "lightllm_request_first_token_duration", first_token_cost_ms
+                        )
+                        self.metric_client.root.histogram_observe(
+                            "lightllm_request_generated_tokens", out_token_counter
+                        )
                         return
                 req_status.out_token_info_list.clear()
         return
