@@ -202,6 +202,8 @@ class ModeBackend:
             if self.use_dynamic_prompt_cache
             else None
         )
+
+        self.logger.info(f"loaded model class {self.model.__class__}")
         self.init_custom()
 
         return
