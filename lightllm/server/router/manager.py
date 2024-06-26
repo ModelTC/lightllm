@@ -114,6 +114,7 @@ class RouterManager:
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
         group_req_id: int,
+        start_time: float,
     ):
         req_group = []
         for i in range(sampling_params.best_of):
@@ -127,6 +128,7 @@ class RouterManager:
                 )
             else:
                 req = NormalReq(group_req_id + i, copy.deepcopy(prompt_ids), sampling_params, multimodal_params)
+            req.start_time = start_time
             req_group.append(req)
 
         self.req_queue.extend(req_group)
@@ -199,6 +201,11 @@ class RouterManager:
         if self.running_batch is None:
             new_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_batch is not None:
+                self.metric_client.root.histogram_observe("lightllm_batch_next_size", len(new_batch.reqs))
+                for req in new_batch.reqs:
+                    self.metric_client.root.histogram_observe(
+                        "lightllm_request_queue_duration_bucket", time.time() - req.start_time
+                    )
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
                 await self._prefill_batch(self.running_batch)
@@ -251,6 +258,8 @@ class RouterManager:
         return
 
     async def _prefill_batch(self, batch: Batch):
+        start_time = time.time()
+        self.metric_client.root.counter_inc("lightllm_batch_inference_count", "prefill")
         await self._init_batch(batch)
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
@@ -266,9 +275,14 @@ class RouterManager:
             self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
             await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
+        self.metric_client.root.histogram_observe(
+            "lightllm_batch_inference_duration_bucket", time.time() - start_time, "prefill"
+        )
         return
 
     async def _decode_batch(self, batch: Batch):
+        start_time = time.time()
+        self.metric_client.root.counter_inc("lightllm_batch_inference_count", "decode")
         rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.world_size)]
         ans = await asyncio.gather(*rets)
         if self.world_size != 1:
@@ -281,6 +295,9 @@ class RouterManager:
         self._send_to_detokenization_proc(batch, req_to_out_status)
         batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
         await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
+        self.metric_client.root.histogram_observe(
+            "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
+        )
         return
 
     async def _filter_batch(self, batch: Batch, unfinished_req_ids, finished_req_ids: List):
@@ -384,9 +401,9 @@ class RouterManager:
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
-            if isinstance(recv_req, tuple) and len(recv_req) == 4:
-                prompt_ids, sampling_params, multimodal_params, group_req_id = recv_req
-                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id)
+            if isinstance(recv_req, tuple) and len(recv_req) == 5:
+                prompt_ids, sampling_params, multimodal_params, group_req_id, start_time = recv_req
+                self.add_req(prompt_ids, sampling_params, multimodal_params, group_req_id, start_time)
             elif isinstance(recv_req, AbortReq):
                 abort_req = recv_req
                 group_req_id = abort_req.group_req_id

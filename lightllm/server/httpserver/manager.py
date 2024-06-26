@@ -91,6 +91,9 @@ class HttpServerManager:
     async def generate(
         self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None
     ):
+        # 监控
+        self.metric_client.root.counter_inc("lightllm_request_count")
+
         # 统计信息变量
         start_time = time.time()
         out_token_counter = 0
@@ -104,8 +107,11 @@ class HttpServerManager:
         else:
             prompt_ids = self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)
+        # 监控
         self.metric_client.root.histogram_observe("lightllm_request_input_length", prompt_tokens)
         self.metric_client.root.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
+        verify_time_begin = time.time()
+        sampling_params.verify()
         if prompt_tokens > self.max_req_input_len:
             # use long_truncation_mode to truncate long input len req.
             if self.args.long_truncation_mode is None:
@@ -130,6 +136,7 @@ class HttpServerManager:
             )
         if req_total_len + 1 > self.total_token_num:
             raise ValueError(f"the req token total len + 1 is too long > max_total_token_num:{self.total_token_num}")
+        verify_time_end = time.time()
 
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
@@ -138,9 +145,13 @@ class HttpServerManager:
         self.req_id_to_out_inf[group_request_id] = req_status
 
         if self.enable_multimodal:
-            self.send_to_visual.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
+            self.send_to_visual.send_pyobj(
+                (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time)
+            )
         else:
-            self.send_to_router.send_pyobj((prompt_ids, sampling_params, multimodal_params, group_request_id))
+            self.send_to_router.send_pyobj(
+                (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time)
+            )
 
         unfinished_count = sampling_params.best_of
 
@@ -186,21 +197,23 @@ class HttpServerManager:
                             f"mean_per_token_cost_time: {mean_per_token_cost_time_ms}ms\n"
                             f"prompt_token_num:{prompt_tokens}"
                         )
-                        print(
-                            "lightllm_request_inference_duration ",
+                        self.metric_client.root.histogram_observe(
+                            "lightllm_request_validation_duration", verify_time_end - verify_time_begin
                         )
                         self.metric_client.root.histogram_observe(
-                            "lightllm_request_inference_duration", total_cost_time_ms
+                            "lightllm_request_inference_duration", total_cost_time_ms / 1000.0
                         )
                         self.metric_client.root.histogram_observe(
-                            "lightllm_request_mean_time_per_token_duration", mean_per_token_cost_time_ms
+                            "lightllm_request_mean_time_per_token_duration", mean_per_token_cost_time_ms / 1000.0
                         )
                         self.metric_client.root.histogram_observe(
-                            "lightllm_request_first_token_duration", first_token_cost_ms
+                            "lightllm_request_first_token_duration", first_token_cost_ms / 1000.0
                         )
                         self.metric_client.root.histogram_observe(
                             "lightllm_request_generated_tokens", out_token_counter
                         )
+                        self.metric_client.root.counter_inc("lightllm_request_success")
+
                         return
                 req_status.out_token_info_list.clear()
         return

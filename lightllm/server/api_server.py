@@ -89,7 +89,7 @@ def first_set_handle_loop():
 
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
-    # monitor.counter_inc("lightllm_request_failure")
+    metric_client.root.counter_inc("lightllm_request_failure")
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
@@ -201,7 +201,6 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         max_new_tokens=request.max_tokens,
         stop_sequences=request.stop,
     )
-    sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -271,7 +270,6 @@ async def tokens(request: Request):
 @app.get("/metrics")
 async def metrics() -> Response:
     metrics_data = metric_client.root.generate_latest()
-    print(type(metrics_data))
     response = Response(metrics_data)
     response.mimetype = "text/plain"
     return response
@@ -426,6 +424,8 @@ def main():
         "--health_monitor", action="store_true", help="check the health of service and restart when error"
     )
     parser.add_argument("--metric_gateway", type=str, default=None, help="address for collecting monitoring metrics")
+    parser.add_argument("--job_name", type=str, default="lightllm", help="job name for monitor")
+    parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
 
     args = parser.parse_args()
 

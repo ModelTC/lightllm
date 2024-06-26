@@ -12,6 +12,7 @@ class MetricServer(rpyc.Service):
     def __init__(self, args) -> None:
         super().__init__()
         self.monitor = Monitor(args)
+        self.interval = args.push_interval
 
     def on_connect(self, conn):
         # code that runs when a connection is created
@@ -23,11 +24,11 @@ class MetricServer(rpyc.Service):
         # (to finalize the service, if needed)
         pass
 
-    def exposed_counter_inc(self, name: str) -> None:
-        return self.monitor.counter_inc(name)
+    def exposed_counter_inc(self, name: str, label: str = None) -> None:
+        return self.monitor.counter_inc(name, label)
 
-    def exposed_histogram_observe(self, name: str, value: float) -> None:
-        return self.monitor.histogram_observe(name, value)
+    def exposed_histogram_observe(self, name: str, value: float, label: str = None) -> None:
+        return self.monitor.histogram_observe(name, value, label)
 
     def exposed_gauge_set(self, name: str, value: float) -> None:
         return self.monitor.gauge_set(name, value)
@@ -39,7 +40,7 @@ class MetricServer(rpyc.Service):
         while True:
             self.monitor.push_metrices()
             print("Metrics pushed to Pushgateway")
-            time.sleep(3)
+            time.sleep(self.interval)
 
 
 def start_metric_manager(port: int, args, pipe_writer):
