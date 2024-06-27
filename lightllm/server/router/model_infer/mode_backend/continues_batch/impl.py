@@ -37,6 +37,7 @@ class ContinuesBatchBackend(ModeBackend):
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same
+            prompt_cache_len = req_obj.cur_kv_len
             req_obj: InferReq = req_obj
             req_obj.cur_kv_len = len(req_obj.input_token_ids)
             req_obj.input_token_ids.append(next_token_id)
@@ -53,7 +54,7 @@ class ContinuesBatchBackend(ModeBackend):
                 req_obj.get_output_len(),
                 [(int(next_token_id), metadata)],
                 req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
-                None,
+                {"prompt_cache_len": prompt_cache_len},
             )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
         self.cache[batch.batch_id] = batch

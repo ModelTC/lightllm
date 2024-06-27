@@ -21,6 +21,8 @@ MONITOR_INFO = {
     "lightllm_request_queue_duration_bucket": "Queue duration of requests",
     "lightllm_batch_inference_count": "The number of prefill steps / decode steps",
     "lightllm_batch_inference_duration_bucket": "Inference time of prefill step / decode step",
+    "lightllm_cache_length": "Length of tokens which hit prompt cache",
+    "lightllm_cache_ratio": "cache length / input_length",
 }
 
 
@@ -51,6 +53,7 @@ class Monitor:
         max_req_input_len = args.max_req_input_len
         input_len_buckets = [max_req_input_len / 100.0 * (i + 1) for i in range(0, 100)]
         self.create_histogram("lightllm_request_input_length", input_len_buckets)
+        self.create_histogram("lightllm_cache_length", input_len_buckets)
 
         max_req_total_len = args.max_req_total_len
         generate_tokens_buckets = [max_req_total_len / 100.0 * (i + 1) for i in range(0, 100)]
@@ -69,6 +72,9 @@ class Monitor:
         self.create_gauge("lightllm_batch_pause_size")
         batch_size_buckets = [i + 1 for i in range(0, 1024)]
         self.create_histogram("lightllm_batch_next_size", batch_size_buckets)
+
+        ratio_buckets = [(i + 1) / 10.0 for i in range(0, 10)]
+        self.create_histogram("lightllm_cache_ratio", ratio_buckets)
 
     def create_histogram(self, name, buckets, labelnames=None):
         if labelnames is None:
