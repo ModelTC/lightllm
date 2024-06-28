@@ -191,11 +191,15 @@ class HttpServerManager:
                             pass
                         total_cost_time_ms = (time.time() - start_time) * 1000
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
-                        logger.debug(
-                            f"req_id:{group_request_id},start:{start_time}s,first_token_cost:{first_token_cost_ms}ms\n"
-                            f"total_cost_time:{total_cost_time_ms}ms,out_token_counter:{out_token_counter}\n"
-                            f"mean_per_token_cost_time: {mean_per_token_cost_time_ms}ms\n"
-                            f"prompt_token_num:{prompt_tokens}"
+                        prompt_cache_len = metadata["prompt_cache_len"]
+                        prompt_cache_ratio = prompt_cache_len / prompt_tokens
+                        logger.info(
+                            f"req_id:{group_request_id},start:{start_time}s,first_token_cost:{first_token_cost_ms}ms "
+                            f"total_cost_time:{total_cost_time_ms}ms,out_token_counter:{out_token_counter} "
+                            f"mean_per_token_cost_time: {mean_per_token_cost_time_ms}ms "
+                            f"prompt_token_num:{prompt_tokens} "
+                            f"prompt_cache_len:{prompt_cache_len} "
+                            f"prompt_cache_ratio:{prompt_cache_ratio} "
                         )
                         self.metric_client.root.histogram_observe(
                             "lightllm_request_validation_duration", verify_time_end - verify_time_begin
@@ -212,6 +216,8 @@ class HttpServerManager:
                         self.metric_client.root.histogram_observe(
                             "lightllm_request_generated_tokens", out_token_counter
                         )
+                        self.metric_client.root.histogram_observe("lightllm_cache_length", prompt_cache_len)
+                        self.metric_client.root.histogram_observe("lightllm_cache_ratio", prompt_cache_ratio)
                         self.metric_client.root.counter_inc("lightllm_request_success")
 
                         return

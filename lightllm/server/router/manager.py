@@ -182,12 +182,17 @@ class RouterManager:
                 self.metric_client.root.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
                 self.metric_client.root.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
                 self.metric_client.root.gauge_set("lightllm_queue_size", len(self.req_queue.waiting_req_list))
+                self.metric_client.root.gauge_set(
+                    "lightllm_batch_current_max_tokens",
+                    int(self.shared_token_load.get_dynamic_max_load() * self.max_total_token_num),
+                )
             else:
                 self.shared_token_load.set_dynamic_max_load(0.0)
                 self.shared_token_load.set_current_load(0.0)
                 self.metric_client.root.gauge_set("lightllm_batch_current_size", 0.0)
                 self.metric_client.root.gauge_set("lightllm_batch_pause_size", 0.0)
                 self.metric_client.root.gauge_set("lightllm_queue_size", 0.0)
+                self.metric_client.root.gauge_set("lightllm_batch_current_max_tokens", 0.0)
 
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
@@ -365,10 +370,7 @@ class RouterManager:
             #     req.output_metadata_list.append(new_gen_metadata)
             # 当没有被 aborted 的时候，才更新请求状态。
             if is_prefill:
-                prompt_cache_len = extral_info["prompt_cache_len"]
-                cache_ratio = prompt_cache_len / req.cur_kv_len
-                self.metric_client.root.histogram_observe("lightllm_cache_length", prompt_cache_len)
-                self.metric_client.root.histogram_observe("lightllm_cache_ratio", cache_ratio)
+                req.prompt_cache_len = extral_info["prompt_cache_len"]
 
             if not req.finish_status.is_aborted():
                 req.finish_status = FinishStatus(finish_status_value)
@@ -386,6 +388,7 @@ class RouterManager:
             req = batch.id_to_reqs[req_id]
             for idx, (new_token_id, new_gen_metadata) in enumerate(token_info_list):
                 # req.finish_status 传输 value值 不传送对象，可以减少序列化对象的大小。
+                new_gen_metadata["prompt_cache_len"] = req.prompt_cache_len
                 if idx == len(token_info_list) - 1:
                     batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, req.finish_status.value))
                 else:

@@ -23,6 +23,7 @@ MONITOR_INFO = {
     "lightllm_batch_inference_duration_bucket": "Inference time of prefill step / decode step",
     "lightllm_cache_length": "Length of tokens which hit prompt cache",
     "lightllm_cache_ratio": "cache length / input_length",
+    "lightllm_batch_current_max_tokens": "dynamic max token used for current batch",
 }
 
 
@@ -70,6 +71,7 @@ class Monitor:
         self.create_gauge("lightllm_queue_size")
         self.create_gauge("lightllm_batch_current_size")
         self.create_gauge("lightllm_batch_pause_size")
+        self.create_gauge("lightllm_batch_current_max_tokens")
         batch_size_buckets = [i + 1 for i in range(0, 1024)]
         self.create_histogram("lightllm_batch_next_size", batch_size_buckets)
 
