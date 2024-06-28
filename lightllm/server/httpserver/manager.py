@@ -6,6 +6,7 @@ import uvloop
 import rpyc
 import time
 import hashlib
+import datetime
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from ..tokenizer import get_tokenizer
@@ -193,8 +194,13 @@ class HttpServerManager:
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
                         prompt_cache_len = metadata["prompt_cache_len"]
                         prompt_cache_ratio = prompt_cache_len / prompt_tokens
+                        x_request_id = request.headers.get("X-Request-Id", "")
+                        x_session_id = request.headers.get("X-Session-Id", "")
+                        format_start_time = datetime.datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
                         logger.info(
-                            f"req_id:{group_request_id},start:{start_time}s,first_token_cost:{first_token_cost_ms}ms "
+                            f"X-Request-Id:{x_request_id} "
+                            f"X-Session-Id:{x_session_id} start_time:{format_start_time} "
+                            f"lightllm_req_id:{group_request_id} first_token_cost:{first_token_cost_ms}ms "
                             f"total_cost_time:{total_cost_time_ms}ms,out_token_counter:{out_token_counter} "
                             f"mean_per_token_cost_time: {mean_per_token_cost_time_ms}ms "
                             f"prompt_token_num:{prompt_tokens} "
