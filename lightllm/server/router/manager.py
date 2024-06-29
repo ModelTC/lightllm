@@ -275,7 +275,7 @@ class RouterManager:
             else:
                 req_to_out_status = ans[0]
 
-            self._update_out_status_to_batch(batch, req_to_out_status, True)
+            self._update_out_status_to_batch(batch, req_to_out_status)
             unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
             self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
@@ -347,10 +347,10 @@ class RouterManager:
             return
 
     def _update_init_status_to_batch(self, batch: Batch, req_to_req_status):
-        self._update_out_status_to_batch(batch, req_to_req_status)
+        self._update_out_status_to_batch(batch, req_to_req_status, update_prompt_cache=False)
         return
 
-    def _update_out_status_to_batch(self, batch: Batch, req_to_out_status, is_prefill=False):
+    def _update_out_status_to_batch(self, batch: Batch, req_to_out_status, update_prompt_cache=True):
         new_batch_decode_need_tokens = 0  # 只有在 splitfuse 模式下有意义
         for req_id, (
             req_status,
@@ -369,8 +369,8 @@ class RouterManager:
             #     req.output_ids.append(new_token_id)
             #     req.output_metadata_list.append(new_gen_metadata)
             # 当没有被 aborted 的时候，才更新请求状态。
-            if is_prefill:
-                req.prompt_cache_len = extral_info["prompt_cache_len"]
+            if req.prompt_cache_len is None and update_prompt_cache:
+                req.prompt_cache_len = 0 if extral_info is None else extral_info["prompt_cache_len"]
 
             if not req.finish_status.is_aborted():
                 req.finish_status = FinishStatus(finish_status_value)
