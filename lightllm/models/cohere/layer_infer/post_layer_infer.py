@@ -4,7 +4,7 @@ import numpy as np
 
 from lightllm.models.cohere.infer_struct import CohereInferStateInfo
 from lightllm.models.cohere.layer_weights.pre_and_post_layer_weight import CoherePreAndPostLayerWeight
-from lightllm.models.cohere.triton_kernels.layernorm import layernorm_forward, multi_head_layernorm_forward
+from lightllm.models.cohere.triton_kernels.layernorm import layernorm_forward
 from lightllm.common.basemodel.layer_weights.base_layer_weight import BaseLayerWeight
 from lightllm.common.basemodel.splitfuse_infer_struct import SplitFuseInferStateInfo
 
@@ -22,7 +22,9 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         return
 
     def _norm(self, input, infer_state, layer_weight: CoherePreAndPostLayerWeight) -> torch.Tensor:
-        return layernorm_forward(input, layer_weight.final_norm_weight_, eps=self.eps_)
+        return layernorm_forward(
+            input.unsqueeze(1), layer_weight.final_norm_weight_.unsqueeze(0), eps=self.eps_
+        ).squeeze(1)
 
     def _slice_get_last_input(self, input_embdings, infer_state: CohereInferStateInfo):
         if infer_state.is_splitfuse:
@@ -88,15 +90,8 @@ class CoherePostLayerInfer(PostLayerInferTpl):
 
         assert False, "Error State"
 
-    def soft_max(self, data):
-        return torch.softmax(data.permute(1, 0).float(), dim=-1)
-
     def token_forward(
-        self,
-        input_embdings,
-        infer_state: CohereInferStateInfo,
-        layer_weight: CoherePreAndPostLayerWeight,
-        return_logics=False,
+        self, input_embdings, infer_state: CohereInferStateInfo, layer_weight: CoherePreAndPostLayerWeight
     ):
         last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)
         input_embdings_dtype = input_embdings.dtype
@@ -122,17 +117,10 @@ class CoherePostLayerInfer(PostLayerInferTpl):
         gather_data = gather_data * self.logits_scale
         logic_batch = None
 
-        if not return_logics:
-            prob_out = self.soft_max(gather_data)
-            gather_data = None
-            return prob_out
-        else:
-            ans_logics = gather_data.permute(1, 0).float()
-            gather_data = None
-            return ans_logics
+        ans_logics = gather_data.permute(1, 0).float()
+        gather_data = None
+        return ans_logics
 
     # @mark_cost_time("splitfuse post forward")
-    def splitfuse_forward(
-        self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight: BaseLayerWeight, return_logics=False
-    ):
-        return self.token_forward(input_embdings, infer_state, layer_weight, return_logics=return_logics)
+    def splitfuse_forward(self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight: BaseLayerWeight):
+        return self.token_forward(input_embdings, infer_state, layer_weight)

@@ -46,9 +46,11 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 - [Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)
 - [Llava-7b](https://huggingface.co/liuhaotian/llava-v1.5-7b)
 - [Llava-13b](https://huggingface.co/liuhaotian/llava-v1.5-13b)  
-- [Mixtral]()
+- [Mixtral](https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1)
 - [Stablelm](https://huggingface.co/stabilityai/stablelm-2-1_6b)
 - [MiniCPM](https://huggingface.co/openbmb/MiniCPM-2B-sft-bf16)
+- [Phi-3](https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3)
+- [CohereForAI](https://huggingface.co/CohereForAI/c4ai-command-r-plus)
 
 > When you start Qwen-7b, you need to set the parameter '--eos_id 151643 --trust_remote_code'.
 
@@ -59,6 +61,8 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 > InternLM needs to set the parameter '--trust_remote_code'.
 
 > Stablelm needs to set the parameter '--trust_remote_code'.
+
+> Phi-3 only supports Mini and Small.
 
 ## Get started
 

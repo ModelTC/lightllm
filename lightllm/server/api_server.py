@@ -153,6 +153,7 @@ async def generate_stream(request: Request) -> Response:
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
+
 @app.post("/")
 async def compat_generate(request: Request) -> Response:
     request_dict = await request.json()
@@ -161,6 +162,7 @@ async def compat_generate(request: Request) -> Response:
         return await generate_stream(request)
     else:
         return await generate(request)
+
 
 @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
@@ -302,8 +304,9 @@ def main():
         "--tokenizer_mode",
         type=str,
         default="slow",
-        help="""tokenizer load mode, can be slow or auto, slow mode load fast but run slow, slow mode is
-          good for debug and test, when you want to get best performance, try auto mode""",
+        help="""tokenizer load mode, can be slow, fast or auto, slow mode load fast but run slow,
+          slow mode is good for debug and test, fast mode get best performance, auto mode will
+          try to use fast mode, if failed will use slow mode""",
     )
     parser.add_argument(
         "--load_way",
@@ -342,8 +345,9 @@ def main():
         default=[],
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
-                        | triton_gqa_attention | triton_gqa_flashdecoding]
-                        [triton_w4a16 | triton_w8a16 | triton_w8a8 | lmdeploy_w4a16 | ppl_w4a16 | ppl_w8a8],
+                        | triton_gqa_attention | triton_gqa_flashdecoding
+                        | triton_w4a16 | triton_w8a16 | triton_w8a8 | lmdeploy_w4a16
+                        | ppl_w4a16 | ppl_w8a8 | ppl_w8a8_mixdown],
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
@@ -458,6 +462,8 @@ def main():
             batch_max_tokens = int(1 / 6 * args.max_total_token_num)
             batch_max_tokens = max(batch_max_tokens, args.splitfuse_block_size)
             args.batch_max_tokens = batch_max_tokens
+
+    logger.info(f"all start args:{args}")
 
     can_use_ports = alloc_can_use_network_port(num=5 + args.tp, used_nccl_port=args.nccl_port)
     router_port, detokenization_port, httpserver_port, visual_port, cache_port = can_use_ports[0:5]
