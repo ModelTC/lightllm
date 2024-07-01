@@ -52,12 +52,12 @@ class Monitor:
         self.create_counter("lightllm_batch_inference_count", labelnames=["method"])
 
         max_req_input_len = args.max_req_input_len
-        input_len_buckets = [max_req_input_len / 100.0 * (i + 1) for i in range(0, 100)]
+        input_len_buckets = [max_req_input_len / 100.0 * (i + 1) for i in range(-1, 100)]
         self.create_histogram("lightllm_request_input_length", input_len_buckets)
-        self.create_histogram("lightllm_cache_length", input_len_buckets)
+        self.create_histogram("lightllm_cache_length", [-1] + input_len_buckets)
 
         max_req_total_len = args.max_req_total_len
-        generate_tokens_buckets = [max_req_total_len / 100.0 * (i + 1) for i in range(0, 100)]
+        generate_tokens_buckets = [max_req_total_len / 100.0 * (i + 1) for i in range(-1, 100)]
         self.create_histogram("lightllm_request_max_new_tokens", generate_tokens_buckets)
         self.create_histogram("lightllm_request_generated_tokens", generate_tokens_buckets)
 
@@ -72,11 +72,11 @@ class Monitor:
         self.create_gauge("lightllm_batch_current_size")
         self.create_gauge("lightllm_batch_pause_size")
         self.create_gauge("lightllm_batch_current_max_tokens")
-        batch_size_buckets = [i + 1 for i in range(0, 1024)]
+        batch_size_buckets = [i + 1 for i in range(0, 128)]
         self.create_histogram("lightllm_batch_next_size", batch_size_buckets)
 
         ratio_buckets = [(i + 1) / 10.0 for i in range(0, 10)]
-        self.create_histogram("lightllm_cache_ratio", ratio_buckets)
+        self.create_histogram("lightllm_cache_ratio", [-1] + ratio_buckets)
 
     def create_histogram(self, name, buckets, labelnames=None):
         if labelnames is None:

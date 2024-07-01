@@ -25,6 +25,8 @@ import sys
 import os
 import rpyc
 
+# rpyc.core.protocol.DEFAULT_CONFIG['sync_request_timeout'] = 100
+
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -66,6 +68,7 @@ from .api_models import (
 
 from lightllm.utils.log_utils import init_logger
 from prometheus_client import generate_latest
+import multiprocessing.shared_memory as shm
 
 logger = init_logger(__name__)
 
@@ -269,8 +272,9 @@ async def tokens(request: Request):
 
 @app.get("/metrics")
 async def metrics() -> Response:
-    metrics_data = metric_client.root.generate_latest()
-    response = Response(metrics_data)
+    metric_client.root.generate_latest()
+    metrics_data = shm.SharedMemory(name="latest_metrics")
+    response = Response(metrics_data.buf.tobytes())
     response.mimetype = "text/plain"
     return response
 
