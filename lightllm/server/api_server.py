@@ -169,11 +169,7 @@ async def compat_generate(request: Request) -> Response:
         return await generate(request)
 
 
-<<<<<<< HEAD
-@monitor.histogram_timer("lightllm_request_duration")
-=======
 # @monitor.histogram_timer("lightllm_request_duration")
->>>>>>> reformat
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
     # monitor.counter_inc("lightllm_request_count")
