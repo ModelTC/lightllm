@@ -2,6 +2,7 @@ import torch
 import torch.functional as F
 import torch.distributed as dist
 import numpy as np
+from functools import partial
 
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama_wquant.layer_infer.transformer_layer_infer import LlamaTransformerLayerInferWquant
@@ -46,6 +47,7 @@ class Qwen2TransformerLayerInferWQuant(LlamaTransformerLayerInferWquant):
     def _bind_func(self):
         self._bind_matmul()
         LlamaTransformerLayerInfer._bind_norm(self)
+        self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
         self._token_attention_kernel = self._token_decode_attention_normal
         return
 
