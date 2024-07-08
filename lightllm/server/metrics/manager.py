@@ -7,6 +7,10 @@ from rpyc.utils.classic import obtain
 from .metrics import Monitor
 from prometheus_client import generate_latest
 import multiprocessing.shared_memory as shm
+from concurrent.futures import ThreadPoolExecutor
+
+async_metric_server = None
+from rpyc import async_
 
 
 class MetricServer(rpyc.Service):
@@ -25,9 +29,9 @@ class MetricServer(rpyc.Service):
     def on_disconnect(self, conn):
         # code that runs after the connection has already closed
         # (to finalize the service, if needed)
-        self.shared_memory.close()
-        self.shared_memory.unlink()
-        pass
+        if shm.SharedMemory.exists("latest_metrics"):
+            self.shared_memory.close()
+            self.shared_memory.unlink()
 
     def exposed_counter_inc(self, name: str, label: str = None) -> None:
         return self.monitor.counter_inc(name, label)
@@ -54,6 +58,16 @@ class MetricServer(rpyc.Service):
             self.monitor.push_metrices()
             print("Metrics pushed to Pushgateway")
             time.sleep(self.interval)
+
+
+class MetricClient:
+    def __init__(self, port):
+        self.port = port
+        self.conn = rpyc.connect("localhost", self.port)
+        self.counter_inc = async_(self.conn.root.counter_inc)
+        self.histogram_observe = async_(self.conn.root.histogram_observe)
+        self.gauge_set = async_(self.conn.root.gauge_set)
+        self.generate_latest = self.conn.root.generate_latest
 
 
 def start_metric_manager(port: int, args, pipe_writer):

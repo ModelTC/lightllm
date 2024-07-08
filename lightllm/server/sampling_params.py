@@ -64,7 +64,6 @@ class SamplingParams:
             self.n = self.best_of
         return
 
-    # @monitor.histogram_timer("lightllm_request_validation_duration")
     def verify(self):
         if self.best_of <= 0 or self.best_of > MAX_BEST_OF:
             raise ValueError(f"need 0 < best_of <= {MAX_BEST_OF}, but get {self.best_of}")

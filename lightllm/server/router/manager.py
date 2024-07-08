@@ -25,6 +25,7 @@ from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
+from lightllm.server.metrics.manager import MetricClient
 
 logger = init_logger(__name__)
 
@@ -68,7 +69,7 @@ class RouterManager:
         self.splitfuse_block_size = args.splitfuse_block_size
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
-        self.metric_client = rpyc.connect("localhost", metric_port)
+        self.metric_client = MetricClient(metric_port)
         return
 
     async def wait_to_model_ready(self):
@@ -179,20 +180,20 @@ class RouterManager:
                     self.req_queue.update_token_load(self.running_batch)
                     pass
                 self.stats_tool.print_stats()
-                self.metric_client.root.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
-                self.metric_client.root.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
-                self.metric_client.root.gauge_set("lightllm_queue_size", len(self.req_queue.waiting_req_list))
-                self.metric_client.root.gauge_set(
+                self.metric_client.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
+                self.metric_client.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
+                self.metric_client.gauge_set("lightllm_queue_size", len(self.req_queue.waiting_req_list))
+                self.metric_client.gauge_set(
                     "lightllm_batch_current_max_tokens",
                     int(self.shared_token_load.get_dynamic_max_load() * self.max_total_token_num),
                 )
             else:
                 self.shared_token_load.set_dynamic_max_load(0.0)
                 self.shared_token_load.set_current_load(0.0)
-                self.metric_client.root.gauge_set("lightllm_batch_current_size", 0.0)
-                self.metric_client.root.gauge_set("lightllm_batch_pause_size", 0.0)
-                self.metric_client.root.gauge_set("lightllm_queue_size", 0.0)
-                self.metric_client.root.gauge_set("lightllm_batch_current_max_tokens", 0.0)
+                self.metric_client.gauge_set("lightllm_batch_current_size", 0.0)
+                self.metric_client.gauge_set("lightllm_batch_pause_size", 0.0)
+                self.metric_client.gauge_set("lightllm_queue_size", 0.0)
+                self.metric_client.gauge_set("lightllm_batch_current_max_tokens", 0.0)
 
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
@@ -206,9 +207,9 @@ class RouterManager:
         if self.running_batch is None:
             new_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_batch is not None:
-                self.metric_client.root.histogram_observe("lightllm_batch_next_size", len(new_batch.reqs))
+                self.metric_client.histogram_observe("lightllm_batch_next_size", len(new_batch.reqs))
                 for req in new_batch.reqs:
-                    self.metric_client.root.histogram_observe(
+                    self.metric_client.histogram_observe(
                         "lightllm_request_queue_duration_bucket", time.time() - req.start_time
                     )
                 self.stats_tool.count_prompt_tokens(new_batch)
@@ -259,12 +260,22 @@ class RouterManager:
             req_to_req_status = ans[0]
 
         self._update_init_status_to_batch(batch, req_to_req_status)
+        for req in batch.reqs:
+            prompt_cache_len = req.cur_kv_len
+            prompt_cache_ratio = req.cur_kv_len / req.input_len
+            self.metric_client.histogram_observe("lightllm_cache_length", prompt_cache_len)
+            self.metric_client.histogram_observe("lightllm_cache_ratio", prompt_cache_ratio)
+            logger.info(
+                f"lightllm_req_id:{req.request_id} "
+                f"prompt_cache_len:{prompt_cache_len} "
+                f"prompt_cache_ratio:{prompt_cache_ratio} "
+            )
         logger.debug(f"Init Batch: {batch.simple_log()} \n")
         return
 
     async def _prefill_batch(self, batch: Batch):
         start_time = time.time()
-        self.metric_client.root.counter_inc("lightllm_batch_inference_count", "prefill")
+        self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
         await self._init_batch(batch)
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
@@ -280,14 +291,14 @@ class RouterManager:
             self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
             await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
-        self.metric_client.root.histogram_observe(
+        self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "prefill"
         )
         return
 
     async def _decode_batch(self, batch: Batch):
         start_time = time.time()
-        self.metric_client.root.counter_inc("lightllm_batch_inference_count", "decode")
+        self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
         rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.world_size)]
         ans = await asyncio.gather(*rets)
         if self.world_size != 1:
@@ -300,7 +311,7 @@ class RouterManager:
         self._send_to_detokenization_proc(batch, req_to_out_status)
         batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
         await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
-        self.metric_client.root.histogram_observe(
+        self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
         )
         return
@@ -347,10 +358,10 @@ class RouterManager:
             return
 
     def _update_init_status_to_batch(self, batch: Batch, req_to_req_status):
-        self._update_out_status_to_batch(batch, req_to_req_status, update_prompt_cache=False)
+        self._update_out_status_to_batch(batch, req_to_req_status)
         return
 
-    def _update_out_status_to_batch(self, batch: Batch, req_to_out_status, update_prompt_cache=True):
+    def _update_out_status_to_batch(self, batch: Batch, req_to_out_status):
         new_batch_decode_need_tokens = 0  # 只有在 splitfuse 模式下有意义
         for req_id, (
             req_status,
@@ -369,9 +380,6 @@ class RouterManager:
             #     req.output_ids.append(new_token_id)
             #     req.output_metadata_list.append(new_gen_metadata)
             # 当没有被 aborted 的时候，才更新请求状态。
-            if req.prompt_cache_len is None and update_prompt_cache:
-                req.prompt_cache_len = 0 if extral_info is None else extral_info["prompt_cache_len"]
-
             if not req.finish_status.is_aborted():
                 req.finish_status = FinishStatus(finish_status_value)
             new_batch_decode_need_tokens += req.get_decode_need_tokens()
@@ -388,7 +396,6 @@ class RouterManager:
             req = batch.id_to_reqs[req_id]
             for idx, (new_token_id, new_gen_metadata) in enumerate(token_info_list):
                 # req.finish_status 传输 value值 不传送对象，可以减少序列化对象的大小。
-                new_gen_metadata["prompt_cache_len"] = req.prompt_cache_len
                 if idx == len(token_info_list) - 1:
                     batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, req.finish_status.value))
                 else:

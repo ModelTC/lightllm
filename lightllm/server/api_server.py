@@ -24,9 +24,6 @@ import uvloop
 import sys
 import os
 import rpyc
-
-# rpyc.core.protocol.DEFAULT_CONFIG['sync_request_timeout'] = 100
-
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -69,6 +66,7 @@ from .api_models import (
 from lightllm.utils.log_utils import init_logger
 from prometheus_client import generate_latest
 import multiprocessing.shared_memory as shm
+from lightllm.server.metrics.manager import MetricClient
 
 logger = init_logger(__name__)
 
@@ -92,7 +90,7 @@ def first_set_handle_loop():
 
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
-    metric_client.root.counter_inc("lightllm_request_failure")
+    metric_client.counter_inc("lightllm_request_failure")
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
@@ -139,7 +137,6 @@ async def token_load(request: Request):
     )
 
 
-# @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     first_set_handle_loop()
@@ -149,7 +146,6 @@ async def generate(request: Request) -> Response:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
-# @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
     first_set_handle_loop()
@@ -169,10 +165,8 @@ async def compat_generate(request: Request) -> Response:
         return await generate(request)
 
 
-# @monitor.histogram_timer("lightllm_request_duration")
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
-    # monitor.counter_inc("lightllm_request_count")
     first_set_handle_loop()
 
     if request.logit_bias is not None:
@@ -251,7 +245,6 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
     background_tasks.add_task(abort_request)
-    # monitor.counter_inc("lightllm_request_success")
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
 
@@ -268,7 +261,7 @@ async def tokens(request: Request):
 
 @app.get("/metrics")
 async def metrics() -> Response:
-    metric_client.root.generate_latest()
+    metric_client.generate_latest()
     metrics_data = shm.SharedMemory(name="latest_metrics")
     response = Response(metrics_data.buf.tobytes())
     response.mimetype = "text/plain"
@@ -491,7 +484,7 @@ def main():
         start_args=[(metric_port, args)],
     )
     global metric_client
-    metric_client = rpyc.connect("localhost", metric_port)
+    metric_client = MetricClient(metric_port)
 
     # help to manage data stored on Ceph
     if "s3://" in args.model_dir:

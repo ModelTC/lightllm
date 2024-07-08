@@ -56,7 +56,6 @@ class Req:
         self.cur_kv_len = 0  # 当前已经占用掉 token 的 kv len 长度
         self.cur_output_len = 0  # 当前已经生成token 长度
         self.start_time = 0  # 请求开始时间
-        self.prompt_cache_len = None
         return
 
     def to_rpc_obj(self):

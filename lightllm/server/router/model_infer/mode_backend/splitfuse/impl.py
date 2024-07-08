@@ -35,7 +35,6 @@ class SplitFuseBackend(ModeBackend):
 
         index = 0
         for req_obj, next_token_id, next_token_logprob in zip(all_reqs, next_token_ids, next_token_logprobs):
-            prompt_cache_len = req_obj.cur_kv_len
             if index < decode_req_num:
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
@@ -51,7 +50,7 @@ class SplitFuseBackend(ModeBackend):
                     req_obj.get_output_len(),
                     [(int(next_token_id), metadata)],
                     req_obj.finish_status.value,
-                    {"prompt_cache_len": prompt_cache_len},
+                    None,
                 )
             else:
                 old_input_token_size = len(req_obj.input_token_ids)
@@ -72,7 +71,7 @@ class SplitFuseBackend(ModeBackend):
                         req_obj.get_output_len(),
                         [(int(next_token_id), metadata)],
                         req_obj.finish_status.value,
-                        {"prompt_cache_len": prompt_cache_len},
+                        None,
                     )
                 elif req_obj.cur_kv_len + split_len < old_input_token_size:
                     # 没输出
@@ -84,7 +83,7 @@ class SplitFuseBackend(ModeBackend):
                         req_obj.get_output_len(),
                         [],
                         req_obj.finish_status.value,
-                        {"prompt_cache_len": prompt_cache_len},
+                        None,
                     )
                 else:
                     assert False, "error state"
