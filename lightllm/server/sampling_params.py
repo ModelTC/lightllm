@@ -2,7 +2,6 @@
 import os
 from typing import List, Optional, Union, Tuple
 
-# from .metrics import monitor
 from .req_id_generator import MAX_BEST_OF
 
 _SAMPLING_EPS = 1e-5
