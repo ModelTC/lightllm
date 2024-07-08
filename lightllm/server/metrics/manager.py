@@ -45,7 +45,6 @@ class MetricServer(rpyc.Service):
     def push_metrics(self):
         while True:
             self.monitor.push_metrices()
-            print("Metrics pushed to Pushgateway")
             time.sleep(self.interval)
 
 
@@ -63,7 +62,6 @@ class MetricClient:
             async def _func(*args, **kwargs):
                 ans = f(*args, **kwargs)
                 await asyncio.to_thread(ans.wait)
-                # raise if exception
                 return ans.value
 
             return _func
