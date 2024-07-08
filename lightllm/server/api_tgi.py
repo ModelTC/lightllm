@@ -58,6 +58,7 @@ async def tgi_generate_impl(request: Request, g_id_gen, httpserver_manager) -> R
     sample_params_dict = format_tgi_params(request_dict["parameters"])
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
+    sampling_params.verify()
     multimodal_params_dict = request_dict.get("multimodal_params", {})
     multimodal_params = MultimodalParams(**multimodal_params_dict)
 
@@ -129,6 +130,7 @@ async def tgi_generate_stream_impl(request: Request, g_id_gen, httpserver_manage
     sample_params_dict = format_tgi_params(request_dict["parameters"])
     return_details = sample_params_dict.pop("return_details", False)
     sampling_params = SamplingParams(**sample_params_dict)
+    sampling_params.verify()
     if sampling_params.best_of != 1:
         raise Exception("stream api only support best_of == 1")
     multimodal_params_dict = request_dict.get("multimodal_params", {})

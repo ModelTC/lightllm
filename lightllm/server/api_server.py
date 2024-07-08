@@ -65,7 +65,6 @@ from .api_models import (
 
 from lightllm.utils.log_utils import init_logger
 from prometheus_client import generate_latest
-import multiprocessing.shared_memory as shm
 from lightllm.server.metrics.manager import MetricClient
 
 logger = init_logger(__name__)
@@ -194,6 +193,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         max_new_tokens=request.max_tokens,
         stop_sequences=request.stop,
     )
+    sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
 
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -261,9 +261,8 @@ async def tokens(request: Request):
 
 @app.get("/metrics")
 async def metrics() -> Response:
-    metric_client.generate_latest()
-    metrics_data = shm.SharedMemory(name="latest_metrics")
-    response = Response(metrics_data.buf.tobytes())
+    data = await metric_client.generate_latest()
+    response = Response(data)
     response.mimetype = "text/plain"
     return response
 

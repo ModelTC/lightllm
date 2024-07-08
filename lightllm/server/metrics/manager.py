@@ -18,8 +18,6 @@ class MetricServer(rpyc.Service):
         super().__init__()
         self.monitor = Monitor(args)
         self.interval = args.push_interval
-        data_size = len(generate_latest(self.monitor.registry))
-        self.shared_memory = shm.SharedMemory(name="latest_metrics", create=True, size=data_size)
 
     def on_connect(self, conn):
         # code that runs when a connection is created
@@ -29,9 +27,7 @@ class MetricServer(rpyc.Service):
     def on_disconnect(self, conn):
         # code that runs after the connection has already closed
         # (to finalize the service, if needed)
-        if shm.SharedMemory.exists("latest_metrics"):
-            self.shared_memory.close()
-            self.shared_memory.unlink()
+        pass
 
     def exposed_counter_inc(self, name: str, label: str = None) -> None:
         return self.monitor.counter_inc(name, label)
@@ -42,16 +38,9 @@ class MetricServer(rpyc.Service):
     def exposed_gauge_set(self, name: str, value: float) -> None:
         return self.monitor.gauge_set(name, value)
 
-    def exposed_generate_latest(self) -> None:
+    def exposed_generate_latest(self) -> bytes:
         data = generate_latest(self.monitor.registry)
-        data_len = len(data)
-        if data_len > self.shared_memory.size:
-            # 如果不够大，需要重新初始化
-            self.shared_memory.close()
-            self.shared_memory.unlink()
-            self.shared_memory = shm.SharedMemory(name="latest_metrics", create=True, size=data_len)
-        self.shared_memory.buf[:data_len] = data
-        return
+        return data
 
     def push_metrics(self):
         while True:
@@ -67,7 +56,23 @@ class MetricClient:
         self.counter_inc = async_(self.conn.root.counter_inc)
         self.histogram_observe = async_(self.conn.root.histogram_observe)
         self.gauge_set = async_(self.conn.root.gauge_set)
-        self.generate_latest = self.conn.root.generate_latest
+
+        def async_wrap(f):
+            f = rpyc.async_(f)
+
+            async def _func(*args, **kwargs):
+                ans = f(*args, **kwargs)
+                await asyncio.to_thread(ans.wait)
+                # raise if exception
+                return ans.value
+
+            return _func
+
+        self._generate_latest = async_wrap(self.conn.root.generate_latest)
+
+    async def generate_latest(self):
+        ans = await self._generate_latest()
+        return ans
 
 
 def start_metric_manager(port: int, args, pipe_writer):

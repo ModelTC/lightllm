@@ -113,7 +113,6 @@ class HttpServerManager:
         self.metric_client.histogram_observe("lightllm_request_input_length", prompt_tokens)
         self.metric_client.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
         verify_time_begin = time.time()
-        sampling_params.verify()
         if prompt_tokens > self.max_req_input_len:
             # use long_truncation_mode to truncate long input len req.
             if self.args.long_truncation_mode is None:
