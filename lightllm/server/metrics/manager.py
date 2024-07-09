@@ -10,7 +10,20 @@ import multiprocessing.shared_memory as shm
 from concurrent.futures import ThreadPoolExecutor
 
 async_metric_server = None
-from rpyc import async_
+import functools
+from rpyc import async_, SocketStream
+
+
+def connect_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        kwargs.update({"timeout": 30})  # update the default timeout (3) to 30s
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+SocketStream._connect = connect_decorator(SocketStream._connect)
 
 
 class MetricServer(rpyc.Service):
