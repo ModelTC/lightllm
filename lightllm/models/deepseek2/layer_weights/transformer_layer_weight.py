@@ -12,7 +12,13 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             and self.layer_num_ >= self.network_config_["first_k_dense_replace"]
             and self.layer_num_ % self.network_config_["moe_layer_freq"] == 0
         )
+        self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
         self.n_routed_experts = self.network_config_["n_routed_experts"]
+        self.q_lora_rank = self.network_config_["q_lora_rank"]
+        self.qk_nope_head_dim = self.network_config_["qk_nope_head_dim"]
+        self.qk_rope_head_dim = self.network_config_["qk_rope_head_dim"]
+        self.num_attention_heads = self.network_config_["num_attention_heads"]
+        self.kv_lora_rank = self.network_config_["num_attention_heads"]
         return
     
     def load_hf_weights(self, weights):
@@ -24,13 +30,22 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         errors = "weights load not ok"
         weights = [
             self.att_norm_weight_,
-            self.q_weight_,
             self.kv_a_proj_with_mqa_,
             self.kv_a_layernorm_,
             self.kv_b_proj_,
             self.o_weight_,
             self.ffn_norm_weight_,
         ]
+        if self.q_lora_rank is not None:
+            weights.append(
+                self.q_a_proj_,
+                self.q_a_layernorm,
+                self.q_b_proj_,
+            )
+        else:
+            weights.append(
+                self.q_weight_,
+            )
         if self.is_moe:
             assert len(self.experts) == self.n_routed_experts // self.world_size_, "experts weight load not ok"
             weights.append([
@@ -55,6 +70,8 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
         n_embed = self.network_config_["hidden_size"]
         q_split_n_embed = n_embed // self.world_size_
+        q_split_n_embed_with_rope = (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
+        q_lora_split_n_embed = self.q_lora_rank // self.world_size_
         kv_split_n_embed = (
             n_embed
             // self.network_config_["num_attention_heads"]
@@ -62,26 +79,51 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             // self.world_size_
         )
         # q k v weights for llama
-        if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
-            self.q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
-            self.q_weight_ = self.q_weight_[q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1), :]
-            self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
+        if self.q_lora_rank is None:
+            if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
+                self.q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
+                self.q_weight_ = self.q_weight_[q_split_n_embed_with_rope * self.tp_rank_ : q_split_n_embed_with_rope * (self.tp_rank_ + 1), :]
+                self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
+        else:
+            if f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight" in weights:
+                q_a_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight"]
+                q_a_proj_ = q_a_proj_[q_lora_split_n_embed * self.tp_rank_ : q_lora_split_n_embed * (self.tp_rank_ + 1), :]
+                self.q_a_proj_ = self._cuda(q_a_proj_.transpose(0, 1))
+
+            if f"model.layers.{self.layer_num_}.self_attn.q_a_layernorm.weight" in weights:
+                q_a_layernorm_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_a_layernorm.weight"]
+                self.q_a_layernorm_ = self._cuda(q_a_layernorm_)
+
+            if f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight" in weights:
+                q_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"]
+                q_b_proj_ = q_b_proj_[q_split_n_embed_with_rope * self.tp_rank_ : q_split_n_embed_with_rope * (self.tp_rank_ + 1), :]
+                self.q_b_proj_ = q_b_proj_.transpose(0, 1)
 
         if f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight" in weights:
             kv_a_proj_with_mqa_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight"]
-            print("kv_a_proj_with_mqa shape", kv_a_proj_with_mqa_.shape)
-            kv_a_proj_with_mqa_ = kv_a_proj_with_mqa_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.kv_a_proj_with_mqa_ = kv_a_proj_with_mqa_.transpose(0, 1)
+            self.kv_a_proj_with_mqa_ = self._cuda(kv_a_proj_with_mqa_.transpose(0, 1))
 
         if f"model.layers.{self.layer_num_}.self_attn.kv_a_layernorm.weight" in weights:
             kv_a_layernorm_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_a_layernorm.weight"]
-            kv_a_layernorm_ = kv_a_layernorm_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.kv_a_layernorm_ = kv_a_layernorm_.transpose(0, 1)
+            self.kv_a_layernorm_ = self._cuda(kv_a_layernorm_)
 
         if f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight" in weights:
             kv_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight"]
-            kv_b_proj_ = kv_b_proj_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.kv_b_proj_ = kv_b_proj_.transpose(0, 1)
+            k_b_proj_, v_b_proj_ = torch.split(
+                kv_b_proj_.view(
+                    self.num_attention_heads,
+                    self.qk_nope_head_dim * 2,
+                    self.kv_lora_rank
+                ),
+                [self.qk_nope_head_dim, self.qk_nope_head_dim], 
+                dim=1
+            )
+            self.k_b_proj_ = self._cuda(
+                k_b_proj_[self.tp_q_head_num_ * self.tp_rank_: self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
+            )
+            self.v_b_proj_ = self._cuda(
+                v_b_proj_[self.tp_q_head_num_ * self.tp_rank_: self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
+            )
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:

@@ -69,7 +69,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     def _context_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
         input1 = self._att_norm(input_embding, infer_state, layer_weight)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
-        q, cache_kv  = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
+        q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
         self._post_cache_kv(cache_kv, infer_state, layer_weight)
         o = self._context_attention_kernel(q, cache_kv, infer_state, layer_weight)
@@ -119,7 +119,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     def _splitfuse_attention(self, input_embding, infer_state: SplitFuseInferStateInfo, layer_weight):
         input1 = self._att_norm(input_embding, infer_state, layer_weight)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
-        q, cache_kv  = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
+        q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
         self._post_cache_kv(cache_kv, infer_state, layer_weight)
         o = self._splitfuse_attention_kernel(q, infer_state, layer_weight)

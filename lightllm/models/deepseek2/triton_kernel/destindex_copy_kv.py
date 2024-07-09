@@ -51,7 +51,7 @@ def destindex_copy_kv(KV_nope, KV_rope, DestLoc, O_nope, O_rope):
     kv_rope_head_num = KV_rope.shape[1]
 
     kv_nope_head_dim = KV_nope.shape[2]
-    kv_rope_head_dim = KV_nope.shape[2]
+    kv_rope_head_dim = KV_rope.shape[2]
 
     assert KV_nope.shape[1] == O_nope.shape[1]
     assert KV_nope.shape[2] == O_nope.shape[2] 

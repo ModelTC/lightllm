@@ -6,14 +6,14 @@ from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Dee
 from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
 
-from lightllm.common.basemodel import LlamaTpPartModel
-from lightllm.common.mem_utils import select_mem_manager_class
+from lightllm.models.llama.model import LlamaTpPartModel
+from lightllm.common.deepseek2_mem_manager import Deepseek2MemoryManager
 from lightllm.utils.log_utils import init_logger
 
 
 logger = init_logger(__name__)
 
-class Deepseek2TpPartModle(LlamaTpPartModel):
+class Deepseek2TpPartModel(LlamaTpPartModel):
     # weight class
     transformer_weight_class = Deepseek2TransformerLayerWeight
 
@@ -27,16 +27,27 @@ class Deepseek2TpPartModle(LlamaTpPartModel):
         super().__init__(kvargs)
         return
     
-    def _init_config(self):
-        super()._init_config()
-        return
+    def _init_some_value(self):
+        super()._init_some_value()
+        self.tp_k_head_num_ = 1
+        self.tp_v_head_num_ = 1
+
+        self.qk_nope_head_dim = self.config["qk_nope_head_dim"]
+        self.qk_rope_head_dim = self.config["qk_rope_head_dim"]
+        self.q_lora_rank = self.config["q_lora_rank"]
+        self.kv_lora_rank = self.config["kv_lora_rank"]
+
+    def _init_custom(self):
+        # TODO: rope
+        pass
+        
     
     def _verify_params(self):
         return super()._verify_params()
     
 
     def _init_mem_manager(self):
-        self.mem_manager = select_mem_manager_class(self.mode, "deepseek2")(self.max_total_token_num, 
+        self.mem_manager = Deepseek2MemoryManager(self.max_total_token_num, 
                                                      dtype=self.data_type,
                                                      head_num=self.config["num_key_value_heads"] // self.world_size_,
                                                      key_head_dim=self.config["qk_nope_head_dim"] + self.config["qk_rope_head_dim"],

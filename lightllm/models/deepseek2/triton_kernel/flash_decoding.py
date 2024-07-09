@@ -1,10 +1,10 @@
 import torch
 
-def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infer_state, q_head_num, q_nope_dim, q_rope_dim, out=None):
+def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infer_state, q_head_num, kv_lora_rank, q_rope_dim, qk_nope_head_dim, out=None):
     BLOCK_SEQ = 256
     batch_size = infer_state.batch_size
     max_len_in_batch = infer_state.max_len_in_batch
-    calcu_shape1 = (batch_size, q_head_num, q_nope_dim)
+    calcu_shape1 = (batch_size, q_head_num, kv_lora_rank)
     calcu_shape2 = (batch_size, q_head_num, q_rope_dim)
 
     from lightllm.models.deepseek2.triton_kernel.flash_decoding_stage1 import flash_decode_stage1
@@ -16,7 +16,7 @@ def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infe
         infer_state.mid_o = torch.empty([batch_size, 
                                         q_head_num, 
                                         max_len_in_batch // BLOCK_SEQ + 1, 
-                                        q_nope_dim],
+                                        kv_lora_rank],
                                         dtype=torch.float32, 
                                         device="cuda")
         infer_state.mid_o_logexpsum = torch.empty([batch_size, 
@@ -38,7 +38,8 @@ def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infe
                                 infer_state.max_len_in_batch,
                                 mid_o,
                                 mid_o_logexpsum,
-                                BLOCK_SEQ)
+                                BLOCK_SEQ,
+                                qk_nope_head_dim)
     flash_decode_stage2(mid_o,
                         mid_o_logexpsum, 
                         infer_state.b_seq_len, 

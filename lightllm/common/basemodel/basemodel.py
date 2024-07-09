@@ -9,6 +9,7 @@ from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weight
 from lightllm.common.basemodel.infer_struct import InferStateInfo
 from lightllm.common.basemodel.splitfuse_infer_struct import SplitFuseInferStateInfo
 from lightllm.common.mem_manager import MemoryManager
+from lightllm.common.deepseek2_mem_manager import Deepseek2MemoryManager
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.infer_utils import init_req_to_token_indexes
 from lightllm.common.build_utils import repair_config
@@ -238,11 +239,19 @@ class TpPartBaseModel:
             infer_state.mem_is_contiguous = False
             alloc_mem = self.mem_manager.alloc(input_ids.shape[0])
             infer_state.mem_index = alloc_mem
-            infer_state.kv_buffer = torch.empty(
-                (input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
-            )
+            if isinstance(self.mem_manager, Deepseek2MemoryManager):
+                infer_state.kv_buffer = torch.empty(
+                    (input_ids.shape[0], 1, self.kv_lora_rank + self.qk_rope_head_dim),
+                    dtype=self.data_type,
+                    device="cuda",
+                )
+            else:
+                infer_state.kv_buffer = torch.empty(
+                    (input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+                    dtype=self.data_type,
+                    device="cuda",
+                )
+
 
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
