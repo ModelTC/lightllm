@@ -8,8 +8,6 @@ from .metrics import Monitor
 from prometheus_client import generate_latest
 import multiprocessing.shared_memory as shm
 from concurrent.futures import ThreadPoolExecutor
-
-async_metric_server = None
 import functools
 from rpyc import async_, SocketStream
 
