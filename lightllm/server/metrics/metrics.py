@@ -50,6 +50,7 @@ class Monitor:
         self.gateway_url = args.metric_gateway
         self.registry = CollectorRegistry()
         self.job_name = args.job_name
+        self.grouping_key = args.grouping_key
         self.auth = args.enable_monitor_auth
         self.init_metrics(args)
 
@@ -127,6 +128,6 @@ class Monitor:
     def push_metrices(self):
         if self.gateway_url is not None:
             if self.auth:
-                push_to_gateway(self.gateway_url, job=self.job_name, registry=self.registry, handler=my_auth_handler)
+                push_to_gateway(self.gateway_url, job=self.job_name, grouping_key=self.grouping_key, registry=self.registry, handler=my_auth_handler)
             else:
-                push_to_gateway(self.gateway_url, job=self.job_name, registry=self.registry)
+                push_to_gateway(self.gateway_url, job=self.job_name, grouping_key=self.grouping_key, registry=self.registry)
