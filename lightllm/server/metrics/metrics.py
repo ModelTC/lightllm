@@ -50,7 +50,11 @@ class Monitor:
         self.gateway_url = args.metric_gateway
         self.registry = CollectorRegistry()
         self.job_name = args.job_name
-        self.grouping_key = args.grouping_key
+        self.grouping_key = {}
+        if args.grouping_key:
+            for item in args.grouping_key:
+                key, value = item.split('=')
+                self.grouping_key[key] = value
         self.auth = args.enable_monitor_auth
         self.init_metrics(args)
 
