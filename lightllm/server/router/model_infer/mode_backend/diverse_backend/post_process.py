@@ -6,14 +6,8 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, group_map
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 from lightllm.server.io_struct import FinishStatus
 from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import _top_p_top_k
-from lightllm.utils.infer_utils import calculate_time
 
-SPLIT_TOKEN = int(os.getenv("SPLIT_TOKEN", -1))
-global_topp = [0.9, 0.9, 0.9]
-# global_repetition = [1.12, 1.15, 1.14]
-global_repetition = [1.05, 1.05, 1.05]
 
-# @calculate_time(show=True)
 def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List[int] = [2]):
     logits = logits.contiguous()
     (
@@ -66,30 +60,6 @@ def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List
     batch_next_token_ids = torch.gather(probs_idx, dim=1, index=sampled_index).cpu().numpy().reshape(-1)
     batch_next_token_logprobs = torch.gather(probs_sort, dim=1, index=sampled_index).log().cpu().numpy().reshape(-1)
     return batch_next_token_ids, batch_next_token_logprobs
-
-
-def random_sample(probs_sort, probs_idx):
-    sampled_index = torch.multinomial(probs_sort, num_samples=1, replacement=True)
-    batch_next_token_ids = torch.gather(probs_idx, dim=1, index=sampled_index)
-    batch_next_token_probs = torch.gather(probs_sort, dim=1, index=sampled_index)
-    return batch_next_token_ids, batch_next_token_probs
-
-
-def diverse_sample(probs, req_group, is_prefill, req_manager):
-    best_of = req_group.best_of
-    logprobs = torch.log(probs)
-    best_of = req_group.best_of
-    next_token_logprob, next_token_id = torch.topk(logprobs[0].view(-1), best_of, dim=0, largest=True, sorted=True)
-    next_token_logprob = next_token_logprob.detach().cpu().numpy()
-    next_token_id = next_token_id.detach().cpu().numpy()
-    if is_prefill and next_token_id[0] == SPLIT_TOKEN:
-        next_token_id = [next_token_id[0]] * best_of
-        next_token_logprob = [next_token_logprob[0]] * best_of
-    else:
-        req_group.has_beam = True
-    if is_prefill:
-        req_group.beam_copy(req_manager, is_prefill)
-    return next_token_id, next_token_logprob
 
 
 def _get_post_sample_tensors(req_groups, is_prefill):
