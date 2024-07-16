@@ -9,12 +9,13 @@ from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import
     context_attention_fwd_no_prompt_cache
 )
 from lightllm.models.deepseek2.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
+from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk 
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from functools import partial
-
+from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
@@ -26,6 +27,19 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.qk_rope_head_dim = self.config["qk_rope_head_dim"]
         self.q_lora_rank = self.config["q_lora_rank"]
         self.kv_lora_rank = self.config["kv_lora_rank"]
+        self.is_moe = (
+            self.network_config_["n_routed_experts"] is not None
+            and self.layer_num_ >= self.network_config_["first_k_dense_replace"]
+            and self.layer_num_ % self.network_config_["moe_layer_freq"] == 0
+        )
+        self.softmax_scale = (self.qk_nope_head_dim + self.qk_rope_head_dim) ** (-0.5)
+        if self.network_config_.get("rope_scaling", None) is not None:
+            self.rope_scaling = self.network_config_["rope_scaling"]
+            mscale_all_dim = self.rope_scaling.get("mscale_all_dim", 0)
+            scaling_factor = self.rope_scaling["factor"]
+            if mscale_all_dim:
+                mscale = get_deepseek_mscale(scaling_factor, mscale_all_dim)
+                self.softmax_scale = self.softmax_scale * mscale * mscale
         self._bind_func()
         return
     
@@ -35,6 +49,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             Deepseek2TransformerLayerInfer._token_decode_attention_flashdecoding, self
         )
         self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
+        if self.is_moe:
+            self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
+        else:
+            self._ffn = partial(LlamaTransformerLayerInfer._ffn, self)
 
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
@@ -70,6 +88,13 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
         return (q_nope, q_rope), cache_kv
 
+    def _get_o(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
+    ) -> torch.Tensor:
+        input = torch.mm(input.unsqueeze(2), layer_weight.v_b_proj_)
+        o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_)
+        return o_tensor
+
     def _context_attention_kernel(
         self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
@@ -89,7 +114,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_ready_cache_len,
                 infer_state.max_len_in_batch,
                 infer_state.req_manager.req_to_token_indexs,
-                self.qk_nope_head_dim
+                self.qk_nope_head_dim,
+                self.softmax_scale
             )
         else:
             context_attention_fwd_no_prompt_cache(
@@ -101,15 +127,11 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
                 infer_state.max_len_in_batch,
-                self.qk_nope_head_dim
+                self.qk_nope_head_dim,
+                self.softmax_scale
             )
-
-        return o_tensor
-    
-    def _get_o(
-        self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
-    ) -> torch.Tensor:
-        o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_)
+        q_nope = None
+        q_rope = None
         return o_tensor
     
     def _token_decode_attention_flashdecoding(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
@@ -117,7 +139,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         kv = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank]
         kv_rope = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank: ]
         return token_decode_attention_flash_decoding(
-            q_nope, q_rope, kv, kv_rope, infer_state, self.tp_q_head_num_, self.kv_lora_rank, self.qk_rope_head_dim, self.qk_nope_head_dim
+            q_nope, q_rope, kv, kv_rope, infer_state, self.tp_q_head_num_, self.kv_lora_rank, self.qk_rope_head_dim, self.qk_nope_head_dim, self.softmax_scale
         )
     
     def _copy_kv_to_mem_cache_normal(self, buffer, mem_index, mem_manager):
@@ -129,3 +151,32 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             mem_manager.kv_buffer[self.layer_num_][ :, :, self.kv_lora_rank:],
         )
         return
+    
+    def _moe_ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight) -> torch.Tensor:
+        hidden_states = input.view(-1, self.embed_dim_)
+        num_tokens, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
+        router_logits = torch.mm(input.view(-1, self.embed_dim_), layer_weight.moe_gate)
+
+        topk_weights, topk_ids = grouped_topk(
+            hidden_states,
+            router_logits,
+            self.network_config_["num_experts_per_tok"],
+            renormalize=self.network_config_["norm_topk_prob"],
+            num_expert_group=self.network_config_["n_group"],
+            topk_group=self.network_config_["topk_group"])
+        
+        final_hidden_states = fused_experts(
+            hidden_states,
+            self.w1,
+            self.w2,
+            topk_weights,
+            topk_ids,
+            inplace=True) * self.network_config_["routed_scaling_factor"]
+        
+        if self.network_config_['n_shared_experts'] is not None:
+            shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
+            final_hidden_states = final_hidden_states + shared_output
+
+        return final_hidden_states.view(num_tokens, hidden_dim)
+    

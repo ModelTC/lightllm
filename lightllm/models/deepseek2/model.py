@@ -38,9 +38,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.kv_lora_rank = self.config["kv_lora_rank"]
 
     def _init_custom(self):
-        # TODO: rope
-        pass
-        
+        self._init_to_get_yarn_rotary()
     
     def _verify_params(self):
         return super()._verify_params()
@@ -53,9 +51,6 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
                                                      key_head_dim=self.config["qk_nope_head_dim"] + self.config["qk_rope_head_dim"],
                                                      value_head_dim=self.config["qk_nope_head_dim"],
                                                      layer_num=self.config["num_hidden_layers"])
-        return
-    
-    def _init_custom(self):
         return
     
     def _init__weights(self):
@@ -74,3 +69,46 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.pre_post_weight.verify_load()
         [weight.verify_load() for weight in self.trans_layers_weight]    
         return
+    
+
+    def _init_to_get_yarn_rotary(self):
+        from lightllm.models.llama.yarn_rotary_utils import find_correction_range, linear_ramp_mask, get_deepseek_mscale
+
+        dim = self.head_dim_
+        max_position_embeddings = self.config.get("max_position_embeddings", 2048)
+        base = self.config.get("rope_theta", 10000.0)
+        if self.config.get("rope_scaling", {}) is None:
+            scale = 1.0
+        else:
+            rope_scaling = self.config.get("rope_scaling", {})
+            scale = rope_scaling.get("factor", 1.0)
+            mscale = rope_scaling.get("mscale", 1)
+            mscale_all_dim = rope_scaling.get("mscale_all_dim", 0)
+        original_max_position_embeddings = self.config.get("original_max_position_embeddings", 2048)
+        extrapolation_factor = 1.0
+        beta_fast = 32.0
+        beta_slow = 1.0
+
+        pos_freqs = base ** (torch.arange(0, dim, 2).float().cuda() / dim)
+        inv_freq_extrapolation = 1.0 / pos_freqs
+        inv_freq_interpolation = 1.0 / (scale * pos_freqs)
+
+        low, high = find_correction_range(beta_fast, beta_slow, dim, base, original_max_position_embeddings)
+        inv_freq_mask = (
+            1 - linear_ramp_mask(low, high, dim // 2).float().cuda()
+        ) * extrapolation_factor  # Get n-d rotational scaling corrected for extrapolation
+        inv_freq = inv_freq_interpolation * (1 - inv_freq_mask) + inv_freq_extrapolation * inv_freq_mask
+
+        _mscale = float(get_deepseek_mscale(scale, mscale) / get_deepseek_mscale(scale, mscale_all_dim))  # Get n-d magnitude scaling corrected for interpolation
+
+        # Build here to make `torch.jit.trace` work.
+        max_seq_len_cached = max_position_embeddings
+        t = torch.arange(max_seq_len_cached, device="cuda", dtype=torch.float32)
+        freqs = torch.einsum("i,j->ij", t, inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self._cos_cached = emb.cos().to(self.data_type).cuda() * _mscale
+        self._sin_cached = emb.sin().to(self.data_type).cuda() * _mscale
+
+        return
+    

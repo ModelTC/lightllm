@@ -90,7 +90,7 @@ def _fwd_kernel_flash_decode_stage1(
 
 
 @torch.no_grad()
-def flash_decode_stage1(q_nope, q_rope, kv_nope, kv_rope, Req_to_tokens, B_req_idx, B_Seqlen, max_len_in_batch, mid_out, mid_out_logsumexp, block_seq, qk_nope_head_dim):
+def flash_decode_stage1(q_nope, q_rope, kv_nope, kv_rope, Req_to_tokens, B_req_idx, B_Seqlen, max_len_in_batch, mid_out, mid_out_logsumexp, block_seq, qk_nope_head_dim, softmax_scale):
     BLOCK_SEQ = block_seq
     BLOCK_N = 16
     assert BLOCK_SEQ % BLOCK_N == 0
@@ -102,8 +102,7 @@ def flash_decode_stage1(q_nope, q_rope, kv_nope, kv_rope, Req_to_tokens, B_req_i
     assert q_nope_dim in {16, 32, 64, 128, 256}
     assert q_rope_dim in {16, 32, 64, 128, 256}
 
-    # 这个 scale 系数的计算可能存在等效问题，to do
-    sm_scale = 1.0 / ((qk_nope_head_dim + q_rope_dim) ** 0.5)  # 计算scale系数
+    sm_scale = softmax_scale  # 计算scale系数
     batch, head_num = B_req_idx.shape[0], q_nope.shape[1]
     grid = (batch, head_num, triton.cdiv(max_len_in_batch, BLOCK_SEQ))
     
