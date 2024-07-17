@@ -39,7 +39,7 @@ class RouterManager:
         self.mode = args.mode
         self.max_total_token_num = args.max_total_token_num
         # 用共享内存进行共享，router 模块读取进行精确的调度估计
-        self.shared_can_use_token_num = SharedInt(f"{args.nccl_port}_mem_manger_can_use_token_num")
+        self.shared_can_use_token_num = SharedInt(f"{args.nccl_port}_cuda_mem_manger_can_use_token_num")
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
         self.radix_cache_client = None
         if self.args.use_dynamic_prompt_cache:

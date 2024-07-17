@@ -8,13 +8,15 @@ logger = init_logger(__name__)
 
 
 class MemoryManager:
-    def __init__(self, size, dtype, head_num, head_dim, layer_num, always_copy=False):
+    def __init__(self, size, dtype, head_num, head_dim, layer_num, always_copy=False, device_type="cuda"):
         self.size = size
         self.dtype = dtype
         self.head_num = head_num
         self.head_dim = head_dim
         self.layer_num = layer_num
         self.always_copy = always_copy
+        assert device_type in ["cuda", "cpu"]
+        self.device_type = device_type
 
         # mem_state 修改为使用计数方式，方便后期实现token共享机制，实现beam search 等
         self.mem_state = torch.zeros((size,), dtype=torch.int32, device="cuda")
@@ -28,14 +30,23 @@ class MemoryManager:
         assert nccl_port is not None
         logger.info(f"mem manger get nccl port: {str(nccl_port)}")
 
-        self.shared_can_use_token_num = SharedInt(f"{str(nccl_port)}_mem_manger_can_use_token_num")
+        self.shared_can_use_token_num = SharedInt(f"{str(nccl_port)}_{device_type}_mem_manger_can_use_token_num")
 
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
+
+        if self.device_type == "cpu":
+            self.pin_memory = True
+        else:
+            self.pin_memory = False
+
         self._init_buffers(size, dtype, head_num, head_dim, layer_num)
 
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
         self.kv_buffer = [
-            torch.empty((size, 2 * head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)
+            torch.empty(
+                (size, 2 * head_num, head_dim), dtype=dtype, pin_memory=self.pin_memory, device=self.device_type
+            )
+            for _ in range(layer_num)
         ]
 
     def _free_buffers(self):
@@ -44,7 +55,9 @@ class MemoryManager:
     @torch.no_grad()
     def alloc(self, need_size):
         if need_size > self.can_use_mem_size:
-            logger.warn(f"warn no enough cache need_size {need_size} left_size {self.can_use_mem_size}")
+            logger.warn(
+                f"{self.device_type} warn no enough cache need_size {need_size} left_size {self.can_use_mem_size}"
+            )
             return None
         can_use_index = torch.nonzero(self.mem_state == 0).view(-1)
         select_index = can_use_index[0:need_size]
@@ -56,7 +69,9 @@ class MemoryManager:
         if self.always_copy:
             return None
         if need_size > self.can_use_mem_size:
-            logger.warn(f"warn no enough cache need_size {need_size} left_size {self.can_use_mem_size}")
+            logger.warn(
+                f"{self.device_type} warn no enough cache need_size {need_size} left_size {self.can_use_mem_size}"
+            )
             return None
 
         can_use_index = torch.nonzero(self.mem_state == 0).view(-1)
@@ -83,7 +98,7 @@ class MemoryManager:
         free_index = free_index.long()
         self.decrease_refs(free_index)
         if self.can_use_mem_size == len(self.mem_state):
-            logger.debug(f"freed all gpu mem size {self.can_use_mem_size}")
+            logger.debug(f"{self.device_type} freed all gpu mem size {self.can_use_mem_size}")
         return
 
     @torch.no_grad()
