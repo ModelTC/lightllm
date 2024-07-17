@@ -19,28 +19,27 @@ from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
-        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.tp_k_head_num_ = 1
         self.tp_v_head_num_ = 1
-        self.tp_o_head_num_ = self.tp_q_head_num_
-        self.qk_nope_head_dim = self.config["qk_nope_head_dim"]
-        self.qk_rope_head_dim = self.config["qk_rope_head_dim"]
-        self.q_lora_rank = self.config["q_lora_rank"]
-        self.kv_lora_rank = self.config["kv_lora_rank"]
+        self.qk_nope_head_dim = network_config["qk_nope_head_dim"]
+        self.qk_rope_head_dim = network_config["qk_rope_head_dim"]
+        self.q_lora_rank = network_config["q_lora_rank"]
+        self.kv_lora_rank = network_config["kv_lora_rank"]
         self.is_moe = (
-            self.network_config_["n_routed_experts"] is not None
-            and self.layer_num_ >= self.network_config_["first_k_dense_replace"]
-            and self.layer_num_ % self.network_config_["moe_layer_freq"] == 0
+            network_config["n_routed_experts"] is not None
+            and layer_num >= network_config["first_k_dense_replace"]
+            and layer_num % network_config["moe_layer_freq"] == 0
         )
         self.softmax_scale = (self.qk_nope_head_dim + self.qk_rope_head_dim) ** (-0.5)
-        if self.network_config_.get("rope_scaling", None) is not None:
-            self.rope_scaling = self.network_config_["rope_scaling"]
+        if network_config.get("rope_scaling", None) is not None:
+            self.rope_scaling = network_config["rope_scaling"]
             mscale_all_dim = self.rope_scaling.get("mscale_all_dim", 0)
             scaling_factor = self.rope_scaling["factor"]
             if mscale_all_dim:
                 mscale = get_deepseek_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
-        self._bind_func()
+        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
+        self.tp_o_head_num_ = self.tp_q_head_num_
         return
     
     def _bind_attention(self):
@@ -91,7 +90,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
-        input = torch.mm(input.unsqueeze(2), layer_weight.v_b_proj_)
+        input = torch.matmul(input.unsqueeze(2), layer_weight.v_b_proj_)
         o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_)
         return o_tensor
 
@@ -114,7 +113,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_ready_cache_len,
                 infer_state.max_len_in_batch,
                 infer_state.req_manager.req_to_token_indexs,
-                self.qk_nope_head_dim,
                 self.softmax_scale
             )
         else:
@@ -127,7 +125,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
                 infer_state.max_len_in_batch,
-                self.qk_nope_head_dim,
                 self.softmax_scale
             )
         q_nope = None
@@ -168,8 +165,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         
         final_hidden_states = fused_experts(
             hidden_states,
-            self.w1,
-            self.w2,
+            layer_weight.w1,
+            layer_weight.w2,
             topk_weights,
             topk_ids,
             inplace=True) * self.network_config_["routed_scaling_factor"]

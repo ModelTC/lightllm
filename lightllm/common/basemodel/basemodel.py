@@ -303,11 +303,18 @@ class TpPartBaseModel:
             infer_state.mem_is_contiguous = False
             alloc_mem = self.mem_manager.alloc(batch_size)
             infer_state.mem_index = alloc_mem
-            infer_state.kv_buffer = torch.empty(
-                (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
-            )
+            if isinstance(self.mem_manager, Deepseek2MemoryManager):
+                infer_state.kv_buffer = torch.empty(
+                    (batch_size, 1, self.kv_lora_rank + self.qk_rope_head_dim),
+                    dtype=self.data_type,
+                    device="cuda",
+                )
+            else:
+                infer_state.kv_buffer = torch.empty(
+                    (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+                    dtype=self.data_type,
+                    device="cuda",
+                )
             copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
@@ -365,11 +372,19 @@ class TpPartBaseModel:
             infer_state.mem_is_contiguous = False
             alloc_mem = self.mem_manager.alloc(alloc_size)
             infer_state.mem_index = alloc_mem
-            infer_state.kv_buffer = torch.empty(
-                (alloc_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
-            )
+
+            if isinstance(self.mem_manager, Deepseek2MemoryManager):
+                infer_state.kv_buffer = torch.empty(
+                    (alloc_size, 1, self.kv_lora_rank + self.qk_rope_head_dim),
+                    dtype=self.data_type,
+                    device="cuda",
+                )
+            else:
+                infer_state.kv_buffer = torch.empty(
+                    (alloc_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+                    dtype=self.data_type,
+                    device="cuda",
+                )
 
         # decode 部分
         if decode_req_num != 0:

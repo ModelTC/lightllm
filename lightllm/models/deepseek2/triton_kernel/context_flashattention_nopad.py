@@ -151,18 +151,23 @@ def _fwd_kernel(
 
 @torch.no_grad()
 def context_attention_fwd(
-    q_nope, q_rope, kv_nope, kv_rope, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs, q_head_dim, softmax_scale
+    q_nope, q_rope, kv_nope, kv_rope, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs, softmax_scale
 ):
+
     BLOCK = 128 if not TESLA else 64
     q_nope_dim = q_nope.shape[-1]
     q_rope_dim = q_rope.shape[-1]
     assert q_nope_dim == kv_nope.shape[-1]
     assert q_rope_dim == kv_rope.shape[-1]
-    assert q_nope_dim in {16, 32, 64, 128, 256}
+    assert q_nope_dim in {16, 32, 64, 128, 256, 512}
     assert q_rope_dim in {16, 32, 64, 128, 256}
     
-    # 这个 scale 系数的计算可能存在等效问题，to do
-    sm_scale = softmax_scale  # 计算scale系数
+    if q_nope_dim >= 512:
+        BLOCK = 64 if not TESLA else 32
+    else:
+        BLOCK = 128 if not TESLA else 64
+
+    sm_scale = softmax_scale
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
     kv_group_num = q_nope.shape[1]  # deepseekv2 的 group 就是q的head数量，类似于MQA
 
@@ -342,19 +347,20 @@ def _fwd_kernel_no_prompt_cache(
 
 
 @torch.no_grad()
-def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len, q_head_dim, softmax_scale):
-    BLOCK = 128 if not TESLA else 64
-    # shape constraints
-    BLOCK = 128 if not TESLA else 64
+def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len, softmax_scale):
     q_nope_dim = q_nope.shape[-1]
     q_rope_dim = q_rope.shape[-1]
     assert q_nope_dim == kv_nope.shape[-1]
     assert q_rope_dim == kv_rope.shape[-1]
-    assert q_nope_dim in {16, 32, 64, 128, 256}
+    assert q_nope_dim in {16, 32, 64, 128, 256, 512}
     assert q_rope_dim in {16, 32, 64, 128, 256}
     
-    # 这个 scale 系数的计算可能存在等效问题，to do
-    sm_scale = softmax_scale  # 计算scale系数
+    if q_nope_dim >= 512:
+        BLOCK = 64 if not TESLA else 32
+    else:
+        BLOCK = 128 if not TESLA else 64
+
+    sm_scale = softmax_scale
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
     kv_group_num = q_nope.shape[1]
 

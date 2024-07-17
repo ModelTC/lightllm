@@ -99,7 +99,7 @@ def flash_decode_stage1(q_nope, q_rope, kv_nope, kv_rope, Req_to_tokens, B_req_i
     q_rope_dim = q_rope.shape[-1]
     assert q_nope_dim == kv_nope.shape[-1]
     assert q_rope_dim == kv_rope.shape[-1]
-    assert q_nope_dim in {16, 32, 64, 128, 256}
+    assert q_nope_dim in {16, 32, 64, 128, 256, 512}
     assert q_rope_dim in {16, 32, 64, 128, 256}
 
     sm_scale = softmax_scale  # 计算scale系数

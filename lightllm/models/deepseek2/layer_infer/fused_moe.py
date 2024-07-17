@@ -28,7 +28,7 @@ import triton
 import triton.language as tl
 from lightllm.utils.log_utils import init_logger
 import lightllm.models.deepseek2.layer_infer._custom_ops as ops
-from lightllm.models.llama.triton_kernel import silu_and_mul_fwd
+from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 
 
 logger = init_logger(__name__)
@@ -419,7 +419,7 @@ def fused_experts(hidden_states: torch.Tensor,
         if tokens_in_chunk < CHUNK_SIZE:
             # will only happen in the last chunk
             intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
-            intermediate_cache2 = intermediate_cache2[:tokens_in_chunk]
+            intermediate_cache2 = intermediate_cache2[:tokens_in_chunk * topk_ids.shape[1]]
             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
 
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]

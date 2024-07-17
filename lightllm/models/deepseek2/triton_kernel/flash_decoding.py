@@ -1,7 +1,8 @@
 import torch
 
 def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infer_state, q_head_num, kv_lora_rank, q_rope_dim, qk_nope_head_dim, softmax_scale, out=None):
-    BLOCK_SEQ = 256
+    if kv_lora_rank > 128:
+        BLOCK_SEQ = 256 // (kv_lora_rank // 128)
     batch_size = infer_state.batch_size
     max_len_in_batch = infer_state.max_len_in_batch
     calcu_shape1 = (batch_size, q_head_num, kv_lora_rank)

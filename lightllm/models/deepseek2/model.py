@@ -3,7 +3,6 @@ import json
 import torch
 from lightllm.models.deepseek2.layer_infer.transformer_layer_infer import Deepseek2TransformerLayerInfer
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
-from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
 
 from lightllm.models.llama.model import LlamaTpPartModel
@@ -19,9 +18,6 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
 
     # infer class
     transformer_layer_infer_class = Deepseek2TransformerLayerInfer
-
-    # infer state class
-    infer_state_class = Deepseek2InferStateInfo
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
@@ -47,9 +43,8 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     def _init_mem_manager(self):
         self.mem_manager = Deepseek2MemoryManager(self.max_total_token_num, 
                                                      dtype=self.data_type,
-                                                     head_num=self.config["num_key_value_heads"] // self.world_size_,
-                                                     key_head_dim=self.config["qk_nope_head_dim"] + self.config["qk_rope_head_dim"],
-                                                     value_head_dim=self.config["qk_nope_head_dim"],
+                                                     kv_lora_rank=self.config["kv_lora_rank"],
+                                                     qk_rope_head_dim=self.config["qk_rope_head_dim"],
                                                      layer_num=self.config["num_hidden_layers"])
         return
     
