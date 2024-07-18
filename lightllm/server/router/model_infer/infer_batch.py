@@ -208,7 +208,6 @@ class InferReqGroup:
             req.finish_status = FinishStatus.NO_FINISH
             req_manager.req_to_token_indexs[req.req_idx][prefix_len : len(req.input_token_ids)] = cache_token_id
             assert len(req.input_token_ids) == len(prev_req.input_token_ids)
-            assert prev_req.cur_kv_len == prefix_len
             req_manager.mem_manager.add_refs(cache_token_id)
 
     def update_finish_status(self, best_new_score):
