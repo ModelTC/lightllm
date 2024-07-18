@@ -87,6 +87,7 @@ class RouterManager:
                 "weight_dir": self.model_weightdir,
                 "load_way": self.load_way,
                 "max_total_token_num": self.max_total_token_num,
+                "cpu_cache_total_token_num": self.args.cpu_cache_total_token_num,
                 "mode": self.mode,
                 "max_req_num": self.args.running_max_req_size + 8,
                 "max_seq_length": self.args.max_req_total_len + 8,  # 留一点余量

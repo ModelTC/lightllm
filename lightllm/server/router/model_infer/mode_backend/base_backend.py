@@ -86,6 +86,7 @@ class ModeBackend:
             "world_size": self.world_size,
             "weight_dir": self.weight_dir,
             "max_total_token_num": max_total_token_num,
+            "cpu_cache_total_token_num": kvargs.get("cpu_cache_total_token_num", 0),
             "load_way": self.load_way,
             "mode": self.mode,
             "max_req_num": kvargs.get("max_req_num", 1000),

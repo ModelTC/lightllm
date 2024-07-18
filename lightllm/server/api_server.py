@@ -334,6 +334,7 @@ def main():
         default=6000,
         help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
     )
+    parser.add_argument("--cpu_cache_total_token_num", type=int, default=0, help="experimental feature")
     parser.add_argument(
         "--batch_max_tokens",
         type=int,
