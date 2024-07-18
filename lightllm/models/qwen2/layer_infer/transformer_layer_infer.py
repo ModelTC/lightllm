@@ -7,14 +7,7 @@ import triton
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer, rotary_emb_fwd
-from lightllm.models.qwen.infer_struct import QwenInferStateInfo
 
-from lightllm.models.mistral.triton_kernel.context_flashattention_nopad import context_attention_fwd
-from lightllm.models.mistral.triton_kernel.token_attention_nopad_att1 import token_att_fwd
-from lightllm.models.mistral.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2
-from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
-
-from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from lightllm.models.qwen2.layer_weights.transformer_layer_weight import Qwen2TransformerLayerWeight
 
 
@@ -24,7 +17,7 @@ class Qwen2TransformerLayerInfer(LlamaTransformerLayerInfer):
         return
 
     def _get_qkv(
-        self, input, cache_kv, infer_state: QwenInferStateInfo, layer_weight: Qwen2TransformerLayerWeight
+        self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: Qwen2TransformerLayerWeight
     ) -> torch.Tensor:
         q = torch.addmm(
             layer_weight.q_bias_,

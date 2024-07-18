@@ -4,11 +4,11 @@ import torch.distributed as dist
 import numpy as np
 from functools import partial
 
+from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama_wquant.layer_infer.transformer_layer_infer import LlamaTransformerLayerInferWquant
 from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.qwen2_wquant.layer_weights.transformer_layer_weight import Qwen2TransformerLayerWeightQuantized
-from lightllm.models.qwen.infer_struct import QwenInferStateInfo
 from lightllm.models.mistral.triton_kernel.context_flashattention_nopad import context_attention_fwd
 from lightllm.models.mistral.triton_kernel.token_attention_nopad_att1 import token_att_fwd
 
@@ -22,7 +22,7 @@ class Qwen2TransformerLayerInferWQuant(LlamaTransformerLayerInferWquant):
         return
 
     def _get_qkv(
-        self, input, cache_kv, infer_state: QwenInferStateInfo, layer_weight: Qwen2TransformerLayerWeightQuantized
+        self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: Qwen2TransformerLayerWeightQuantized
     ):
         q = self._wquant_matmul_for_qkv(
             input.view(-1, self.embed_dim_),
@@ -43,10 +43,3 @@ class Qwen2TransformerLayerInferWQuant(LlamaTransformerLayerInferWquant):
             infer_state.position_sin,
         )
         return q, cache_kv
-
-    def _bind_func(self):
-        self._bind_matmul()
-        LlamaTransformerLayerInfer._bind_norm(self)
-        self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
-        self._token_attention_kernel = self._token_decode_attention_normal
-        return
