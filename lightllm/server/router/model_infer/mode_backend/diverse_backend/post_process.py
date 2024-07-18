@@ -25,15 +25,17 @@ def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List
         length_penalty_idx,
         mask_eos_reqs,
     ) = _get_post_sample_tensors(req_groups, is_prefill)
-    batch_concat_logits_list = []
+    batch_idx = []
     if is_prefill:
         for i in range(len(req_groups)):
             req_group = req_groups[i]
             best_of = req_group.best_of
-            batch_concat_logits_list.append(logits[i : i + 1].repeat(best_of, 1))
             if best_of > 1:
-                req_group.beam_copy(req_manager, is_prefill)
-        batch_logits = torch.cat(batch_concat_logits_list, dim=0)
+                req_group.diverse_copy(req_manager, is_prefill)
+                batch_idx.extend([i for _ in range(best_of)])
+            else:
+                batch_idx.append(i)
+        batch_logits = logits[batch_idx]
     else:
         batch_logits = logits
 
