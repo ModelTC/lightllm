@@ -309,6 +309,9 @@ class InferBatch:
                         if cpu_kv_len > kv_len:
                             logger.info(f"{r_obj.r_id} cpu cache find more {cpu_kv_len} > {kv_len}")
                             cpu_mem_index = cpu_value_tensor[kv_len:cpu_kv_len]
+                            radix_cache.free_radix_cache_to_get_enough_token(
+                                len(cpu_mem_index)
+                            )  # 保证gpu的memmanager 能分配充足的token
                             gpu_mem_index = mem_manager.alloc(len(cpu_mem_index))
                             swap_manager.cpu_to_gpu_copy(cpu_mem_index.cuda(), gpu_mem_index)
                             req_manager.req_to_token_indexs[r_obj.req_idx, kv_len:cpu_kv_len] = gpu_mem_index
