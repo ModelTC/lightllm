@@ -37,10 +37,11 @@ class ContinuesBatchBackend(ModeBackend):
         logits = self.model.forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
+        # cpu cache 任务标记结束
         if self.swap_mamager is not None:
-            self.swap_mamager.wait_swap_task_finished()
+            self.swap_mamager.mark_swap_task_finished()
+
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same
@@ -64,4 +65,8 @@ class ContinuesBatchBackend(ModeBackend):
             )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
         self.cache[batch.batch_id] = batch
+
+        # 等待 cpu cache 任务真正结束
+        if self.swap_mamager is not None:
+            self.swap_mamager.wait_swap_task_finished()
         return output_dict

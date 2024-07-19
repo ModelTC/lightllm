@@ -138,9 +138,15 @@ class SwapManager(threading.Thread):
         self.task_start_event.put(None)
         return
 
-    def wait_swap_task_finished(self):
+    def mark_swap_task_finished(self):
         self.shared_task_mark.set_value(0)
+        return
+
+    def wait_swap_task_finished(self):
+        # import time
+        # start_time = time.time()
         self.task_end_event.get()
+        # print(f"wait time:{(time.time() - start_time) * 1000}")
         return
 
     def _check_move_task_finished(self):
