@@ -303,7 +303,6 @@ class InferBatch:
                     # 这种初始化对多输出不行，需要重新
                     if swap_manager is not None:
                         assert r_obj.sampling_param.best_of == 1, "only support single output"  # to do 更新
-                        swap_manager.cpu_radix_cache._print_helper(swap_manager.cpu_radix_cache.root_node, indent=4)
                         _, cpu_kv_len, cpu_value_tensor = swap_manager.cpu_radix_cache.match_prefix(
                             key, update_refs=False
                         )
