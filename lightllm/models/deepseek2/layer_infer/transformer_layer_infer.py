@@ -12,7 +12,7 @@ from lightllm.models.deepseek2.triton_kernel.flash_decoding import token_decode_
 from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk 
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
-from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
+from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
@@ -75,8 +75,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim),
         )
         cache_kv[:, :, : self.kv_lora_rank] = rmsnorm_forward(
-            cache_kv[:, :, : self.kv_lora_rank],
-            weight=layer_weight.kv_a_layernorm_, 
+            cache_kv[:, :, : self.kv_lora_rank].to(torch.float16),
+            weight=layer_weight.kv_a_layernorm_,
             eps=self.eps_
         )
         rotary_emb_fwd(
@@ -106,7 +106,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 q_rope,
                 kv[:, : , : self.kv_lora_rank],
                 kv[:, : , self.kv_lora_rank: ],
-                o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
+                o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
                 infer_state.b_req_idx,
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
@@ -121,7 +121,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 q_rope,
                 kv[:, : , : self.kv_lora_rank],
                 kv[:, : , self.kv_lora_rank: ],
-                o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
+                o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
                 infer_state.max_len_in_batch,
@@ -153,8 +153,11 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         hidden_states = input.view(-1, self.embed_dim_)
         num_tokens, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
-        router_logits = torch.mm(input.view(-1, self.embed_dim_), layer_weight.moe_gate)
 
+        if self.network_config_['n_shared_experts'] is not None:
+            shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
+
+        router_logits = torch.mm(input.view(-1, self.embed_dim_), layer_weight.moe_gate)
         topk_weights, topk_ids = grouped_topk(
             hidden_states,
             router_logits,
@@ -172,8 +175,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             inplace=True) * self.network_config_["routed_scaling_factor"]
         
         if self.network_config_['n_shared_experts'] is not None:
-            shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
             final_hidden_states = final_hidden_states + shared_output
-
         return final_hidden_states.view(num_tokens, hidden_dim)
     

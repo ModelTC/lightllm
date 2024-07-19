@@ -121,7 +121,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                     self.kv_lora_rank,
                     self.num_attention_heads,
                     self.qk_nope_head_dim * 2,
-                )[:, :, :self.qk_nope_head_dim].transpose(0, 1)
+                )[:, :, self.qk_nope_head_dim:].transpose(0, 1)
             self.k_b_proj_ = self._cuda(
                 k_b_proj_[self.tp_q_head_num_ * self.tp_rank_: self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
             )

@@ -69,7 +69,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     def _init_to_get_yarn_rotary(self):
         from lightllm.models.llama.yarn_rotary_utils import find_correction_range, linear_ramp_mask, get_deepseek_mscale
 
-        dim = self.head_dim_
+        dim = self.qk_rope_head_dim
         max_position_embeddings = self.config.get("max_position_embeddings", 2048)
         base = self.config.get("rope_theta", 10000.0)
         if self.config.get("rope_scaling", {}) is None:
