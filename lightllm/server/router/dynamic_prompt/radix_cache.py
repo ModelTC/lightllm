@@ -34,6 +34,12 @@ class TreeNode:
         self.shared_idx_node: SharedTreeInfoNode = self.shared_idx_manager.alloc()
         self.time_id = time_gen.generate_time_id()  # 用于标识时间周期
 
+        # 当节点为叶子节点的时候，用于缓存当前节点到根节点的所有key和value值
+        # 这两个buffer并不一定存在，只有在 SwapManager用于快速交换cpu cache的时候，会进行赋值，减少每次查询的时间。
+        # 当有变化将一个节点从叶节点变为非叶节点的时候，要将其赋值为None,防止内存的浪费。
+        self.all_token_id_key_buffer: torch.Tensor = None
+        self.all_token_mem_index_value_buffer: torch.Tensor = None
+
     def get_compare_key(self):
         return (0 if self.ref_counter == 0 else 1, len(self.children), self.time_id)
 
@@ -78,6 +84,12 @@ class TreeNode:
         new_len = len(child.token_mem_index_value)
         child.shared_idx_node.set_node_value_len(new_len)
         child.shared_idx_node.set_node_prefix_total_len(child.get_parent_prefix_total_len() + new_len)
+
+        # 这个场景，本节点会从叶节点变为非叶节点，清理一下buffer
+        self.all_token_id_key_buffer = None
+        self.all_token_mem_index_value_buffer = None
+
+        self.update_time()  # 更新一下时间标记，母节点应该时间标记上比子节点新
         return child
 
     def remove_child(self, child_node):
@@ -93,6 +105,29 @@ class TreeNode:
 
     def get_parent_prefix_total_len(self):
         return self.parent.shared_idx_node.get_node_prefix_total_len()
+
+    def get_all_key_value_buffers(self):
+        """
+        只有叶子节点应该调用这个函数
+        """
+        if not self.is_leaf():
+            return (None, None)
+        elif self.all_token_id_key_buffer is not None:
+            return (self.all_token_id_key_buffer, self.all_token_mem_index_value_buffer)
+
+        keys = []
+        values = []
+        node = self
+        while node is not None:
+            keys.append(node.token_id_key)
+            values.append(node.token_mem_index_value)
+            node = node.parent
+
+        keys.reverse()
+        values.reverse()
+        self.all_token_id_key_buffer = torch.cat(keys)
+        self.all_token_mem_index_value_buffer = torch.cat(values)
+        return (self.all_token_id_key_buffer, self.all_token_mem_index_value_buffer)
 
 
 def match(key, seq):
@@ -275,6 +310,12 @@ class RadixCache:
             # 回收 shared 链表资源
             self.shared_idx_manager.free(node.shared_idx_node.get_idx())
         return
+
+    def can_released_token_num(self):
+        """
+        radix cache tree 中能释放出来使用的token数量。用树管理的所有token数量减去已经被请求引用使用的部分即得。
+        """
+        return self.tree_total_tokens_num.arr[0] - self.refed_tokens_num.arr[0]
 
     def assert_leafs_is_right(self):
         for node in self.evict_tree_set:
