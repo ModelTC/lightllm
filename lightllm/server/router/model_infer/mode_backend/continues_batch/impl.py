@@ -30,10 +30,17 @@ class ContinuesBatchBackend(ModeBackend):
         else:
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
+        # 开启了异步 cpu cache 传输的功能，需要在每次推理的时候启动
+        if self.swap_mamager is not None:
+            self.swap_mamager.mark_swap_task_start()
+
         logits = self.model.forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+
+        if self.swap_mamager is not None:
+            self.swap_mamager.wait_swap_task_finished()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same

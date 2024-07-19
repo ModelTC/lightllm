@@ -45,6 +45,7 @@ from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
+from lightllm.server.router.dynamic_prompt.swap import SwapManager
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
 
 
@@ -73,6 +74,7 @@ class ModeBackend:
 
         self.weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
+        cpu_cache_total_token_num = kvargs.get("cpu_cache_total_token_num", 0)
 
         dist.init_process_group(
             "nccl", init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=self.tp_rank, world_size=world_size
@@ -209,6 +211,24 @@ class ModeBackend:
             if self.use_dynamic_prompt_cache
             else None
         )
+        self.logger.info(f"cpu_cache_total_token_num: {cpu_cache_total_token_num}")
+        self.cpu_radix_cache = (
+            RadixCache(
+                str(kvargs["nccl_port"]) + "_cpu_",
+                cpu_cache_total_token_num,
+                self.tp_rank,
+                mem_manager=self.model.cpu_cache_mem_manager,
+            )
+            if self.use_dynamic_prompt_cache and cpu_cache_total_token_num > 0
+            else None
+        )
+
+        # 当 radix_cache 和 cpu_radix_cache 同时存在的时候，才生成 swap_mamager 对象
+        if self.radix_cache is not None and self.cpu_radix_cache is not None:
+            self.swap_mamager = SwapManager(self.radix_cache, self.cpu_radix_cache, str(kvargs["nccl_port"]))
+            self.logger.info("use swap_manager")
+        else:
+            self.swap_mamager = None
 
         self.logger.info(f"loaded model class {self.model.__class__}")
         self.init_custom()
@@ -236,6 +256,7 @@ class ModeBackend:
             self.model.req_manager,
             self.model.vocab_size,
             self.radix_cache,
+            self.swap_mamager,
         )
         self.cache[batch_id] = batch_data
 

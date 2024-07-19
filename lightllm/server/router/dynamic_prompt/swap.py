@@ -4,6 +4,11 @@ from .radix_cache import RadixCache, TreeNode
 from .shared_arr import SharedInt
 from lightllm.common.mem_manager import MemoryManager
 import threading
+import queue
+
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 class FakeTreeNode:
@@ -36,8 +41,10 @@ class SwapManager(threading.Thread):
         self.shared_task_mark = SharedInt(f"{unique_name}_swap_task_mark")
         self.shared_task_mark.set_value(0)
 
-        self.task_start_event = threading.Condition()
-        self.task_end_event = threading.Condition()
+        self.cuda_stream = torch.cuda.Stream()
+
+        self.task_start_event = queue.Queue(maxsize=1)
+        self.task_end_event = queue.Queue(maxsize=1)
         self.daemon = True
         self.start()
         return
@@ -48,7 +55,9 @@ class SwapManager(threading.Thread):
         ):
             if not leaf_tree_node.is_leaf():
                 break
-
+            # 如果遇到根节点，没有数据可以复制直接
+            if leaf_tree_node == self.gpu_radix_cache.root_node:
+                continue
             dist.barrier(group=self.dist_group)
             # 插入检查退出点的代码。
             if self._check_move_task_finished():
@@ -86,6 +95,7 @@ class SwapManager(threading.Thread):
             # 将移动成功的数据插入到cpu的radix cache中
             if success_move_token_size != 0:
                 self.cpu_radix_cache.insert(all_key[0:total_prefix_len], torch.cat(cpu_values)[0:total_prefix_len])
+                logger.info(f"from gpu to cpu token_num: {success_move_token_size}")
 
             dist.barrier(group=self.dist_group)
             # 插入检查退出点的代码。
@@ -97,22 +107,24 @@ class SwapManager(threading.Thread):
         返回False表示移动失败。反之即成功,
         第二个返回值代表移动的token数量
         """
-        assert len(cur_move_key) == len(cur_move_value)
-        move_token_size = len(cur_move_key)
-        if move_token_size == 0:
-            return False, 0, None
-        if (
-            self.cpu_radix_cache.mem_manager.can_use_mem_size + self.cpu_radix_cache.can_released_token_num()
-            < move_token_size
-        ):
-            return False, 0, None
-        # 准备移动
-        self.cpu_radix_cache.free_radix_cache_to_get_enough_token(move_token_size)
-        dest_mem_index = self.cpu_radix_cache.mem_manager.alloc(move_token_size)
-        self.gpu_radix_cache.mem_manager.copy_to_mem_manager(
-            cur_move_value, self.cpu_radix_cache.mem_manager, dest_mem_index
-        )
-        return True, move_token_size, dest_mem_index.detach().cpu()
+        with torch.cuda.StreamContext(self.cuda_stream):
+            assert len(cur_move_key) == len(cur_move_value)
+            move_token_size = len(cur_move_key)
+            if move_token_size == 0:
+                return False, 0, None
+            if (
+                self.cpu_radix_cache.mem_manager.can_use_mem_size + self.cpu_radix_cache.can_released_token_num()
+                < move_token_size
+            ):
+                return False, 0, None
+            # 准备移动
+            self.cpu_radix_cache.free_radix_cache_to_get_enough_token(move_token_size)
+            dest_mem_index = self.cpu_radix_cache.mem_manager.alloc(move_token_size)
+            self.gpu_radix_cache.mem_manager.copy_to_mem_manager(
+                cur_move_value, self.cpu_radix_cache.mem_manager, dest_mem_index
+            )
+            self.cuda_stream.synchronize()  # 等待复制完成
+            return True, move_token_size, dest_mem_index.detach().cpu()
 
     def cpu_to_gpu_copy(self, cpu_mem_index, gpu_mem_index):
         self.cpu_radix_cache.mem_manager.copy_to_mem_manager(
@@ -123,17 +135,12 @@ class SwapManager(threading.Thread):
     def mark_swap_task_start(self):
         dist.barrier(group=self.dist_group)
         self.shared_task_mark.set_value(1)
-        with self.task_start_event:
-            self.task_start_event.notify()
-        return
-
-    def mark_swap_task_finished(self):
-        self.shared_task_mark.set_value(0)
+        self.task_start_event.put(None)
         return
 
     def wait_swap_task_finished(self):
-        with self.task_end_event:
-            self.task_end_event.wait()
+        self.shared_task_mark.set_value(0)
+        self.task_end_event.get()
         return
 
     def _check_move_task_finished(self):
@@ -143,9 +150,12 @@ class SwapManager(threading.Thread):
         return self.shared_task_mark.get_value() == 0
 
     def run(self):
+        # 新线程需要重新设置当强设备
+        import torch.distributed as dist
+
+        tp_rank = dist.get_rank()
+        torch.cuda.set_device(tp_rank)
         while True:
-            with self.task_start_event:
-                self.task_start_event.wait()
+            self.task_start_event.get()
             self.move_from_gpu_to_cpu()
-            with self.task_end_event:
-                self.task_end_event.notify()
+            self.task_end_event.put(None)

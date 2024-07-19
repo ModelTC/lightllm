@@ -235,7 +235,9 @@ class RadixCache:
                 value = torch.zeros((0,), device="cpu", dtype=self._value_dtype)
             return tree_node, len(value), value
         else:
-            self.dec_node_ref_counter(self.root_node)
+            # 如果是引用更新的时候，需要将根节点的引用降回来。
+            if update_refs:
+                self.dec_node_ref_counter(self.root_node)
             return None, 0, None
 
     def _match_prefix_helper(self, node: TreeNode, key, ans_value_list: list, update_refs=False) -> TreeNode:
@@ -344,11 +346,20 @@ class RadixCache:
         return
 
     def dec_node_ref_counter(self, node):
+        # 如果减引用的是叶节点，需要先从 evict_tree_set 中移除
+        old_node = node
+        if old_node.is_leaf():
+            self.evict_tree_set.discard(old_node)
+
         while node is not None:
             if node.ref_counter == 1:
                 self.refed_tokens_num.arr[0] -= len(node.token_mem_index_value)
             node.ref_counter -= 1
             node = node.parent
+
+        # 加回。
+        if old_node.is_leaf():
+            self.evict_tree_set.add(old_node)
         return
 
     def get_refed_tokens_num(self):

@@ -74,13 +74,13 @@ class MemoryManager:
 
         for layer_index in range(len(self.kv_buffer)):
             # to do, 高效率的数据传输需要精确的设置grid_num 和 wrap_num
-            grid_num = min(source_index, 200)
+            grid_num = min(len(source_index), 200)
             wrap_num = 1
             swap_data_by_index(
                 mem_manager.kv_buffer[layer_index].view(self.size, -1),
-                dest_index,
+                dest_index.cuda(),
                 self.kv_buffer[layer_index].view(self.size, -1),
-                source_index,
+                source_index.cuda(),
                 grid_num,
                 wrap_num,
             )

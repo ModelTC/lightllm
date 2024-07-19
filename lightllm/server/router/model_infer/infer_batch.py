@@ -12,6 +12,7 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
+from lightllm.server.router.dynamic_prompt.swap import SwapManager
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
@@ -229,6 +230,7 @@ class InferBatch:
     request_ids: List
     req_manager: ReqManager
     radix_cache: RadixCache
+    swap_manager: SwapManager
 
     @classmethod
     @torch.no_grad()
@@ -241,6 +243,7 @@ class InferBatch:
         req_manager: ReqManager,
         vocab_size: int,
         radix_cache: RadixCache = None,
+        swap_manager: SwapManager = None,
     ):
 
         request_ids = []
@@ -297,6 +300,21 @@ class InferBatch:
                         req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
                         r_obj.cur_kv_len = ready_cache_len
 
+                    # 这种初始化对多输出不行，需要重新
+                    if swap_manager is not None:
+                        assert r_obj.sampling_param.best_of == 1, "only support single output"  # to do 更新
+                        swap_manager.cpu_radix_cache._print_helper(swap_manager.cpu_radix_cache.root_node, indent=4)
+                        _, cpu_kv_len, cpu_value_tensor = swap_manager.cpu_radix_cache.match_prefix(
+                            key, update_refs=False
+                        )
+                        if cpu_kv_len > kv_len:
+                            logger.info(f"{r_obj.r_id} cpu cache find more {cpu_kv_len} > {kv_len}")
+                            cpu_mem_index = cpu_value_tensor[kv_len:cpu_kv_len]
+                            gpu_mem_index = mem_manager.alloc(len(cpu_mem_index))
+                            swap_manager.cpu_to_gpu_copy(cpu_mem_index.cuda(), gpu_mem_index)
+                            req_manager.req_to_token_indexs[r_obj.req_idx, kv_len:cpu_kv_len] = gpu_mem_index
+                            r_obj.cur_kv_len = cpu_kv_len
+
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.req_status = ReqRunStatus.RUNNING
 
@@ -305,6 +323,7 @@ class InferBatch:
             request_ids=request_ids,
             req_manager=req_manager,
             radix_cache=radix_cache,
+            swap_manager=swap_manager,
         )
 
     def _free_a_req_mem(self, free_token_index: List, req: InferReq, is_group_finished: bool):
@@ -370,7 +389,11 @@ class InferBatch:
         if len(request_ids) == 0:
             self.free_self()
             return InferBatch(
-                batch_id=self.batch_id, request_ids=[], req_manager=self.req_manager, radix_cache=self.radix_cache
+                batch_id=self.batch_id,
+                request_ids=[],
+                req_manager=self.req_manager,
+                radix_cache=self.radix_cache,
+                swap_manager=self.swap_manager,
             )
         free_req_index = []
         free_token_index = []
@@ -391,7 +414,11 @@ class InferBatch:
         self.req_manager.free(free_req_index, free_token_index)
 
         return InferBatch(
-            batch_id=self.batch_id, request_ids=request_ids, req_manager=self.req_manager, radix_cache=self.radix_cache
+            batch_id=self.batch_id,
+            request_ids=request_ids,
+            req_manager=self.req_manager,
+            radix_cache=self.radix_cache,
+            swap_manager=self.swap_manager,
         )
 
     @torch.no_grad()
@@ -421,6 +448,7 @@ class InferBatch:
             request_ids=request_ids,
             req_manager=batch1.req_manager,
             radix_cache=batch1.radix_cache,
+            swap_manager=batch1.swap_manager,
         )
 
     def __len__(self):
