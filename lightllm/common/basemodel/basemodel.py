@@ -37,6 +37,7 @@ class TpPartBaseModel:
         self.world_size_ = kvargs["world_size"]
         self.weight_dir_ = kvargs["weight_dir"]
         self.max_total_token_num = kvargs["max_total_token_num"]
+        self.cpu_cache_total_token_num = kvargs["cpu_cache_total_token_num"]
         self.load_way = kvargs.get("load_way", "HF")
         self.mode = [m.replace("int4weight", "w4a16").replace("int8weight", "w8a16") for m in kvargs.get("mode", [])]
         self.weight_dict = kvargs.get("weight_dict", None)
@@ -57,6 +58,7 @@ class TpPartBaseModel:
         self._verify_params()
         self._init_weights()
         self._init_mem_manager()
+        self._init_cpu_cache_mem_manager()
         self._init_req_manager()
         self._init_infer_layer()
         self._init_some_value()
@@ -114,6 +116,10 @@ class TpPartBaseModel:
             head_dim=self.config["n_embed"] // self.config["num_attention_heads"],
             layer_num=self.config["n_layer"],
         )
+        return
+
+    def _init_cpu_cache_mem_manager(self):
+        self.cpu_cache_mem_manager = self.mem_manager.build_cpu_cache_mem_manger(self.cpu_cache_total_token_num)
         return
 
     def _init_req_manager(self):

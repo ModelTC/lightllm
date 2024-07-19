@@ -49,6 +49,43 @@ class MemoryManager:
             for _ in range(layer_num)
         ]
 
+    def build_cpu_cache_mem_manger(self, cpu_cache_total_token_num):
+        """
+        用同样的参数，除了token num 不一样的，构建一个device_type 为 cpu的mem manager 对象
+        """
+        if cpu_cache_total_token_num == 0:
+            return None
+        return type(self)(
+            cpu_cache_total_token_num,
+            self.dtype,
+            self.head_num,
+            self.head_dim,
+            self.layer_num,
+            always_copy=self.always_copy,
+            device_type="cpu",
+        )
+
+    def copy_to_mem_manager(self, source_index: torch.Tensor, mem_manager, dest_index: torch.Tensor):
+        """
+        将当前mem manager 中的数据拷贝到其他mem_manager中
+        所有子类需要继承实现该函数, 实现在不同 mem_manager 中的数据移动
+        """
+        from gpu_cpu_swap import swap_data_by_index
+
+        for layer_index in range(len(self.kv_buffer)):
+            # to do, 高效率的数据传输需要精确的设置grid_num 和 wrap_num
+            grid_num = len(source_index) // 2
+            wrap_num = 1
+            swap_data_by_index(
+                mem_manager.kv_buffer[layer_index].view(self.size, -1),
+                dest_index,
+                self.kv_buffer[layer_index].view(self.size, -1),
+                source_index,
+                grid_num,
+                wrap_num,
+            )
+        return
+
     def _free_buffers(self):
         self.kv_buffer = None
 
