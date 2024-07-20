@@ -327,6 +327,7 @@ class InferBatch:
                                 gpu_mem_index.detach().cpu(),
                                 child_ref_count=1,
                             )
+                            mem_manager.add_refs(gpu_mem_index)  # 树持有，和当前r_obj持有各有一份，所以需要添加引用一次。
 
                             req_manager.req_to_token_indexs[r_obj.req_idx, gpu_kv_len:cpu_kv_len] = gpu_mem_index
                             r_obj.cur_kv_len = cpu_kv_len
