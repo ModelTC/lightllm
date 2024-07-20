@@ -251,6 +251,10 @@ class InferBatch:
         nopad_b_req_idx = req_manager.alloc(need_alloc_size)
         nopad_b_req_idx = nopad_b_req_idx.cpu().numpy()
 
+        # 仅在 cpu cache 特性生效的时候，会真正使用的参数
+        cpu_move_mem_indexes = []
+        gpu_move_mem_indexes = []
+
         index = 0
         for r in requests:
             # request id -> idx in list mapping
@@ -290,35 +294,49 @@ class InferBatch:
                 if radix_cache is not None:
                     key = torch.tensor(r_obj.input_token_ids, dtype=torch.int64, device="cpu")
                     key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
-                    share_node, kv_len, value_tensor = radix_cache.match_prefix(key, update_refs=True)
+                    share_node, gpu_kv_len, value_tensor = radix_cache.match_prefix(key, update_refs=True)
                     if share_node is not None:
                         r_obj.shared_kv_node = share_node
                         ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
+                        assert ready_cache_len == gpu_kv_len
                         mem_manager: MemoryManager = req_manager.mem_manager
                         value_tensor = value_tensor.long().cuda()
                         mem_manager.add_refs(value_tensor)  # 加 refs
-                        req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
-                        r_obj.cur_kv_len = ready_cache_len
+                        req_manager.req_to_token_indexs[r_obj.req_idx, 0:gpu_kv_len] = value_tensor
+                        r_obj.cur_kv_len = gpu_kv_len
 
-                    # 这种初始化对多输出不行，需要重新
                     if swap_manager is not None:
-                        assert r_obj.sampling_param.best_of == 1, "only support single output"  # to do 更新
                         _, cpu_kv_len, cpu_value_tensor = swap_manager.cpu_radix_cache.match_prefix(
                             key, update_refs=False
                         )
-                        if cpu_kv_len > kv_len:
-                            logger.info(f"{r_obj.r_id} cpu cache find more {cpu_kv_len} > {kv_len}")
-                            cpu_mem_index = cpu_value_tensor[kv_len:cpu_kv_len]
+                        if cpu_kv_len > gpu_kv_len:
+                            logger.info(f"{r_obj.r_id} cpu cache find more {cpu_kv_len} > {gpu_kv_len}")
+
+                            cpu_mem_index = cpu_value_tensor[gpu_kv_len:cpu_kv_len]
+                            cpu_move_mem_indexes.append(cpu_mem_index)
                             radix_cache.free_radix_cache_to_get_enough_token(
                                 len(cpu_mem_index)
                             )  # 保证gpu的memmanager 能分配充足的token
                             gpu_mem_index = mem_manager.alloc(len(cpu_mem_index))
-                            swap_manager.cpu_to_gpu_copy(cpu_mem_index.cuda(), gpu_mem_index)
-                            req_manager.req_to_token_indexs[r_obj.req_idx, kv_len:cpu_kv_len] = gpu_mem_index
+                            gpu_move_mem_indexes.append(gpu_mem_index)
+
+                            # 将要移动到gpu的部分数据添加到gpu的radix cache tree 中
+                            r_obj.shared_kv_node = radix_cache.add_to_node(
+                                r_obj.shared_kv_node,
+                                key[gpu_kv_len:cpu_kv_len],
+                                gpu_mem_index.detach().cpu(),
+                                child_ref_count=1,
+                            )
+
+                            req_manager.req_to_token_indexs[r_obj.req_idx, gpu_kv_len:cpu_kv_len] = gpu_mem_index
                             r_obj.cur_kv_len = cpu_kv_len
 
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.req_status = ReqRunStatus.RUNNING
+
+        # 存在从 cpu kv cache 中恢复的请求, 整体一次性进行传输，效率高
+        if swap_manager is not None and len(cpu_move_mem_indexes) > 0:
+            swap_manager.cpu_to_gpu_copy(torch.cat(cpu_move_mem_indexes), torch.cat(gpu_move_mem_indexes))
 
         return cls(
             batch_id=batch_id,

@@ -224,6 +224,38 @@ class RadixCache:
             if node.is_leaf():
                 self.evict_tree_set.add(node)
 
+    def add_to_node(self, node: TreeNode, key, value, child_ref_count):
+        """
+        往一个节点添加child，定制场景函数，不要随意使用。
+        key, value 必须是 cpu 的 torch.Tensor
+        child_ref_count 为 大于等于 0 的整数
+        """
+        assert len(key) != 0
+        # 场景特殊的处理
+        if node is None:
+            node = self.root_node
+
+        if node.is_leaf():
+            self.evict_tree_set.discard(node)
+
+        child_node = node.add_and_return_new_child(key, value)
+        child_node.ref_counter = child_ref_count
+
+        self.tree_total_tokens_num.arr[0] += len(child_node.token_mem_index_value)
+        if child_node.ref_counter >= 1:
+            self.refed_tokens_num.arr[0] += len(child_node.token_mem_index_value)
+
+        if child_node.is_leaf():
+            self.evict_tree_set.add(child_node)
+
+        # 更新时间
+        cur_node = node
+        while cur_node is not None:
+            cur_node.update_time()
+            cur_node = cur_node.parent
+
+        return child_node
+
     def match_prefix(self, key, update_refs=False):
         assert len(key) != 0
         ans_value_list = []

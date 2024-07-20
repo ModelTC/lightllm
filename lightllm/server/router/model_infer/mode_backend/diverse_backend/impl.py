@@ -54,10 +54,18 @@ class DiversehBackend(ModeBackend):
         else:
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
+        # 开启了异步 cpu cache 传输的功能，需要在每次推理的时候启动
+        if self.swap_mamager is not None:
+            self.swap_mamager.mark_swap_task_start()
+
         logits = self.model.forward(**kwargs)
         next_token_id_groups, next_token_logprob_groups = sample(
             logits, run_reqs, is_prefill, self.model.vocab_size, self.model.req_manager, self.eos_id
         )
+        # cpu cache 任务标记结束
+        if self.swap_mamager is not None:
+            self.swap_mamager.mark_swap_task_finished()
+
         start = 0
         for req_group_obj in run_reqs:
             # prefill and decode is same
@@ -91,4 +99,9 @@ class DiversehBackend(ModeBackend):
             req_group_obj.req_group = alive_req_id
 
         self.cache[batch.batch_id] = batch
+
+        # 等待 cpu cache 任务真正结束
+        if self.swap_mamager is not None:
+            self.swap_mamager.wait_swap_task_finished()
+
         return output_dict
