@@ -77,7 +77,7 @@ class MemoryManager:
             grid_num = min(len(source_index), 200)
             wrap_num = 1
             swap_data_by_index(
-                mem_manager.kv_buffer[layer_index].view(self.size, -1),
+                mem_manager.kv_buffer[layer_index].view(mem_manager.size, -1),
                 dest_index.cuda(),
                 self.kv_buffer[layer_index].view(self.size, -1),
                 source_index.cuda(),
