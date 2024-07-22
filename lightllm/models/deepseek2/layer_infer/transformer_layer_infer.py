@@ -6,16 +6,17 @@ from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Dee
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import (
     context_attention_fwd,
-    context_attention_fwd_no_prompt_cache
+    context_attention_fwd_no_prompt_cache,
 )
 from lightllm.models.deepseek2.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
-from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk 
+from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
+
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
@@ -41,7 +42,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.tp_o_head_num_ = self.tp_q_head_num_
         return
-    
+
     def _bind_attention(self):
         self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel, self)
         self._token_attention_kernel = partial(
@@ -62,26 +63,22 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_a_proj_)
             q = rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_, eps=self.eps_)
             q = torch.mm(q, layer_weight.q_b_proj_)
-        
+
         q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
-        q_nope, q_rope = torch.split(
-            q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1
-        )
+        q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
         q_nope = torch.matmul(q_nope.unsqueeze(2), layer_weight.k_b_proj_).squeeze(2)
-        
+
         torch.mm(
             input.view(-1, self.embed_dim_),
             layer_weight.kv_a_proj_with_mqa_,
             out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim),
         )
         cache_kv[:, :, : self.kv_lora_rank] = rmsnorm_forward(
-            cache_kv[:, :, : self.kv_lora_rank].to(torch.float16),
-            weight=layer_weight.kv_a_layernorm_,
-            eps=self.eps_
+            cache_kv[:, :, : self.kv_lora_rank].to(torch.float16), weight=layer_weight.kv_a_layernorm_, eps=self.eps_
         )
         rotary_emb_fwd(
             q_rope,
-            cache_kv[:, :, self.kv_lora_rank:],
+            cache_kv[:, :, self.kv_lora_rank :],
             infer_state.position_cos,
             infer_state.position_sin,
         )
@@ -104,8 +101,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             context_attention_fwd(
                 q_nope,
                 q_rope,
-                kv[:, : , : self.kv_lora_rank],
-                kv[:, : , self.kv_lora_rank: ],
+                kv[:, :, : self.kv_lora_rank],
+                kv[:, :, self.kv_lora_rank :],
                 o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
                 infer_state.b_req_idx,
                 infer_state.b_start_loc,
@@ -113,48 +110,59 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_ready_cache_len,
                 infer_state.max_len_in_batch,
                 infer_state.req_manager.req_to_token_indexs,
-                self.softmax_scale
+                self.softmax_scale,
             )
         else:
             context_attention_fwd_no_prompt_cache(
                 q_nope,
                 q_rope,
-                kv[:, : , : self.kv_lora_rank],
-                kv[:, : , self.kv_lora_rank: ],
+                kv[:, :, : self.kv_lora_rank],
+                kv[:, :, self.kv_lora_rank :],
                 o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
                 infer_state.max_len_in_batch,
-                self.softmax_scale
+                self.softmax_scale,
             )
         q_nope = None
         q_rope = None
         return o_tensor
-    
+
     def _token_decode_attention_flashdecoding(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
         q_nope, q_rope = q
         kv = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank]
-        kv_rope = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank: ]
+        kv_rope = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank :]
         return token_decode_attention_flash_decoding(
-            q_nope, q_rope, kv, kv_rope, infer_state, self.tp_q_head_num_, self.kv_lora_rank, self.qk_rope_head_dim, self.qk_nope_head_dim, self.softmax_scale
+            q_nope,
+            q_rope,
+            kv,
+            kv_rope,
+            infer_state,
+            self.tp_q_head_num_,
+            self.kv_lora_rank,
+            self.qk_rope_head_dim,
+            self.qk_nope_head_dim,
+            self.softmax_scale,
         )
-    
+
     def _copy_kv_to_mem_cache_normal(self, buffer, mem_index, mem_manager):
         destindex_copy_kv(
             buffer[:, :, : self.kv_lora_rank],
             buffer[:, :, self.kv_lora_rank :],
             mem_index,
-            mem_manager.kv_buffer[self.layer_num_][ :, :, : self.kv_lora_rank],
-            mem_manager.kv_buffer[self.layer_num_][ :, :, self.kv_lora_rank:],
+            mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank],
+            mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank :],
         )
         return
-    
-    def _moe_ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight) -> torch.Tensor:
+
+    def _moe_ffn(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
+    ) -> torch.Tensor:
         hidden_states = input.view(-1, self.embed_dim_)
         num_tokens, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
 
-        if self.network_config_['n_shared_experts'] is not None:
+        if self.network_config_["n_shared_experts"] is not None:
             shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
 
         router_logits = torch.mm(input.view(-1, self.embed_dim_), layer_weight.moe_gate)
@@ -164,17 +172,14 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             self.network_config_["num_experts_per_tok"],
             renormalize=self.network_config_["norm_topk_prob"],
             num_expert_group=self.network_config_["n_group"],
-            topk_group=self.network_config_["topk_group"])
-        
-        final_hidden_states = fused_experts(
-            hidden_states,
-            layer_weight.w1,
-            layer_weight.w2,
-            topk_weights,
-            topk_ids,
-            inplace=True) * self.network_config_["routed_scaling_factor"]
-        
-        if self.network_config_['n_shared_experts'] is not None:
+            topk_group=self.network_config_["topk_group"],
+        )
+
+        final_hidden_states = (
+            fused_experts(hidden_states, layer_weight.w1, layer_weight.w2, topk_weights, topk_ids, inplace=True)
+            * self.network_config_["routed_scaling_factor"]
+        )
+
+        if self.network_config_["n_shared_experts"] is not None:
             final_hidden_states = final_hidden_states + shared_output
         return final_hidden_states.view(num_tokens, hidden_dim)
-    

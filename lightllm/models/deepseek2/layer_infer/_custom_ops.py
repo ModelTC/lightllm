@@ -5,7 +5,8 @@ import triton.language as tl
 
 
 def ceil_div(a, b):
-        return (a + b - 1) // b
+    return (a + b - 1) // b
+
 
 @triton.jit
 def moe_align_block_size_stage1(
@@ -19,7 +20,7 @@ def moe_align_block_size_stage1(
     block_size: tl.constexpr,
     numel: tl.constexpr,
     tokens_per_thread: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
@@ -33,6 +34,7 @@ def moe_align_block_size_stage1(
             token_cnt = tl.load(tokens_cnts_ptr + off_c + idx)
             tl.store(tokens_cnts_ptr + off_c + idx, token_cnt + 1)
 
+
 @triton.jit
 def moe_align_block_size_stage2(
     topk_ids_ptr,
@@ -45,7 +47,7 @@ def moe_align_block_size_stage2(
     block_size: tl.constexpr,
     numel: tl.constexpr,
     tokens_per_thread: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
@@ -68,7 +70,7 @@ def moe_align_block_size_stage3(
     block_size: tl.constexpr,
     numel: tl.constexpr,
     tokens_per_thread: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
@@ -79,6 +81,7 @@ def moe_align_block_size_stage3(
         last_cumsum = last_cumsum + tl.cdiv(token_cnt, block_size) * block_size
         tl.store(cumsum_ptr + i, last_cumsum)
     tl.store(total_tokens_post_pad_ptr, last_cumsum)
+
 
 @triton.jit
 def moe_align_block_size_stage4(
@@ -92,7 +95,7 @@ def moe_align_block_size_stage4(
     block_size: tl.constexpr,
     numel: tl.constexpr,
     tokens_per_thread: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     start_idx = tl.load(cumsum_ptr + pid)
@@ -112,42 +115,85 @@ def moe_align_block_size_stage4(
         tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
 
 
-
 @torch.no_grad()
-def moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
-                         block_size: int, sorted_token_ids: torch.Tensor,
-                         expert_ids: torch.Tensor,
-                         num_tokens_post_pad: torch.Tensor) -> None:
+def moe_align_block_size(
+    topk_ids: torch.Tensor,
+    num_experts: int,
+    block_size: int,
+    sorted_token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_pad: torch.Tensor,
+) -> None:
     numel = topk_ids.numel()
     grid = (num_experts,)
-    tokens_cnts = torch.zeros((num_experts + 1, num_experts), dtype=torch.int32, device='cuda')
-    cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device='cuda')
+    tokens_cnts = torch.zeros((num_experts + 1, num_experts), dtype=torch.int32, device="cuda")
+    cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device="cuda")
     tokens_per_thread = ceil_div(numel, num_experts)
-    
+
     moe_align_block_size_stage1[grid](
-        topk_ids, sorted_token_ids, expert_ids, num_tokens_post_pad, tokens_cnts,
-        cumsum, num_experts, block_size, numel, tokens_per_thread, BLOCK_SIZE=num_experts
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        tokens_cnts,
+        cumsum,
+        num_experts,
+        block_size,
+        numel,
+        tokens_per_thread,
+        BLOCK_SIZE=num_experts,
     )
     moe_align_block_size_stage2[grid](
-        topk_ids, sorted_token_ids, expert_ids, num_tokens_post_pad, tokens_cnts,
-        cumsum, num_experts, block_size, numel, tokens_per_thread, BLOCK_SIZE=num_experts
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        tokens_cnts,
+        cumsum,
+        num_experts,
+        block_size,
+        numel,
+        tokens_per_thread,
+        BLOCK_SIZE=num_experts,
     )
     moe_align_block_size_stage3[(1,)](
-        topk_ids, sorted_token_ids, expert_ids, num_tokens_post_pad, tokens_cnts,
-        cumsum, num_experts, block_size, numel, tokens_per_thread, BLOCK_SIZE=num_experts
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        tokens_cnts,
+        cumsum,
+        num_experts,
+        block_size,
+        numel,
+        tokens_per_thread,
+        BLOCK_SIZE=num_experts,
     )
     moe_align_block_size_stage4[grid](
-        topk_ids, sorted_token_ids, expert_ids, num_tokens_post_pad, tokens_cnts,
-        cumsum, num_experts, block_size, numel, tokens_per_thread, BLOCK_SIZE=num_experts
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        tokens_cnts,
+        cumsum,
+        num_experts,
+        block_size,
+        numel,
+        tokens_per_thread,
+        BLOCK_SIZE=num_experts,
     )
 
 
 @torch.no_grad()
-def torch_moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
-                         block_size: int, sorted_token_ids: torch.Tensor,
-                         experts_ids: torch.Tensor,
-                         num_tokens_post_pad: torch.Tensor) -> None:
-    
+def torch_moe_align_block_size(
+    topk_ids: torch.Tensor,
+    num_experts: int,
+    block_size: int,
+    sorted_token_ids: torch.Tensor,
+    experts_ids: torch.Tensor,
+    num_tokens_post_pad: torch.Tensor,
+) -> None:
+
     tokens_cnts = topk_ids.new_zeros((topk_ids.shape[0], num_experts))
     tokens_cnts.scatter_(1, topk_ids, 1)
     tokens_cnts = tokens_cnts.sum(dim=0)
@@ -173,51 +219,37 @@ def torch_moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
 def test():
     def generate_unique_rows_tensor(rows=59, cols=6, max_val=63):
         assert cols <= max_val + 1, "Number of columns cannot be greater than max_val + 1"
-        
-        tensor = torch.empty((rows, cols), dtype=torch.int64, device='cuda')
-        
+
+        tensor = torch.empty((rows, cols), dtype=torch.int64, device="cuda")
+
         for i in range(rows):
-            row = torch.randperm(max_val + 1, dtype=torch.int64, device='cuda')[:cols]
+            row = torch.randperm(max_val + 1, dtype=torch.int64, device="cuda")[:cols]
             tensor[i] = row
-        
+
         return tensor
 
     num_experts = 64
     topk_ids = generate_unique_rows_tensor(8192, 6, num_experts - 1)
     block_size = 16
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
-    sorted_ids = torch.empty((max_num_tokens_padded, ),
-                             dtype=torch.int32,
-                             device=topk_ids.device)
+    sorted_ids = torch.empty((max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device)
     sorted_ids.fill_(topk_ids.numel())
     max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_size)
-    expert_ids = torch.empty((max_num_m_blocks, ),
-                             dtype=torch.int32,
-                             device=topk_ids.device)
-    num_tokens_post_pad = torch.empty((1),
-                                      dtype=torch.int32,
-                                      device=topk_ids.device)
+    expert_ids = torch.empty((max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device)
+    num_tokens_post_pad = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
 
-    sorted_ids_1 = torch.empty((max_num_tokens_padded, ),
-                             dtype=torch.int32,
-                             device=topk_ids.device)
+    sorted_ids_1 = torch.empty((max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device)
     sorted_ids_1.fill_(topk_ids.numel())
-    expert_ids_1 = torch.empty((max_num_m_blocks, ),
-                             dtype=torch.int32,
-                             device=topk_ids.device)
-    num_tokens_post_pad_1 = torch.empty((1),
-                                      dtype=torch.int32,
-                                      device=topk_ids.device)
+    expert_ids_1 = torch.empty((max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device)
+    num_tokens_post_pad_1 = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
 
     import time
 
-    start_time = time.time()                            
-    torch_moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids,
-                            expert_ids, num_tokens_post_pad)
+    start_time = time.time()
+    torch_moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids, expert_ids, num_tokens_post_pad)
     end_time = time.time()
     print("torch cost: ", end_time - start_time)
-    moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids_1,
-                            expert_ids_1, num_tokens_post_pad_1)
+    moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids_1, expert_ids_1, num_tokens_post_pad_1)
     end_time1 = time.time()
     print("triton cost: ", end_time1 - end_time)
     assert torch.equal(sorted_ids, sorted_ids_1)

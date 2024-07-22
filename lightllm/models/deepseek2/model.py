@@ -12,6 +12,7 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
+
 class Deepseek2TpPartModel(LlamaTpPartModel):
     # weight class
     transformer_weight_class = Deepseek2TransformerLayerWeight
@@ -22,7 +23,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     def __init__(self, kvargs):
         super().__init__(kvargs)
         return
-    
+
     def _init_some_value(self):
         super()._init_some_value()
         self.tp_k_head_num_ = 1
@@ -35,23 +36,28 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
 
     def _init_custom(self):
         self._init_to_get_yarn_rotary()
-    
+
     def _verify_params(self):
         return super()._verify_params()
-    
 
     def _init_mem_manager(self):
-        self.mem_manager = Deepseek2MemoryManager(self.max_total_token_num, 
-                                                     dtype=self.data_type,
-                                                     kv_lora_rank=self.config["kv_lora_rank"],
-                                                     qk_rope_head_dim=self.config["qk_rope_head_dim"],
-                                                     layer_num=self.config["num_hidden_layers"])
+        self.mem_manager = Deepseek2MemoryManager(
+            self.max_total_token_num,
+            dtype=self.data_type,
+            kv_lora_rank=self.config["kv_lora_rank"],
+            qk_rope_head_dim=self.config["qk_rope_head_dim"],
+            layer_num=self.config["num_hidden_layers"],
+        )
         return
-    
+
     def _init__weights(self):
-        self.pre_post_weight = self.pre_and_post_weight_class(self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode)
+        self.pre_post_weight = self.pre_and_post_weight_class(
+            self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+        )
         self.trans_layers_weight = [
-            self.transformer_weight_class(i, self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode)
+            self.transformer_weight_class(
+                i, self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+            )
             for i in range(self.config["n_layer"])
         ]
         load_hf_weights(
@@ -59,12 +65,11 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
             weight_dir=self.weight_dir_,
             pre_post_layer=self.pre_post_weight,
             transformer_layer_list=self.trans_layers_weight,
-            weight_dict=self.weight_dict
+            weight_dict=self.weight_dict,
         )
         self.pre_post_weight.verify_load()
-        [weight.verify_load() for weight in self.trans_layers_weight]    
+        [weight.verify_load() for weight in self.trans_layers_weight]
         return
-    
 
     def _init_to_get_yarn_rotary(self):
         from lightllm.models.llama.yarn_rotary_utils import find_correction_range, linear_ramp_mask, get_deepseek_mscale
@@ -94,7 +99,9 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         ) * extrapolation_factor  # Get n-d rotational scaling corrected for extrapolation
         inv_freq = inv_freq_interpolation * (1 - inv_freq_mask) + inv_freq_extrapolation * inv_freq_mask
 
-        _mscale = float(get_deepseek_mscale(scale, mscale) / get_deepseek_mscale(scale, mscale_all_dim))  # Get n-d magnitude scaling corrected for interpolation
+        _mscale = float(
+            get_deepseek_mscale(scale, mscale) / get_deepseek_mscale(scale, mscale_all_dim)
+        )  # Get n-d magnitude scaling corrected for interpolation
 
         # Build here to make `torch.jit.trace` work.
         max_seq_len_cached = max_position_embeddings
@@ -106,4 +113,3 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self._sin_cached = emb.sin().to(self.data_type).cuda() * _mscale
 
         return
-    

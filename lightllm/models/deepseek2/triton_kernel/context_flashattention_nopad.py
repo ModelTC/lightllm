@@ -14,30 +14,24 @@ def _fwd_kernel(
     Q_rope,
     KV_nope,
     KV_rope,
-
     sm_scale,
     B_Start_Loc,
     B_Seqlen,  # B_LOC 内部记录每个batch 输入的真实位置， B_SEQ_len 记录当前输入的真实长度
     Out,
     Req_to_tokens,
     B_req_idx,
-    
     stride_q_bs,
     stride_q_h,
     stride_q_d,
-
     stride_q_rope_bs,
     stride_q_rope_h,
     stride_q_rope_d,
-
     stride_kv_bs,
     stride_kv_h,
     stride_kv_d,
-
     stride_kv_rope_bs,
     stride_kv_rope_h,
     stride_kv_rope_d,
-
     stride_obs,
     stride_oh,
     stride_od,
@@ -100,7 +94,11 @@ def _fwd_kernel(
             other=0,
         )
         off_kv = kv_loc[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_d[:, None] * stride_kv_d
-        off_kv_rope = kv_loc[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h + offs_rope_d[:, None] * stride_kv_rope_d
+        off_kv_rope = (
+            kv_loc[None, :] * stride_kv_rope_bs
+            + cur_kv_head * stride_kv_rope_h
+            + offs_rope_d[:, None] * stride_kv_rope_d
+        )
         kv = tl.load(KV_nope + off_kv, mask=(start_n + offs_n[None, :]) < block_end_loc, other=0.0)
         kv_rope = tl.load(KV_rope + off_kv_rope, mask=(start_n + offs_n[None, :]) < block_end_loc, other=0.0)
 
@@ -149,9 +147,21 @@ def _fwd_kernel(
 #   "qk_nope_head_dim": 128,
 #   "qk_rope_head_dim": 64,
 
+
 @torch.no_grad()
 def context_attention_fwd(
-    q_nope, q_rope, kv_nope, kv_rope, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs, softmax_scale
+    q_nope,
+    q_rope,
+    kv_nope,
+    kv_rope,
+    o,
+    b_req_idx,
+    b_start_loc,
+    b_seq_len,
+    b_prompt_cache_len,
+    max_input_len,
+    req_to_token_indexs,
+    softmax_scale,
 ):
 
     BLOCK = 128 if not TESLA else 64
@@ -161,7 +171,7 @@ def context_attention_fwd(
     assert q_rope_dim == kv_rope.shape[-1]
     assert q_nope_dim in {16, 32, 64, 128, 256, 512}
     assert q_rope_dim in {16, 32, 64, 128, 256}
-    
+
     if q_nope_dim >= 512:
         BLOCK = 64 if not TESLA else 32
     else:
@@ -227,19 +237,15 @@ def _fwd_kernel_no_prompt_cache(
     stride_q_bs,
     stride_q_h,
     stride_q_d,
-
     stride_q_rope_bs,
     stride_q_rope_h,
     stride_q_rope_d,
-
     stride_kv_bs,
     stride_kv_h,
     stride_kv_d,
-
     stride_kv_rope_bs,
     stride_kv_rope_h,
     stride_kv_rope_d,
-
     stride_obs,
     stride_oh,
     stride_od,
@@ -277,7 +283,9 @@ def _fwd_kernel_no_prompt_cache(
         + offs_rope_d[None, :] * stride_q_rope_d
     )
     off_kv = offs_n[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_d[:, None] * stride_kv_d
-    off_rope_kv = offs_n[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h + offs_rope_d[:, None] * stride_kv_rope_d
+    off_rope_kv = (
+        offs_n[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h + offs_rope_d[:, None] * stride_kv_rope_d
+    )
 
     q = tl.load(Q_nope + off_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
     q_rope = tl.load(Q_rope + off_rope_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
@@ -347,14 +355,16 @@ def _fwd_kernel_no_prompt_cache(
 
 
 @torch.no_grad()
-def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len, softmax_scale):
+def context_attention_fwd_no_prompt_cache(
+    q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len, softmax_scale
+):
     q_nope_dim = q_nope.shape[-1]
     q_rope_dim = q_rope.shape[-1]
     assert q_nope_dim == kv_nope.shape[-1]
     assert q_rope_dim == kv_rope.shape[-1]
     assert q_nope_dim in {16, 32, 64, 128, 256, 512}
     assert q_rope_dim in {16, 32, 64, 128, 256}
-    
+
     if q_nope_dim >= 512:
         BLOCK = 64 if not TESLA else 32
     else:
@@ -401,6 +411,7 @@ def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b
     )
     return
 
+
 def torch_att(q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_head_dim):
 
     xq = torch.cat([q, q_rope], dim=2).view(bs, seqlen, num_head, -1)
@@ -421,6 +432,7 @@ def torch_att(q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_hea
     output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, q_head_dim)
     return output
 
+
 def test():
     import torch
     import numpy as np
@@ -430,7 +442,6 @@ def test():
     Z = 1
     q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
     q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    
 
     kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
     kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
@@ -456,11 +467,22 @@ def test():
 
     torch_out = torch_att(q, q_rope, kv, kv_rope, Z, N_CTX, H, D_HEAD, ROPE_HEAD)
 
-    context_attention_fwd_no_prompt_cache(
-        q, q_rope, kv, kv_rope, o, b_start_loc, b_seq_len, max_input_len, D_HEAD
-    )
+    context_attention_fwd_no_prompt_cache(q, q_rope, kv, kv_rope, o, b_start_loc, b_seq_len, max_input_len, D_HEAD)
 
-    context_attention_fwd(q, q_rope, kv, kv_rope, o1, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, N_CTX, req_to_token_indexs, D_HEAD)
+    context_attention_fwd(
+        q,
+        q_rope,
+        kv,
+        kv_rope,
+        o1,
+        b_req_idx,
+        b_start_loc,
+        b_seq_len,
+        b_prompt_cache_len,
+        N_CTX,
+        req_to_token_indexs,
+        D_HEAD,
+    )
 
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))

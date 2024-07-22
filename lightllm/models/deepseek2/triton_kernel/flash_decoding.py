@@ -1,6 +1,19 @@
 import torch
 
-def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infer_state, q_head_num, kv_lora_rank, q_rope_dim, qk_nope_head_dim, softmax_scale, out=None):
+
+def token_decode_attention_flash_decoding(
+    q_nope,
+    q_rope,
+    kv_nope,
+    kv_rope,
+    infer_state,
+    q_head_num,
+    kv_lora_rank,
+    q_rope_dim,
+    qk_nope_head_dim,
+    softmax_scale,
+    out=None,
+):
     if kv_lora_rank > 128:
         BLOCK_SEQ = 256 // (kv_lora_rank // 128)
     batch_size = infer_state.batch_size
@@ -12,42 +25,38 @@ def token_decode_attention_flash_decoding(q_nope, q_rope, kv_nope, kv_rope, infe
     from lightllm.models.deepseek2.triton_kernel.flash_decoding_stage2 import flash_decode_stage2
 
     o_tensor = torch.empty_like(q_nope) if out is None else out
-    
-    if getattr(infer_state, 'mid_o', None) is None:
-        infer_state.mid_o = torch.empty([batch_size, 
-                                        q_head_num, 
-                                        max_len_in_batch // BLOCK_SEQ + 1, 
-                                        kv_lora_rank],
-                                        dtype=torch.float32, 
-                                        device="cuda")
-        infer_state.mid_o_logexpsum = torch.empty([batch_size, 
-                                        q_head_num,
-                                        max_len_in_batch // BLOCK_SEQ + 1], 
-                                        dtype=torch.float32, 
-                                        device="cuda")
-        
+
+    if getattr(infer_state, "mid_o", None) is None:
+        infer_state.mid_o = torch.empty(
+            [batch_size, q_head_num, max_len_in_batch // BLOCK_SEQ + 1, kv_lora_rank],
+            dtype=torch.float32,
+            device="cuda",
+        )
+        infer_state.mid_o_logexpsum = torch.empty(
+            [batch_size, q_head_num, max_len_in_batch // BLOCK_SEQ + 1], dtype=torch.float32, device="cuda"
+        )
+
     mid_o = infer_state.mid_o
     mid_o_logexpsum = infer_state.mid_o_logexpsum
 
-    flash_decode_stage1(q_nope.view(calcu_shape1),
-                        q_rope.view(calcu_shape2),
-                                kv_nope,
-                                kv_rope,
-                                infer_state.req_manager.req_to_token_indexs,
-                                infer_state.b_req_idx,
-                                infer_state.b_seq_len,
-                                infer_state.max_len_in_batch,
-                                mid_o,
-                                mid_o_logexpsum,
-                                BLOCK_SEQ,
-                                qk_nope_head_dim,
-                                softmax_scale)
-    flash_decode_stage2(mid_o,
-                        mid_o_logexpsum, 
-                        infer_state.b_seq_len, 
-                        o_tensor.view(calcu_shape1), 
-                        BLOCK_SEQ)
+    flash_decode_stage1(
+        q_nope.view(calcu_shape1),
+        q_rope.view(calcu_shape2),
+        kv_nope,
+        kv_rope,
+        infer_state.req_manager.req_to_token_indexs,
+        infer_state.b_req_idx,
+        infer_state.b_seq_len,
+        infer_state.max_len_in_batch,
+        mid_o,
+        mid_o_logexpsum,
+        BLOCK_SEQ,
+        qk_nope_head_dim,
+        softmax_scale,
+    )
+    flash_decode_stage2(mid_o, mid_o_logexpsum, infer_state.b_seq_len, o_tensor.view(calcu_shape1), BLOCK_SEQ)
     return o_tensor
+
 
 def torch_att(q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_head_dim):
     import math
@@ -63,6 +72,7 @@ def torch_att(q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_hea
     # print(xq.shape, keys.transpose(2, 3).shape)
     scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(q_head_dim + rope_head_dim)
     import torch.nn.functional as F
+
     scores = F.softmax(scores.float(), dim=-1).type_as(xq)
     output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, q_head_dim)
     return output
@@ -74,13 +84,12 @@ def test():
     from lightllm.common.basemodel import InferStateInfo
     from lightllm.common.req_manager import ReqManager
 
-
     Z, H, N_CTX, D_HEAD, ROPE_HEAD = 1, 6, 500, 128, 64
     dtype = torch.float16
     Z = 1
     q = torch.empty((Z, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
     q_rope = torch.empty((Z, H, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    
+
     kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
     kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
 
@@ -92,9 +101,7 @@ def test():
 
     b_seq_len[0] = N_CTX
     b_req_idx[0] = 0
-    req_to_token_indexs[0][: N_CTX] = torch.tensor(
-        np.arange(N_CTX), dtype=torch.int32
-    ).cuda()
+    req_to_token_indexs[0][:N_CTX] = torch.tensor(np.arange(N_CTX), dtype=torch.int32).cuda()
 
     torch_out = torch_att(q, q_rope, kv, kv_rope, Z, N_CTX, H, D_HEAD, ROPE_HEAD)
 
@@ -107,13 +114,12 @@ def test():
     infer_state.b_seq_len = b_seq_len
     infer_state.max_len_in_batch = max_input_len
 
-    o = token_decode_attention_flash_decoding(
-        q, q_rope, kv, kv_rope, infer_state, H, D_HEAD, ROPE_HEAD
-    )
+    o = token_decode_attention_flash_decoding(q, q_rope, kv, kv_rope, infer_state, H, D_HEAD, ROPE_HEAD)
 
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
+
 
 if __name__ == "__main__":
     test()
