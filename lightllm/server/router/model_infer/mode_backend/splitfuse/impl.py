@@ -24,6 +24,11 @@ class SplitFuseBackend(ModeBackend):
         kwargs, decode_reqs, prefill_reqs = splitfuse_prepare_decode_inputs(
             batch, self.splitfuse_block_size, self.radix_cache
         )
+
+        # 开启了异步 cpu cache 传输的功能，需要在每次推理的时候启动
+        if self.swap_mamager is not None:
+            self.swap_mamager.mark_swap_task_start()
+
         decode_req_num = len(decode_reqs)
         all_reqs = decode_reqs
         all_reqs.extend(prefill_reqs)
@@ -31,6 +36,10 @@ class SplitFuseBackend(ModeBackend):
         logits = self.model.splitfuse_forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, all_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
+
+        if self.swap_mamager is not None:
+            self.swap_mamager.mark_swap_task_finished()
+
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         index = 0
@@ -90,4 +99,8 @@ class SplitFuseBackend(ModeBackend):
             index += 1
 
         self.cache[batch.batch_id] = batch
+
+        if self.swap_mamager is not None:
+            self.swap_mamager.wait_swap_task_finished()
+
         return output_dict
