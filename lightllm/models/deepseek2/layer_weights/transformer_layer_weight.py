@@ -43,7 +43,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         if self.q_lora_rank is not None:
             weights += [
                 self.q_a_proj_,
-                self.q_a_layernorm,
+                self.q_a_layernorm_,
                 self.q_b_proj_,
             ]
         else:
@@ -76,8 +76,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.input_layernorm.weight" in weights:
             self.att_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
 
-        n_embed = self.network_config_["hidden_size"]
-        q_split_n_embed = n_embed // self.world_size_
+        q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
         q_split_n_embed_with_rope = (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
         
         # q k v weights for llama
@@ -90,7 +89,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             q_lora_split_n_embed = self.q_lora_rank // self.world_size_
             if f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight" in weights:
                 q_a_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight"]
-                q_a_proj_ = q_a_proj_[q_lora_split_n_embed * self.tp_rank_ : q_lora_split_n_embed * (self.tp_rank_ + 1), :]
                 self.q_a_proj_ = self._cuda(q_a_proj_.transpose(0, 1))
 
             if f"model.layers.{self.layer_num_}.self_attn.q_a_layernorm.weight" in weights:
@@ -100,7 +98,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             if f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight" in weights:
                 q_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"]
                 q_b_proj_ = q_b_proj_[q_split_n_embed_with_rope * self.tp_rank_ : q_split_n_embed_with_rope * (self.tp_rank_ + 1), :]
-                self.q_b_proj_ = q_b_proj_.transpose(0, 1)
+                self.q_b_proj_ = self._cuda(q_b_proj_.transpose(0, 1))
 
         if f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight" in weights:
             kv_a_proj_with_mqa_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight"]
@@ -203,24 +201,24 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                     ]
                     expert_down_proj = self._cuda(expert_down_proj)
                     self.w2_list[i_experts] = expert_down_proj
-            
-            if hasattr(self, "experts_up_proj") and None not in self.experts_up_proj and \
-                None not in self.experts_gate_proj and None not in self.w2_list:
+            with self.lock:
+                if hasattr(self, "experts_up_proj") and None not in self.experts_up_proj and \
+                    None not in self.experts_gate_proj and None not in self.w2_list:
 
-                w1_list = []
-                for i_experts in range(self.n_routed_experts):
-                    expert_gate_up_proj = torch.cat([self.experts_gate_proj[i_experts], self.experts_up_proj[i_experts]], dim=0)
-                    expert_gate_up_proj = self._cuda(expert_gate_up_proj)
-                    w1_list.append(expert_gate_up_proj)
+                    w1_list = []
+                    for i_experts in range(self.n_routed_experts):
+                        expert_gate_up_proj = torch.cat([self.experts_gate_proj[i_experts], self.experts_up_proj[i_experts]], dim=0)
+                        expert_gate_up_proj = self._cuda(expert_gate_up_proj)
+                        w1_list.append(expert_gate_up_proj)
 
-                inter_shape, hidden_size = w1_list[0].shape[0], w1_list[0].shape[1]
-                self.w1 = torch._utils._flatten_dense_tensors(w1_list).view(len(w1_list), inter_shape, hidden_size)
-                inter_shape, hidden_size = self.w2_list[0].shape[0], self.w2_list[0].shape[1]
-                self.w2 = torch._utils._flatten_dense_tensors(self.w2_list).view(len(self.w2_list), inter_shape, hidden_size)
+                    inter_shape, hidden_size = w1_list[0].shape[0], w1_list[0].shape[1]
+                    self.w1 = torch._utils._flatten_dense_tensors(w1_list).view(len(w1_list), inter_shape, hidden_size)
+                    inter_shape, hidden_size = self.w2_list[0].shape[0], self.w2_list[0].shape[1]
+                    self.w2 = torch._utils._flatten_dense_tensors(self.w2_list).view(len(self.w2_list), inter_shape, hidden_size)
 
-                delattr(self, "w2_list")
-                delattr(self, "experts_up_proj")
-                delattr(self, "experts_gate_proj")
+                    delattr(self, "w2_list")
+                    delattr(self, "experts_up_proj")
+                    delattr(self, "experts_gate_proj")
         else:
             inter_size = self.network_config_["intermediate_size"]
             split_inter_size = inter_size // self.world_size_
