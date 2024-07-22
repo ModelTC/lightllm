@@ -83,7 +83,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 ]
                 self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
         else:
-            q_lora_split_n_embed = self.q_lora_rank // self.world_size_
             if f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight" in weights:
                 q_a_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight"]
                 self.q_a_proj_ = self._cuda(q_a_proj_.transpose(0, 1))

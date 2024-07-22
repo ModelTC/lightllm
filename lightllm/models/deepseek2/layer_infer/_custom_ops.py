@@ -72,8 +72,6 @@ def moe_align_block_size_stage3(
     tokens_per_thread: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-
     last_cumsum = 0
     off_cnt = num_experts * num_experts
     for i in range(1, num_experts + 1):
