@@ -232,7 +232,7 @@ class LlamaTpPartModel(TpPartBaseModel):
         self._sin_cached = emb.sin().to(self.data_type).cuda() * mscale
 
         return
-    
+
     def _init_to_su_rotary(self):
         rope_scaling = self.config["rope_scaling"]
         short_factor = rope_scaling["short_factor"]

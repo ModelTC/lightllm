@@ -252,7 +252,6 @@ class TpPartBaseModel:
                     device="cuda",
                 )
 
-
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
             b_req_idx,

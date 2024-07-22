@@ -11,5 +11,6 @@ class Deepseek2MemoryManager(MemoryManager):
 
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
         self.kv_buffer = [
-            torch.empty((size, 1, self.kv_lora_rank + self.qk_rope_head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)
+            torch.empty((size, 1, self.kv_lora_rank + self.qk_rope_head_dim), dtype=dtype, device="cuda")
+            for _ in range(layer_num)
         ]
