@@ -4,12 +4,10 @@ from fastapi import BackgroundTasks, Request
 from fastapi.responses import Response, StreamingResponse
 from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
-from .metrics import monitor
 import json
 
 
 async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> Response:
-    monitor.counter_inc("lightllm_request_count")
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -31,6 +29,7 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
     tokens_dict = collections.defaultdict(list)
     finish_reason_dict = {}
     prompt_logprobs = None
+    prompt_tokens = 0
     prompt_token_ids = None
     is_first_metadata = True
     async for sub_req_id, request_output, metadata, finish_status in results_generator:
@@ -39,6 +38,7 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
         if is_first_metadata:
             prompt_logprobs = metadata.get("prompt_logprobs", None)
             prompt_token_ids = metadata.get("prompt_token_ids", None)
+            prompt_tokens = metadata.get("prompt_tokens", 0)
             if prompt_logprobs is not None:
                 del metadata["prompt_logprobs"]
             if prompt_token_ids is not None:
@@ -67,6 +67,7 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
         "generated_text": final_output_list,
         "count_output_tokens": ret_data_format(count_output_tokens_list),
         "finish_reason": ret_data_format(finish_reson_list),
+        "prompt_tokens": prompt_tokens,
     }
     if return_details:
         ret["tokens"] = ret_data_format(tokens_list)
@@ -74,12 +75,10 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
         ret["prompt_token_ids"] = prompt_token_ids
     if prompt_logprobs is not None:
         ret["prompt_logprobs"] = prompt_logprobs
-    monitor.counter_inc("lightllm_request_success")
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
 async def lightllm_generate_stream(request: Request, g_id_gen, httpserver_manager) -> Response:
-    monitor.counter_inc("lightllm_request_count")
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -108,6 +107,7 @@ async def lightllm_generate_stream(request: Request, g_id_gen, httpserver_manage
                     "logprob": metadata.get("logprob", None),
                     "special": metadata.get("special", False),
                     "count_output_tokens": metadata.get("count_output_tokens", 0),
+                    "prompt_tokens": metadata.get("prompt_tokens", 0),
                 },
                 "generated_text": None,
                 "finished": finish_status.is_finished(),
@@ -123,5 +123,4 @@ async def lightllm_generate_stream(request: Request, g_id_gen, httpserver_manage
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
     background_tasks.add_task(abort_request)
-    monitor.counter_inc("lightllm_request_success")
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)

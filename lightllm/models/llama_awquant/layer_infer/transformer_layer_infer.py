@@ -21,7 +21,11 @@ from lightllm.common.basemodel.cuda_kernel.ppl_awquant import (
     skiprmsnorm_ppl,
     channel_token_dequant_i32_fp16_ppl,
 )
-from lightllm.common.basemodel.cuda_kernel.ppl_awquant import dynamic_channelwise_quant_fp16_i8_ppl, gatesilu_i32_i8_ppl
+from lightllm.common.basemodel.cuda_kernel.ppl_awquant import (
+    dynamic_channelwise_quant_fp16_i8_ppl,
+    gatesilu_i32_i8_ppl,
+    gatesilu_i32_fp16_ppl,
+)
 from lightllm.common.basemodel.triton_kernel.quantize_gemm_int8 import matmul_quantize_int8
 from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 from lightllm.utils.infer_utils import mark_cost_time
@@ -52,7 +56,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         return
 
     def _bind_norm(self):
-        if "ppl_w8a8" in self.mode:
+        if "ppl_w8a8" in self.mode or "ppl_w8a8_mixdown" in self.mode:
             self._awquant_att_norm = partial(
                 LlamaTransformerLayerInferActivationWeightQuantPpl._awquant_att_norm_ppl_int8, self
             )
@@ -64,7 +68,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         return
 
     def _bind_matmul(self):
-        if "ppl_w8a8" in self.mode:
+        if "ppl_w8a8" in self.mode or "ppl_w8a8_mixdown" in self.mode:
             self._awquant_matmul_for_qkv = partial(
                 LlamaTransformerLayerInferActivationWeightQuantPpl._awquant_matmul_ppl_int8_quant_dequant, self
             )
@@ -167,9 +171,6 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
 
         return ffn2_out
 
-    @mark_cost_time(
-        "trans context flash forward time cost"
-    )  # dont to remove this, will make performence down, did not know why
     def _context_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
         input1, token_scale, skip_out = self._awquant_att_norm(input_embding, infer_state, layer_weight)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
@@ -184,9 +185,6 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
-    @mark_cost_time(
-        "trans context ffn forward time cost"
-    )  # dont to remove this, will make performence down, did not know why
     def _context_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight):
         input1, token_scale, skip_out = self._awquant_ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
@@ -196,7 +194,6 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
-    # this impl dont to use @mark_cost_time
     def _token_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
         input1, token_scale, skip_out = self._awquant_att_norm(input_embding, infer_state, layer_weight)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
@@ -211,7 +208,6 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
-    # this impl dont to use @mark_cost_time
     def _token_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight):
         input1, token_scale, skip_out = self._awquant_ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
@@ -281,6 +277,112 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
 
     def _awquant_silu_ppl_int8(self, x, y, x_scale, y_scale, token_scale):
         return gatesilu_i32_i8_ppl(x, y, x_scale, y_scale, token_scale)
+
+
+class LlamaTransformerLayerInferActivationWeightQuantPplMixdown(LlamaTransformerLayerInferActivationWeightQuantPpl):
+    """ """
+
+    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
+        super(LlamaTransformerLayerInferActivationWeightQuantPpl, self).__init__(
+            layer_num, tp_rank, world_size, network_config, mode
+        )
+        self.eps_ = network_config["rms_norm_eps"]
+        self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
+        self.tp_k_head_num_ = network_config["num_key_value_heads"] // self.world_size_
+        self.tp_v_head_num_ = network_config["num_key_value_heads"] // self.world_size_
+        self.tp_o_head_num_ = self.tp_q_head_num_
+        self.head_dim_ = network_config["hidden_size"] // network_config["num_attention_heads"]
+        self.embed_dim_ = network_config["hidden_size"]
+        self.inter_dim_ = network_config["intermediate_size"]
+        self._init_mixdown()
+        self._bind_func()
+        self._bind_ffn()
+        return
+
+    def _init_mixdown(self):
+        self.mixdown = self.network_config_.get("mixdown", list(range(self.network_config_["num_hidden_layers"])))
+        assert isinstance(self.mixdown, list), "mixdown must be all or a list."
+
+    def _bind_silu(self):
+        if "ppl_w8a8_mixdown" in self.mode:
+            if self.layer_num_ in self.mixdown:
+                func = partial(LlamaTransformerLayerInferActivationWeightQuantPplMixdown._awquant_silu_ppl_fp16, self)
+            else:
+                func = partial(LlamaTransformerLayerInferActivationWeightQuantPpl._awquant_silu_ppl_int8, self)
+            self._awquant_silu = func
+        else:
+            raise Exception(f"error mode {self.mode}")
+        return
+
+    def _bind_ffn(self):
+        if "ppl_w8a8_mixdown" in self.mode:
+            if self.layer_num_ in self.mixdown:
+                func = partial(LlamaTransformerLayerInferActivationWeightQuantPplMixdown._ffn_down_fp16, self)
+            else:
+                func = partial(LlamaTransformerLayerInferActivationWeightQuantPplMixdown._ffn_down_int8, self)
+            self._ffn = func
+        else:
+            raise Exception(f"error mode {self.mode}")
+        return
+
+    def _ffn_down_int8(
+        self,
+        input,
+        token_scale,
+        infer_state: LlamaInferStateInfo,
+        layer_weight: LlamaTransformerLayerActivationWeightQuantPpl,
+    ) -> torch.Tensor:
+        gate_out = self._awquant_matmul_for_ffn_up(
+            input.view(-1, self.embed_dim_),
+            layer_weight.gate_proj,
+            is_prefill=infer_state.is_prefill,
+        )
+        up_out = self._awquant_matmul_for_ffn_up(
+            input.view(-1, self.embed_dim_),
+            layer_weight.up_proj,
+            is_prefill=infer_state.is_prefill,
+        )
+        input = None
+        _, gate_proj_scale = layer_weight.gate_proj
+        _, up_proj_scale = layer_weight.up_proj
+        ffn1_out, ffn1_out_scale = self._awquant_silu(gate_out, up_out, gate_proj_scale, up_proj_scale, token_scale)
+        gate_out, up_out = None, None
+        ffn2_out = self._awquant_matmul_for_ffn_down(
+            ffn1_out, layer_weight.down_proj, is_prefill=infer_state.is_prefill, token_scale=ffn1_out_scale
+        )
+        ffn1_out = None
+
+        return ffn2_out
+
+    def _ffn_down_fp16(
+        self,
+        input,
+        token_scale,
+        infer_state: LlamaInferStateInfo,
+        layer_weight: LlamaTransformerLayerActivationWeightQuantPpl,
+    ) -> torch.Tensor:
+        gate_out = self._awquant_matmul_for_ffn_up(
+            input.view(-1, self.embed_dim_),
+            layer_weight.gate_proj,
+            is_prefill=infer_state.is_prefill,
+        )
+        up_out = self._awquant_matmul_for_ffn_up(
+            input.view(-1, self.embed_dim_),
+            layer_weight.up_proj,
+            is_prefill=infer_state.is_prefill,
+        )
+        input = None
+        _, gate_proj_scale = layer_weight.gate_proj
+        _, up_proj_scale = layer_weight.up_proj
+        ffn1_out = self._awquant_silu(gate_out, up_out, gate_proj_scale, up_proj_scale, token_scale)
+        gate_out, up_out = None, None
+        ffn2_out = torch.mm(ffn1_out, layer_weight.down_proj)
+        ffn1_out = None
+
+        return ffn2_out
+
+    def _awquant_silu_ppl_fp16(self, x, y, x_scale, y_scale, token_scale):
+        return gatesilu_i32_fp16_ppl(x, y, x_scale, y_scale, token_scale)
 
 
 class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInferActivationWeightQuantTpl):
@@ -403,9 +505,6 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         ffn1_out = None
         return ffn2_out
 
-    @mark_cost_time(
-        "trans context flash forward time cost"
-    )  # dont to remove this, will make performence down, did not know why
     def _context_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
         input1 = self._awquant_att_norm(input_embding, infer_state, layer_weight)
         token_scale = None
@@ -421,9 +520,6 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
-    @mark_cost_time(
-        "trans context ffn forward time cost"
-    )  # dont to remove this, will make performence down, did not know why
     def _context_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight):
         input1 = self._awquant_ffn_norm(input_embdings, infer_state, layer_weight)
         token_scale = None
@@ -434,7 +530,6 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
-    # this impl dont to use @mark_cost_time
     def _token_attention(self, input_embding, infer_state: LlamaInferStateInfo, layer_weight):
         input1 = self._awquant_att_norm(input_embding, infer_state, layer_weight)
         token_scale = None
@@ -450,7 +545,6 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
-    # this impl dont to use @mark_cost_time
     def _token_ffn(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight):
         input1 = self._awquant_ffn_norm(input_embdings, infer_state, layer_weight)
         token_scale = None
@@ -470,37 +564,3 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         if bias is not None:
             out.add_(bias)
         return out
-
-    def _awquant_matmul_ppl_int8_quant_dequant(
-        self, input, quant_weight_params, is_prefill, token_scale=None, out=None, bias=None, has_act=False
-    ):
-        if input.dtype == torch.float16:
-            input, token_scale = dynamic_channelwise_quant_fp16_i8_ppl(input.transpose(0, 1))
-        assert has_act is False
-        qweight, qscale = quant_weight_params
-        out = matmul_i8_i32_ppl(input, qweight)
-        out = channel_token_dequant_i32_fp16_ppl(out, token_scale, qscale)
-        if bias is not None:
-            out.add_(bias)
-        return out
-
-    def _awquant_matmul_ppl_int8_quant(
-        self, input, quant_weight_params, is_prefill, out=None, bias=None, has_act=False
-    ):
-        assert has_act is False
-        qweight, qscale = quant_weight_params
-        out = matmul_i8_i32_ppl(input, qweight)
-        if bias is not None:
-            out.add_(bias)
-        return out
-
-    def _awquant_att_norm_ppl_int8(self, input, infer_state: LlamaInferStateInfo, layer_weight):
-        if getattr(infer_state, "skip", None) is None:
-            infer_state.skip = torch.zeros_like(input)
-        return skiprmsnorm_ppl(input, layer_weight.att_norm_weight_, skip=infer_state.skip)
-
-    def _awquant_ffn_norm_ppl_int8(self, input, infer_state: LlamaInferStateInfo, layer_weight):
-        return skiprmsnorm_ppl(input, layer_weight.ffn_norm_weight_, skip=infer_state.skip)
-
-    def _awquant_silu_ppl_int8(self, x, y, x_scale, y_scale, token_scale):
-        return gatesilu_i32_i8_ppl(x, y, x_scale, y_scale, token_scale)

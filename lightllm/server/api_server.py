@@ -23,7 +23,7 @@ import torch
 import uvloop
 import sys
 import os
-
+import rpyc
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -43,6 +43,7 @@ from .httpserver.manager import HttpServerManager
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
 from .embed_cache.manager import start_cache_manager
+from .metrics.manager import start_metric_manager
 from .visualserver.manager import start_visual_process
 from .req_id_generator import ReqIDGenerator
 from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
@@ -63,9 +64,8 @@ from .api_models import (
 )
 
 from lightllm.utils.log_utils import init_logger
-
-from .metrics import monitor
 from prometheus_client import generate_latest
+from lightllm.server.metrics.manager import MetricClient
 
 logger = init_logger(__name__)
 
@@ -76,6 +76,7 @@ app = FastAPI()
 server = uvicorn.Server(uvicorn.Config(app))
 
 isFirst = True
+metric_client = None
 
 
 def first_set_handle_loop():
@@ -88,6 +89,7 @@ def first_set_handle_loop():
 
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
+    metric_client.counter_inc("lightllm_request_failure")
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
@@ -134,7 +136,6 @@ async def token_load(request: Request):
     )
 
 
-@monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     first_set_handle_loop()
@@ -144,7 +145,6 @@ async def generate(request: Request) -> Response:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
-@monitor.histogram_timer("lightllm_request_duration")
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
     first_set_handle_loop()
@@ -152,6 +152,7 @@ async def generate_stream(request: Request) -> Response:
         return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
+
 
 @app.post("/")
 async def compat_generate(request: Request) -> Response:
@@ -162,10 +163,9 @@ async def compat_generate(request: Request) -> Response:
     else:
         return await generate(request)
 
-@monitor.histogram_timer("lightllm_request_duration")
+
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
-    monitor.counter_inc("lightllm_request_count")
     first_set_handle_loop()
 
     if request.logit_bias is not None:
@@ -173,9 +173,6 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
             HTTPStatus.BAD_REQUEST,
             "The logit_bias parameter is not currently supported",
         )
-
-    if request.n > 1:
-        return create_error_response(HTTPStatus.BAD_REQUEST, "The n parameter currently only supports 1")
 
     if request.function_call != "none":
         return create_error_response(HTTPStatus.BAD_REQUEST, "The function call feature is not supported")
@@ -192,47 +189,66 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         ignore_eos=request.ignore_eos,
         max_new_tokens=request.max_tokens,
         stop_sequences=request.stop,
+        n=request.n,
+        best_of=request.n,
     )
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
 
-    request_id = f"chatcmpl-{uuid.uuid4().hex}"
+    group_request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(
-        prompt, sampling_params, request_id, multimodal_params, request=raw_request
+        prompt, sampling_params, group_request_id, multimodal_params, request=raw_request
     )
 
     # Non-streaming case
     if not request.stream:
-        final_output = []
-        prompt_tokens = -1
+        final_output_dict = collections.defaultdict(list)
+        count_output_tokens_dict = collections.defaultdict(lambda: 0)
+        finish_reason_dict = {}
+        prompt_tokens_dict = {}
         completion_tokens = 0
-        async for sub_req_id, request_output, metadata, _ in results_generator:
-            completion_tokens += 1
-            if prompt_tokens == -1:
-                prompt_tokens = metadata["prompt_tokens"]
-            final_output.append(request_output)
-
-        usage = UsageInfo(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
-        )
-        chat_message = ChatMessage(role="assistant", content="".join(final_output))
-        choice = ChatCompletionResponseChoice(index=0, message=chat_message)
+        async for sub_req_id, request_output, metadata, finish_status in results_generator:
+            count_output_tokens_dict[sub_req_id] += 1
+            final_output_dict[sub_req_id].append(request_output)
+            if finish_status.is_finished():
+                finish_reason_dict[sub_req_id] = finish_status.get_finish_reason()
+                prompt_tokens_dict[sub_req_id] = metadata["prompt_tokens"]
+        choices = []
+        sub_ids = list(final_output_dict.keys())[: request.n]
+        for i in range(request.n):
+            sub_req_id = sub_ids[i]
+            prompt_tokens = prompt_tokens_dict[sub_req_id]
+            completion_tokens = count_output_tokens_dict[sub_req_id]
+            usage = UsageInfo(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+            )
+            chat_message = ChatMessage(role="assistant", content="".join(final_output_dict[sub_req_id]))
+            choice = ChatCompletionResponseChoice(
+                index=i, message=chat_message, finish_reason=finish_reason_dict[sub_req_id]
+            )
+            choices.append(choice)
         resp = ChatCompletionResponse(
-            id=request_id, created=created_time, model=request.model, choices=[choice], usage=usage
+            id=group_request_id, created=created_time, model=request.model, choices=choices, usage=usage
         )
         return resp
 
+    if sampling_params.n != 1:
+        raise Exception("stream api only support n = 1")
+
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
-        async for sub_req_id, request_output, metadata, _ in results_generator:
+        finish_reason = None
+        async for sub_req_id, request_output, metadata, finish_status in results_generator:
             delta_message = DeltaMessage(role="assistant", content=request_output)
-
-            stream_choice = ChatCompletionStreamResponseChoice(index=0, delta=delta_message)
-
+            if finish_status.is_finished():
+                finish_reason = finish_status.get_finish_reason()
+            stream_choice = ChatCompletionStreamResponseChoice(
+                index=0, delta=delta_message, finish_reason=finish_reason
+            )
             stream_resp = ChatCompletionStreamResponse(
-                id=request_id,
+                id=group_request_id,
                 created=created_time,
                 model=request.model,
                 choices=[stream_choice],
@@ -240,12 +256,11 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
             yield ("data: " + stream_resp.json(ensure_ascii=False) + "\n\n").encode("utf-8")
 
     async def abort_request() -> None:
-        await httpserver_manager.abort(request_id)
+        await httpserver_manager.abort(group_request_id)
 
     background_tasks = BackgroundTasks()
     # Abort the request if the client disconnects.
     background_tasks.add_task(abort_request)
-    monitor.counter_inc("lightllm_request_success")
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
 
@@ -262,8 +277,8 @@ async def tokens(request: Request):
 
 @app.get("/metrics")
 async def metrics() -> Response:
-    metrics_data = generate_latest()
-    response = Response(metrics_data)
+    data = await metric_client.generate_latest()
+    response = Response(data)
     response.mimetype = "text/plain"
     return response
 
@@ -343,8 +358,9 @@ def main():
         default=[],
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
-                        | triton_gqa_attention | triton_gqa_flashdecoding]
-                        [triton_w4a16 | triton_w8a16 | triton_w8a8 | lmdeploy_w4a16 | ppl_w4a16 | ppl_w8a8],
+                        | triton_gqa_attention | triton_gqa_flashdecoding
+                        | triton_w4a16 | triton_w8a16 | triton_w8a8 | lmdeploy_w4a16
+                        | ppl_w4a16 | ppl_w8a8 | ppl_w8a8_mixdown],
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
@@ -415,6 +431,12 @@ def main():
     parser.add_argument(
         "--health_monitor", action="store_true", help="check the health of service and restart when error"
     )
+    parser.add_argument("--metric_gateway", type=str, default=None, help="address for collecting monitoring metrics")
+    parser.add_argument("--job_name", type=str, default="lightllm", help="job name for monitor")
+    parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
+    parser.add_argument(
+        "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
+    )
 
     args = parser.parse_args()
 
@@ -431,7 +453,7 @@ def main():
 
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num
-    monitor.init_api_server_monitor(args)
+    assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
 
     # 这些模式不能同时设置。
     assert [args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
@@ -460,9 +482,11 @@ def main():
             batch_max_tokens = max(batch_max_tokens, args.splitfuse_block_size)
             args.batch_max_tokens = batch_max_tokens
 
-    can_use_ports = alloc_can_use_network_port(num=5 + args.tp, used_nccl_port=args.nccl_port)
-    router_port, detokenization_port, httpserver_port, visual_port, cache_port = can_use_ports[0:5]
-    model_rpc_ports = can_use_ports[5:]
+    logger.info(f"all start args:{args}")
+
+    can_use_ports = alloc_can_use_network_port(num=6 + args.tp, used_nccl_port=args.nccl_port)
+    router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
+    model_rpc_ports = can_use_ports[6:]
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -471,6 +495,15 @@ def main():
             ],
             start_args=[(cache_port, args)],
         )
+
+    start_submodule_processes(
+        start_funcs=[
+            start_metric_manager,
+        ],
+        start_args=[(metric_port, args)],
+    )
+    global metric_client
+    metric_client = MetricClient(metric_port)
 
     # help to manage data stored on Ceph
     if "s3://" in args.model_dir:
@@ -486,12 +519,13 @@ def main():
         visual_port=visual_port,
         httpserver_port=httpserver_port,
         enable_multimodal=args.enable_multimodal,
+        metric_port=metric_port,
     )
 
     start_submodule_processes(
         start_funcs=[start_router_process, start_detokenization_process],
         start_args=[
-            (args, router_port, detokenization_port, model_rpc_ports),
+            (args, router_port, detokenization_port, model_rpc_ports, metric_port),
             (args, detokenization_port, httpserver_port),
         ],
     )
