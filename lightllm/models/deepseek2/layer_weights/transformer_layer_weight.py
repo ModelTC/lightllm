@@ -39,17 +39,9 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.ffn_norm_weight_,
         ]
         if self.q_lora_rank is not None:
-            weights += [
-                self.q_a_proj_,
-                self.q_a_layernorm_,
-                self.fuse_qk_weight_,
-                self.q_rope_proj_
-            ]
+            weights += [self.q_a_proj_, self.q_a_layernorm_, self.fuse_qk_weight_, self.q_rope_proj_]
         else:
-            weights += [
-                self.fuse_qk_weight_,
-                self.q_rope_proj_
-            ]
+            weights += [self.fuse_qk_weight_, self.q_rope_proj_]
         if self.is_moe:
             weights += [self.moe_gate, self.w1, self.w2]
             if self.network_config_["n_shared_experts"] is not None:
@@ -111,50 +103,85 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             k_b_proj_ = kv_b_proj_.view(self.num_attention_heads, self.qk_nope_head_dim * 2, self.kv_lora_rank)[
                 :, : self.qk_nope_head_dim, :
             ]
-            v_b_proj_ = kv_b_proj_.T.view(self.kv_lora_rank, self.num_attention_heads, self.qk_nope_head_dim * 2,)[
-                :, :, self.qk_nope_head_dim :
-            ]
-            self.k_b_proj_ = k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
-            self.v_b_proj_ = v_b_proj_.transpose(0, 1)[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
+            v_b_proj_ = kv_b_proj_.T.view(
+                self.kv_lora_rank,
+                self.num_attention_heads,
+                self.qk_nope_head_dim * 2,
+            )[:, :, self.qk_nope_head_dim :]
+            self.k_b_proj_ = (
+                k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
+                .contiguous()
+                .to(self.data_type_)
+                .cpu()
+            )
+            self.v_b_proj_ = (
+                v_b_proj_.transpose(0, 1)[
+                    self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :
+                ]
+                .contiguous()
+                .to(self.data_type_)
+                .cpu()
+            )
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
             self.o_weight_ = self.o_weight_.T.view(self.num_attention_heads, self.qk_nope_head_dim, -1)
-            self.o_weight_ = self.o_weight_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
-        
+            self.o_weight_ = (
+                self.o_weight_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
+                .contiguous()
+                .to(self.data_type_)
+                .cpu()
+            )
+
         with self.lock:
             if hasattr(self, "q_weight_") and hasattr(self, "k_b_proj_"):
                 hidden_size = self.network_config_["hidden_size"]
-                q_nope_proj_, q_rope_proj_ = torch.split(self.q_weight_.view(hidden_size, -1, self.qk_nope_head_dim + self.qk_rope_head_dim), [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+                q_nope_proj_, q_rope_proj_ = torch.split(
+                    self.q_weight_.view(hidden_size, -1, self.qk_nope_head_dim + self.qk_rope_head_dim),
+                    [self.qk_nope_head_dim, self.qk_rope_head_dim],
+                    dim=-1,
+                )
                 self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(hidden_size, -1))
                 q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
 
                 k_nope_proj_ = self.k_b_proj_.unsqueeze(0)
                 k_nope_proj_ = k_nope_proj_.to(torch.float32)
-                
-                self.fuse_qk_weight_ = self._cuda(torch.matmul(q_nope_proj_, k_nope_proj_).view(hidden_size, self.tp_q_head_num_ * self.kv_lora_rank))
-                
+
+                self.fuse_qk_weight_ = self._cuda(
+                    torch.matmul(q_nope_proj_, k_nope_proj_).view(hidden_size, self.tp_q_head_num_ * self.kv_lora_rank)
+                )
+
                 delattr(self, "q_weight_")
                 delattr(self, "k_b_proj_")
-        
+
         with self.lock:
             if hasattr(self, "q_b_proj_") and hasattr(self, "k_b_proj_"):
-                q_nope_proj_, q_rope_proj_ = torch.split(self.q_b_proj_.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim), [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+                q_nope_proj_, q_rope_proj_ = torch.split(
+                    self.q_b_proj_.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim),
+                    [self.qk_nope_head_dim, self.qk_rope_head_dim],
+                    dim=-1,
+                )
                 self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(-1, self.qk_rope_head_dim * self.tp_q_head_num_))
                 q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
 
                 k_nope_proj_ = self.k_b_proj_.unsqueeze(0)
                 k_nope_proj_ = k_nope_proj_.to(torch.float32)
 
-                self.fuse_qk_weight_ = self._cuda(torch.matmul(q_nope_proj_, k_nope_proj_).view(-1, self.tp_q_head_num_ * self.kv_lora_rank))
+                self.fuse_qk_weight_ = self._cuda(
+                    torch.matmul(q_nope_proj_, k_nope_proj_).view(-1, self.tp_q_head_num_ * self.kv_lora_rank)
+                )
 
                 delattr(self, "q_b_proj_")
                 delattr(self, "k_b_proj_")
-        
+
         with self.lock:
             if hasattr(self, "v_b_proj_") and hasattr(self, "o_weight_"):
-                self.fuse_vo_weight_ = self._cuda(torch.matmul(self.v_b_proj_.to(torch.float32), self.o_weight_.to(torch.float32)).view(-1, self.network_config_["hidden_size"]))
+                self.fuse_vo_weight_ = self._cuda(
+                    torch.matmul(self.v_b_proj_.to(torch.float32), self.o_weight_.to(torch.float32)).view(
+                        -1, self.network_config_["hidden_size"]
+                    )
+                )
 
                 delattr(self, "v_b_proj_")
                 delattr(self, "o_weight_")
