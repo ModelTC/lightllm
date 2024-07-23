@@ -42,7 +42,8 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             weights += [
                 self.q_a_proj_,
                 self.q_a_layernorm_,
-                self.q_b_proj_,
+                self.fuse_qk_weight_,
+                self.q_rope_proj_
             ]
         else:
             weights += [
@@ -95,7 +96,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 q_b_proj_ = q_b_proj_[
                     q_split_n_embed_with_rope * self.tp_rank_ : q_split_n_embed_with_rope * (self.tp_rank_ + 1), :
                 ]
-                self.q_b_proj_ = self._cuda(q_b_proj_.transpose(0, 1))
+                self.q_b_proj_ = q_b_proj_.transpose(0, 1).contiguous().to(self.data_type_).cpu()
 
         if f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight" in weights:
             kv_a_proj_with_mqa_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight"]
@@ -129,12 +130,26 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(hidden_size, -1))
                 q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
 
-                k_nope_proj_ = self.k_b_proj_.unsqueeze(0).expand(hidden_size, -1, -1, -1)
-                k_nope_proj_ = k_nope_proj_.unsqueeze(0).to(torch.float32)
+                k_nope_proj_ = self.k_b_proj_.unsqueeze(0)
+                k_nope_proj_ = k_nope_proj_.to(torch.float32)
                 
                 self.fuse_qk_weight_ = self._cuda(torch.matmul(q_nope_proj_, k_nope_proj_).view(hidden_size, self.tp_q_head_num_ * self.kv_lora_rank))
                 
                 delattr(self, "q_weight_")
+                delattr(self, "k_b_proj_")
+        
+        with self.lock:
+            if hasattr(self, "q_b_proj_") and hasattr(self, "k_b_proj_"):
+                q_nope_proj_, q_rope_proj_ = torch.split(self.q_b_proj_.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim), [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+                self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(-1, self.qk_rope_head_dim * self.tp_q_head_num_))
+                q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
+
+                k_nope_proj_ = self.k_b_proj_.unsqueeze(0)
+                k_nope_proj_ = k_nope_proj_.to(torch.float32)
+
+                self.fuse_qk_weight_ = self._cuda(torch.matmul(q_nope_proj_, k_nope_proj_).view(-1, self.tp_q_head_num_ * self.kv_lora_rank))
+
+                delattr(self, "q_b_proj_")
                 delattr(self, "k_b_proj_")
         
         with self.lock:

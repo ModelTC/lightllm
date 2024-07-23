@@ -63,7 +63,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         else:
             q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_a_proj_)
             q = rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_, eps=self.eps_)
-            q = torch.mm(q, layer_weight.q_b_proj_)
+            q_nope = torch.mm(q, layer_weight.fuse_qk_weight_)
+            q_rope = torch.mm(q, layer_weight.q_rope_proj_)
 
         q_nope = q_nope.view(-1, self.tp_q_head_num_, self.kv_lora_rank)
         q_rope = q_rope.view(-1, self.tp_q_head_num_, self.qk_rope_head_dim)
