@@ -58,15 +58,15 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
         if self.q_lora_rank is None:
-            q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_weight_)
+            q_nope = torch.mm(input.view(-1, self.embed_dim_), layer_weight.fuse_qk_weight_)
+            q_rope = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_rope_proj_)
         else:
             q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_a_proj_)
             q = rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_, eps=self.eps_)
             q = torch.mm(q, layer_weight.q_b_proj_)
 
-        q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
-        q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
-        q_nope = torch.matmul(q_nope.unsqueeze(2), layer_weight.k_b_proj_).squeeze(2)
+        q_nope = q_nope.view(-1, self.tp_q_head_num_, self.kv_lora_rank)
+        q_rope = q_rope.view(-1, self.tp_q_head_num_, self.qk_rope_head_dim)
 
         torch.mm(
             input.view(-1, self.embed_dim_),

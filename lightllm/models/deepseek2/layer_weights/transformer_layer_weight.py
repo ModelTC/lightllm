@@ -35,7 +35,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.att_norm_weight_,
             self.kv_a_proj_with_mqa_,
             self.kv_a_layernorm_,
-            self.k_b_proj_,
             self.v_b_proj_,
             self.o_weight_,
             self.ffn_norm_weight_,
@@ -47,9 +46,10 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 self.q_b_proj_,
             ]
         else:
-            weights.append(
-                self.q_weight_,
-            )
+            weights += [
+                self.fuse_qk_weight_,
+                self.q_rope_proj_
+            ]
         if self.is_moe:
             weights += [self.moe_gate, self.w1, self.w2]
             if self.network_config_["n_shared_experts"] is not None:
@@ -81,7 +81,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 self.q_weight_ = self.q_weight_[
                     q_split_n_embed_with_rope * self.tp_rank_ : q_split_n_embed_with_rope * (self.tp_rank_ + 1), :
                 ]
-                self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
+                self.q_weight_ = self.q_weight_.transpose(0, 1).contiguous().to(self.data_type_).cpu()
         else:
             if f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight" in weights:
                 q_a_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight"]
@@ -114,9 +114,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             v_b_proj_ = kv_b_proj_.T.view(self.kv_lora_rank, self.num_attention_heads, self.qk_nope_head_dim * 2,)[
                 :, :, self.qk_nope_head_dim :
             ].transpose(0, 1)
-            self.k_b_proj_ = self._cuda(
-                k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
-            )
+            self.k_b_proj_ = k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
             self.v_b_proj_ = self._cuda(
                 v_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
             )
@@ -126,6 +124,21 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
             self.o_weight_ = self.o_weight_[:, q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)]
             self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
+        
+        with self.lock:
+            if hasattr(self, "q_weight_") and hasattr(self, "k_b_proj_"):
+                hidden_size = self.network_config_["hidden_size"]
+                q_nope_proj_, q_rope_proj_ = torch.split(self.q_weight_.view(hidden_size, -1, self.qk_nope_head_dim + self.qk_rope_head_dim), [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+                self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(hidden_size, -1))
+                q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
+
+                k_nope_proj_ = self.k_b_proj_.unsqueeze(0).expand(hidden_size, -1, -1, -1)
+                k_nope_proj_ = k_nope_proj_.unsqueeze(0).to(torch.float32)
+                
+                self.fuse_qk_weight_ = self._cuda(torch.matmul(q_nope_proj_, k_nope_proj_).view(hidden_size, self.tp_q_head_num_ * self.kv_lora_rank))
+                
+                delattr(self, "q_weight_")
+                delattr(self, "k_b_proj_")
 
         return
 
