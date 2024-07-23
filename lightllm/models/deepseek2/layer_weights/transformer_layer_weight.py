@@ -61,7 +61,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.input_layernorm.weight" in weights:
             self.att_norm_weight_ = self._cuda(weights[f"model.layers.{self.layer_num_}.input_layernorm.weight"])
 
-        q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
         q_split_n_embed_with_rope = (
             (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
         )
