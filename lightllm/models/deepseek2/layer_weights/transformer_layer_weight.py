@@ -35,8 +35,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.att_norm_weight_,
             self.kv_a_proj_with_mqa_,
             self.kv_a_layernorm_,
-            self.v_b_proj_,
-            self.o_weight_,
+            self.fuse_vo_weight_,
             self.ffn_norm_weight_,
         ]
         if self.q_lora_rank is not None:
@@ -113,17 +112,15 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             ]
             v_b_proj_ = kv_b_proj_.T.view(self.kv_lora_rank, self.num_attention_heads, self.qk_nope_head_dim * 2,)[
                 :, :, self.qk_nope_head_dim :
-            ].transpose(0, 1)
+            ]
             self.k_b_proj_ = k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
-            self.v_b_proj_ = self._cuda(
-                v_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
-            )
+            self.v_b_proj_ = v_b_proj_.transpose(0, 1)[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
-            self.o_weight_ = self.o_weight_[:, q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)]
-            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
+            self.o_weight_ = self.o_weight_.T.view(self.num_attention_heads, self.qk_nope_head_dim, -1)
+            self.o_weight_ = self.o_weight_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
         
         with self.lock:
             if hasattr(self, "q_weight_") and hasattr(self, "k_b_proj_"):
@@ -139,6 +136,13 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 
                 delattr(self, "q_weight_")
                 delattr(self, "k_b_proj_")
+        
+        with self.lock:
+            if hasattr(self, "v_b_proj_") and hasattr(self, "o_weight_"):
+                self.fuse_vo_weight_ = self._cuda(torch.matmul(self.v_b_proj_.to(torch.float32), self.o_weight_.to(torch.float32)).view(-1, self.network_config_["hidden_size"]))
+
+                delattr(self, "v_b_proj_")
+                delattr(self, "o_weight_")
 
         return
 

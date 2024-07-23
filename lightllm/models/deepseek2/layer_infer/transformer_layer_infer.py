@@ -87,8 +87,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
-        input = torch.matmul(input.unsqueeze(2), layer_weight.v_b_proj_)
-        o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.qk_nope_head_dim), layer_weight.o_weight_)
+        o_tensor = torch.mm(input.view(-1, self.tp_q_head_num_ * self.kv_lora_rank), layer_weight.fuse_vo_weight_)
         return o_tensor
 
     def _context_attention_kernel(
