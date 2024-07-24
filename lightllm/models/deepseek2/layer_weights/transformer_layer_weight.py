@@ -142,10 +142,10 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                     dim=-1,
                 )
                 self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(hidden_size, -1))
-                q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
+                q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float64)
 
                 k_nope_proj_ = self.k_b_proj_.unsqueeze(0)
-                k_nope_proj_ = k_nope_proj_.to(torch.float32)
+                k_nope_proj_ = k_nope_proj_.to(torch.float64)
 
                 self.fuse_qk_weight_ = self._cuda(
                     torch.matmul(q_nope_proj_, k_nope_proj_).view(hidden_size, self.tp_q_head_num_ * self.kv_lora_rank)
@@ -162,10 +162,10 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                     dim=-1,
                 )
                 self.q_rope_proj_ = self._cuda(q_rope_proj_.reshape(-1, self.qk_rope_head_dim * self.tp_q_head_num_))
-                q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float32)
+                q_nope_proj_ = q_nope_proj_.unsqueeze(2).to(torch.float64)
 
                 k_nope_proj_ = self.k_b_proj_.unsqueeze(0)
-                k_nope_proj_ = k_nope_proj_.to(torch.float32)
+                k_nope_proj_ = k_nope_proj_.to(torch.float64)
 
                 self.fuse_qk_weight_ = self._cuda(
                     torch.matmul(q_nope_proj_, k_nope_proj_).view(-1, self.tp_q_head_num_ * self.kv_lora_rank)
@@ -177,7 +177,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         with self.lock:
             if hasattr(self, "v_b_proj_") and hasattr(self, "o_weight_"):
                 self.fuse_vo_weight_ = self._cuda(
-                    torch.matmul(self.v_b_proj_.to(torch.float32), self.o_weight_.to(torch.float32)).view(
+                    torch.matmul(self.v_b_proj_.to(torch.float64), self.o_weight_.to(torch.float64)).view(
                         -1, self.network_config_["hidden_size"]
                     )
                 )
