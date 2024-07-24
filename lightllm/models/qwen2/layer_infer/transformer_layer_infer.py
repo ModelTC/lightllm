@@ -17,6 +17,7 @@ from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import to
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from lightllm.models.qwen2.layer_weights.transformer_layer_weight import Qwen2TransformerLayerWeight
 
+
 class Qwen2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
