@@ -27,12 +27,13 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     def _init_some_value(self):
         super()._init_some_value()
         self.tp_k_head_num_ = 1
-        self.tp_v_head_num_ = 1
+        self.tp_v_head_num_ = 0
 
         self.qk_nope_head_dim = self.config["qk_nope_head_dim"]
         self.qk_rope_head_dim = self.config["qk_rope_head_dim"]
         self.q_lora_rank = self.config["q_lora_rank"]
         self.kv_lora_rank = self.config["kv_lora_rank"]
+        self.head_dim_ = self.kv_lora_rank + self.qk_rope_head_dim
 
     def _init_custom(self):
         self._init_to_get_yarn_rotary()
@@ -44,8 +45,8 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.mem_manager = Deepseek2MemoryManager(
             self.max_total_token_num,
             dtype=self.data_type,
-            kv_lora_rank=self.config["kv_lora_rank"],
-            qk_rope_head_dim=self.config["qk_rope_head_dim"],
+            head_num=1,
+            head_dim=self.config["kv_lora_rank"] + self.config["qk_rope_head_dim"],
             layer_num=self.config["num_hidden_layers"],
         )
         return
