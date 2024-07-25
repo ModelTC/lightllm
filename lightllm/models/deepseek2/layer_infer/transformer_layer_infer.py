@@ -31,6 +31,14 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             and layer_num >= network_config["first_k_dense_replace"]
             and layer_num % network_config["moe_layer_freq"] == 0
         )
+
+        self.n_shared_experts = network_config["n_shared_experts"]
+        self.num_experts_per_tok = network_config["num_experts_per_tok"]
+        self.norm_topk_prob = network_config["norm_topk_prob"]
+        self.n_group = network_config["n_group"]
+        self.topk_group = network_config["topk_group"]
+        self.routed_scaling_factor = network_config["routed_scaling_factor"]
+
         self.softmax_scale = (self.qk_nope_head_dim + self.qk_rope_head_dim) ** (-0.5)
         if network_config.get("rope_scaling", None) is not None:
             self.rope_scaling = network_config["rope_scaling"]
@@ -160,19 +168,18 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     ) -> torch.Tensor:
         hidden_states = input.view(-1, self.embed_dim_)
         num_tokens, hidden_dim = hidden_states.shape
-        hidden_states = hidden_states.view(-1, hidden_dim)
 
-        if self.network_config_["n_shared_experts"] is not None:
+        if self.n_shared_experts is not None:
             shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
 
         router_logits = torch.mm(input.view(-1, self.embed_dim_), layer_weight.moe_gate)
         topk_weights, topk_ids = grouped_topk(
             hidden_states,
             router_logits,
-            self.network_config_["num_experts_per_tok"],
-            renormalize=self.network_config_["norm_topk_prob"],
-            num_expert_group=self.network_config_["n_group"],
-            topk_group=self.network_config_["topk_group"],
+            self.num_experts_per_tok,
+            renormalize=self.norm_topk_prob,
+            num_expert_group=self.n_group,
+            topk_group=self.topk_group,
         )
 
         final_hidden_states = (
@@ -180,6 +187,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             * self.network_config_["routed_scaling_factor"]
         )
 
-        if self.network_config_["n_shared_experts"] is not None:
+        if self.n_shared_experts is not None:
             final_hidden_states = final_hidden_states + shared_output
         return final_hidden_states.view(num_tokens, hidden_dim)
