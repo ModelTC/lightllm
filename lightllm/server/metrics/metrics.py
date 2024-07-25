@@ -53,7 +53,7 @@ class Monitor:
         self.grouping_key = {}
         if args.grouping_key:
             for item in args.grouping_key:
-                key, value = item.split('=')
+                key, value = item.split("=")
                 self.grouping_key[key] = value
         self.auth = args.enable_monitor_auth
         self.init_metrics(args)
@@ -132,6 +132,14 @@ class Monitor:
     def push_metrices(self):
         if self.gateway_url is not None:
             if self.auth:
-                push_to_gateway(self.gateway_url, job=self.job_name, grouping_key=self.grouping_key, registry=self.registry, handler=my_auth_handler)
+                push_to_gateway(
+                    self.gateway_url,
+                    job=self.job_name,
+                    grouping_key=self.grouping_key,
+                    registry=self.registry,
+                    handler=my_auth_handler,
+                )
             else:
-                push_to_gateway(self.gateway_url, job=self.job_name, grouping_key=self.grouping_key, registry=self.registry)
+                push_to_gateway(
+                    self.gateway_url, job=self.job_name, grouping_key=self.grouping_key, registry=self.registry
+                )
