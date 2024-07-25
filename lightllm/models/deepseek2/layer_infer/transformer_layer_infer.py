@@ -184,7 +184,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
         final_hidden_states = (
             fused_experts(hidden_states, layer_weight.w1, layer_weight.w2, topk_weights, topk_ids, inplace=True)
-            * self.network_config_["routed_scaling_factor"]
+            * self.routed_scaling_factor
         )
 
         if self.n_shared_experts is not None:
