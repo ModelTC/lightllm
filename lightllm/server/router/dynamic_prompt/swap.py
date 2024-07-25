@@ -30,6 +30,8 @@ class SwapManager(threading.Thread):
         self.cpu_radix_cache = cpu_radix_cache
         # 创建进程间通信组
         self.dist_group = dist.new_group(backend="gloo")
+        self.inner_group = dist.new_group(backend="gloo")
+        self.finish_tag = torch.tensor([1], dtype=torch.int32, device="cpu")
         # 最新更新radix tree 中的叶节点的时间id, 只会更新 radix_cache 中时间id > latest_move_time_id 的节点
         # 减少判断的时间量
         self.latest_move_time_id = 0
@@ -38,6 +40,7 @@ class SwapManager(threading.Thread):
         self.max_move_token_num = 512
 
         # 多进程共享的全局共享变量，多个共享进程使用一个标识移动任务的开始和结束, 0 为结束， 1 为开始
+        self.tp_rank = dist.get_rank()
         self.shared_task_mark = SharedInt(f"{unique_name}_swap_task_mark")
         self.shared_task_mark.set_value(0)
 
@@ -133,7 +136,7 @@ class SwapManager(threading.Thread):
         return
 
     def mark_swap_task_start(self):
-        dist.barrier(group=self.dist_group)
+        dist.barrier(group=self.inner_group)
         self.shared_task_mark.set_value(1)
         self.task_start_event.put(None)
         return
@@ -153,7 +156,10 @@ class SwapManager(threading.Thread):
         """
         检查点函数，用于检查是否外部调用了 mark_swap_task_finished 想让任务结束
         """
-        return self.shared_task_mark.get_value() == 0
+        if self.tp_rank == 0:
+            self.finish_tag[0] = self.shared_task_mark.get_value()
+        dist.broadcast(self.finish_tag, 0, group=self.dist_group)
+        return self.finish_tag[0].item() == 0
 
     def run(self):
         # 新线程需要重新设置当强设备
