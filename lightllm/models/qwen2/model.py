@@ -1,6 +1,5 @@
 import os
 import json
-from lightllm.models.qwen2.infer_struct import Qwen2InferStateInfo
 import torch
 
 from lightllm.common.basemodel import TpPartBaseModel
@@ -27,7 +26,7 @@ class Qwen2TpPartModel(TpPartBaseModel):
     transformer_layer_infer_class = Qwen2TransformerLayerInfer
 
     # infer state class
-    infer_state_class = Qwen2InferStateInfo
+    infer_state_class = LlamaInferStateInfo
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
