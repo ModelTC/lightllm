@@ -27,11 +27,11 @@ class DiversehBackend(ModeBackend):
     def init_custom(self):
         pass
 
-    @calculate_time(show=False, min_cost_ms=300)
+    # @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=True)
 
-    @calculate_time(show=True, min_cost_ms=200)
+    # @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=False)
 

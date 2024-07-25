@@ -10,14 +10,14 @@ class SplitFuseBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
 
-    @calculate_time(show=False, min_cost_ms=300)
+    # @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
         """
         splitfuse 模式下prefill 没有实际操作。
         """
         return {}
 
-    @calculate_time(show=True, min_cost_ms=200)
+    # @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)

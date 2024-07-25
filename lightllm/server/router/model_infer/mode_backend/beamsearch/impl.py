@@ -2,7 +2,14 @@ import torch
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferReqGroup, InferSamplingParams, requests_mapping, group_mapping
+from lightllm.server.router.model_infer.infer_batch import (
+    InferBatch,
+    InferReq,
+    InferReqGroup,
+    InferSamplingParams,
+    requests_mapping,
+    group_mapping,
+)
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
@@ -13,14 +20,14 @@ class BeamSearchBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
 
-    @calculate_time(show=False, min_cost_ms=300)
+    # @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=True)
 
-    @calculate_time(show=True, min_cost_ms=200)
+    # @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=False)
-    
+
     def build_group(self, batch):
         for r_id in batch.request_ids:
             req = requests_mapping[r_id]
@@ -41,9 +48,13 @@ class BeamSearchBackend(ModeBackend):
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
         logits = self.model.forward(**kwargs)
-        next_token_id_groups, next_token_logprob_groups, next_cumlogprob_groups = sample(logits, run_reqs, is_prefill, self.model.vocab_size, self.model.req_manager, self.eos_id)
+        next_token_id_groups, next_token_logprob_groups, next_cumlogprob_groups = sample(
+            logits, run_reqs, is_prefill, self.model.vocab_size, self.model.req_manager, self.eos_id
+        )
 
-        for req_group_obj, next_token_id_group, next_token_logprob_group, next_cumlogprob_group in zip(run_reqs, next_token_id_groups, next_token_logprob_groups, next_cumlogprob_groups):
+        for req_group_obj, next_token_id_group, next_token_logprob_group, next_cumlogprob_group in zip(
+            run_reqs, next_token_id_groups, next_token_logprob_groups, next_cumlogprob_groups
+        ):
             # prefill and decode is same
             for i in range(req_group_obj.best_of):
                 req_obj = req_group_obj.get_req(i)
@@ -75,7 +86,7 @@ class BeamSearchBackend(ModeBackend):
                             req_obj.req_status,
                             req_obj.cur_kv_len,
                             req_obj.get_output_len(),
-                            [], # empty meta
+                            [],  # empty meta
                             0,  # unfinished
                             None,
                         )  # 请求
