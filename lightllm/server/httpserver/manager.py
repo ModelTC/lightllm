@@ -89,7 +89,7 @@ class HttpServerManager:
                     img.uuid = None
                     img.token_id = None
                     img.token_num = None
-                    
+
     def tokens(self, prompt):
         prompt_ids = self.tokenizer.encode(prompt)
         return len(prompt_ids)
