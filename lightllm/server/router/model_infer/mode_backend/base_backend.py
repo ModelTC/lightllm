@@ -40,11 +40,8 @@ from lightllm.models.qwen_vl.model import QWenVLTpPartModel
 from lightllm.models.internlm_xcomposer.model import InternlmComposerTpPartModel
 from lightllm.models.gemma_2b.model import Gemma_2bTpPartModel
 from lightllm.models.phi3.model import Phi3TpPartModel
-<<<<<<< HEAD
 from lightllm.models.deepseek2.model import Deepseek2TpPartModel
-=======
 from lightllm.models.internvl.model import InternVLphi3TpPartModel
->>>>>>> add internvl model
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
