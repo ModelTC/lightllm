@@ -38,7 +38,7 @@ class ImageItem:
             self.image_w, self.image_h = image.size
             self._preload_data = img_data
             return
-
+        
         except Exception as e:
             raise ValueError(f"Failed to read image type={self._type}, data[:100]={self._data[:100]}: {e}!")
 
