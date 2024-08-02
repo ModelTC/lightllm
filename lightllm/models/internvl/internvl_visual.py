@@ -16,7 +16,6 @@ from lightllm.models.internvl.img_process import load_image
 
 
 class InternVLVisionModel:
-
     def __init__(self, kvargs):
         self.cache_port = kvargs["client_port"]
         self.cache_client = None
@@ -24,16 +23,17 @@ class InternVLVisionModel:
 
     def load_model(self, weight_dir):
         assert torch.cuda.is_available()
-        self.device = torch.device("cuda:0")
+        self.device = torch.device("cuda")
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         self.config = json.load(open(os.path.join(weight_dir, "config.json")))
         self.model = AutoModel.from_pretrained(
             weight_dir,
             torch_dtype=self.dtype,
-            trust_remote_code=True
+            trust_remote_code=True,
+            language_model="fake_language_model",
         )
         self.model.eval().cuda()
-    
+
     def cuda(self):
         return self
 
@@ -44,13 +44,13 @@ class InternVLVisionModel:
         # load images to batch tensor
         for i, url in enumerate(image_items):
             if isinstance(url, Image.Image):
-                t = load_image(url,max_num=6)
+                t = load_image(url, max_num=6)
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(url), url))
 
             cur_num = img_tensors[-1].shape[0]
-            
+
             valid_ids.append([valid_id, valid_id + cur_num])
             valid_id += cur_num
 
@@ -60,6 +60,5 @@ class InternVLVisionModel:
         # (b, 3, 224, 224)
         imgs = torch.cat(img_tensors, dim=0)
         pixel_values = imgs.to(self.device, dtype=self.dtype)
-        torch.save(pixel_values, 'vit_in.pt')
         all_img_embeds = self.model.extract_feature(pixel_values)
         return [all_img_embeds[start:end] for start, end in valid_ids]

@@ -44,15 +44,11 @@ class VisualModelRpcServer(rpyc.Service):
                 self.model = InternVisionModel()
             elif self.model_type == "internvl_chat":
                 # tp_rank = kvargs['rank_id']
-                client_port = kvargs['client_port']
-                data_type = kvargs['data_type']
-                model_kvargs = {
-                    "weight_dir": weight_dir,
-                    "client_port": client_port,
-                    "data_type": data_type
-                }
+                client_port = kvargs["client_port"]
+                data_type = kvargs["data_type"]
+                model_kvargs = {"weight_dir": weight_dir, "client_port": client_port, "data_type": data_type}
                 self.model = InternVLVisionModel(model_kvargs)
-                  
+
             else:
                 raise Exception(f"can not support {self.model_type} now")
             self.model.load_model(weight_dir)

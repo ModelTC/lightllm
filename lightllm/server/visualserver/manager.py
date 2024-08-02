@@ -56,7 +56,7 @@ class VisualManager:
                 "trust_remote_code": self.trust_remote_code,
                 "client_port": self.client_port,
                 "rank_id": rank_id,
-                "data_type": self.args.data_type
+                "data_type": self.args.data_type,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
         await asyncio.gather(*init_model_ret)

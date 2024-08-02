@@ -4,12 +4,13 @@ from PIL import Image
 from torchvision import transforms as T
 from torchvision.transforms.functional import InterpolationMode
 
+
 def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
     """
     Find the closest aspect ratio from a list of target ratios to match the given aspect ratio.
     If the difference is the same, use the area to decide the better ratio.
     """
-    best_ratio_diff = float('inf')
+    best_ratio_diff = float("inf")
     best_ratio = (1, 1)
     area = width * height
     for ratio in target_ratios:
@@ -24,6 +25,7 @@ def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_
                 best_ratio = ratio
     return best_ratio
 
+
 def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnail=False):
     """
     Preprocess the image dynamically by finding the closest aspect ratio,
@@ -35,13 +37,16 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
 
     # Calculate the existing image aspect ratio
     target_ratios = set(
-        (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
-        i * j <= max_num and i * j >= min_num)
+        (i, j)
+        for n in range(min_num, max_num + 1)
+        for i in range(1, n + 1)
+        for j in range(1, n + 1)
+        if i * j <= max_num and i * j >= min_num
+    )
     target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
     # Find the closest aspect ratio to the target
-    target_aspect_ratio = find_closest_aspect_ratio(
-        aspect_ratio, target_ratios, orig_width, orig_height, image_size)
+    target_aspect_ratio = find_closest_aspect_ratio(aspect_ratio, target_ratios, orig_width, orig_height, image_size)
 
     # Calculate the target width and height
     target_width = image_size * target_aspect_ratio[0]
@@ -56,7 +61,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
             (i % (target_width // image_size)) * image_size,
             (i // (target_width // image_size)) * image_size,
             ((i % (target_width // image_size)) + 1) * image_size,
-            ((i // (target_width // image_size)) + 1) * image_size
+            ((i // (target_width // image_size)) + 1) * image_size,
         )
         # Split the image into blocks
         split_img = resized_img.crop(box)
@@ -71,6 +76,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
 
     return processed_images
 
+
 def get_image_patch(orign_width, orign_height, min_num=1, max_num=6, image_size=448, use_thumbnail=False):
     """
     Calculate the number of image patches based on the closest aspect ratio
@@ -80,18 +86,23 @@ def get_image_patch(orign_width, orign_height, min_num=1, max_num=6, image_size=
 
     # calculate the existing image aspect ratio
     target_ratios = set(
-        (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
-        i * j <= max_num and i * j >= min_num)
+        (i, j)
+        for n in range(min_num, max_num + 1)
+        for i in range(1, n + 1)
+        for j in range(1, n + 1)
+        if i * j <= max_num and i * j >= min_num
+    )
     target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
     # find the closest aspect ratio to the target
     target_aspect_ratio = find_closest_aspect_ratio(aspect_ratio, target_ratios, orign_width, orign_height, image_size)
-    
+
     blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
     if use_thumbnail and blocks != 1:
-        blocks+=1
+        blocks += 1
     return blocks
-    
+
+
 def load_image(image_file, input_size=448, max_num=6):
     """
     Load and preprocess an image file, converting it to RGB mode,
@@ -99,13 +110,15 @@ def load_image(image_file, input_size=448, max_num=6):
     """
     IMAGENET_MEAN = (0.485, 0.456, 0.406)
     IMAGENET_STD = (0.229, 0.224, 0.225)
-    image = image_file.convert('RGB')
-    transform = T.Compose([
-        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-        T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
-        T.ToTensor(),
-        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
-    ])
+    image = image_file.convert("RGB")
+    transform = T.Compose(
+        [
+            T.Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img),
+            T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+            T.ToTensor(),
+            T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ]
+    )
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
     pixel_values = [transform(image) for image in images]
     pixel_values = torch.stack(pixel_values)

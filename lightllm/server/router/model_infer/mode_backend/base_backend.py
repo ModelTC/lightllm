@@ -41,7 +41,8 @@ from lightllm.models.internlm_xcomposer.model import InternlmComposerTpPartModel
 from lightllm.models.gemma_2b.model import Gemma_2bTpPartModel
 from lightllm.models.phi3.model import Phi3TpPartModel
 from lightllm.models.deepseek2.model import Deepseek2TpPartModel
-from lightllm.models.internvl.model import InternVLphi3TpPartModel
+from lightllm.models.internvl.model import InternVLPhi3TpPartModel
+from lightllm.models.internvl.model import InternVLInternlm2TpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
@@ -194,7 +195,11 @@ class ModeBackend:
                 elif self.model_type == "deepseek_v2":
                     self.model = Deepseek2TpPartModel(model_kvargs)
                 elif self.model_type == "internvl_chat":
-                    self.model = InternVLphi3TpPartModel(model_kvargs)
+                    llm_model_type = model_cfg.get("llm_config").get("model_type")
+                    if llm_model_type == "phi3":
+                        self.model = InternVLPhi3TpPartModel(model_kvargs)
+                    elif llm_model_type == "internlm2":
+                        self.model = InternVLInternlm2TpPartModel(model_kvargs)
                     self.is_multimodal = True
                 else:
                     raise Exception(f"can not support {self.model_type} now")
