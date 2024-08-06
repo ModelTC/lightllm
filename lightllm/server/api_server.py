@@ -470,7 +470,7 @@ def main():
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
 
     # 这些模式不能同时设置。
-    assert [args.use_reward_model, args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
+    assert [args.use_reward_model,args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
     # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
     if args.use_dynamic_prompt_cache:
         assert args.beam_mode is False
