@@ -3,8 +3,9 @@ from .impl import ContinuesBatchBackend
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
-class RewardModelBackend(ContinuesBatchBackend):
 
+
+class RewardModelBackend(ContinuesBatchBackend):
     def __init__(self) -> None:
         super().__init__()
 
@@ -15,7 +16,6 @@ class RewardModelBackend(ContinuesBatchBackend):
         pass
 
     def forward(self, batch_id, is_prefill):
-        assert is_prefill == True
 
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
@@ -36,12 +36,8 @@ class RewardModelBackend(ContinuesBatchBackend):
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.finish_status = FinishStatus.FINISHED_STOP
 
-            metadata = {
-                "id": int(next_token_id),
-                "logprob": float(next_token_logprob),
-                "score": float(score[0])
-            }
-            
+            metadata = {"id": int(next_token_id), "logprob": float(next_token_logprob), "score": float(score[0])}
+
             output_dict[req_obj.r_id] = (
                 req_obj.req_status,
                 req_obj.cur_kv_len,
@@ -53,4 +49,3 @@ class RewardModelBackend(ContinuesBatchBackend):
 
         self.cache[batch.batch_id] = batch
         return output_dict
-
