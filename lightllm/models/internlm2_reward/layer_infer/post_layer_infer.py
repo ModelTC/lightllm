@@ -26,7 +26,6 @@ class Internlm2RewardPostLayerInfer(PostLayerInferTpl):
     def _norm(self, input, infer_state, layer_weight: LlamaPreAndPostLayerWeight) -> torch.Tensor:
         return rmsnorm_forward(input, layer_weight.final_norm_weight_, eps=self.eps_)
 
-    # ??
     def _slice_get_last_input(self, input_embdings, infer_state: LlamaInferStateInfo):
         if infer_state.is_splitfuse:
             # for SplitFuse
@@ -100,7 +99,7 @@ class Internlm2RewardPostLayerInfer(PostLayerInferTpl):
         logic_batch = torch.mm(layer_weight.lm_head_weight_, last_input)
 
         # TODO think about attention_mask
-        
+
         last_input = None
         if self.world_size_ == 1:
             gather_data = logic_batch

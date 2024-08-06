@@ -7,8 +7,9 @@ from .multimodal_params import MultimodalParams
 import json
 
 
-async def lightllm_get_score(request: Request, g_id_gen, httpserver_manager) -> Response: 
+async def lightllm_get_score(request: Request, g_id_gen, httpserver_manager) -> Response:
     return await lightllm_generate(request, g_id_gen, httpserver_manager, use_reward_model=True)
+
 
 async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_reward_model=False) -> Response:
 
@@ -88,7 +89,7 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_
 
     if use_reward_model:
         ret["scores"] = [scores_dict[sub_id] for sub_id in sub_ids]
-    
+
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
