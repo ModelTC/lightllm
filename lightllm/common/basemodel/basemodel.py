@@ -136,7 +136,8 @@ class TpPartBaseModel:
         return
 
     def _init_some_value(self):
-        self.head_dim_ = self.config["n_embed"] // self.config["num_attention_heads"]
+        head_dim_ = self.config["n_embed"] // self.config["num_attention_heads"]
+        self.head_dim_ = self.config.get("head_dim", head_dim_)
         self.tp_k_head_num_ = self.config["num_key_value_heads"] // self.world_size_
         self.tp_v_head_num_ = self.tp_k_head_num_
         self.layers_num = self.config["n_layer"]

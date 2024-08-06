@@ -47,7 +47,6 @@ class MistralTpPartModel(TpPartBaseModel):
         head_dim = self.config["hidden_size"] // self.config["num_attention_heads"]
         if self.config.get("head_dim", 0):
             head_dim = self.config["head_dim"]
-        print(head_dim)
         self.mem_manager = MemoryManager(
             self.max_total_token_num,  # [SYM] should be sliding window?
             dtype=self.data_type,
@@ -65,7 +64,6 @@ class MistralTpPartModel(TpPartBaseModel):
             rope_scaling_factor = self.config.get("rope_scaling", {}).get("factor", 1.0)
 
         base = self.config.get("rope_theta", float(default_base))
-
         if "max_sequence_length" in self.config:
             max_seq_len = self.config["max_sequence_length"]
         else:
