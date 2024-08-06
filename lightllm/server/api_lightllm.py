@@ -8,10 +8,31 @@ import json
 
 
 async def lightllm_get_score(request: Request, g_id_gen, httpserver_manager) -> Response:
-    return await lightllm_generate(request, g_id_gen, httpserver_manager, use_reward_model=True)
+    request_dict = await request.json()
+    prompt = request_dict.pop("chat")
+    sample_params_dict = {"max_new_tokens" : 1}
+    sampling_params = SamplingParams(**sample_params_dict)
+    sampling_params.verify()
+    multimodal_params_dict = request_dict.get("multimodal_params", {})
+    multimodal_params = MultimodalParams(**multimodal_params_dict)
+    multimodal_params.verify_and_preload()
+    group_request_id = g_id_gen.generate_id()
+    results_generator = httpserver_manager.generate(
+        prompt, sampling_params, group_request_id, multimodal_params, request=request
+    )
+
+    ret = {}
+
+    # n === 1
+    async for sub_req_id, request_output, metadata, finish_status in results_generator:
+        ret["score"] = metadata["score"]
+        ret["prompt_tokens"] = metadata.get("prompt_tokens", 0)
+        ret["finish_reason"] = finish_status.get_finish_reason()
+        
+    return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
-async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_reward_model=False) -> Response:
+async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> Response:
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -28,9 +49,6 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_
         prompt, sampling_params, group_request_id, multimodal_params, request=request
     )
 
-    if use_reward_model:
-        scores_dict = collections.defaultdict(float)
-
     # Non-streaming case
     final_output_dict = collections.defaultdict(list)
     count_output_tokens_dict = collections.defaultdict(lambda: 0)
@@ -43,9 +61,6 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_
     async for sub_req_id, request_output, metadata, finish_status in results_generator:
         # when set "--return_all_prompt_logprobs", the first token metadata will contains
         # prompt_logprobs and prompt_token_ids
-        if use_reward_model:
-            scores_dict[sub_req_id] = metadata["score"]
-
         if is_first_metadata:
             prompt_logprobs = metadata.get("prompt_logprobs", None)
             prompt_token_ids = metadata.get("prompt_token_ids", None)
@@ -86,10 +101,6 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_
         ret["prompt_token_ids"] = prompt_token_ids
     if prompt_logprobs is not None:
         ret["prompt_logprobs"] = prompt_logprobs
-
-    if use_reward_model:
-        ret["scores"] = [scores_dict[sub_id] for sub_id in sub_ids]
-
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
