@@ -30,6 +30,7 @@ from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.stablelm.model import StablelmTpPartModel
 from lightllm.models.internlm2.model import Internlm2TpPartModel
+from lightllm.models.internlm2_reward.model import Internlm2RewardTpPartModel
 from lightllm.models.internlm_wquant.model import InternlmTpPartModelWQuant
 from lightllm.models.internlm2_wquant.model import Internlm2TpPartModelWQuant
 from lightllm.models.yi.model import YiTpPartModel
@@ -41,6 +42,8 @@ from lightllm.models.internlm_xcomposer.model import InternlmComposerTpPartModel
 from lightllm.models.gemma_2b.model import Gemma_2bTpPartModel
 from lightllm.models.phi3.model import Phi3TpPartModel
 from lightllm.models.deepseek2.model import Deepseek2TpPartModel
+from lightllm.models.internvl.model import InternVLPhi3TpPartModel
+from lightllm.models.internvl.model import InternVLInternlm2TpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
@@ -165,7 +168,10 @@ class ModeBackend:
                 elif self.model_type == "internlm":
                     self.model = InternlmTpPartModel(model_kvargs)
                 elif self.model_type == "internlm2":
-                    self.model = Internlm2TpPartModel(model_kvargs)
+                    if model_cfg["architectures"][0] == "InternLM2ForRewardModel":
+                        self.model = Internlm2RewardTpPartModel(model_kvargs)
+                    else:
+                        self.model = Internlm2TpPartModel(model_kvargs)
                 elif self.model_type == "Yi":
                     self.model = YiTpPartModel(model_kvargs)
                 elif self.model_type == "mistral":
@@ -192,6 +198,13 @@ class ModeBackend:
                     self.model = Phi3TpPartModel(model_kvargs)
                 elif self.model_type == "deepseek_v2":
                     self.model = Deepseek2TpPartModel(model_kvargs)
+                elif self.model_type == "internvl_chat":
+                    llm_model_type = model_cfg.get("llm_config").get("model_type")
+                    if llm_model_type == "phi3":
+                        self.model = InternVLPhi3TpPartModel(model_kvargs)
+                    elif llm_model_type == "internlm2":
+                        self.model = InternVLInternlm2TpPartModel(model_kvargs)
+                    self.is_multimodal = True
                 else:
                     raise Exception(f"can not support {self.model_type} now")
         except Exception as e:
