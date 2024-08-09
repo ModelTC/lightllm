@@ -47,8 +47,7 @@ def generate_stream(args):
                     'latency': t - last_time,
                 })
                 data = json.loads(chunk.decode()[5:].strip())
-                if data['generated_text']:
-                    ans = data['generated_text']
+                ans += data["token"]["text"]
                 last_time = t
             prompt += ans + subsequent_prompt
         except Exception as e:
@@ -59,24 +58,28 @@ def generate_stream(args):
             results.append({
                 'start_time': start_time,
                 'end_time': time.time(),
-                'input': prompt,
                 'max_new_tokens': args.output_len,
                 'responses': responses,
                 'has_error': has_error
             })
     return results
 
-def conclusion_and_show(results):
+def conclusion_and_show(results, prefill_token_num, decode_token_num):
     first_token_latency = []
     per_token_latency = []
     output_total_tokens = 0
     error_count = 0
+    total_start_time = time.time()
+    total_end_time = 0
     start_times = []
     end_times = []
     for e in results:
         if e['has_error']:
             error_count += 1
         else:
+            total_start_time = min(total_start_time, e["start_time"])
+            total_end_time = max(total_end_time, e["end_time"])
+
             start_times.append(e["start_time"])
             end_times.append(e["end_time"])
             tokens = e['responses']
@@ -87,19 +90,27 @@ def conclusion_and_show(results):
                 per_token_latency.extend([e["latency"] * 1000 for e in tokens[1:]]) # ms
                 output_total_tokens += len(tokens)
 
+    total_time = total_end_time - total_start_time
+    print("total_time: {:.2f}s".format(total_time))
+    print("total_prefill_tokens", prefill_token_num)
+    print("total_decode_tokens", decode_token_num)
+    print("prefill throughput {:.2f} tokens/s".format(prefill_token_num / total_time))
+    print("decode throughput {:.2f} tokens/s".format(decode_token_num / total_time))
+    print("total throughput {:.2f} tokens/s".format((prefill_token_num + decode_token_num) / total_time))
+
     print("test total_count", len(results))
     print("test error_count", error_count)
     print("output_total_tokens", output_total_tokens)
-    print("qps ", len(results) / (np.max(end_times) - np.min(start_times)))
+    print("qps {:.2f}".format(len(results) / (np.max(end_times) - np.min(start_times))))
 
     percentiles = [25, 50, 75, 99, 100]
     values = np.percentile(first_token_latency, percentiles)
     for percentile, value in zip(percentiles, values):
-        print("首字延迟 第{}% 分位数值：{:.2f}".format(percentile, value))
+        print("首字延迟 第{}% 分位数值: {:.2f}".format(percentile, value))
 
     values = np.percentile(per_token_latency, percentiles)
     for percentile, value in zip(percentiles, values):
-        print("包间延迟 第{}% 分位数值：{:.2f}".format(percentile, value))
+        print("包间延迟 第{}% 分位数值: {:.2f}".format(percentile, value))
 
 
 def run(args):
@@ -126,7 +137,9 @@ def run(args):
         with open(result_path, 'wb') as file:
             pickle.dump(results, file)
 
-    conclusion_and_show(results)
+    prefill_token_num = (first_input_len * num_turns + subsequent_input_len * ((num_turns - 1) * num_turns // 2)) * num_users
+    decode_token_num = output_len * num_turns * num_users
+    conclusion_and_show(results, prefill_token_num, decode_token_num)
 
 
 if __name__ == "__main__":
