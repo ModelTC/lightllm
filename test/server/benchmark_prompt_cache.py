@@ -13,8 +13,6 @@ import uuid
 import pickle
 
 
-num_workers = 15
-
 def generate_stream(args):
     the_word = '龙'
     prefix = str(uuid.uuid4())[:8]
@@ -104,19 +102,7 @@ def conclusion_and_show(results):
         print("包间延迟 第{}% 分位数值：{:.2f}".format(percentile, value))
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--address", type=str, default="http://localhost:8080", help="server address")
-    parser.add_argument("--model_name", type=str, default="model", help="for result file name")
-    parser.add_argument("--num_workers", type=int, default=5, help="number of concurrent requests")
-    parser.add_argument("--first_input_len", type=int, default=512, help="input length of the first turn of dialogue")
-    parser.add_argument("--subsequent_input_len", type=int, default=512, help="input length of subsequent conversations")
-    parser.add_argument("--output_len", type=int, default=128)
-    parser.add_argument("--num_turns", type=int, default=10, help="number of dialogue turns per user")
-    parser.add_argument("--num_users", type=int, default=10, help="number of users")
-    parser.add_argument("--result_dir", type=str, default="./results", help="directory to save results")
-    
-    args = parser.parse_args()
+def run(args):
     model_name = args.model_name
     num_workers = args.num_workers
     first_input_len = args.first_input_len
@@ -125,7 +111,7 @@ if __name__ == "__main__":
     num_turns = args.num_turns
     num_users = args.num_users
 
-    result_file = f"{model_name}_{num_workers}_{first_input_len}_{subsequent_input_len}_{output_len}_{num_turns}_{num_users}.txt"
+    result_file = f"{model_name}_{num_workers}_{first_input_len}_{subsequent_input_len}_{output_len}_{num_turns}_{num_users}.pickle"
     result_path = os.path.join(args.result_dir, result_file)
 
     if os.path.isfile(result_path):
@@ -140,4 +126,20 @@ if __name__ == "__main__":
         with open(result_path, 'wb') as file:
             pickle.dump(results, file)
 
-    conclusion_and_show(results)   
+    conclusion_and_show(results)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--address", type=str, default="http://localhost:8080", help="server address")
+    parser.add_argument("--model_name", type=str, default="model", help="for result file name")
+    parser.add_argument("--num_workers", type=int, default=5, help="number of concurrent requests")
+    parser.add_argument("--first_input_len", type=int, default=512, help="input length of the first turn of dialogue")
+    parser.add_argument("--subsequent_input_len", type=int, default=512, help="input length of subsequent conversations")
+    parser.add_argument("--output_len", type=int, default=128)
+    parser.add_argument("--num_turns", type=int, default=10, help="number of dialogue turns per user")
+    parser.add_argument("--num_users", type=int, default=10, help="number of users")
+    parser.add_argument("--result_dir", type=str, default="./results", help="directory to save results")
+    
+    args = parser.parse_args()
+    run(args)
