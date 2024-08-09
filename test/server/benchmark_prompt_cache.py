@@ -21,13 +21,13 @@ def generate_stream(args):
     prompt = first_prompt
     
     results = []
-    responses = []
     has_error = False
     headers = {"Content-Type": "application/json"}
     for i in range(args.num_turns):
+        responses = []
         try:
             start_time = time.time()
-            r = requests.post(f"{args.address}/generate_stream",
+            r = requests.post(f"{args.model_url}/generate_stream",
                 headers=headers,
                 json={
                     "inputs": prompt,
@@ -73,6 +73,7 @@ def conclusion_and_show(results, prefill_token_num, decode_token_num):
     total_end_time = 0
     start_times = []
     end_times = []
+    summary = {}
     for e in results:
         if e['has_error']:
             error_count += 1
@@ -91,26 +92,26 @@ def conclusion_and_show(results, prefill_token_num, decode_token_num):
                 output_total_tokens += len(tokens)
 
     total_time = total_end_time - total_start_time
-    print("total_time: {:.2f}s".format(total_time))
-    print("total_prefill_tokens", prefill_token_num)
-    print("total_decode_tokens", decode_token_num)
-    print("prefill throughput {:.2f} tokens/s".format(prefill_token_num / total_time))
-    print("decode throughput {:.2f} tokens/s".format(decode_token_num / total_time))
-    print("total throughput {:.2f} tokens/s".format((prefill_token_num + decode_token_num) / total_time))
-
-    print("test total_count", len(results))
-    print("test error_count", error_count)
-    print("output_total_tokens", output_total_tokens)
-    print("qps {:.2f}".format(len(results) / (np.max(end_times) - np.min(start_times))))
+    summary["total_time(s)"] = round(total_time, 2)
+    summary["total_prefill_tokens"] = prefill_token_num
+    summary["total_decode_tokens"] = decode_token_num
+    summary["prefill_throughput(tokens/s)"] = round(prefill_token_num / total_time, 2)
+    summary["decode_throughput(tokens/s)"] = round(decode_token_num / total_time, 2)
+    summary["total_throughput(tokens/s)"] = round((prefill_token_num + decode_token_num) / total_time, 2)
+    summary["total_count"] = len(results)
+    summary["error_count"] = error_count
+    summary["output_total_tokens"] = output_total_tokens
+    summary["qps"] = round(len(results) / (np.max(end_times) - np.min(start_times)), 2)
 
     percentiles = [25, 50, 75, 99, 100]
     values = np.percentile(first_token_latency, percentiles)
     for percentile, value in zip(percentiles, values):
-        print("首字延迟 第{}% 分位数值: {:.2f}".format(percentile, value))
+        summary[f"首字延迟 第{percentile}% 分位数值(ms)"] = round(value, 2)
 
     values = np.percentile(per_token_latency, percentiles)
     for percentile, value in zip(percentiles, values):
-        print("包间延迟 第{}% 分位数值: {:.2f}".format(percentile, value))
+        summary[f"包间延迟 第{percentile}% 分位数值(ms)"] = round(value, 2)
+    return summary
 
 
 def run(args):
@@ -125,7 +126,9 @@ def run(args):
     result_file = f"{model_name}_{num_workers}_{first_input_len}_{subsequent_input_len}_{output_len}_{num_turns}_{num_users}.pickle"
     result_path = os.path.join(args.result_dir, result_file)
 
-    if os.path.isfile(result_path):
+    print("=" * 100)
+    print(f"running config: {args}")
+    if args.use_cache and os.path.isfile(result_path):
         with open(result_path, 'rb') as file:
             results = pickle.load(file)
     else:
@@ -133,18 +136,22 @@ def run(args):
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             results = list(tqdm(executor.map(generate_stream, [args] * num_users), total=num_users, desc="running tests"))
             results = reduce(operator.add, results)
-    
-        with open(result_path, 'wb') as file:
-            pickle.dump(results, file)
+        if args.cache:
+            with open(result_path, 'wb') as file:
+                pickle.dump(results, file)
 
     prefill_token_num = (first_input_len * num_turns + subsequent_input_len * ((num_turns - 1) * num_turns // 2)) * num_users
     decode_token_num = output_len * num_turns * num_users
-    conclusion_and_show(results, prefill_token_num, decode_token_num)
+    summary = conclusion_and_show(results, prefill_token_num, decode_token_num)
+    if args.print:
+        for k, v in summary.items():
+            print(f"{k}: {v}")
+    return summary
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--address", type=str, default="http://localhost:8080", help="server address")
+    parser.add_argument("--model_url", type=str, default="http://localhost:8080", help="server model_url")
     parser.add_argument("--model_name", type=str, default="model", help="for result file name")
     parser.add_argument("--num_workers", type=int, default=5, help="number of concurrent requests")
     parser.add_argument("--first_input_len", type=int, default=512, help="input length of the first turn of dialogue")
@@ -153,6 +160,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_turns", type=int, default=10, help="number of dialogue turns per user")
     parser.add_argument("--num_users", type=int, default=10, help="number of users")
     parser.add_argument("--result_dir", type=str, default="./results", help="directory to save results")
+    parser.add_argument("--print", type=bool, default=True, help="print result")
+    parser.add_argument("--cache", type=bool, default=True, help="cache result")
+    parser.add_argument("--use_cache", type=bool, default=True)
     
     args = parser.parse_args()
     run(args)
