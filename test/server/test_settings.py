@@ -12,7 +12,6 @@ models = {
     "llama-7b": "http://localhost:8080",
     "llama-13b": "http://localhost:8081"
 }
-
 warm_up = True
 num_workers = [1, 8, 16, 24, 32]
 first_input_lens = [16000, 64000]
@@ -31,6 +30,7 @@ heads = [
     "包间延迟 第100% 分位数值(ms)",
 ]
 
+# run test
 results = []
 for num_worker, first_input_len, subsequent_input_len, output_len, num_turn, num_user in itertools.product(
         num_workers, first_input_lens, subsequent_input_lens, output_lens, num_turns, num_users):
