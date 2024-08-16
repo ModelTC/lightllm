@@ -106,11 +106,11 @@ def conclusion_and_show(results, prefill_token_num, decode_token_num):
     percentiles = [25, 50, 75, 99, 100]
     values = np.percentile(first_token_latency, percentiles)
     for percentile, value in zip(percentiles, values):
-        summary[f"首字延迟 第{percentile}% 分位数值(ms)"] = round(value, 2)
+        summary[f"首字延迟{percentile}%(ms)"] = round(value, 2)
 
     values = np.percentile(per_token_latency, percentiles)
     for percentile, value in zip(percentiles, values):
-        summary[f"包间延迟 第{percentile}% 分位数值(ms)"] = round(value, 2)
+        summary[f"包间延迟{percentile}%(ms)"] = round(value, 2)
     return summary
 
 

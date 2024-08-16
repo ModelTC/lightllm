@@ -13,24 +13,23 @@ models = {
     "llama-13b": "http://localhost:8081"
 }
 warm_up = True
-num_workers = [1, 8, 16, 24, 32]
 first_input_lens = [16000, 64000]
 subsequent_input_lens = [128]
 output_lens = [128]
 num_turns = [5, 10]
+num_workers = [1, 8, 16, 24, 32]
 num_users = [60]
 result_dir = "./llama"
-result_path = os.path.join(result_dir, f"summary_{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.md")
+result_path = os.path.join(result_dir, f"summary_{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}.md")
 heads = [
-    "model_name", "num_workers", "first_input_len", "subsequent_input_len", "output_len", "num_turns", "num_users",
+    "model_name", "first_input_len", "subsequent_input_len", "output_len", "num_turns", "num_workers", "num_users",
     "prefill_throughput(tokens/s)", "decode_throughput(tokens/s)", "total_throughput(tokens/s)",
-    "qps", "首字延迟 第25% 分位数值(ms)", "首字延迟 第50% 分位数值(ms)", "首字延迟 第75% 分位数值(ms)",
-    "首字延迟 第99% 分位数值(ms)", "首字延迟 第100% 分位数值(ms)", "包间延迟 第25% 分位数值(ms)",
-    "包间延迟 第50% 分位数值(ms)", "包间延迟 第75% 分位数值(ms)", "包间延迟 第99% 分位数值(ms)",
-    "包间延迟 第100% 分位数值(ms)",
+    "qps", "首字延迟25%(ms)", "首字延迟50%(ms)", "首字延迟75%(ms)",
+    "首字延迟99%(ms)", "首字延迟100%(ms)", "包间延迟25%(ms)",
+    "包间延迟50%(ms)", "包间延迟75%(ms)", "包间延迟99%(ms)",
+    "包间延迟100%(ms)",
 ]
 
-# run test
 results = []
 for num_worker, first_input_len, subsequent_input_len, output_len, num_turn, num_user in itertools.product(
         num_workers, first_input_lens, subsequent_input_lens, output_lens, num_turns, num_users):
@@ -38,11 +37,11 @@ for num_worker, first_input_len, subsequent_input_len, output_len, num_turn, num
         args = EasyDict({
             "model_name": model_name,
             "model_url": model_url,
-            "num_workers": num_worker,
             "first_input_len": first_input_len,
             "subsequent_input_len": subsequent_input_len,
             "output_len": output_len,
             "num_turns": num_turn,
+            "num_workers": num_worker,
             "num_users": num_user,
             "result_dir": result_dir,
             "print": False,
