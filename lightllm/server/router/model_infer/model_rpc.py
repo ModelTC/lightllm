@@ -10,6 +10,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     BeamSearchBackend,
     DiversehBackend,
     RewardModelBackend,
+    TokenHealingBackend,
 )
 from lightllm.utils.log_utils import init_logger
 
@@ -28,6 +29,7 @@ class ModelRpcServer(rpyc.Service):
         use_reward_model = kvargs.get("use_reward_model", False)
         beam_mode = kvargs.get("beam_mode", False)
         diverse_mode = kvargs.get("diverse_mode", False)
+        is_token_healing = kvargs.get("is_token_healing", False)
         # use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
 
         if use_reward_model:
@@ -40,6 +42,8 @@ class ModelRpcServer(rpyc.Service):
             self.backend = BeamSearchBackend()
         elif diverse_mode:
             self.backend = DiversehBackend()
+        elif is_token_healing:
+            self.backend = TokenHealingBackend()
         else:
             self.backend = ContinuesBatchBackend()
 

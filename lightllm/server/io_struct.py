@@ -128,6 +128,19 @@ class NormalReq(Req):
             assert False, "error state"
 
 
+class TokenHealingReq(NormalReq):
+    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, multimodal_params: MultimodalParams):
+        super().__init__(request_id, prompt_ids, sample_params, multimodal_params)
+        return
+
+    def get_tuple_tokens(self, is_busy, router_max_new_token_len):
+        ans = super().get_tuple_tokens(is_busy, router_max_new_token_len)
+        # token healing mode 下，由于估计的生成token数据对应的生存周期可能会不准确
+        # 所以为了缓解调度带来的显存估计问题，对于生成token的长度 + 1来缓解可能的估计
+        # 错误问题。
+        return (ans[0], ans[1] + 1)
+
+
 class SplitFuseReq(Req):
     def __init__(
         self,

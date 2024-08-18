@@ -10,4 +10,7 @@ def build_req_queue(args, router):
         return BeamContinuesBatchQueue(args, router)
     if args.diverse_mode:
         return BeamContinuesBatchQueue(args, router)
+    if args.token_healing_mode:
+        return ContinuesBatchQueue(args, router)
+
     return ContinuesBatchQueue(args, router)
