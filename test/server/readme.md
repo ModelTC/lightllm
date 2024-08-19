@@ -4,7 +4,7 @@
 
     例子：
     ```shell
-    python benchmark_prompt_cache.py --address http://localhost:8090 --model_name xiaomi-0716 --num_workers 1 --first_input_len 512 --subsequent_input_len 32 --output_len 32 --num_turns 5 --num_users 1
+    python benchmark_prompt_cache.py --address http://localhost:8090 --model_name llama --num_workers 1 --first_input_len 512 --subsequent_input_len 32 --output_len 32 --num_turns 5 --num_users 1
     ```
 
     使用方法详细说明： 
