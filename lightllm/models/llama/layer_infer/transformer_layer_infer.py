@@ -2,7 +2,7 @@ import torch
 import torch.functional as F
 import torch.distributed as dist
 import numpy as np
-from typing import Tuple
+from typing import Dict, Iterable, Literal, Tuple, Union
 from functools import partial
 import triton
 
@@ -31,6 +31,9 @@ from lightllm.models.llama.triton_kernel.splitfuse_context_flashattention_nopad 
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     """ """
 
+    _static_buf: Dict[str, torch.Tensor] = {}  # all layers shared
+    _static_buf_last_channel: Literal["A", "B"] = "A"
+
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.eps_ = network_config["rms_norm_eps"]
@@ -42,6 +45,40 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         self.embed_dim_ = network_config["hidden_size"]
         self._bind_func()
         return
+
+    def _get_buf(
+        self, shape: Union[torch.Size, Iterable[int]], dlike: torch.Tensor, channel: Literal[None, "A", "B"] = None
+    ):
+        """
+        Get a static allocated A/B buffer
+
+        If 'channel' is set to None, it will auto switch between A/B buffer by sequence.
+
+        If buffer allocation (new or expand) triggered, dtype and device of the buffer
+        will set to be same with tensor 'dlike'.
+
+        tips: manually set first buffer channel in the layer to avoid unnecessary dual peak size buffer.
+        """
+        if channel is None:
+            assert self._static_buf_last_channel in ("A", "B")
+            channel = "A" if self._static_buf_last_channel == "B" else "B"
+        self._static_buf_last_channel = channel
+
+        if not isinstance(shape, torch.Size):
+            shape = torch.Size(shape)
+
+        if channel in self._static_buf:
+            t = self._static_buf[channel]
+            if t.numel() >= shape.numel():
+                return t[: shape.numel()].reshape(shape)
+            else:
+                del self._static_buf[channel]
+
+        step = 512 * self.embed_dim_  # avoid too many expand
+        new_size = ((shape.numel() - 1) // step + 1) * step
+        t = torch.empty(new_size, device=dlike.device, dtype=dlike.dtype)
+        self._static_buf[channel] = t
+        return t[: shape.numel()].reshape(shape)
 
     def _bind_func(self):
         self._bind_norm()
@@ -108,17 +145,29 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _att_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        return rmsnorm_forward(input, weight=layer_weight.att_norm_weight_, eps=self.eps_)
+        return rmsnorm_forward(
+            input,
+            weight=layer_weight.att_norm_weight_,
+            eps=self.eps_,
+            out=self._get_buf(input.shape, dlike=input, channel="A"),
+        )  # force set channel A for the first buffer in layer
 
     def _ffn_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        return rmsnorm_forward(input, weight=layer_weight.ffn_norm_weight_, eps=self.eps_)
+        return rmsnorm_forward(
+            input, weight=layer_weight.ffn_norm_weight_, eps=self.eps_, out=self._get_buf(input.shape, dlike=input)
+        )
 
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_weight_)
+        token_num = input.view(-1, self.embed_dim_).size(0)
+        q = torch.mm(
+            input.view(-1, self.embed_dim_),
+            layer_weight.q_weight_,
+            out=self._get_buf((token_num, layer_weight.q_weight_.size(1)), dlike=input),
+        )
         torch.mm(
             input.view(-1, self.embed_dim_),
             layer_weight.kv_weight_,
@@ -135,6 +184,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _context_attention_kernel(
         self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
+        out = self._get_buf(q.shape, dlike=q) if out is None else out
         o_tensor = torch.empty_like(q) if out is None else out
         if infer_state.use_dynamic_prompt_cache:
             kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
@@ -166,6 +216,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _splitfuse_attention_kernel(
         self, q, infer_state: SplitFuseInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
+        out = self._get_buf(q.shape, dlike=q) if out is None else out
         o_tensor = torch.empty_like(q) if out is None else out
         infer_state.start_event.record(torch.cuda.default_stream())
         if infer_state.decode_req_num > 0:
@@ -206,6 +257,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _splitfuse_attention_kernel_int8kv(
         self, q, infer_state: SplitFuseInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
+        out = self._get_buf(q.shape, dlike=q) if out is None else out
         o_tensor = torch.empty_like(q) if out is None else out
         infer_state.start_event.record(torch.cuda.default_stream())
         if infer_state.decode_req_num > 0:
@@ -245,15 +297,29 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        o_tensor = torch.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_)
+        input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
+        o_tensor = torch.mm(
+            input,
+            layer_weight.o_weight_,
+            out=self._get_buf((input.size(0), layer_weight.o_weight_.size(1)), dlike=input),
+        )
         return o_tensor
 
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight) -> torch.Tensor:
-        up_gate_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_up_proj)
+        token_num = input.view(-1, self.embed_dim_).size(0)
+        up_gate_out = torch.mm(
+            input.view(-1, self.embed_dim_),
+            layer_weight.gate_up_proj,
+            out=self._get_buf((token_num, layer_weight.gate_up_proj.size(1)), dlike=input),
+        )
         ffn1_out = silu_and_mul_fwd(up_gate_out)
         input = None
         up_gate_out = None
-        ffn2_out = torch.mm(ffn1_out, layer_weight.down_proj)
+        ffn2_out = torch.mm(
+            ffn1_out,
+            layer_weight.down_proj,
+            out=self._get_buf((token_num, layer_weight.down_proj.size(1)), dlike=ffn1_out),
+        )
         ffn1_out = None
         return ffn2_out
 

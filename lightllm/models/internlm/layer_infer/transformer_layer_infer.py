@@ -18,7 +18,12 @@ class InternlmTransformerLayerInfer(LlamaTransformerLayerInfer):
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: InternlmTransformerLayerWeight
     ) -> torch.Tensor:
         q = torch.addmm(
-            layer_weight.q_bias_, input.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0
+            layer_weight.q_bias_,
+            input.view(-1, self.embed_dim_),
+            layer_weight.q_weight_,
+            beta=1.0,
+            alpha=1.0,
+            out=self._get_buf((input.view(-1, self.embed_dim_).size(0), layer_weight.q_weight_.size(1)), dlike=input),
         )
         torch.addmm(
             layer_weight.kv_bias_,
@@ -44,5 +49,9 @@ class InternlmTransformerLayerInfer(LlamaTransformerLayerInfer):
             input.view(-1, self.tp_o_head_num_ * self.head_dim_),
             layer_weight.o_weight_,
             beta=1.0 / self.world_size_,
+            out=self._get_buf(
+                (input.view(-1, self.tp_o_head_num_ * self.head_dim_).size(0), layer_weight.o_weight_.size(1)),
+                dlike=input,
+            ),
         )
         return o_tensor
