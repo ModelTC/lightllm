@@ -402,7 +402,14 @@ class InferBatch:
             req.req_status = pause_way
             self.request_ids.remove(request_id)
             if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
-                self._free_a_req_mem(free_token_index, req)
+                group_req_id = convert_sub_id_to_group_id(req.r_id)
+                if group_req_id in group_mapping:
+                    is_group_finished = group_mapping[group_req_id].decrease_refs(req.r_id)
+                    if is_group_finished:
+                        del group_mapping[group_req_id]
+                    self._free_a_req_mem(free_token_index, req, is_group_finished)
+                else:
+                    self._free_a_req_mem(free_token_index, req, True)
                 req.cur_kv_len = 0
 
         if len(free_token_index) != 0:
