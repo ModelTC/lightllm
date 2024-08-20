@@ -44,9 +44,9 @@ class MistralTpPartModel(TpPartBaseModel):
         return
 
     def _init_mem_manager(self):
+        # Dealing with head_dim_!=n_embed // num_attention_heads scenarios, such as mistral 13B
         head_dim = self.config["hidden_size"] // self.config["num_attention_heads"]
-        if self.config.get("head_dim", 0):
-            head_dim = self.config["head_dim"]
+        head_dim = self.config.get("head_dim", head_dim)
         self.mem_manager = MemoryManager(
             self.max_total_token_num,  # [SYM] should be sliding window?
             dtype=self.data_type,
