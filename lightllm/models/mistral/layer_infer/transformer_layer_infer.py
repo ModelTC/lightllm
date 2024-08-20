@@ -35,23 +35,6 @@ class MistralTransformerLayerInfer(LlamaTransformerLayerInfer):
         self._copy_kv_to_mem_cache = self._copy_kv_to_mem_cache_normal
         return
 
-    def _get_qkv(
-        self, input, cache_kv, infer_state: MistralInferStateInfo, layer_weight: LlamaTransformerLayerWeight
-    ) -> torch.Tensor:
-        q = torch.mm(input.view(-1, self.embed_dim_), layer_weight.q_weight_)
-        torch.mm(
-            input.view(-1, self.embed_dim_),
-            layer_weight.kv_weight_,
-            out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
-        rotary_emb_fwd(
-            q.view(-1, self.tp_q_head_num_, self.head_dim_),
-            cache_kv[:, 0 : self.tp_k_head_num_, :],
-            infer_state.position_cos,
-            infer_state.position_sin,
-        )
-        return q, cache_kv
-
     def _context_attention_kernel(
         self, q, kv, infer_state: MistralInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
