@@ -452,6 +452,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
 
+    parser.add_argument("--use_dispatcher_model", action="store_true")
     return parser
 
 

@@ -101,6 +101,7 @@ class RouterManager:
                 "eos_id": self.eos_id,
                 "beam_mode": self.args.beam_mode,
                 "diverse_mode": self.args.diverse_mode,
+                "use_dispatcher_model":self.args.use_dispatcher_model,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
