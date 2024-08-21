@@ -69,6 +69,7 @@ class InferReq:
         prompt_len=0,
         req_status=None,
         multimodal_params=None,
+        prefix_token_ids=[],
     ) -> None:
         self.r_id = r_id
         self.group_req_id = group_req_id
@@ -83,6 +84,7 @@ class InferReq:
         self.finish_status = FinishStatus.NO_FINISH
         self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
         self.cum_logprob = 0.0  # cumulative logprob of each token, using for beamsearch and diverse_backend
+        self.prefix_token_ids = prefix_token_ids  # token healing feature use
         if self.sampling_param.input_penalty:
             self.out_token_id_count = collections.Counter(input_token_ids)
         else:
@@ -270,6 +272,7 @@ class InferBatch:
                     req_idx=nopad_b_req_idx[index],
                     prompt_len=input_length,
                     req_status=r["req_status"],
+                    prefix_token_ids=r.get("prefix_token_ids", []),  # 只有token_healing feature 使用的参数
                 )
                 requests_mapping[r_id] = r_obj
                 index += 1

@@ -93,17 +93,16 @@ class DeTokenizationManager:
 
                         if out_text.endswith("\ufffd"):
                             new_text = ""
-                        elif "prefix_str_token_id" in new_gen_metadata:
+                        elif "prefix_str" in new_gen_metadata:
                             # 对应 token_healing 的特殊处理
-                            prefix_str_token_id = new_gen_metadata["prefix_str_token_id"]
-                            token = self.token_id_to_token[prefix_str_token_id]
+                            token = new_gen_metadata["prefix_str"]
                             token_str = self.tokenizer.convert_tokens_to_string([token])
                             new_text = out_text[len(req_out.output_str) :]
                             logger.info(
                                 f"token headling prefix_token_and_str: '{token}':'{token_str}' new_text: '{new_text}'"
                             )
-                            if new_text.startswith(token_str):
-                                new_text = new_text[len(token_str) :]
+                            assert new_text.startswith(token_str)
+                            new_text = new_text[len(token_str) :]
                             req_out.output_str = out_text
                         else:
                             new_text = out_text[len(req_out.output_str) :]
