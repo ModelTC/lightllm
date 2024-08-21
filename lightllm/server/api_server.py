@@ -162,6 +162,15 @@ async def get_score(request: Request) -> Response:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
+@app.post("/id_generate")
+async def generate(request: Request) -> Response:
+    first_set_handle_loop()
+    try:
+        return await g_generate_func(request, g_id_gen, httpserver_manager, use_id=True)
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
+
+
 @app.post("/")
 async def compat_generate(request: Request) -> Response:
     request_dict = await request.json()

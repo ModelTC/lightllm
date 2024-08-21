@@ -95,7 +95,7 @@ class HttpServerManager:
         return len(prompt_ids)
 
     async def generate(
-        self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None
+        self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None, use_id=False
     ):
         # 监控
         self.metric_client.counter_inc("lightllm_request_count")
@@ -109,9 +109,9 @@ class HttpServerManager:
         if self.enable_multimodal:
             assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
             await self._alloc_multimodal_resources(multimodal_params)
-            prompt_ids = self.tokenizer.encode(prompt, multimodal_params)
+            prompt_ids = prompt if use_id else self.tokenizer.encode(prompt, multimodal_params)
         else:
-            prompt_ids = self.tokenizer.encode(prompt)
+            prompt_ids = prompt if use_id else self.tokenizer.encode(prompt)
         prompt_tokens = len(prompt_ids)
         # 监控
         self.metric_client.histogram_observe("lightllm_request_input_length", prompt_tokens)
@@ -180,6 +180,9 @@ class HttpServerManager:
                     out_token_counter += 1
                     first_token_cost_ms = (time.time() - start_time) * 1000 if is_first_token else first_token_cost_ms
                     is_first_token = False
+
+                    if use_id:
+                        metadata["out_token_id"] = self.tokenizer.encode(out_str, add_special_tokens=False)[0]
 
                     yield sub_req_id, out_str, metadata, finish_status
 
