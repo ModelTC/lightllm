@@ -36,7 +36,6 @@ class DispatcherModelBackend(ContinuesBatchBackend):
             req_obj.input_token_ids.append(next_token_id)
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
-            print(f"dispatcher_prob: {dispatcher_prob}")
             if not req_obj.finish_status.is_finished() and dispatcher_prob > self.dispatch_threshold:
                 req_obj.finish_status = FinishStatus.FINISHED_DISPATCH
 
