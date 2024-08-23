@@ -7,8 +7,9 @@ from .post_process import sample
 
 
 class DispatcherModelBackend(ContinuesBatchBackend):
-    def __init__(self) -> None:
+    def __init__(self, dispatch_threshold=0.5) -> None:
         super().__init__()
+        self.dispatch_threshold = dispatch_threshold
 
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
@@ -26,7 +27,6 @@ class DispatcherModelBackend(ContinuesBatchBackend):
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         dispatcher_probs = dispatcher_probs.detach().cpu().numpy()
 
-        print(dispatcher_probs)
         for req_obj, next_token_id, next_token_logprob, dispatcher_prob in zip(
             run_reqs, next_token_ids, next_token_logprobs, dispatcher_probs
         ):
@@ -36,6 +36,9 @@ class DispatcherModelBackend(ContinuesBatchBackend):
             req_obj.input_token_ids.append(next_token_id)
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
+            print(f"dispatcher_prob: {dispatcher_prob}")
+            if not req_obj.finish_status.is_finished() and dispatcher_prob > self.dispatch_threshold:
+                req_obj.finish_status = FinishStatus.FINISHED_DISPATCH
 
             metadata = {
                 "id": int(next_token_id),

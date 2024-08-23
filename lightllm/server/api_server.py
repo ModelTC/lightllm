@@ -163,7 +163,7 @@ async def get_score(request: Request) -> Response:
 
 
 @app.post("/id_generate")
-async def generate(request: Request) -> Response:
+async def id_generate(request: Request) -> Response:
     first_set_handle_loop()
     try:
         return await g_generate_func(request, g_id_gen, httpserver_manager, use_id=True)
@@ -462,6 +462,9 @@ def make_argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--use_dispatcher_model", action="store_true")
+    parser.add_argument("--dispatch_threshold", type=float, default=0.8)
+    parser.add_argument("--dispatch_host", type=str, default="127.0.0.1")
+    parser.add_argument("--dispatch_port", type=int, default=12580)
     return parser
 
 

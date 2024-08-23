@@ -19,9 +19,10 @@ class FinishStatus(enum.Enum):
     FINISHED_STOP = 1  # 因为遇到了STOP token 而结束
     FINISHED_LENGTH = 2  # 因为长度达到了最大长度而结束
     FINISHED_ABORT = 3  # 因为请求被中止而结束
+    FINISHED_DISPATCH = 4  # 因为请求被分发而结束
 
     def is_finished(self):
-        return 1 <= self.value <= 3
+        return 1 <= self.value <= 4
 
     def is_aborted(self):
         return self == FinishStatus.FINISHED_ABORT

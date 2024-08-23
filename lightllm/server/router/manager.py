@@ -4,6 +4,8 @@ import uuid
 import uvloop
 import asyncio
 import rpyc
+import aiohttp
+import json
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
@@ -70,6 +72,13 @@ class RouterManager:
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
+
+        self.use_dispatcher_model = args.use_dispatcher_model
+        if self.use_dispatcher_model:
+            self.dispatch_host = args.dispatch_host
+            self.dispatch_port = args.dispatch_port
+            self.need_dispatch_reqs_que = None
+            self.dispatch_info = [0, 0]  # [dispatch_num, out_token_count]
         return
 
     async def wait_to_model_ready(self):
@@ -101,7 +110,8 @@ class RouterManager:
                 "eos_id": self.eos_id,
                 "beam_mode": self.args.beam_mode,
                 "diverse_mode": self.args.diverse_mode,
-                "use_dispatcher_model":self.args.use_dispatcher_model,
+                "use_dispatcher_model": self.args.use_dispatcher_model,
+                "dispatch_threshold": self.args.dispatch_threshold,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -291,7 +301,7 @@ class RouterManager:
 
             self._update_out_status_to_batch(batch, req_to_out_status)
             unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
-            self._send_to_detokenization_proc(batch, req_to_out_status)
+            await self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
             await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
         self.metric_client.histogram_observe(
@@ -311,7 +321,7 @@ class RouterManager:
 
         self._update_out_status_to_batch(batch, req_to_out_status)
         unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
-        self._send_to_detokenization_proc(batch, req_to_out_status)
+        await self._send_to_detokenization_proc(batch, req_to_out_status)
         batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
         await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
         self.metric_client.histogram_observe(
@@ -393,10 +403,18 @@ class RouterManager:
     def _can_decode(self, batch: Batch):
         return batch.batch_decode_need_tokens + self.get_used_tokens() <= self.max_total_token_num
 
-    def _send_to_detokenization_proc(self, batch: Batch, req_ans):
+    async def _send_to_detokenization_proc(self, batch: Batch, req_ans):
         batch_out = BatchTokenIdOut()
-        for req_id, (_, _, _, token_info_list, _, _) in req_ans.items():
-            req = batch.id_to_reqs[req_id]
+        for req_id, (_, _, _, token_info_list, finish_status_value, _) in req_ans.items():
+            req: Req = batch.id_to_reqs[req_id]
+            if FinishStatus(finish_status_value) == FinishStatus.FINISHED_DISPATCH:
+                await self.need_dispatch_reqs_que.put(copy.deepcopy(req))
+                continue
+
+            # for logger
+            if self.use_dispatcher_model and FinishStatus(finish_status_value).is_finished():
+                self.dispatch_info[1] += req.cur_output_len
+
             for idx, (new_token_id, new_gen_metadata) in enumerate(token_info_list):
                 # req.finish_status 传输 value值 不传送对象，可以减少序列化对象的大小。
                 if idx == len(token_info_list) - 1:
@@ -430,6 +448,42 @@ class RouterManager:
                 self.send_to_detokenization.send_pyobj(abort_req)
             else:
                 assert False, f"Error Req Inf {recv_req}"
+
+    async def loop_for_dispatch(self):
+        while True:
+            req = await self.need_dispatch_reqs_que.get()
+            self.dispatch_info[0] += 1
+            self.dispatch_info[1] += req.cur_output_len
+            logger.info(
+                f"dispatch prob: {self.dispatch_info[0]/self.dispatch_info[1] if self.dispatch_info[1] != 0 else 0}"
+            )
+            req.prompt_ids = req.prompt_ids[:-1]
+            _max_new_tokens = req.sample_params.max_new_tokens - req.cur_output_len
+            req.sample_params.max_new_tokens = 1
+            data = {
+                "inputs": [int(input_id) for input_id in req.prompt_ids],
+                "parameters": req.sample_params.to_dict(),
+            }
+            url = f"http://{self.dispatch_host}:{self.dispatch_port}/id_generate"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url, headers={"Content-Type": "application/json"}, data=json.dumps(data)
+                ) as response:
+                    out_data = await response.text()
+                    out_data = json.loads(out_data)
+                    new_token_id = out_data["out_token_ids"][0]
+                    req.prompt_ids.append(new_token_id)
+                    req.sample_params.max_new_tokens = _max_new_tokens
+                    new_req = NormalReq(
+                        req.request_id, copy.deepcopy(req.prompt_ids), req.sample_params, req.multimodal_params
+                    )
+                    self.req_queue.back_to_wait_list([new_req])
+                    batch_out = BatchTokenIdOut()
+                    batch_out.reqs_infs.append(
+                        (new_req.request_id, new_token_id, {"id": new_token_id}, FinishStatus.NO_FINISH)
+                    )
+                    self.send_to_detokenization.send_pyobj(batch_out)
 
     def clean_up(self):
         for model_rpc in self.model_rpcs:
@@ -470,5 +524,8 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(router.loop_for_fwd())
+    if args.use_dispatcher_model:
+        router.need_dispatch_reqs_que = asyncio.Queue()
+        loop.create_task(router.loop_for_dispatch())
     loop.run_until_complete(router.loop_for_netio_req())
     return
