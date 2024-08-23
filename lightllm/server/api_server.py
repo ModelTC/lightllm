@@ -504,9 +504,10 @@ def main():
 
     logger.info(f"all start args:{args}")
 
-    can_use_ports = alloc_can_use_network_port(num=6 + args.tp, used_nccl_port=args.nccl_port)
+    can_use_ports = alloc_can_use_network_port(num=6 + args.tp * 2, used_nccl_port=args.nccl_port)
     router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
-    model_rpc_ports = can_use_ports[6:]
+    model_rpc_ports = can_use_ports[6 : 6 + args.tp]
+    visual_model_rpc_ports = can_use_ports[6 + args.tp :]
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -555,7 +556,7 @@ def main():
                 start_visual_process,
             ],
             start_args=[
-                (args, router_port, visual_port, cache_port),
+                (args, router_port, visual_port, cache_port, visual_model_rpc_ports),
             ],
         )
 

@@ -13,17 +13,21 @@ from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm
 import rpyc
 from io import BytesIO
 from lightllm.models.internvl.img_process import load_image
+from rpyc.utils.classic import obtain
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 class InternVLVisionModel:
     def __init__(self, kvargs):
-        self.cache_port = kvargs["client_port"]
-        self.cache_client = None
+        self.tp_rank_ = kvargs["tp_rank"]
+        self.world_size_ = kvargs["world_size"]
         pass
 
     def load_model(self, weight_dir):
         assert torch.cuda.is_available()
-        self.device = torch.device("cuda")
+        self.device = torch.device(f"cuda:{self.tp_rank_}")
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         self.config = json.load(open(os.path.join(weight_dir, "config.json")))
         self.model = AutoModel.from_pretrained(
@@ -43,6 +47,8 @@ class InternVLVisionModel:
         valid_id = 0
         # load images to batch tensor
         for i, url in enumerate(image_items):
+            if self.world_size_ != 1:
+                url = obtain(url)
             if isinstance(url, Image.Image):
                 t = load_image(url, max_num=6)
                 img_tensors.append(t)

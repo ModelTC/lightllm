@@ -5,10 +5,17 @@ import os
 from PIL import Image
 from typing import List, Union
 from safetensors import safe_open
+from rpyc.utils.classic import obtain
+from lightllm.utils.log_utils import init_logger
+
+
+logger = init_logger(__name__)
 
 
 class LlavaVisionModel:
-    def __init__(self):
+    def __init__(self, kvargs):
+        self.tp_rank_ = kvargs["tp_rank"]
+        self.world_size_ = kvargs["world_size"]
         pass
 
     def load_model(self, weight_dir):
@@ -31,6 +38,7 @@ class LlavaVisionModel:
 
     def load_hf_model(self, config, weight_dir):
         from transformers import AutoConfig, AutoProcessor, LlavaForConditionalGeneration
+
         config = AutoConfig.from_pretrained(weight_dir, trust_remote_code=True)
         self.select_layer = config.vision_feature_layer
         self.select_feature = config.vision_feature_select_strategy
@@ -48,12 +56,16 @@ class LlavaVisionModel:
         self.projector_weights = {}
         for f in os.listdir(weight_dir):
             if f.endswith(".safetensors"):
-                d = safe_open(os.path.join(weight_dir, f), 'pt', 'cpu')
+                d = safe_open(os.path.join(weight_dir, f), "pt", "cpu")
                 for k in d.keys():
                     if "multi_modal_projector.linear_1" in k:
-                        self.projector_weights[k.replace("multi_modal_projector.linear_1", "model.mm_projector.0")] = d.get_tensor(k).half()
+                        self.projector_weights[
+                            k.replace("multi_modal_projector.linear_1", "model.mm_projector.0")
+                        ] = d.get_tensor(k).half()
                     if "multi_modal_projector.linear_2" in k:
-                        self.projector_weights[k.replace("multi_modal_projector.linear_2", "model.mm_projector.2")] = d.get_tensor(k).half()
+                        self.projector_weights[
+                            k.replace("multi_modal_projector.linear_2", "model.mm_projector.2")
+                        ] = d.get_tensor(k).half()
 
     def load_bin_model(self, config, weight_dir):
         self.select_layer = config.get("mm_vision_select_layer", -2)
@@ -68,6 +80,7 @@ class LlavaVisionModel:
             vision_path = os.path.join(weight_dir, vision_path)
 
         from transformers import CLIPVisionModel, CLIPImageProcessor
+
         self.image_processor = CLIPImageProcessor.from_pretrained(vision_path)
         self.vision_tower = CLIPVisionModel.from_pretrained(vision_path).half()
 
@@ -84,7 +97,7 @@ class LlavaVisionModel:
         self.vision_tower = self.vision_tower.cuda()
         for k, v in self.projector_weights.items():
             self.projector_weights[k] = v.cuda()
-        self.device = torch.device("cuda")
+        self.device = torch.device(f"cuda:{self.tp_rank_}")
         return self
 
     # batch images infer
@@ -116,10 +129,13 @@ class LlavaVisionModel:
     def encode(self, image_items: List[Union[str, Image.Image]]):
         images = []
         for item in image_items:
+            if self.world_size_ != 1:
+                item = obtain(item)
             if isinstance(item, Image.Image):
                 image = item
             elif item.startswith("http://") or item.startswith("https://"):
                 import requests
+
                 image = Image.open(requests.get(item, stream=True).raw)
             else:
                 image = Image.open(item)
