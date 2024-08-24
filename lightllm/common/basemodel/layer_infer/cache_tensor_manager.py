@@ -6,10 +6,14 @@ import numpy as np
 import torch._C
 from typing import Dict, Iterable, Literal, Tuple, Union, List
 from torch.storage import UntypedStorage
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 _use_gpu_tensor_cache = os.getenv("USE_GPU_TENSOR_CACHE", None) is not None
 
 if torch.__version__ >= "2.1.0" and _use_gpu_tensor_cache:
+    logger.info("USE_GPU_TENSOR_CACHE is On")
 
     @dataclasses.dataclass
     class BufNode:
@@ -77,6 +81,7 @@ if torch.__version__ >= "2.1.0" and _use_gpu_tensor_cache:
             self.ready_tensor_list.clear()
 
 else:
+    logger.info("USE_GPU_TENSOR_CACHE is OFF")
 
     class CacheTensorManager:
         def __init__(self):
