@@ -516,9 +516,17 @@ def main():
 
     logger.info(f"all start args:{args}")
 
-    can_use_ports = alloc_can_use_network_port(num=6 + args.tp, used_nccl_port=args.nccl_port)
-    router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
-    model_rpc_ports = can_use_ports[6:]
+    can_use_ports = alloc_can_use_network_port(num=7 + args.tp, used_nccl_port=args.nccl_port)
+    (
+        router_port,
+        detokenization_port,
+        httpserver_port,
+        visual_port,
+        cache_port,
+        metric_port,
+        dispatcher_port,
+    ) = can_use_ports[0:7]
+    model_rpc_ports = can_use_ports[7:]
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -554,10 +562,11 @@ def main():
         metric_port=metric_port,
     )
 
+    dispatcher_port = dispatcher_port if args.use_dispatcher_model else None
     start_submodule_processes(
         start_funcs=[start_router_process, start_detokenization_process],
         start_args=[
-            (args, router_port, detokenization_port, model_rpc_ports, metric_port),
+            (args, router_port, detokenization_port, model_rpc_ports, metric_port, dispatcher_port),
             (args, detokenization_port, httpserver_port),
         ],
     )
@@ -581,6 +590,13 @@ def main():
 
         start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
 
+    if args.use_dispatcher_model:
+        from lightllm.server.assist_server.manager import start_dispatcher_process
+
+        start_submodule_processes(
+            start_funcs=[start_dispatcher_process],
+            start_args=[(args, dispatcher_port, router_port, detokenization_port)],
+        )
     # 共享变量，用于获取router端调度分析得到的机器负载信息
     from lightllm.server import TokenLoad
 
