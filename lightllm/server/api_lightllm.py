@@ -31,7 +31,7 @@ async def lightllm_get_score(request: Request, g_id_gen, httpserver_manager) -> 
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 
-async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> Response:
+async def lightllm_generate(request: Request, g_id_gen, httpserver_manager, use_id=False) -> Response:
 
     request_dict = await request.json()
     prompt = request_dict.pop("inputs")
@@ -45,13 +45,14 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
 
     group_request_id = g_id_gen.generate_id()
     results_generator = httpserver_manager.generate(
-        prompt, sampling_params, group_request_id, multimodal_params, request=request
+        prompt, sampling_params, group_request_id, multimodal_params, request=request, use_id=use_id
     )
 
     # Non-streaming case
     final_output_dict = collections.defaultdict(list)
     count_output_tokens_dict = collections.defaultdict(lambda: 0)
     tokens_dict = collections.defaultdict(list)
+    out_token_ids_dict = collections.defaultdict(list)
     finish_reason_dict = {}
     prompt_logprobs = None
     prompt_tokens = 0
@@ -78,12 +79,17 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
 
         if finish_status.is_finished():
             finish_reason_dict[sub_req_id] = finish_status
+
+        if use_id:
+            out_token_ids_dict[sub_req_id].append(metadata["out_token_id"])
+
     n = sampling_params.n
     sub_ids = list(final_output_dict.keys())[:n]
     final_output_list = ["".join(final_output_dict[sub_id]) for sub_id in sub_ids]
     count_output_tokens_list = [count_output_tokens_dict[sub_id] for sub_id in sub_ids]
     finish_reson_list = [finish_reason_dict[sub_id].get_finish_reason() for sub_id in sub_ids]
     tokens_list = [tokens_dict[sub_id] for sub_id in sub_ids]
+    out_token_ids_list = [out_token_ids_dict[sub_id] for sub_id in sub_ids]
     only_one = len(sub_ids) == 1
 
     ret_data_format = lambda data_list: data_list[0] if only_one else data_list
@@ -100,6 +106,8 @@ async def lightllm_generate(request: Request, g_id_gen, httpserver_manager) -> R
         ret["prompt_token_ids"] = prompt_token_ids
     if prompt_logprobs is not None:
         ret["prompt_logprobs"] = prompt_logprobs
+    if use_id:
+        ret["out_token_ids"] = ret_data_format(out_token_ids_list)
     return Response(content=json.dumps(ret, ensure_ascii=False).encode("utf-8"))
 
 

@@ -162,6 +162,15 @@ async def get_score(request: Request) -> Response:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
+@app.post("/id_generate")
+async def id_generate(request: Request) -> Response:
+    first_set_handle_loop()
+    try:
+        return await g_generate_func(request, g_id_gen, httpserver_manager, use_id=True)
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
+
+
 @app.post("/")
 async def compat_generate(request: Request) -> Response:
     request_dict = await request.json()
@@ -452,6 +461,10 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
 
+    parser.add_argument("--use_dispatcher_model", action="store_true")
+    parser.add_argument("--dispatch_threshold", type=float, default=0.8)
+    parser.add_argument("--dispatch_host", type=str, default="127.0.0.1")
+    parser.add_argument("--dispatch_port", type=int, default=12580)
     return parser
 
 
@@ -503,9 +516,17 @@ def main():
 
     logger.info(f"all start args:{args}")
 
-    can_use_ports = alloc_can_use_network_port(num=6 + args.tp, used_nccl_port=args.nccl_port)
-    router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
-    model_rpc_ports = can_use_ports[6:]
+    can_use_ports = alloc_can_use_network_port(num=7 + args.tp, used_nccl_port=args.nccl_port)
+    (
+        router_port,
+        detokenization_port,
+        httpserver_port,
+        visual_port,
+        cache_port,
+        metric_port,
+        dispatcher_port,
+    ) = can_use_ports[0:7]
+    model_rpc_ports = can_use_ports[7:]
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -541,10 +562,11 @@ def main():
         metric_port=metric_port,
     )
 
+    dispatcher_port = dispatcher_port if args.use_dispatcher_model else None
     start_submodule_processes(
         start_funcs=[start_router_process, start_detokenization_process],
         start_args=[
-            (args, router_port, detokenization_port, model_rpc_ports, metric_port),
+            (args, router_port, detokenization_port, model_rpc_ports, metric_port, dispatcher_port),
             (args, detokenization_port, httpserver_port),
         ],
     )
@@ -568,6 +590,13 @@ def main():
 
         start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
 
+    if args.use_dispatcher_model:
+        from lightllm.server.assist_server.manager import start_dispatcher_process
+
+        start_submodule_processes(
+            start_funcs=[start_dispatcher_process],
+            start_args=[(args, dispatcher_port, router_port, detokenization_port)],
+        )
     # 共享变量，用于获取router端调度分析得到的机器负载信息
     from lightllm.server import TokenLoad
 

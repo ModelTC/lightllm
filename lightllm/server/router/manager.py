@@ -4,6 +4,8 @@ import uuid
 import uvloop
 import asyncio
 import rpyc
+import aiohttp
+import json
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
@@ -31,7 +33,7 @@ logger = init_logger(__name__)
 
 
 class RouterManager:
-    def __init__(self, args, router_port, detokenization_port, model_rpc_ports, metric_port):
+    def __init__(self, args, router_port, detokenization_port, model_rpc_ports, metric_port, dispatcher_port=None):
         self.args = args
         self.model_weightdir = args.model_dir
         self.world_size = args.tp
@@ -70,6 +72,11 @@ class RouterManager:
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
+
+        self.use_dispatcher_model = args.use_dispatcher_model
+        if self.use_dispatcher_model:
+            self.send_to_dispatcher = context.socket(zmq.PUSH)
+            self.send_to_dispatcher.connect(f"tcp://127.0.0.1:{dispatcher_port}")
         return
 
     async def wait_to_model_ready(self):
@@ -101,6 +108,8 @@ class RouterManager:
                 "eos_id": self.eos_id,
                 "beam_mode": self.args.beam_mode,
                 "diverse_mode": self.args.diverse_mode,
+                "use_dispatcher_model": self.args.use_dispatcher_model,
+                "dispatch_threshold": self.args.dispatch_threshold,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -290,7 +299,7 @@ class RouterManager:
 
             self._update_out_status_to_batch(batch, req_to_out_status)
             unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
-            self._send_to_detokenization_proc(batch, req_to_out_status)
+            await self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
             await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
         self.metric_client.histogram_observe(
@@ -394,8 +403,16 @@ class RouterManager:
 
     def _send_to_detokenization_proc(self, batch: Batch, req_ans):
         batch_out = BatchTokenIdOut()
-        for req_id, (_, _, _, token_info_list, _, _) in req_ans.items():
-            req = batch.id_to_reqs[req_id]
+        for req_id, (_, _, _, token_info_list, finish_status_value, _) in req_ans.items():
+            req: Req = batch.id_to_reqs[req_id]
+            if FinishStatus(finish_status_value) == FinishStatus.FINISHED_DISPATCH:
+                self.send_to_dispatcher.send_pyobj(copy.deepcopy(req))
+                continue
+
+            # for logger
+            if self.use_dispatcher_model and FinishStatus(finish_status_value).is_finished():
+                self.send_to_dispatcher.send_pyobj((req.cur_output_len,))
+
             for idx, (new_token_id, new_gen_metadata) in enumerate(token_info_list):
                 # req.finish_status 传输 value值 不传送对象，可以减少序列化对象的大小。
                 if idx == len(token_info_list) - 1:
@@ -427,6 +444,8 @@ class RouterManager:
                 group_req_id = abort_req.group_req_id
                 await self.abort(group_req_id)
                 self.send_to_detokenization.send_pyobj(abort_req)
+            elif isinstance(recv_req, Req):
+                self.req_queue.back_to_wait_list([recv_req])
             else:
                 assert False, f"Error Req Inf {recv_req}"
 
@@ -438,7 +457,9 @@ class RouterManager:
         return
 
 
-def start_router_process(args, router_port, detokenization_port, model_rpc_ports, metric_port, pipe_writer):
+def start_router_process(
+    args, router_port, detokenization_port, model_rpc_ports, metric_port, dispatcher_port, pipe_writer
+):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -452,6 +473,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             detokenization_port=detokenization_port,
             model_rpc_ports=model_rpc_ports,
             metric_port=metric_port,
+            dispatcher_port=dispatcher_port,
         )
 
         asyncio.run(router.wait_to_model_ready())
