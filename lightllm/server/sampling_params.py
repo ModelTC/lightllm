@@ -31,6 +31,7 @@ class SamplingParams:
         print_eos_token: bool = False,  # eos_id will be always ignored except the value is set to True
         # Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
         input_penalty: bool = DEFAULT_INPUT_PENALTY,
+        regular_constraint: Optional[str] = None,  # Regular expressions constrain the output.
     ) -> None:
         self.best_of = best_of
         self.n = n
@@ -49,6 +50,7 @@ class SamplingParams:
         self.skip_special_tokens = skip_special_tokens
         self.add_spaces_between_special_tokens = add_spaces_between_special_tokens
         self.print_eos_token = print_eos_token
+        self.regular_constraint = regular_constraint
         if self.do_sample is False:
             self.temperature = 1.0
             self.top_p = 1.0
@@ -112,6 +114,11 @@ class SamplingParams:
                 f"exponential_decay_length_penalty[1] must be a float >= 1.0, \
                 got {self.exponential_decay_length_penalty[1]}."
             )
+        if self.regular_constraint is not None and not isinstance(self.regular_constraint, str):
+            raise ValueError(
+                f"regular_expression must be str type, \
+                              but get {str(self.regular_constraint)}"
+            )
 
         return
 
@@ -147,4 +154,5 @@ class SamplingParams:
         ret["stop_sequences"] = self.stop_sequences
         ret["best_of"] = self.best_of
         ret["input_penalty"] = self.input_penalty
+        ret["regular_constraint"] = self.regular_constraint
         return ret

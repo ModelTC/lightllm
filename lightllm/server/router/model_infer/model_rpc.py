@@ -11,6 +11,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     DiversehBackend,
     RewardModelBackend,
     TokenHealingBackend,
+    SimpleConstraintBackend,
 )
 from lightllm.utils.log_utils import init_logger
 
@@ -44,6 +45,8 @@ class ModelRpcServer(rpyc.Service):
             self.backend = DiversehBackend()
         elif is_token_healing:
             self.backend = TokenHealingBackend()
+        elif kvargs.get("args").simple_constraint_mode:
+            self.backend = SimpleConstraintBackend()
         else:
             self.backend = ContinuesBatchBackend()
 

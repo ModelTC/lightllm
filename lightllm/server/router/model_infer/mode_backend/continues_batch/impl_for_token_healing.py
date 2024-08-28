@@ -63,7 +63,6 @@ class TokenHealingBackend(ContinuesBatchBackend):
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            # 如果当前prefill 长度是 1， 则不进行特殊的token healing 前缀后处理操作。
 
             req_obj.cur_kv_len = len(req_obj.input_token_ids)
             req_obj.input_token_ids.append(next_token_id)

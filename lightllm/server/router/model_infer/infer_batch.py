@@ -6,7 +6,7 @@ import numpy as np
 import collections
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
@@ -38,6 +38,7 @@ class InferSamplingParams:
         ignore_eos: bool = False,
         stop_sequences: List[List[int]] = [],
         input_penalty: bool = False,
+        regular_constraint: Optional[str] = None,
     ) -> None:
         self.best_of = best_of
         self.do_sample = do_sample
@@ -55,6 +56,10 @@ class InferSamplingParams:
         if self.top_k == -1:
             self.top_k = vocab_size
         self.input_penalty = input_penalty
+        # output constraint states
+        self.regular_constraint = regular_constraint
+        self.regex_guide = None
+        self.fsm_current_state: int = 0
         return
 
 
@@ -64,7 +69,7 @@ class InferReq:
         r_id,
         group_req_id,
         input_token_ids=[],
-        sampling_param=None,
+        sampling_param: InferSamplingParams = None,
         req_idx=-1,
         prompt_len=0,
         req_status=None,
@@ -73,7 +78,7 @@ class InferReq:
     ) -> None:
         self.r_id = r_id
         self.group_req_id = group_req_id
-        self.sampling_param = sampling_param
+        self.sampling_param: InferSamplingParams = sampling_param
         self.multimodal_params = multimodal_params
         self.req_idx = req_idx
         self.prompt_len = prompt_len

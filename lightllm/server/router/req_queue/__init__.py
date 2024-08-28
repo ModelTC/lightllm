@@ -12,5 +12,7 @@ def build_req_queue(args, router):
         return BeamContinuesBatchQueue(args, router)
     if args.token_healing_mode:
         return ContinuesBatchQueue(args, router)
+    if args.simple_constraint_mode:
+        return ContinuesBatchQueue(args, router)
 
     return ContinuesBatchQueue(args, router)
