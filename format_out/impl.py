@@ -19,7 +19,7 @@ class ChatSession:
     chat_his: str
     sampling_param: SamplingParams
     url: str = "http://localhost:8017/generate"
-    http_headers: dict = {"Content-Type": "application/json"}
+    http_headers: dict = dataclasses.field(default_factory=lambda: {"Content-Type": "application/json"})
     default_retry_count: int = 1
 
     def add_prompt(self, data: str):
@@ -30,7 +30,7 @@ class ChatSession:
         self.chat_his = self.chat_his[:-len]
         return
 
-    def generate(self, regex: str, max_new_tokens=None, retry_count=1):
+    def generate(self, regex: str = None, max_new_tokens=None, retry_count=1):
         sampling_param = copy.copy(self.sampling_param)
         if max_new_tokens is not None:
             sampling_param.max_new_tokens = max_new_tokens
@@ -43,7 +43,7 @@ class ChatSession:
             try:
                 response = requests.post(self.url, headers=self.http_headers, data=json.dumps(data))
                 if response.status_code == 200:
-                    return response.json()["generated_text"]
+                    return response.json()["generated_text"][0]
                 else:
                     logger.warning(f"gen Error: {response.status_code}, {response.text[0:10]}")
                     logger.info("retry gen")
