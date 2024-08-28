@@ -4,12 +4,13 @@ import json
 import threading
 
 """
-python -m lightllm.server.api_server --model_dir /nvme/7b   \
+python -m lightllm.server.api_server --model_dir /Meta-Llama-3-8B-Instruct  \
                                      --host 0.0.0.0                 \
                                      --port 8017                   \
                                      --tp 1                         \
                                      --max_total_token_num 100000 \
-                                     --simple_constraint_mode
+                                     --simple_constraint_mode \
+                                     --use_dynamic_prompt_cache
 """
 
 
