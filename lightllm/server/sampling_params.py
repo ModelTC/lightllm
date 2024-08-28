@@ -120,6 +120,17 @@ class SamplingParams:
                               but get {str(self.regular_constraint)}"
             )
 
+        if self.regular_constraint is not None:
+            # check regex format
+            try:
+                import interegular
+
+                interegular.parse_pattern(self.regular_constraint)
+            except Exception as e:
+                raise ValueError(
+                    f"regular_expression '{self.regular_constraint}' " f"has parse_pattern_error: {str(e)}"
+                )
+
         return
 
     def stop_sentences_to_token_ids(self, tokenizer):
