@@ -1,4 +1,7 @@
+import os
+import shutil
 import torch
+import lightllm.server.router.model_infer.mode_backend.continues_batch.outlines_patch.impl as _nouse_
 from .impl import ContinuesBatchBackend
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.io_struct import FinishStatus
@@ -7,6 +10,9 @@ from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 from lightllm.server.tokenizer import get_tokenizer
 from typing import List
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 class SimpleConstraintBackend(ContinuesBatchBackend):
@@ -14,13 +20,27 @@ class SimpleConstraintBackend(ContinuesBatchBackend):
         super().__init__()
 
     def init_custom(self):
-        # import here, 当你不使用这个模式，缺少这些依赖也可以运行
+        # remove outlines cache
+        if self.tp_rank == 0:
+            cache_path = os.path.join(os.path.expanduser("~"), ".cache/outlines")
+            if os.path.exists(cache_path) and os.path.isdir(cache_path):
+                shutil.rmtree(cache_path)
+                logger.info("outlines cache dir is removed")
+            else:
+                logger.info("outlines cache dir is not exist")
+
         from outlines.models.transformers import TransformerTokenizer
 
         self.tokenizer = TransformerTokenizer(
             get_tokenizer(self.args.model_dir, self.args.tokenizer_mode, trust_remote_code=self.args.trust_remote_code)
         )
-        self.tokenizer.eos_token_id = self.args.eos_id[0]
+        eos_token_ids = []
+        eos_token_ids.append(self.tokenizer.eos_token_id)
+        eos_token_ids.extend(self.args.eos_id)
+        # 附加一个 eos_token_ids 数组，然后利用 .outlines_patch 中的实现，修改一outlines的默认实现
+        # 添加多eos_id 的逻辑
+        self.tokenizer.eos_token_ids = eos_token_ids
+        logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
         return
 
     @calculate_time(show=False, min_cost_ms=300)
