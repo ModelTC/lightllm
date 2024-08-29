@@ -1,6 +1,7 @@
 import os
 import shutil
 import torch
+import lightllm.server.router.model_infer.mode_backend.continues_batch.outlines_patch.impl as _nouse_
 from .impl import ContinuesBatchBackend
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.io_struct import FinishStatus
