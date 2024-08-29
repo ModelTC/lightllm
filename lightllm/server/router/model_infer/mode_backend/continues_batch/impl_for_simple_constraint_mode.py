@@ -20,6 +20,7 @@ class SimpleConstraintBackend(ContinuesBatchBackend):
         self.tokenizer = TransformerTokenizer(
             get_tokenizer(self.args.model_dir, self.args.tokenizer_mode, trust_remote_code=self.args.trust_remote_code)
         )
+        self.tokenizer.eos_token_id = self.args.eos_id[0]
         return
 
     @calculate_time(show=False, min_cost_ms=300)
@@ -98,7 +99,7 @@ class SimpleConstraintBackend(ContinuesBatchBackend):
             sample_params = req_obj.sampling_param
             regex_guide = sample_params.regex_guide
             sample_params.fsm_current_state = regex_guide.get_next_state(sample_params.fsm_current_state, next_token_id)
-            if regex_guide.is_final_state(sample_params.fsm_current_state):
+            if sample_params.fsm_current_state == -1:
                 req_obj.finish_status = FinishStatus.FINISHED_STOP
 
         metadata = {

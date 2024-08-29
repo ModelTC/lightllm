@@ -25,7 +25,7 @@ class SamplingParams:
         ignore_eos: bool = False,
         max_new_tokens: int = 16,
         min_new_tokens: int = 1,
-        stop_sequences: Optional[Union[str, List[str]]] = None,  # 停止句子条件
+        stop_sequences: Optional[Union[str, List[str], List[List[int]]]] = None,  # 停止句子条件
         skip_special_tokens: bool = True,  # whether to skip special tokens when decoding
         add_spaces_between_special_tokens: bool = True,  # whether to add spaces between special tokens when decoding
         print_eos_token: bool = False,  # eos_id will be always ignored except the value is set to True
@@ -131,7 +131,24 @@ class SamplingParams:
                     f"regular_expression '{self.regular_constraint}' " f"has parse_pattern_error: {str(e)}"
                 )
 
+        self._verify_stop_sentences()
+
         return
+
+    def _verify_stop_sentences(self):
+        if self.stop_sequences is not None:
+            if isinstance(self.stop_sequences, str):
+                return
+            if isinstance(self.stop_sequences, list):
+                all_str = all(isinstance(stop_info, str) for stop_info in self.stop_sequences)
+                all_int_list = all(
+                    (isinstance(stop_info, list) and isinstance(x, int) for x in stop_info)
+                    for stop_info in self.stop_sequences
+                )
+                if all_str or all_int_list:
+                    return
+
+            raise ValueError("stop_sequences only support str, list[str], list[list[int]] type")
 
     def stop_sentences_to_token_ids(self, tokenizer):
         if self.stop_sequences is None:
@@ -140,14 +157,21 @@ class SamplingParams:
             if isinstance(self.stop_sequences, str):
                 self.stop_sequences = [self.stop_sequences]
             new_stop_sequences = []
-            for stop_str in self.stop_sequences:
-                stop_str_ids = tokenizer.encode(stop_str)
-                if stop_str_ids is not None and len(stop_str_ids) > 1:  # remove bos_token_id
-                    stop_str_ids = stop_str_ids[1:]
-                if len(stop_str_ids) > 0:
-                    new_stop_sequences.append(stop_str_ids)
+            for stop_info in self.stop_sequences:
+                if isinstance(stop_info, str):
+                    stop_str_ids = self._stop_str_to_token_ids(stop_info, tokenizer)
+                    if stop_str_ids is not None and len(stop_str_ids) > 0:
+                        new_stop_sequences.append(stop_str_ids)
+                if isinstance(stop_info, list):
+                    if all(isinstance(x, int) for x in stop_info):
+                        if len(stop_info) > 0:
+                            new_stop_sequences.append(stop_info)
             self.stop_sequences = new_stop_sequences
         return
+
+    def _stop_str_to_token_ids(self, stop_str: str, tokenizer):
+        stop_str_ids = tokenizer.encode(stop_str, add_special_tokens=False)
+        return stop_str_ids
 
     def to_dict(self):
         ret = {}
