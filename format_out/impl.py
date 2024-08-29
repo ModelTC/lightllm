@@ -35,7 +35,7 @@ class ChatSession:
         sampling_param = copy.copy(self.sampling_param)
         if max_new_tokens is not None:
             sampling_param.max_new_tokens = max_new_tokens
-        if prefix_regex is not None:
+        if prefix_regex is not None and regex is not None:
             regex = prefix_regex + "(" + regex + ")"
 
         sampling_param.regular_constraint = regex
