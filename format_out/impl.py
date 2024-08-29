@@ -107,6 +107,19 @@ class ChatSession:
             retry_count=self.default_retry_count,
         )
 
+    def gen_number_v2(self, max_new_tokens=None, prefix_regex=None):
+        """
+        包含分数的支持
+        """
+        if max_new_tokens is None:
+            max_new_tokens = 100
+        return self.generate(
+            r"-?(\d+(\.\d+)?|\d+/\d+|\d+/\d+\.\d+)",
+            max_new_tokens=max_new_tokens,
+            prefix_regex=prefix_regex,
+            retry_count=self.default_retry_count,
+        )
+
     def gen_json_object(self, obj: BaseModel, max_new_tokens=512, prefix_regex=None, whitespace_pattern=r"[\s]{0,12}"):
         json_schema = obj.model_json_schema()
         regex_str = build_regex_from_schema(json.dumps(json_schema), whitespace_pattern=whitespace_pattern)
