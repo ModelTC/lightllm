@@ -31,10 +31,13 @@ class ChatSession:
         self.chat_his = self.chat_his[:-len]
         return
 
-    def generate(self, regex: str = None, max_new_tokens=None, retry_count=1):
+    def generate(self, regex: str = None, max_new_tokens=None, prefix_regex=None, retry_count=1):
         sampling_param = copy.copy(self.sampling_param)
         if max_new_tokens is not None:
             sampling_param.max_new_tokens = max_new_tokens
+        if prefix_regex is not None:
+            regex = prefix_regex + "(" + regex + ")"
+
         sampling_param.regular_constraint = regex
         sampling_param.verify()
 
@@ -57,28 +60,43 @@ class ChatSession:
         raise Exception("gen error, please check")
         return
 
-    def select(self, args: List[str], max_new_tokens=None):
+    def select(self, args: List[str], max_new_tokens=None, prefix_regex=None):
         if max_new_tokens is None:
             max_new_tokens = max([len(e) for e in args])
         regex = "(" + "|".join(args) + ")"
-        return self.generate(regex, max_new_tokens=max_new_tokens, retry_count=self.default_retry_count)
+        return self.generate(
+            regex, max_new_tokens=max_new_tokens, prefix_regex=prefix_regex, retry_count=self.default_retry_count
+        )
 
-    def gen_int(self, max_new_tokens=None):
+    def gen_int(self, max_new_tokens=None, prefix_regex=None):
         if max_new_tokens is None:
             max_new_tokens = 100
-        return self.generate(r"-?\d+", max_new_tokens=max_new_tokens, retry_count=self.default_retry_count)
+        regex = r"-?\d+"
+        return self.generate(
+            regex, max_new_tokens=max_new_tokens, prefix_regex=prefix_regex, retry_count=self.default_retry_count
+        )
 
-    def gen_float(self, max_new_tokens=None):
+    def gen_float(self, max_new_tokens=None, prefix_regex=None):
         if max_new_tokens is None:
             max_new_tokens = 100
-        return self.generate(r"-?\d+\.\d+", max_new_tokens=max_new_tokens, retry_count=self.default_retry_count)
+        regex = r"-?\d+\.\d+"
+        return self.generate(
+            regex, max_new_tokens=max_new_tokens, prefix_regex=prefix_regex, retry_count=self.default_retry_count
+        )
 
-    def gen_number(self, max_new_tokens=None):
+    def gen_number(self, max_new_tokens=None, prefix_regex=None):
         if max_new_tokens is None:
             max_new_tokens = 100
-        return self.generate(r"-?(\d+|\d+\.\d+)", max_new_tokens=max_new_tokens, retry_count=self.default_retry_count)
+        return self.generate(
+            r"-?(\d+|\d+\.\d+)",
+            max_new_tokens=max_new_tokens,
+            prefix_regex=prefix_regex,
+            retry_count=self.default_retry_count,
+        )
 
-    def gen_json_object(self, obj: BaseModel, max_new_tokens=512):
+    def gen_json_object(self, obj: BaseModel, max_new_tokens=512, prefix_regex=None, whitespace_pattern=r"[\s]{0,12}"):
         json_schema = obj.model_json_schema()
-        regex_str = build_regex_from_schema(json.dumps(json_schema))
-        return self.generate(regex_str, max_new_tokens=max_new_tokens, retry_count=self.default_retry_count)
+        regex_str = build_regex_from_schema(json.dumps(json_schema), whitespace_pattern=whitespace_pattern)
+        return self.generate(
+            regex_str, max_new_tokens=max_new_tokens, prefix_regex=prefix_regex, retry_count=self.default_retry_count
+        )
