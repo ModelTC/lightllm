@@ -21,6 +21,7 @@ class ChatSession:
     url: str = "http://localhost:8017/generate"
     http_headers: dict = dataclasses.field(default_factory=lambda: {"Content-Type": "application/json"})
     default_retry_count: int = 1
+    disable_log: bool = False
 
     def add_prompt(self, data: str):
         self.chat_his += data
@@ -43,9 +44,12 @@ class ChatSession:
             try:
                 response = requests.post(self.url, headers=self.http_headers, data=json.dumps(data))
                 if response.status_code == 200:
-                    return response.json()["generated_text"][0]
+                    json_ans = response.json()
+                    if not self.disable_log:
+                        logger.info(f"gen get {str(json_ans)}")
+                    return json_ans["generated_text"][0]
                 else:
-                    logger.warning(f"gen Error: {response.status_code}, {response.text[0:10]}")
+                    logger.warning(f"gen Error: {response.status_code}, {response.text[0:100]}")
                     logger.info("retry gen")
             except:
                 pass
