@@ -46,7 +46,7 @@ class Difficulty(Enum):
 class Result(BaseModel):
     difficulty: Difficulty
     thoughts: List[str]
-    answer: int
+    answer: str
 
 
 json_ans = chat_session.gen_json_object(Result, max_new_tokens=300, prefix_regex=r"[\s]{0,20}")
@@ -54,5 +54,20 @@ print(json_ans)
 formatted_json = json.dumps(json.loads(json_ans), indent=4, ensure_ascii=False)
 print(formatted_json)
 
-a = Result(difficulty=Difficulty.Easy, thoughts=["1 + 1 + 300 + 2 = 304"], answer=10)
+a = Result(difficulty=Difficulty.Easy, thoughts=["1 + 1 + 300 + 2 = 304"], answer="304")
 print(a.model_dump_json(indent=4))
+
+chat_session.add_prompt(formatted_json)
+chat_session.add_prompt(assistant_end)
+chat_session.add_prompt(user_start)
+chat_session.add_prompt("解方程 x + 3x+ 1 =0?")
+chat_session.add_prompt(user_end)
+chat_session.add_prompt(assistant_start)
+
+json_ans = chat_session.gen_json_object(Result, max_new_tokens=300, prefix_regex=r"[\s]{0,20}")
+print(json_ans)
+formatted_json = json.dumps(json.loads(json_ans), indent=4, ensure_ascii=False)
+print(formatted_json)
+
+json_ans = chat_session.generate(max_new_tokens=300, prefix_regex=r"[\s]{0,20}")
+print(json_ans)
