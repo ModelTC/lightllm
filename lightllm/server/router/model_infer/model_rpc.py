@@ -31,6 +31,10 @@ class ModelRpcServer(rpyc.Service):
         beam_mode = kvargs.get("beam_mode", False)
         diverse_mode = kvargs.get("diverse_mode", False)
         is_token_healing = kvargs.get("is_token_healing", False)
+        if kvargs.get("args", None) is not None:
+            is_simple_constraint_mode = kvargs.get("args", None).simple_constraint_mode
+        else:
+            is_simple_constraint_mode = False
         # use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
 
         if use_reward_model:
@@ -45,7 +49,7 @@ class ModelRpcServer(rpyc.Service):
             self.backend = DiversehBackend()
         elif is_token_healing:
             self.backend = TokenHealingBackend()
-        elif kvargs.get("args").simple_constraint_mode:
+        elif is_simple_constraint_mode:
             self.backend = SimpleConstraintBackend()
         else:
             self.backend = ContinuesBatchBackend()
