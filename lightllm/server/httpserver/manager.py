@@ -110,6 +110,8 @@ class HttpServerManager:
 
         # 监控
         self.metric_client.counter_inc("lightllm_request_count")
+        
+        sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
