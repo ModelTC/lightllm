@@ -1,71 +1,71 @@
-# How to Add New Model Support
+## 如何添加新的模型支持
 
-## 1. Introduction of inference architecture
+### 1. 当前的推理架构介绍
 
-In the lightllm/common/basemodel directory, you will find the base class implementation for the entire inference architecture.
+在 ***lightllm/common/basemodel*** 目录下，是整个推理架构的基类实现
 
 ~~~shell
-├── basemodel.py   # Model architecture class
-├── infer_struct.py # State class for inference
+├── basemodel.py   # 模型框架类
+├── infer_struct.py # 推理用的状态类
 ├── __init__.py
-├── layer_infer # Inference layer base class
+├── layer_infer # 推理层的基类实现
 │   ├── base_layer_infer.py
 │   ├── __init__.py
 │   ├── post_layer_infer.py
 │   ├── pre_layer_infer.py
-│   ├── template # Template implementation of the inference layer. 
+│   ├── template # 推理层的模板实现，继承实现模板可以减少开发量和重复代码
 │   │   ├── __init__.py
 │   │   ├── post_layer_infer_template.py
 │   │   ├── pre_layer_infer_template.py
 │   │   └── transformer_layer_infer_template.py
 │   └── transformer_layer_infer.py
-├── layer_weights # base class of weight
+├── layer_weights # 权重基类的实现
 │   ├── base_layer_weight.py
 │   ├── hf_load_utils.py
 │   ├── __init__.py
 │   ├── pre_and_post_layer_weight.py
 │   └── transformer_layer_weight.py
-└── triton_kernel # Some commonly used triton kernel operators
+└── triton_kernel # 一些公共使用的 triton kernel 算子
     ├── apply_penalty.py
     ├── destindex_copy_kv.py
     └── __init__.py
 ~~~
 
-As shown above, the current model inference architecture mainly consists of two parts: weight and inference.
+如上所示，目前模型推理架构主要由权重和推理两个部分组成。
 
-### Weight
+#### 权重
 
-The layer_weights directory contains weight-related codes. In theory, a newly added model needs to inherit the PreAndPostLayerWeight and TransformerLayerWeight classes in pre_and_post_layer_weight.py and transformer_layer_weight.py to load weights.
+layer_weights 目录下是权重相关的代码，理论上对于一个新添加的模型需要继承实现 pre_and_post_layer_weight.py 和 transformer_layer_weight.py 中的 PreAndPostLayerWeight 和 TransformerLayerWeight 类来实现权重的加载。
 
-| Weight base class      | Responsibilities                                                         |
+| 权重基类               | 职责                                                         |
 | ---------------------- | ------------------------------------------------------------ |
-| PreAndPostLayerWeight  | Responsible for loading the weights of the first Embedding layer and the last post-processing layer of the LLM model and splitting the weights according to the tp parameters used |
-| TransformerLayerWeight | Responsible for loading the weights of the LLM model transformer layer and splitting the weights according to the tp parameters used |
+| PreAndPostLayerWeight  | 负责对LLM模型的第一层Embedding层和最后一层后处理层的权重加载并按照所使用的tp参数对权重进行拆分 |
+| TransformerLayerWeight | 负责对LLM模型transformer层进行权重的加载按照所使用的tp参数对权重进行拆分 |
 
-### Inference
+#### 推理
 
-The layer_infer directory contains the base classes for inference processing, and some templates are provided in the template directory. Inheriting from the template class can reduce some unnecessary duplication of code and simplify the implementation. There are three inference classes that need to be inherited in this directory.
+layer_infer 目录下是进行推理处理的相关基类，并在template目录下提供了一些模板，从模板类进行继承实现可以减少一些不必要的重复代码，简化实现，该目录下需要继承实现的推理类有三个。
 
-| Inference base class  | Responsibilities                    |
+| 推理基类              | 职责                                       |
 | --------------------- | ------------------------------------------ |
-| PreLayerInfer         | Responsible for inference of the Embedding layer                  |
-| TransformerLayerInfer | Responsible for inference of th transformer layer                |
-| PostLayerInfer        | Responsible for inference of converting the final hidden layer output of the network into logits  |
+| PreLayerInfer         | 负责对 Embedding 层的推理                  |
+| TransformerLayerInfer | 负责 transformer 层的推理                  |
+| PostLayerInfer        | 负责将网络最后的隐层输出转化为logits的推理 |
 
-The base class BaseLayerInfer of the above three classes provides two most important external service function interfaces. All inference behaviors will be entered through these two interfaces.
+上述三个类的基类 BaseLayerInfer 提供了两个最重要的对外服务函数接口，所有的推理行为都会由这两个接口进入。
 
-| interface                                                    | Responsibilities                                           |
+| 接口                                                         | 职责                                           |
 | ------------------------------------------------------------ | ---------------------------------------------- |
-| def context_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight): | the first inference of batch（prefill） |
-| def token_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight): | the inference of  decode      |
+| def context_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight): | Batch进行第一次推理（在代码中又被叫做prefill） |
+| def token_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight): | 单步decode阶段的推理                           |
 
-### Operator
+#### 算子
 
-The triton_kernel directory contains some operators needed for inference implemented using openai triton.
+triton_kernel 目录下是一些使用 openai triton 实现的推理需要用到的算子。
 
-### State class
+#### 状态类
 
-The InferStateInfo class in infer_struct.py is a state class that passes some important information between layers when performing a model inference. Different models can inherit and implement this class to add unique state information that each model needs to pass. The InferStateInfo class provides an inherited init_some_extra_state interface for initializing the transmission of additional unique information.
+infer_struct.py 中的 InferStateInfo 类是进行一次模型推理时，在层间传递一些重要信息的状态类，不同的模型可以继承实现该类，添加每个模型需要传递的独特状态信息， InferStateInfo 类提供了一个供继承的init_some_extra_state接口，用于传递额外独特信息的初始化。
 
 ~~~python
     def init_some_extra_state(self, 
@@ -81,9 +81,9 @@ The InferStateInfo class in infer_struct.py is a state class that passes some im
         pass
 ~~~
 
-### Model class
+#### 模型框架类
 
-The TpPartBaseModel class in basemodel.py is the entry point of the entire model. Each type of model needs to inherit and implement this class. This class uses the inference class, weight class, and state class to complete the model loading and inference functions in a similar way to building blocks. Many of its interfaces can be inherited and implemented to complete the unique operations of each model type.
+basemodel.py 中的 TpPartBaseModel 类，是整个模型的入口，每个类型的模型都需要继承实现该类。该类通过类似搭积木的方式，使用推理类，权重类，状态类完成模型的加载，推理功能，其中有很多接口可以被继承实现，以完成每个模型类型自己独特的操作。
 
 ~~~python
 class TpPartBaseModel:
@@ -120,21 +120,21 @@ class TpPartBaseModel:
    ...
 ~~~
 
-Common interfaces that need to be inherited and implemented
+常用需要继承实现的接口
 
-| interfaces                   | effect                                                         |
+| 接口                         | 功能                                                         |
 | ---------------------------- | ------------------------------------------------------------ |
-| def _init_config(self)：     | Read the config.json of the initialization model and perform some key name legalization operations |
-| def _verify_params(self)：   | Verification parameters                                                     |
-| def _init_mem_manager(self): | Initialize the mem manager object used by token attention               |
-| def _init_some_value(self):  | Initialize the values ​​of some member variables used by the inference framework                       |
-| def _init_custom(self):      | Some models have their own personalized initialization, such as llama initializing its own Rotary value  |
+| def _init_config(self)：     | 读取初始化模型的 config.json,  并进行一些 key 名的同名合法化操作 |
+| def _verify_params(self)：   | 校验参数                                                     |
+| def _init_mem_manager(self): | 初始化 token attention 使用的 mem manager 对象               |
+| def _init_some_value(self):  | 初始化推理框架会使用的一些成员变量的值                       |
+| def _init_custom(self):      | 一些模型自己的个性化初始化，比如 llama 初始化自己的Rotary值  |
 
-## 2. the example  of adding bloom model
+### 2. 添加 bloom 模型的示例说明
 
-The specific implementation is in the ***lightllm/models/bloom*** directory. Please read the corresponding source code for the following code snippets. The triton_kernel directory contains some kernels used by the inference class, which will not be introduced in detail below. At the same time, the bloom model uses the default state class because it does not need to pass special state information. If you want to understand the entire framework more deeply, you can further refer to the access implementation source code of models such as llama and llama2.
+具体实现在 ***lightllm/models/bloom*** 目录下，下面的代码片段请对应源码进行阅读，其中 triton_kernel 目录下为推理类使用的一些 kernel，下文中不做详细介绍，同时 bloom 模型因为不需要传递特殊状态信息使用默认的状态类即可。如想更深入的理解整个框架，可以进一步参考 llama 和 llama2 等模型的接入实现源码。
 
-### （1） Add implementation weight class
+#### （1） 添加实现权重类
 
 ***pre_and_post_layer_weight.py***
 
@@ -334,7 +334,7 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
         return head_alibi
 ~~~
 
-### (2) Add implementation inference class
+#### (2) 添加实现推理类
 
 ***pre_layer_infer.py***
 
@@ -548,7 +548,7 @@ class BloomPostLayerInfer(PostLayerInferTpl):
             return ans_logics
 ~~~
 
-### （3） Add implementation model class
+#### （3） 实现模型的框架类
 
 ***model.py***
 
@@ -588,7 +588,7 @@ class BloomTpPartModel(TpPartBaseModel):
         return 
 ~~~
 
-### (4) Add support for models in the server service layer
+#### (4) 在server服务层加入对模型的支持
 
 ***lightllm/server/router/model_infer/model_rpc.py***
 
