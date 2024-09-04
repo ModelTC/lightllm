@@ -113,8 +113,6 @@ class HttpServerManager:
 
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
-        sampling_params.stop_sentences_to_token_ids(self.tokenizer)
-
         # 统计信息变量
         start_time = time.time()
         out_token_counter = 0
