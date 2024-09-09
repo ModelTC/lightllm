@@ -58,7 +58,8 @@ else:
 
 logger = logging.get_logger(__name__)
 
-
+# adapted from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
 class Qwen2VLVisionConfig(PretrainedConfig):
     model_type = "qwen2_vl"
 
@@ -208,6 +209,8 @@ class VisionAttention(nn.Module):
         return attn_output
 
 
+# adapted from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
 class VisionFlashAttention2(nn.Module):
     def __init__(self, dim: int, num_heads: int = 16) -> None:
         super().__init__()
@@ -231,6 +234,8 @@ class VisionFlashAttention2(nn.Module):
         return attn_output
 
 
+# adapted from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
 class VisionSdpaAttention(nn.Module):
     def __init__(self, dim: int, num_heads: int = 16) -> None:
         super().__init__()
@@ -265,7 +270,8 @@ QWEN2_VL_VISION_ATTENTION_CLASSES = {
     "sdpa": VisionSdpaAttention,
 }
 
-
+# adapted from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
 class Qwen2VLVisionBlock(nn.Module):
     def __init__(self, embed_dim, mlp_ratio, num_heads, hidden_act, attn_implementation: str = "eager") -> None:
         super().__init__()
@@ -284,6 +290,8 @@ class Qwen2VLVisionBlock(nn.Module):
         return hidden_states
 
 
+# adapted from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
 class Qwen2VisionTransformerPretrainedModel(nn.Module):
     def __init__(
         self,

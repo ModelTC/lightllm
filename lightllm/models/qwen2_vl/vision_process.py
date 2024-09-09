@@ -277,6 +277,8 @@ def process_vision_info(
     return image_inputs
 
 
+# adapted from
+# transformers/blob/main/src/transformers/models/qwen2_vl/image_processing_qwen2_vl.py
 class Qwen2VLImageProcessor(BaseImageProcessor):
 
     model_input_names = ["pixel_values", "image_grid_thw", "pixel_values_videos", "video_grid_thw"]
