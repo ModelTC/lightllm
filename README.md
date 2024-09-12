@@ -7,7 +7,7 @@
 ---
 <div align="center">
 
-[![docs](https://img.shields.io/badge/docs-latest-blue)](https://github.com/ModelTC/lightllm/blob/main/docs/TokenAttention.md)
+[![docs](https://img.shields.io/badge/docs-latest-blue)](https://lightllm-en.readthedocs.io/en/latest/)
 [![Docker](https://github.com/ModelTC/lightllm/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/ModelTC/lightllm/actions/workflows/docker-publish.yml)
 [![stars](https://img.shields.io/github/stars/ModelTC/lightllm?style=social)](https://github.com/ModelTC/lightllm)
 ![visitors](https://komarev.com/ghpvc/?username=lightllm&label=visitors)
@@ -16,6 +16,9 @@
 </div>
 
 LightLLM is a Python-based LLM (Large Language Model) inference and serving framework, notable for its lightweight design, easy scalability, and high-speed performance. LightLLM harnesses the strengths of numerous well-regarded open-source implementations, including but not limited to FasterTransformer, TGI, vLLM, and FlashAttention.
+
+
+[English Docs](https://lightllm-en.readthedocs.io/en/latest/) | [中文文档](https://lightllm-cn.readthedocs.io/en/latest/)
 
 ## Features
 
@@ -45,6 +48,7 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 - [Yi-34b](https://huggingface.co/01-ai/Yi-34B)  
 - [Qwen-VL](https://huggingface.co/Qwen/Qwen-VL)
 - [Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)
+- [Qwen2-VL](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct)
 - [Llava-7b](https://huggingface.co/liuhaotian/llava-v1.5-7b)
 - [Llava-13b](https://huggingface.co/liuhaotian/llava-v1.5-13b)  
 - [Mixtral](https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1)
@@ -67,6 +71,8 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 
 > InternVL-Chat(InternLM2) needs to set the parameter '--eos_id 92542 --trust_remote_code'.
 
+> Qwen2-VL-7b needs to set the parameter '--eos_id 151645 --trust_remote_code'.
+
 > Stablelm needs to set the parameter '--trust_remote_code'.
 
 > Phi-3 only supports Mini and Small.
@@ -80,7 +86,8 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 The code has been tested with Pytorch>=1.3, CUDA 11.8, and Python 3.9. To install the necessary dependencies, please refer to the provided **requirements.txt** and follow the instructions as
 
 ~~~shell
-pip install -r requirements.txt
+# for cuda 11.8
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
 ~~~
 
 ### Container
@@ -130,13 +137,12 @@ python setup.py install
 
 - Install Triton Package  
 
-The code has been tested on a range of GPUs including V100, A100, A800, 4090, and H800. If you are running the code on A100, A800, etc., we recommend using triton==2.1.0. 
+The code has been tested on a range of GPUs including V100, A100, A800, 4090, and H800. If you are running the code on A100, A800, etc., we recommend using triton==3.0.0. 
 
 ~~~shell
-pip install triton==2.1.0 --no-deps
+pip install triton==3.0.0 --no-deps
 ~~~
-If you are running the code on H800 or V100., we recommend using triton-nightly, triton-nightly has a significant CPU bottleneck, leading to high decode latency at low concurrency levels. You can observe [this issue](https://github.com/openai/triton/issues/3619) and [fix PR](https://github.com/openai/triton/pull/3638).You can try modifying and compiling the 
-source code yourself to resolve this issue.
+If you are running the code on H800 or V100., you can try triton-nightly to get better performance.
 ~~~shell
 pip install -U --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/Triton-Nightly/pypi/simple/ triton-nightly --no-deps
 ~~~

@@ -76,6 +76,8 @@ server = uvicorn.Server(uvicorn.Config(app))
 
 isFirst = True
 metric_client = None
+global args
+args = None
 
 
 def first_set_handle_loop():
@@ -102,6 +104,13 @@ def liveness():
 @app.post("/readiness")
 def readiness():
     return {"status": "ok"}
+
+
+@app.get("/get_model_name")
+@app.post("/get_model_name")
+def get_model_name():
+    global args
+    return {"model_name": args.model_name}
 
 
 @app.get("/healthz", summary="Check server health")
@@ -317,6 +326,13 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=8000)
 
     parser.add_argument(
+        "--model_name",
+        type=str,
+        default="default_model_name",
+        help="just help to distinguish internal model name, use 'host:port/get_model_name' to get",
+    )
+
+    parser.add_argument(
         "--model_dir",
         type=str,
         default=None,
@@ -407,6 +423,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
     parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
     parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
+    parser.add_argument("--simple_constraint_mode", action="store_true", help="output constraint mode")
 
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
@@ -457,6 +474,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
 
 def main():
     parser = make_argument_parser()
+    global args
     args = parser.parse_args()
 
     global g_generate_func

@@ -136,7 +136,9 @@ class TpPartBaseModel:
         return
 
     def _init_some_value(self):
-        self.head_dim_ = self.config["n_embed"] // self.config["num_attention_heads"]
+        # Dealing with head_dim_!=n_embed // num_attention_heads scenarios, such as mistral 13B
+        head_dim_ = self.config["n_embed"] // self.config["num_attention_heads"]
+        self.head_dim_ = self.config.get("head_dim", head_dim_)
         self.tp_k_head_num_ = self.config["num_key_value_heads"] // self.world_size_
         self.tp_v_head_num_ = self.tp_k_head_num_
         self.layers_num = self.config["n_layer"]
@@ -390,8 +392,17 @@ class TpPartBaseModel:
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
         cuda_input_ids = input_ids
         input_embs = self.pre_infer.context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(self.layers_num):
+
+        self.layers_infer[0].mark_cache_alloc_start()
+        input_embs = self.layers_infer[0].context_forward(input_embs, infer_state, self.trans_layers_weight[0])
+        self.layers_infer[0].mark_cache_alloc_end()
+
+        for i in range(1, self.layers_num):
             input_embs = self.layers_infer[i].context_forward(input_embs, infer_state, self.trans_layers_weight[i])
+
+        # 释放所有管理的transformer使用的多层共享cache tensor, 最后一层调用一次即可
+        self.layers_infer[-1].release_all_caches()
+
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
         return predict_logics
 
@@ -399,8 +410,16 @@ class TpPartBaseModel:
     def _token_forward(self, input_ids, infer_state: InferStateInfo):
         cuda_input_ids = input_ids
         input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(self.layers_num):
+
+        self.layers_infer[0].mark_cache_alloc_start()
+        input_embs = self.layers_infer[0].token_forward(input_embs, infer_state, self.trans_layers_weight[0])
+        self.layers_infer[0].mark_cache_alloc_end()
+
+        for i in range(1, self.layers_num):
             input_embs = self.layers_infer[i].token_forward(input_embs, infer_state, self.trans_layers_weight[i])
+
+        # 释放所有管理的transformer使用的多层共享cache tensor, 最后一层调用一次即可
+        self.layers_infer[-1].release_all_caches()
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
         return predict_logics
 
@@ -408,7 +427,15 @@ class TpPartBaseModel:
     def _splitfuse_forward(self, input_ids, infer_state: SplitFuseInferStateInfo):
         cuda_input_ids = input_ids
         input_embs = self.pre_infer.splitfuse_forward(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(self.layers_num):
+
+        self.layers_infer[0].mark_cache_alloc_start()
+        input_embs = self.layers_infer[0].splitfuse_forward(input_embs, infer_state, self.trans_layers_weight[0])
+        self.layers_infer[0].mark_cache_alloc_end()
+
+        for i in range(1, self.layers_num):
             input_embs = self.layers_infer[i].splitfuse_forward(input_embs, infer_state, self.trans_layers_weight[i])
+
+        # 释放所有管理的transformer使用的多层共享cache tensor, 最后一层调用一次即可
+        self.layers_infer[-1].release_all_caches()
         predict_logics = self.post_infer.splitfuse_forward(input_embs, infer_state, self.pre_post_weight)
         return predict_logics

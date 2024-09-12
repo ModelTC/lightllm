@@ -97,8 +97,21 @@ class HttpServerManager:
     async def generate(
         self, prompt, sampling_params: SamplingParams, group_request_id, multimodal_params, request=None
     ):
+        # 记录请求到达的相关信息
+        if request is not None:
+            x_request_id = request.headers.get("X-Request-Id", "")
+            x_session_id = request.headers.get("X-Session-Id", "")
+            format_in_time = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")
+            logger.info(
+                f"recieved req X-Request-Id:{x_request_id} "
+                f"X-Session-Id:{x_session_id} start_time:{format_in_time} "
+                f"lightllm_req_id:{group_request_id} "
+            )
+
         # 监控
         self.metric_client.counter_inc("lightllm_request_count")
+
+        sampling_params.stop_sentences_to_token_ids(self.tokenizer)
 
         # 统计信息变量
         start_time = time.time()
@@ -143,8 +156,6 @@ class HttpServerManager:
             raise ValueError(f"the req token total len + 1 is too long > max_total_token_num:{self.total_token_num}")
         verify_time_end = time.time()
 
-        sampling_params.stop_sentences_to_token_ids(self.tokenizer)
-
         req_status = ReqStatus(group_request_id, multimodal_params)
         event = req_status.event
         self.req_id_to_out_inf[group_request_id] = req_status
@@ -182,7 +193,6 @@ class HttpServerManager:
                     is_first_token = False
 
                     yield sub_req_id, out_str, metadata, finish_status
-
                     # 如果有子请求完成，就更新计数
                     if finish_status.is_finished():
                         unfinished_count -= 1
@@ -198,6 +208,8 @@ class HttpServerManager:
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
                         x_request_id = request.headers.get("X-Request-Id", "")
                         x_session_id = request.headers.get("X-Session-Id", "")
+                        prompt_cache_len = metadata.pop("prompt_cache_len", 0)
+                        prompt_cache_ratio = prompt_cache_len / prompt_tokens
                         format_start_time = datetime.datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
                         logger.info(
                             f"X-Request-Id:{x_request_id} "
@@ -206,6 +218,8 @@ class HttpServerManager:
                             f"total_cost_time:{total_cost_time_ms}ms,out_token_counter:{out_token_counter} "
                             f"mean_per_token_cost_time: {mean_per_token_cost_time_ms}ms "
                             f"prompt_token_num:{prompt_tokens} "
+                            f"prompt_cache_len:{prompt_cache_len} "
+                            f"prompt_cache_ratio:{prompt_cache_ratio} "
                         )
                         self.metric_client.histogram_observe(
                             "lightllm_request_validation_duration", verify_time_end - verify_time_begin
