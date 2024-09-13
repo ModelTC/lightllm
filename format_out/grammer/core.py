@@ -11,7 +11,7 @@ from typing import Any, Union, Dict, List, Tuple, Set, FrozenSet
 @dataclass
 class Dot:
     def __repr__(self) -> str:
-        return "*"
+        return "@"
 
 
 # 终结符
@@ -267,6 +267,7 @@ class Graph:
                     for cur_t in items[i].lookahead_set:
                         for j in range(i + 1, len(items)):
                             if items[j].can_accept_input(cur_t):
+                                print("check failed node:", node)
                                 raise Exception("lr1 check fialed")
 
         return

@@ -70,6 +70,7 @@ class DPDA:
         self.node_id_to_dpda_edges[dpda_edge.source_node_id].pop_input_to_edge[dpda_edge.pop][
             dpda_edge.input_t
         ] = dpda_edge
+        # print("create dedge", dpda_edge)
 
     def __repr__(self) -> str:
         ans = ""
@@ -173,21 +174,23 @@ class DPDA:
             for t_jump_dpda_edge in dpda_edges:
                 # print("id1", cur_node_id, "id2", t_jump_dpda_edge.dest_node_id, "jump_id", jump_to_node_id)
                 new_dpda_edge = self.merge_dpda_edge(fake_dpdaedge, t_jump_dpda_edge)
-                dest_dpda_edge = DPDAEdge(
-                    input_t=input_t,
-                    pop=tuple(pop_list) + new_dpda_edge.pop,
-                    push=new_dpda_edge.push,
-                    dest_node_id=t_jump_dpda_edge.dest_node_id,
-                    source_node_id=cur_node_id,
-                )
+                if new_dpda_edge is not None:
+                    # print("pop", pop_list, "new_edge", new_dpda_edge)
+                    dest_dpda_edge = DPDAEdge(
+                        input_t=input_t,
+                        pop=tuple(pop_list) + new_dpda_edge.pop,
+                        push=new_dpda_edge.push,
+                        dest_node_id=t_jump_dpda_edge.dest_node_id,
+                        source_node_id=cur_node_id,
+                    )
 
-                # print("new edge", dest_dpda_edge)
-                # print("old edge", t_jump_dpda_edge)
-                self.add_dpadge(dest_dpda_edge)
+                    # print("new edge", dest_dpda_edge)
+                    # print("old edge", t_jump_dpda_edge)
+                    self.add_dpadge(dest_dpda_edge)
             return
 
         pop_list.append(iter_node_id)
-        for edge in lr_graph.dest_id_to_edges[iter_node_id]:
+        for edge in self.lr_graph.dest_id_to_edges[iter_node_id]:
             assert edge.transfer_input == item_la.item.gen.gen_tuple[back_index]
             if not edge.is_loop_edge:
                 self._dfs_recurison(cur_node_id, edge.source_id, item_la, input_t, back_index - 1, pop_list)
@@ -200,15 +203,26 @@ class DPDA:
         if len(second_edge.pop) >= len(first_edge.push):
             push_size = len(first_edge.push)
             for i in range(push_size):
-                assert first_edge.push[i] == second_edge.pop[push_size - i - 1]
+                # print(first_edge, second_edge)
+                if first_edge.push[i] != second_edge.pop[push_size - i - 1]:  # 可能会有多条回退路径，可能存在不匹配的回退路径，如果不匹配就返回None
+                    return None
             left_count = len(second_edge.pop) - len(first_edge.push)
-            return DPDAEdge(
-                input_t=second_edge.input_t,
-                pop=(first_edge.pop + second_edge.pop[-left_count:]),
-                push=second_edge.push,
-                dest_node_id=second_edge.dest_node_id,
-                source_node_id=first_edge.source_node_id,
-            )
+            if left_count != 0:
+                return DPDAEdge(
+                    input_t=second_edge.input_t,
+                    pop=(first_edge.pop + second_edge.pop[-left_count:]),  # [-0:] 不是截取尾巴上的个数
+                    push=second_edge.push,
+                    dest_node_id=second_edge.dest_node_id,
+                    source_node_id=first_edge.source_node_id,
+                )
+            else:
+                return DPDAEdge(
+                    input_t=second_edge.input_t,
+                    pop=first_edge.pop,
+                    push=second_edge.push,
+                    dest_node_id=second_edge.dest_node_id,
+                    source_node_id=first_edge.source_node_id,
+                )
         else:
             print(first_edge.push, second_edge.pop)
             for i in range(len(second_edge.pop)):
@@ -246,18 +260,19 @@ class DPDA:
             start_graph_node = self.lr_graph.node_id_to_itemset[circle[-2]]
             dest_graph_node = self.lr_graph.node_id_to_itemset[circle[-1]]
             input_t = self.lr_graph.dest_id_to_edges[dest_graph_node.node_id][0].transfer_input
-            assert isinstance(input_t, T)
-            self.lr_graph.source_id_to_edge[start_graph_node.node_id][input_t].is_loop_edge = True  # 标记这个边是loop 回旋边
-            # 将已经知道的DPDAEdge 进行添加
-            dpda_edge = DPDAEdge(
-                input_t=input_t,
-                pop=tuple(list(reversed(circle[0:-1]))),
-                push=(circle[-1],),
-                dest_node_id=circle[-1],
-                source_node_id=start_graph_node.node_id,
-            )
+            if isinstance(input_t, T):
+                assert isinstance(input_t, T), f"input_t {input_t}, dest_node_id {dest_graph_node.node_id}"
+                self.lr_graph.source_id_to_edge[start_graph_node.node_id][input_t].is_loop_edge = True  # 标记这个边是loop 回旋边
+                # 将已经知道的DPDAEdge 进行添加
+                dpda_edge = DPDAEdge(
+                    input_t=input_t,
+                    pop=tuple(list(reversed(circle[0:-1]))),
+                    push=(circle[-1],),
+                    dest_node_id=circle[-1],
+                    source_node_id=start_graph_node.node_id,
+                )
 
-            self.add_dpadge(dpda_edge)
+                self.add_dpadge(dpda_edge)
         return
 
     def to_mermaid(self):
