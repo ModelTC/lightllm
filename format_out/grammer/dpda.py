@@ -280,6 +280,65 @@ class DPDA:
         ans += "```"
         return ans
 
+    def remove_no_input_node_to_edges(self):
+        """
+        删除一些graph node，其没有入口边，只有出口边
+        """
+        visited_nodes = set()
+        self.dfs_to_find_reached(0, visited_nodes)
+        for node_id in range(len(self.lr_graph.origin_graph.graph_nodes)):
+            if node_id not in visited_nodes:
+                self.node_id_to_dpda_edges[node_id] = DPDAEdgeMap()  # 搞一个空的替换
+        return
+
+    def dfs_to_find_reached(self, start_id: int, visited_nodes: Set[int]):
+        if start_id not in visited_nodes:
+            visited_nodes.add(start_id)
+            for input_t, pop_to_edges in self.node_id_to_dpda_edges[start_id].input_pop_to_edge.items():
+                for edge in pop_to_edges.values():
+                    self.dfs_to_find_reached(edge.dest_node_id, visited_nodes)
+        else:
+            return
+
+    def accept(self, input_str: str):
+        stack = [0]
+        current_node_id = 0
+        for t in input_str:
+            t = T(t)
+            input_pop_edge = self.node_id_to_dpda_edges[current_node_id].input_pop_to_edge
+            if t not in input_pop_edge:
+                raise Exception("not accept")
+            pop_edge = input_pop_edge[t]
+            find = False
+            find_count = 0
+            for pop, edge in pop_edge.items():
+                if self._stack_match(stack, pop):
+                    del stack[-len(pop) :]
+                    stack.extend(edge.push)
+                    current_node_id = edge.dest_node_id
+                    find = True
+                    find_count += 1
+                    break
+            assert find_count == 1
+            if not find:
+                # print(stack)
+                raise Exception("not accept")
+
+        if current_node_id not in self.lr_graph.can_finished_node_id_set:
+            raise Exception("not accept")
+
+        return
+
+    def _stack_match(self, stack: List[int], pop: List[int]):
+        if len(stack) < len(pop):
+            return False
+
+        for i, p in enumerate(pop, 1):
+            if p != stack[-i]:
+                return False
+
+        return True
+
 
 if __name__ == "__main__":
     from core import compute_first, compute_graph
@@ -314,5 +373,14 @@ if __name__ == "__main__":
     dpda = DPDA(lr_graph=lr_graph)
     print(dpda)
 
+    dpda.remove_no_input_node_to_edges()
+
     with open("mermaid1.md", mode="+w") as file:
         file.write(dpda.to_mermaid())
+
+    for in_str in ["a", "aa", "aaa", "aaab", "aaaaabbbb"]:
+        try:
+            dpda.accept(in_str)
+            print(f"{in_str} accepted")
+        except:
+            print(f"{in_str} not accepted")
