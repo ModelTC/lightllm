@@ -30,7 +30,7 @@ class T:
         return self.value.__hash__()
 
     def __repr__(self) -> str:
-        return f"T('{self.value}')"
+        return f"t({self.value})"
 
 
 # 非终结符
@@ -45,7 +45,7 @@ class NT:
         return self.name.__hash__()
 
     def __repr__(self) -> str:
-        return f"T('{self.name}')"
+        return f"nt({self.name})"
 
 
 @dataclass
@@ -154,7 +154,7 @@ class ItemLookAhead:
     def __repr__(self) -> str:
         dot_list = [e for e in self.item.gen.gen_tuple]
         dot_list.insert(self.item.loc, Dot())
-        return f"ItemLookAhead({self.item.gen.nt} = {dot_list} ## la = {self.lookahead_set})"
+        return f"ItemLookAhead({self.item.gen.nt} = {dot_list} # la = {self.lookahead_set})"
 
     def to_simple_str(self) -> str:
         dot_list = [e for e in self.item.gen.gen_tuple]
@@ -283,23 +283,17 @@ class Graph:
         ans += "flowchart LR\n"
         for graph_node in self.graph_nodes:
             graph_info = graph_node.to_simple_str()
-            graph_info = graph_info.replace("(", "_")
-            graph_info = graph_info.replace(")", "_")
-            graph_info = graph_info.replace("[", "_")
-            graph_info = graph_info.replace("]", "_")
-            graph_info = graph_info.replace("{", "_")
-            graph_info = graph_info.replace("}", "_")
-            ans += f"{graph_node.node_id}[" + graph_info + "]\n"
+            ans += f'{graph_node.node_id}["' + graph_info + '"]\n'
 
         ans += "\n"
         for graph_node in self.graph_nodes:
             for nt_or_t, next_graph_node in graph_node.edge_to_next.items():
                 if isinstance(nt_or_t, T):
                     ans += f"{graph_node.node_id} --> \
-                    {graph_node.node_id}{nt_or_t.value}{next_graph_node.node_id} ---> {next_graph_node.node_id}\n"
+                    {graph_node.node_id}_{nt_or_t.value}_{next_graph_node.node_id} ---> {next_graph_node.node_id}\n"
                 else:
                     ans += f"{graph_node.node_id} --> \
-                    {graph_node.node_id}{nt_or_t.name}{next_graph_node.node_id} ---> {next_graph_node.node_id}\n"
+                    {graph_node.node_id}_{nt_or_t.name}_{next_graph_node.node_id} ---> {next_graph_node.node_id}\n"
         ans += "```"
         return ans
 

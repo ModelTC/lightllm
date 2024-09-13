@@ -46,6 +46,11 @@ class DPDAEdge:
     dest_node_id: int
     source_node_id: int
 
+    def to_simple_str(self):
+        ans = ""
+        ans += f"t:{self.input_t.value}#pop:{self.pop}#push:{self.push}#s:{self.source_node_id}#e:{self.dest_node_id}"
+        return ans
+
 
 @dataclass
 class DPDAEdgeMap:
@@ -260,25 +265,17 @@ class DPDA:
         ans += "flowchart LR\n"
         for graph_node in self.lr_graph.origin_graph.graph_nodes:
             graph_info = graph_node.to_simple_str()
-            graph_info = graph_info.replace("(", "_")
-            graph_info = graph_info.replace(")", "_")
-            graph_info = graph_info.replace("[", "_")
-            graph_info = graph_info.replace("]", "_")
-            graph_info = graph_info.replace("{", "_")
-            graph_info = graph_info.replace("}", "_")
-            ans += f"{graph_node.node_id}[" + graph_info + "]\n"
+            ans += f'{graph_node.node_id}["' + graph_info + '"]\n'
 
         ans += "\n"
         for edge_maps in self.node_id_to_dpda_edges.values():
             for input_t_or_nt, pop_to_dpda_edge_dict in edge_maps.input_pop_to_edge.items():
                 if isinstance(input_t_or_nt, T):
                     for pop, edge in pop_to_dpda_edge_dict.items():
-                        tmp_info = f"{input_t_or_nt.value}__{pop}_{edge.push}"
-                        tmp_info = tmp_info.replace("(", "s_")
-                        tmp_info = tmp_info.replace(")", "_e_")
-                        tmp_info = tmp_info.replace(",", "_")
-                        tmp_info = tmp_info.replace(" ", "")
-                        ans += f"{edge.source_node_id} --> {tmp_info} ---> {edge.dest_node_id}\n"
+                        edge_str = edge.to_simple_str().replace("(", "")
+                        edge_str = edge_str.replace(")", "")
+                        edge_str = edge_str.replace(" ", "")
+                        ans += f"{edge.source_node_id} --> {edge_str} ---> {edge.dest_node_id}\n"
 
         ans += "```"
         return ans
