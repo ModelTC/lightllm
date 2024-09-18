@@ -1,19 +1,19 @@
 from core import compute_first, compute_graph
 from dpda import NT, LRGraph, Graph, DPDA
-from dpda import T as TT
+from dpda import T
 
 
 def create_grammer():
     # add = TT("a")
     # sub = TT("-")
-    mul = TT("c")
+    mul = T("c")
     # div = TT("/")
-    lparen = TT("l")
-    rparen = TT("r")
-    num = [TT("1"), TT("2"), TT("3")]
+    lparen = T("l")
+    rparen = T("r")
+    num = [T("1"), T("2"), T("3")]
 
     E = NT("E")
-    T = NT("T")
+    M = NT("M")
     F = NT("F")
     # NUM = NT("NUM")
 
@@ -21,10 +21,10 @@ def create_grammer():
         (NT("S'"), [E]),
         # (E, [E, add, T]),
         # (E, [E, sub, T]),
-        (E, [T]),
-        (T, [T, mul, F]),
+        (E, [M]),
+        (M, [M, mul, F]),
         # (T, [T, div, F]),
-        (T, [F]),
+        (M, [F]),
         (F, [lparen, E, rparen]),
         (F, [num[0]]),
         # (F, [NUM]),
@@ -45,25 +45,44 @@ graph = compute_graph(grammar=grammar, start_symbol="S'")
 graph_str = graph.to_mermaid()
 with open("mermaid.md", mode="+w") as file:
     file.write(graph_str)
+    file.flush()
 
 graph.visit_print()
 graph.check_lr1()
-graph_str = graph.to_mermaid()
-with open("mermaid.md", mode="+w") as file:
-    file.write(graph_str)
 
 lr_graph = LRGraph(graph)
 dpda = DPDA(lr_graph=lr_graph)
 print(dpda)
 
-dpda.remove_no_input_node_to_edges()
+# dpda.remove_no_input_node_to_edges()
 
 with open("mermaid1.md", mode="+w") as file:
     file.write(dpda.to_mermaid())
 
-for in_str in ["1a1", "1a1c1", "1a1a1a1c1c1", "1cl1c1r", "aaaaabbbb"]:
+# accept test
+for in_str in [
+    "1c1",
+    "1cl1c1r",
+    "1cl1cl1c1rr",
+]:
     try:
         dpda.accept(in_str)
         print(f"{in_str} accepted")
+        assert True
     except:
         print(f"{in_str} not accepted")
+        assert False
+
+print("####################")
+# not accept test
+for in_str in ["aa", "aaabb"]:
+    try:
+        dpda.accept(in_str)
+        print(f"{in_str} accepted")
+        assert False
+    except:
+        print(f"{in_str} not accepted")
+        assert True
+
+
+print(dpda.direct_jump_node_id_to_dpda_edges)
