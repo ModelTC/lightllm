@@ -28,7 +28,7 @@ class MixtralTransformerLayerInfer(LlamaTransformerLayerInfer):
             topk=self.num_experts_per_tok,
             renormalize=self.renormalize,
         )
-        print(topk_weights, topk_ids)
+        # print(topk_weights, topk_ids)
 
         return fused_experts(
             hidden_states=hidden_states,
