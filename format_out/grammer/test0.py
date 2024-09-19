@@ -4,34 +4,11 @@ from dpda import T
 
 
 def create_grammer():
-    # add = TT("a")
-    # sub = TT("-")
-    mul = T("c")
-    # div = TT("/")
-    lparen = T("l")
-    rparen = T("r")
-    num = [T("1"), T("2"), T("3")]
-
-    E = NT("E")
-    M = NT("M")
-    F = NT("F")
-    # NUM = NT("NUM")
-
-    # 1cl1cl1c1rr
     grammar = [
-        (NT("S'"), [E]),
-        # (E, [E, add, T]),
-        # (E, [E, sub, T]),
-        (E, [M]),
-        (M, [M, mul, F]),
-        # (T, [T, div, F]),
-        (M, [F]),
-        (F, [lparen, E, rparen]),
-        (F, [num[0]]),
-        # (F, [NUM]),
-        # (NUM, [num[0]]),
-        # (NUM, [num[1]]),
-        # (NUM, [num[2]]),
+        (NT("S'"), [NT("S")]),
+        (NT("S"), [NT("A")]),
+        (NT("A"), [T("a"), NT("A")]),
+        (NT("A"), [T("a")]),
     ]
     return grammar
 
@@ -61,11 +38,7 @@ with open("mermaid1.md", mode="+w") as file:
     file.write(dpda.to_mermaid())
 
 # accept test
-for in_str in [
-    "1c1",
-    "1cl1c1r",
-    "1cl1cl1c1rr",
-]:
+for in_str in ["a", "aaa", "aaaa", "aaaaaa"]:
     try:
         dpda.accept(in_str)
         print(f"{in_str} accepted")
@@ -73,10 +46,8 @@ for in_str in [
     except:
         print(f"{in_str} not accepted")
         assert False
-
-print("####################")
 # not accept test
-for in_str in ["aa", "aaabb"]:
+for in_str in ["acacacacac", "1a1"]:
     try:
         dpda.accept(in_str)
         print(f"{in_str} accepted")

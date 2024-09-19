@@ -116,7 +116,7 @@ class DPDA:
         # 一些对后续处理有帮助的信息初始化
         for graph_node in self.lr_graph.origin_graph.graph_nodes:
             graph_node.init_t_to_item_la()
-
+            graph_node.init_back_pair()
             # 为每个 graph node 标记上，进入他的转移输入是什么
             tmp_edges = self.lr_graph.dest_id_to_edges[graph_node.node_id]
             if len(tmp_edges) == 0:
@@ -365,8 +365,10 @@ class DPDA:
 
         # 将找到的路径，进行添加。
         for circle in circles:
-            # if not self.can_absorb_circle(circle):
-            #     continue
+            is_back_loop = self.judge_circle_is_back_loop(circle)
+            print(f"cur handle circle: {circle} : is_back_loop: {is_back_loop}")
+            if not is_back_loop:
+                continue
             # 添加 circle 环边
             start_graph_node = self.lr_graph.node_id_to_itemset[circle[-2]]
             dest_graph_node = self.lr_graph.node_id_to_itemset[circle[-1]]
@@ -400,6 +402,74 @@ class DPDA:
                 )
                 self.add_one_step_dpadge(dpda_edge)
         return
+
+    def judge_circle_is_back_loop(self, circle: List[int]):
+        print(f"cur handle circle: {circle}")
+        node_and_edge_list = []
+        for i in range(len(circle) - 1):
+            graph_node = self.lr_graph.node_id_to_itemset[circle[i]]
+            node_and_edge_list.append(graph_node)
+            dest_graph_node = self.lr_graph.node_id_to_itemset[circle[i + 1]]
+            edge = self.lr_graph.s_id_e_id_to_edge[graph_node.node_id][dest_graph_node.node_id]
+            node_and_edge_list.append(edge)
+
+        for index in range(len(node_and_edge_list)):
+            cur_obj = node_and_edge_list[index]
+            if isinstance(cur_obj, ItemSet) and len(cur_obj.back_pair_list) != 0:
+                for item_tuple in cur_obj.back_pair_list:
+                    is_ok = self.judge_back_loop_rec(
+                        cur_obj.node_id, item_tuple, node_and_edge_list, item_tuple, index, len(node_and_edge_list) // 2
+                    )
+                    if is_ok:
+                        return True
+        return False
+
+    def judge_back_loop_rec(
+        self,
+        origin_node_id: int,
+        origin_item_tuple: Tuple[Item, Item],
+        node_and_edge_list: List[Union[ItemSet, Edge]],
+        item_tuple: Tuple[Item, Item],
+        cur_index: int,
+        left_edge_count: int,
+    ):
+        if left_edge_count < 0:
+            return False
+
+        # cur_node: ItemSet = node_and_edge_list[cur_index]
+        item1, item2 = item_tuple
+        iter_index = cur_index
+
+        # if len(item1.gen.gen_tuple[0:-1]) == 0:
+        #     return False
+
+        for nt_or_t in reversed(item1.gen.gen_tuple[0:-1]):
+            iter_index = (iter_index - 1) % len(node_and_edge_list)
+            left_edge_count -= 1
+            if node_and_edge_list[iter_index].transfer_input != nt_or_t:
+                return False
+            iter_index = (iter_index - 1) % len(node_and_edge_list)
+
+        # 到下一个节点
+        next_index = (cur_index - 2 * (len(item1.gen.gen_tuple) - 1)) % len(node_and_edge_list)
+        next_node: ItemSet = node_and_edge_list[next_index]
+
+        for (n_item1, n_item2) in next_node.back_pair_list:
+            if item1.gen != n_item2.gen:  # 连续关系匹配
+                continue
+
+            if (
+                next_node.node_id == origin_node_id and left_edge_count == 0 and origin_item_tuple[1].gen == item1.gen
+            ):  # 成环结束条件
+                return True
+
+            is_ok = self.judge_back_loop_rec(
+                origin_node_id, origin_item_tuple, node_and_edge_list, (n_item1, n_item2), next_index, left_edge_count
+            )
+            if is_ok:
+                return True
+
+        return False
 
     def find_back_from_circle_rec(
         self, circle: List[int], state_list: List[int], visit_state: Set[int], index: int, ans_list: List[List[int]]
