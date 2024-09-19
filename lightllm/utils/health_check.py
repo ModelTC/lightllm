@@ -27,5 +27,5 @@ async def health_check(httpserver_manager: HttpServerManager, g_id_gen, request)
             pass
         return True
     except Exception as e:
-        logger.error("health_check error:", e)
+        logger.exception(str(e))
         return False

@@ -16,13 +16,16 @@ consecutive_failures = 0
 def health_monitor(url, all_process_ids):
     global consecutive_failures
     try:
-        response = requests.get(url, timeout=60)
-        if response.status_code != 200:
-            logger.error(f"Health check failed with status code: {response.status_code}")
-            consecutive_failures += 1
+        all_processes_is_alive = all_is_alive(all_process_ids)
+        if all_processes_is_alive:
+            response = requests.get(url, timeout=60)
+            if response.status_code == 200:
+                logger.info("Health check passed")
+                consecutive_failures = 0
+            else:
+                raise Exception(f"Health check failed with status code: {response.status_code}")
         else:
-            logger.info("Health check passed")
-            consecutive_failures = 0
+            raise Exception("not all processes is alive")
     except asyncio.TimeoutError:
         logger.error("Health check request timed out")
         consecutive_failures += 1
@@ -46,6 +49,24 @@ def health_monitor(url, all_process_ids):
         # 自 kill
         sys.exit(-1)
     return
+
+
+def is_process_active(pid):
+    import psutil
+
+    try:
+        process = psutil.Process(pid)
+        return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
+
+
+def all_is_alive(all_process_ids):
+    for pid in all_process_ids:
+        if not is_process_active(pid):
+            logger.error(f"error, pid {pid} is not alive")
+            return False
+    return True
 
 
 def get_all_cared_pids():
