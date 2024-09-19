@@ -169,6 +169,7 @@ class ItemSet:
     hash_id: int = None
     node_id: int = None
     into_t_or_nt: Union[T, NT] = None
+    back_pair_list: List[Tuple[Item, Item]] = None
 
     # 如果 ItemSet 是一个可以规约的项目，则添加一个 T to ItemLookAhead 的存储信息，方便快速的找到某个lookahead 的T信息
     # 对应的生成式
@@ -232,6 +233,15 @@ class ItemSet:
                     if not t.is_finished():
                         self.t_to_item_la[t] = item_la
         return
+
+    def init_back_pair(self):
+        self.back_pair_list = []  # 这个结构用于后续 dpda 检测回退成环的情况。
+        for item1 in self.item_dict.keys():
+            for item2 in self.item_dict.keys():
+                if item1 != item2:
+                    if isinstance(item1.gen.gen_tuple[-1], NT) and item1.loc == len(item1.gen.gen_tuple) - 1:
+                        if item2.loc == 0 and item2.gen.nt == item1.gen.gen_tuple[-1]:
+                            self.back_pair_list.append((item1, item2))
 
     def __repr__(self) -> str:
         ans = f"graph node: id {self.node_id} start #####################\n"

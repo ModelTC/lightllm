@@ -41,7 +41,7 @@ lr_graph = LRGraph(graph)
 dpda = DPDA(lr_graph=lr_graph)
 print(dpda)
 
-# dpda.remove_no_input_node_to_edges()
+dpda.remove_no_input_node_to_edges()
 
 with open("mermaid1.md", mode="+w") as file:
     file.write(dpda.to_mermaid())
