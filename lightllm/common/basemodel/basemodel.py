@@ -14,6 +14,7 @@ from lightllm.common.infer_utils import init_req_to_token_indexes
 from lightllm.common.build_utils import repair_config
 from lightllm.common.basemodel.triton_kernel.copy_kv_index_to_req import copy_kv_index_to_req
 from lightllm.common.basemodel.triton_kernel.splitfuse_copy_kv_index_to_req import splitfuse_copy_kv_index_to_req
+from lightllm.common.basemodel.cuda_graph import CudaGraph
 
 torch.backends.cudnn.enabled = True
 
@@ -50,6 +51,7 @@ class TpPartBaseModel:
         assert not (self.is_token_healing and self.return_all_prompt_logics), "can not be true in same time"
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         self.data_type = kvargs.get("data_type", "float16")
+        self.graph = CudaGraph()
 
         self._init_datatype()
         self._init_config()
@@ -304,7 +306,19 @@ class TpPartBaseModel:
             copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
-        predict_logics = self._token_forward(input_ids, infer_state)
+        if batch_size < self.graph.max_batch_size and False:
+            if self.graph.need_capture(batch_size):
+                predict_logics = self.graph.capture_decode(self._token_forward, input_ids, infer_state)
+                # print("origin ", predict_logics)
+                # predict_logics = self.graph.replay(input_ids, infer_state)
+                # print("replay ", predict_logics)
+            else:
+                predict_logics = self.graph.replay(input_ids, infer_state)
+                # print("replay ", predict_logics)
+                # predict_logics = self._token_forward(input_ids, infer_state)
+                # print("origin ", predict_logics)
+        else:
+            predict_logics = self._token_forward(input_ids, infer_state)
         return predict_logics
 
     @torch.no_grad()

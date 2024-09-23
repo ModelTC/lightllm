@@ -31,3 +31,9 @@ class LlamaInferStateInfo(InferStateInfo):
             self.other_kv_index = self.req_manager.req_to_token_indexs[self.b_req_idx[0], 0].item()
             # b_loc[0, max_len_in_batch - 1].item()
         return
+
+    def copy_(self, new_infer_state):
+        super().copy_(new_infer_state)
+        self.position_cos.copy_(new_infer_state.position_cos)
+        self.position_sin.copy_(new_infer_state.position_sin)
+        self.other_kv_index = new_infer_state.other_kv_index
