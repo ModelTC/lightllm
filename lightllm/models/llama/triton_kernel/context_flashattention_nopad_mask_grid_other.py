@@ -4,13 +4,6 @@ import triton
 import triton.language as tl
 import math
 import torch.nn.functional as F
-
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_old import context_attention_fwd as context_attention_fwd_old
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_mask import context_attention_fwd as context_attention_fwd_mask
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_mask_grid import context_attention_fwd as context_attention_fwd_mask_grid
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_mask_grid_other import context_attention_fwd as context_attention_fwd_mask_grid_other
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_old import context_attention_fwd_no_prompt_cache as context_attention_fwd_no_prompt_cache_old
-
 TESLA = "Tesla" in torch.cuda.get_device_name(0)
 
 sum_cost_time = 0
@@ -49,10 +42,14 @@ def _fwd_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    start_m = tl.program_id(0)
-    cur_bh = tl.program_id(1)
-    cur_batch = cur_bh // H
-    cur_head = cur_bh % H
+    # start_m = tl.program_id(0)
+    # cur_bh = tl.program_id(1)
+    # cur_batch = cur_bh // H
+    # cur_head = cur_bh % H
+    
+    cur_batch = tl.program_id(0)
+    cur_head = tl.program_id(1)
+    start_m = tl.program_id(2)
 
     cur_kv_head = cur_head // kv_group_num
 
@@ -80,11 +77,43 @@ def _fwd_kernel(
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
-    qk_scale = sm_scale
-    qk_scale *= 1.44269504  # 1/log(2)
+    # * qk_scale = sm_scale
+    # * qk_scale *= 1.44269504  # 1/log(2)
 
     block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
     block_end_loc = tl.minimum(block_start_loc + BLOCK_M + prompt_cache_len, cur_batch_seq_len + prompt_cache_len)
+    # max_no_mask_len = ((block_start_loc+prompt_cache_len)//BLOCK_N) * BLOCK_N 
+    # max_no_mask_len = tl.multiple_of(max_no_mask_len, BLOCK_N)
+    # # no causal mask
+    
+    # for start_n in range(0, max_no_mask_len, BLOCK_N):
+    #     start_n = tl.multiple_of(start_n, BLOCK_N)
+    #     # -- compute qk ----
+    #     kv_loc = tl.load(
+    #         Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + stride_req_to_tokens_s * (start_n + offs_n)
+    #     )
+        
+    #     off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
+    #     k = tl.load(K + off_k)
+    #     qk = tl.dot(q, k)
+
+    #     m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
+    #     qk = qk * qk_scale - m_ij[:, None]
+    #     p = tl.math.exp2(qk)
+    #     l_ij = tl.sum(p, 1)
+
+    #     # -- update m_i and l_i
+    #     alpha = tl.math.exp2(m_i - m_ij)
+    #     l_i = l_i * alpha + l_ij
+    #     # -- update output accumulator --
+    #     acc = acc * alpha[:, None]
+    #     # update acc
+    #     off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
+    #     v = tl.load(V + off_v)
+    #     p = p.to(v.dtype)
+    #     acc = tl.dot(p, v, acc)
+    #     # update m_i and l_i
+    #     m_i = m_ij
 
     # causal mask
     for start_n in range(0, block_mask * block_end_loc, BLOCK_N):
@@ -97,30 +126,47 @@ def _fwd_kernel(
         )
         off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
         k = tl.load(K + off_k, mask=(start_n + offs_n[None, :]) < block_end_loc, other=0.0)
-        qk = tl.dot(q, k)
+        # * qk = tl.dot(q, k)
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        qk += tl.dot(q, k)
+        qk *= sm_scale
 
-        mask = offs_m[:, None] + prompt_cache_len >= (start_n + offs_n[None, :])
-        qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
-        m_ij = tl.maximum(m_i, tl.max(qk, 1))
-        qk -= m_ij[:, None]
-        p = tl.math.exp2(qk)
+        # * mask = offs_m[:, None] + prompt_cache_len >= (start_n + offs_n[None, :])
+        # * qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
+        qk = tl.where(offs_m[:, None] + prompt_cache_len >= start_n + offs_n[None, :], qk, float("-100000000.0"))
+
+        # * m_ij = tl.maximum(m_i, tl.max(qk, 1))
+        m_ij = tl.max(qk, 1)
+        p = tl.math.exp(qk - m_ij[:, None])
         l_ij = tl.sum(p, 1)
 
         # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
+        m_i_new = tl.maximum(m_i, m_ij)
+        alpha = tl.math.exp(m_i - m_i_new)
+        beta = tl.exp(m_ij - m_i_new)
+        # l_i = l_i * alpha + l_ij
+        l_i_new = alpha * l_i + beta * l_ij
         # -- update output accumulator --
-        acc = acc * alpha[:, None]
+        # scale p
+        p_scale = beta / l_i_new
+        p = p * p_scale[:, None]
+        # scale acc
+        acc_scale = l_i / l_i_new * alpha
+        acc_scale = tl.where(offs_m + prompt_cache_len >= start_n, acc_scale, 1.0)
+        acc = acc * acc_scale[:, None]
         # update acc
         off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
         v = tl.load(V + off_v, mask=(start_n + offs_n[:, None]) < block_end_loc, other=0.0)
         p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc)
+        # acc = tl.dot(p, v, acc)
+        acc += tl.dot(p,v)
         # acc += tl.dot(p, v)
         # update m_i and l_i
-        m_i = m_ij
+        m_i = m_i_new
+        l_i = l_i_new
 
-    acc = acc / l_i[:, None]
+
+    # acc = acc / l_i[:, None]
     off_o = (
         (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
         + cur_head * stride_oh
@@ -134,19 +180,6 @@ def _fwd_kernel(
 def context_attention_fwd(
     q, k, v, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs
 ):
-    old_out = torch.zeros_like(o)
-    context_attention_fwd_old(q, k, v, old_out, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs)
-
-    mask_out = torch.zeros_like(o)
-    context_attention_fwd_mask(q, k, v, mask_out, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs)
-
-    mask_grid_out = torch.zeros_like(o)
-    context_attention_fwd_mask_grid(q, k, v, mask_grid_out, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs)
-
-    mask_grid_other_out = torch.zeros_like(o)
-    context_attention_fwd_mask_grid_other(q, k, v, mask_grid_other_out, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs)
-
-
     global sum_cost_time, call_cnt
     torch.cuda.synchronize()
     sta_time = time.time()
@@ -160,7 +193,9 @@ def context_attention_fwd(
     batch, head = b_seq_len.shape[0], q.shape[1]
     kv_group_num = q.shape[1] // k.shape[1]
 
-    grid = lambda meta: (triton.cdiv(max_input_len, meta['BLOCK_M']), batch * head, 1)
+    # grid = (triton.cdiv(max_input_len, BLOCK_M), batch * head, 1)
+    # grid = lambda meta: (triton.cdiv(max_input_len, meta['BLOCK_M']), batch * head, 1)
+    grid = (batch, head, triton.cdiv(max_input_len, BLOCK_M))  # batch, head,
 
     BLOCK_N = BLOCK_M
     num_warps = 4 if Lk <= 64 else 8
@@ -206,12 +241,8 @@ def context_attention_fwd(
     call_cnt += 1
     if call_cnt != 1:
         sum_cost_time += ed_time - sta_time
-        print(f"[CHC]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
+        print(f"[CHC-mask-grid-other]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
 
-    print(f"Diff old: {torch.max(old_out - o)}")
-    print(f"Diff mask_out: {torch.max(mask_out - o)}")
-    print(f"Diff mask_grid_out: {torch.max(mask_grid_out - o)}")
-    print(f"Diff mask_grid_other_out: {torch.max(mask_grid_other_out - o)}")
 
 @triton.jit
 def _fwd_kernel_no_prompt_cache(
@@ -351,9 +382,6 @@ def _fwd_kernel_no_prompt_cache(
 
 @torch.no_grad()
 def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
-    
-    old_out = torch.zeros_like(o)
-    context_attention_fwd_no_prompt_cache_old(q, k, v, old_out, b_start_loc, b_seq_len, max_input_len)
 
     global sum_cost_time, call_cnt
     torch.cuda.synchronize()
@@ -409,6 +437,4 @@ def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, ma
     call_cnt += 1
     if call_cnt != 1:
         sum_cost_time += ed_time - sta_time
-        print(f"[]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
-
-    print(f"Diff : {torch.max(old_out - o)}")
+        print(f"[mask]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
