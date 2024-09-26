@@ -82,41 +82,41 @@ def _fwd_kernel(
 
     block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
     block_end_loc = tl.minimum(block_start_loc + BLOCK_M + prompt_cache_len, cur_batch_seq_len + prompt_cache_len)
-    max_no_mask_len = ((block_start_loc+prompt_cache_len)//BLOCK_N) * BLOCK_N 
-    max_no_mask_len = tl.multiple_of(max_no_mask_len, BLOCK_N)
-    # no causal mask
+    # max_no_mask_len = ((block_start_loc+prompt_cache_len)//BLOCK_N) * BLOCK_N 
+    # max_no_mask_len = tl.multiple_of(max_no_mask_len, BLOCK_N)
+    # # no causal mask
     
-    for start_n in range(0, max_no_mask_len, BLOCK_N):
-        start_n = tl.multiple_of(start_n, BLOCK_N)
-        # -- compute qk ----
-        kv_loc = tl.load(
-            Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + stride_req_to_tokens_s * (start_n + offs_n)
-        )
+    # for start_n in range(0, max_no_mask_len, BLOCK_N):
+    #     start_n = tl.multiple_of(start_n, BLOCK_N)
+    #     # -- compute qk ----
+    #     kv_loc = tl.load(
+    #         Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + stride_req_to_tokens_s * (start_n + offs_n)
+    #     )
         
-        off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
-        k = tl.load(K + off_k)
-        qk = tl.dot(q, k)
+    #     off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
+    #     k = tl.load(K + off_k)
+    #     qk = tl.dot(q, k)
 
-        m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
-        qk = qk * qk_scale - m_ij[:, None]
-        p = tl.math.exp2(qk)
-        l_ij = tl.sum(p, 1)
+    #     m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
+    #     qk = qk * qk_scale - m_ij[:, None]
+    #     p = tl.math.exp2(qk)
+    #     l_ij = tl.sum(p, 1)
 
-        # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
-        # -- update output accumulator --
-        acc = acc * alpha[:, None]
-        # update acc
-        off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
-        v = tl.load(V + off_v)
-        p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc)
-        # update m_i and l_i
-        m_i = m_ij
+    #     # -- update m_i and l_i
+    #     alpha = tl.math.exp2(m_i - m_ij)
+    #     l_i = l_i * alpha + l_ij
+    #     # -- update output accumulator --
+    #     acc = acc * alpha[:, None]
+    #     # update acc
+    #     off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
+    #     v = tl.load(V + off_v)
+    #     p = p.to(v.dtype)
+    #     acc = tl.dot(p, v, acc)
+    #     # update m_i and l_i
+    #     m_i = m_ij
 
     # causal mask
-    for start_n in range(max_no_mask_len, block_mask * block_end_loc, BLOCK_N):
+    for start_n in range(0, block_mask * block_end_loc, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         kv_loc = tl.load(
@@ -225,7 +225,7 @@ def context_attention_fwd(
     call_cnt += 1
     if call_cnt != 1:
         sum_cost_time += ed_time - sta_time
-        print(f"[OLD-CHC]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
+        print(f"[CHC]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
 
     print(f"Diff : {torch.max(old_out - o)}")
 
@@ -425,6 +425,6 @@ def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, ma
     call_cnt += 1
     if call_cnt != 1:
         sum_cost_time += ed_time - sta_time
-        print(f"[OLD-CHC]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
+        print(f"[]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
 
     print(f"Diff : {torch.max(old_out - o)}")
