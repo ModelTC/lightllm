@@ -468,7 +468,21 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
-
+    parser.add_argument("--disable_cudagraph", action="store_true", help="Disable the cudagraph of the decoding stage")
+    parser.add_argument(
+        "--graph_max_batch_size",
+        type=int,
+        default=8,
+        help="""Maximum batch size that can be captured by the cuda graph for decodign stage.
+                The default value is 8. It will turn into eagar mode if encounters a larger value.""",
+    )
+    parser.add_argument(
+        "--graph_max_len_in_batch",
+        type=int,
+        default=8192,
+        help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
+                The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
+    )
     return parser
 
 
