@@ -5,9 +5,6 @@ import triton.language as tl
 import math
 import torch.nn.functional as F
 
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_old import context_attention_fwd as context_attention_fwd_old
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad_old import context_attention_fwd_no_prompt_cache as context_attention_fwd_no_prompt_cache_old
-
 TESLA = "Tesla" in torch.cuda.get_device_name(0)
 
 sum_cost_time = 0
@@ -20,9 +17,9 @@ def _fwd_kernel(
     K,
     V,
     sm_scale,
-    Out,
     B_Start_Loc,
-    B_Seqlen,
+    B_Seqlen,  # B_LOC 内部记录每个batch 输入的真实位置， B_SEQ_len 记录当前输入的真实长度
+    Out,
     Req_to_tokens,
     B_req_idx,
     stride_qbs,
@@ -41,15 +38,13 @@ def _fwd_kernel(
     stride_req_to_tokens_s,
     kv_group_num,
     b_prompt_cache_len,
-    H: tl.constexpr,
-    BLOCK_DMODEL: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    BLOCK_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    start_m = tl.program_id(0)
-    cur_bh = tl.program_id(1)
-    cur_batch = cur_bh // H
-    cur_head = cur_bh % H
+    cur_batch = tl.program_id(0)
+    cur_head = tl.program_id(1)
+    start_m = tl.program_id(2)
 
     cur_kv_head = cur_head // kv_group_num
 
@@ -63,7 +58,7 @@ def _fwd_kernel(
     # initialize offsets
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
-    offs_m = block_start_loc + tl.arange(0, BLOCK_M)
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     off_q = (
         (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs
         + cur_head * stride_qh
@@ -77,46 +72,10 @@ def _fwd_kernel(
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
-    qk_scale = sm_scale
-    qk_scale *= 1.44269504  # 1/log(2)
-
     block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
-    block_end_loc = tl.minimum(block_start_loc + BLOCK_M + prompt_cache_len, cur_batch_seq_len + prompt_cache_len)
-    max_no_mask_len = ((block_start_loc+prompt_cache_len)//BLOCK_N) * BLOCK_N 
-    max_no_mask_len = tl.multiple_of(max_no_mask_len, BLOCK_N)
-    # no causal mask
-    
-    for start_n in range(0, max_no_mask_len, BLOCK_N):
-        start_n = tl.multiple_of(start_n, BLOCK_N)
-        # -- compute qk ----
-        kv_loc = tl.load(
-            Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + stride_req_to_tokens_s * (start_n + offs_n)
-        )
-        
-        off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
-        k = tl.load(K + off_k)
-        qk = tl.dot(q, k)
+    block_end_loc = tl.minimum((start_m + 1) * BLOCK_M + prompt_cache_len, cur_batch_seq_len + prompt_cache_len)
 
-        m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
-        qk = qk * qk_scale - m_ij[:, None]
-        p = tl.math.exp2(qk)
-        l_ij = tl.sum(p, 1)
-
-        # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
-        # -- update output accumulator --
-        acc = acc * alpha[:, None]
-        # update acc
-        off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
-        v = tl.load(V + off_v)
-        p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc)
-        # update m_i and l_i
-        m_i = m_ij
-
-    # causal mask
-    for start_n in range(max_no_mask_len, block_mask * block_end_loc, BLOCK_N):
+    for start_n in range(0, block_mask * block_end_loc, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         kv_loc = tl.load(
@@ -126,30 +85,38 @@ def _fwd_kernel(
         )
         off_k = kv_loc[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
         k = tl.load(K + off_k, mask=(start_n + offs_n[None, :]) < block_end_loc, other=0.0)
-        qk = tl.dot(q, k)
 
-        mask = offs_m[:, None] + prompt_cache_len >= (start_n + offs_n[None, :])
-        qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
-        m_ij = tl.maximum(m_i, tl.max(qk, 1))
-        qk -= m_ij[:, None]
-        p = tl.math.exp2(qk)
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        qk += tl.dot(q, k)
+        qk *= sm_scale
+        qk = tl.where(offs_m[:, None] + prompt_cache_len >= start_n + offs_n[None, :], qk, float("-100000000.0"))
+
+        # -- compute m_ij, p, l_ij
+        m_ij = tl.max(qk, 1)
+        p = tl.exp(qk - m_ij[:, None])
         l_ij = tl.sum(p, 1)
-
         # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
+        m_i_new = tl.maximum(m_i, m_ij)
+        alpha = tl.exp(m_i - m_i_new)
+        beta = tl.exp(m_ij - m_i_new)
+        l_i_new = alpha * l_i + beta * l_ij
         # -- update output accumulator --
-        acc = acc * alpha[:, None]
+        # scale p
+        p_scale = beta / l_i_new
+        p = p * p_scale[:, None]
+        # scale acc
+        acc_scale = l_i / l_i_new * alpha
+        acc_scale = tl.where(offs_m + prompt_cache_len >= start_n, acc_scale, 1.0)
+        acc = acc * acc_scale[:, None]
         # update acc
         off_v = kv_loc[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
         v = tl.load(V + off_v, mask=(start_n + offs_n[:, None]) < block_end_loc, other=0.0)
         p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc)
-        # acc += tl.dot(p, v)
+        acc += tl.dot(p, v)
         # update m_i and l_i
-        m_i = m_ij
-
-    acc = acc / l_i[:, None]
+        l_i = l_i_new
+        m_i = m_i_new
+    # initialize pointers to output
     off_o = (
         (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
         + cur_head * stride_oh
@@ -157,19 +124,18 @@ def _fwd_kernel(
     )
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
+    return
 
 
 @torch.no_grad()
 def context_attention_fwd(
     q, k, v, o, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs
 ):
-    old_out = torch.zeros_like(o)
-    context_attention_fwd_old(q, k, v, old_out, b_req_idx, b_start_loc, b_seq_len, b_prompt_cache_len, max_input_len, req_to_token_indexs)
-
     global sum_cost_time, call_cnt
     torch.cuda.synchronize()
     sta_time = time.time()
-    BLOCK_M = 128 if not TESLA else 64
+
+    BLOCK = 128 if not TESLA else 64
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
     assert Lq == Lk and Lk == Lv
@@ -179,20 +145,17 @@ def context_attention_fwd(
     batch, head = b_seq_len.shape[0], q.shape[1]
     kv_group_num = q.shape[1] // k.shape[1]
 
-    # grid = (triton.cdiv(max_input_len, BLOCK_M), batch * head, 1)
-    grid = lambda meta: (triton.cdiv(max_input_len, meta['BLOCK_M']), batch * head, 1)
-    BLOCK_N = BLOCK_M
-    num_warps = 4 if Lk <= 64 else 8
-    num_stages = 1
+    grid = (batch, head, triton.cdiv(max_input_len, BLOCK))  # batch, head,
 
+    num_warps = 4 if Lk <= 64 else 8
     _fwd_kernel[grid](
         q,
         k,
         v,
         sm_scale,
-        o,
         b_start_loc,
         b_seq_len,
+        o,
         req_to_token_indexs,
         b_req_idx,
         q.stride(0),
@@ -211,12 +174,11 @@ def context_attention_fwd(
         req_to_token_indexs.stride(1),
         kv_group_num=kv_group_num,
         b_prompt_cache_len=b_prompt_cache_len,
-        H=head,
+        BLOCK_M=BLOCK,
         BLOCK_DMODEL=Lk,
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
+        BLOCK_N=BLOCK,
         num_warps=num_warps,
-        num_stages=num_stages
+        num_stages=1,
     )
 
     torch.cuda.synchronize()
@@ -227,7 +189,8 @@ def context_attention_fwd(
         sum_cost_time += ed_time - sta_time
         print(f"[OLD-CHC]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
 
-    print(f"Diff : {torch.max(old_out - o)}")
+    return
+
 
 @triton.jit
 def _fwd_kernel_no_prompt_cache(
@@ -235,9 +198,9 @@ def _fwd_kernel_no_prompt_cache(
     K,
     V,
     sm_scale,
-    Out,
     B_Start_Loc,
-    B_Seqlen,
+    B_Seqlen,  # B_LOC 内部记录每个batch 输入的真实位置， B_SEQ_len 记录当前输入的真实长度
+    Out,
     stride_qbs,
     stride_qh,
     stride_qd,
@@ -251,27 +214,25 @@ def _fwd_kernel_no_prompt_cache(
     stride_oh,
     stride_od,
     kv_group_num,
-    H,
-    BLOCK_DMODEL: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    BLOCK_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    start_m = tl.program_id(0)
-    cur_bh = tl.program_id(1)
-    cur_batch = cur_bh // H
-    cur_head = cur_bh % H
+    cur_batch = tl.program_id(0)
+    cur_head = tl.program_id(1)
+    start_m = tl.program_id(2)
 
     cur_kv_head = cur_head // kv_group_num
 
-    cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
+    cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
 
     block_start_loc = BLOCK_M * start_m
 
     # initialize offsets
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
-    offs_m = block_start_loc + tl.arange(0, BLOCK_M)
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     off_q = (
         (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs
         + cur_head * stride_qh
@@ -284,78 +245,58 @@ def _fwd_kernel_no_prompt_cache(
 
     k_ptrs = K + off_k
     v_ptrs = V + off_v
-    
+
     # initialize pointer to m and l
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
-    qk_scale = sm_scale
-    qk_scale *= 1.44269504  # 1/log(2)
-
     block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
-    block_end_loc = tl.minimum(block_start_loc + BLOCK_M, cur_batch_seq_len)
-    max_no_mask_len = (block_start_loc//BLOCK_N) * BLOCK_N 
 
-    # no causal mask
-    for start_n in range(0, max_no_mask_len, BLOCK_N):
-        start_n = tl.multiple_of(start_n, BLOCK_N)
-        # -- compute qk ----
-        k = tl.load(k_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kbs)
-        qk = tl.dot(q, k)
-
-        m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
-        qk = qk * qk_scale - m_ij[:, None]
-        p = tl.math.exp2(qk)
-        l_ij = tl.sum(p, 1)
-
-        # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
-        # -- update output accumulator --
-        acc = acc * alpha[:, None]
-        # update acc
-        v = tl.load(v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs)
-        p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc)
-        # update m_i and l_i
-        m_i = m_ij
-
-    # causal mask
-    for start_n in range(max_no_mask_len, block_mask * block_end_loc, BLOCK_N):
+    for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         k = tl.load(
             k_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kbs,
-            mask=(start_n + offs_n[None, :]) < block_end_loc,
-            other=0,
+            mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
+            other=0.0,
         )
-        qk = tl.dot(q, k)
+        # mask = tl.load(mask_ptrs + start_n, mask=start_n + offs_n < cur_batch_end_loc, other=0.0)
 
-        mask = offs_m[:, None] >= (start_n + offs_n[None, :])
-        qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
-        m_ij = tl.maximum(m_i, tl.max(qk, 1))
-        qk -= m_ij[:, None]
-        p = tl.math.exp2(qk)
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        qk += tl.dot(q, k)
+        qk *= sm_scale
+        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+
+        # -- compute m_ij, p, l_ij
+        m_ij = tl.max(qk, 1)
+        p = tl.exp(qk - m_ij[:, None])
         l_ij = tl.sum(p, 1)
-
         # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
+        m_i_new = tl.maximum(m_i, m_ij)
+        alpha = tl.exp(m_i - m_i_new)
+        beta = tl.exp(m_ij - m_i_new)
+        l_i_new = alpha * l_i + beta * l_ij
         # -- update output accumulator --
-        acc = acc * alpha[:, None]
+        # scale p
+        p_scale = beta / l_i_new
+        p = p * p_scale[:, None]
+        # scale acc
+        acc_scale = l_i / l_i_new * alpha
+        acc = acc * acc_scale[:, None]
         # update acc
         v = tl.load(
-            v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs, 
-            mask=(start_n + offs_n[:, None]) < block_end_loc, 
-            other=0.0
+            v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs,
+            mask=(start_n + offs_n[:, None]) < cur_batch_seq_len,
+            other=0.0,
         )
-        p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc)
-        # update m_i and l_i
-        m_i = m_ij
 
-    acc = acc / l_i[:, None]
+        p = p.to(v.dtype)
+        acc += tl.dot(p, v)
+        # update m_i and l_i
+        l_i = l_i_new
+        m_i = m_i_new
+    # initialize pointers to output
     off_o = (
         (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
         + cur_head * stride_oh
@@ -363,19 +304,18 @@ def _fwd_kernel_no_prompt_cache(
     )
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
+    return
 
 
 @torch.no_grad()
 def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
-    
-    old_out = torch.zeros_like(o)
-    context_attention_fwd_no_prompt_cache_old(q, k, v, old_out, b_start_loc, b_seq_len, max_input_len)
-
     global sum_cost_time, call_cnt
     torch.cuda.synchronize()
     sta_time = time.time()
 
-    BLOCK_M = 128 if not TESLA else 64
+    BLOCK = 128 if not TESLA else 64
+    if q.dtype == torch.float32:
+        BLOCK = BLOCK // 2
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
     assert Lq == Lk and Lk == Lv
@@ -385,19 +325,17 @@ def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, ma
     batch, head = b_seq_len.shape[0], q.shape[1]
     kv_group_num = q.shape[1] // k.shape[1]
 
-    grid = (triton.cdiv(max_input_len, BLOCK_M), batch * head, 1)
-    BLOCK_N = BLOCK_M // 2
-    num_warps = 4 if Lk <= 64 else 8
-    num_stages = 3
+    grid = (batch, head, triton.cdiv(max_input_len, BLOCK))  # batch, head,
 
+    num_warps = 4 if Lk <= 64 else 8
     _fwd_kernel_no_prompt_cache[grid](
         q,
         k,
         v,
         sm_scale,
-        o,
         b_start_loc,
         b_seq_len,
+        o,
         q.stride(0),
         q.stride(1),
         q.stride(2),
@@ -411,12 +349,11 @@ def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, ma
         o.stride(1),
         o.stride(2),
         kv_group_num=kv_group_num,
-        H=head, 
+        BLOCK_M=BLOCK,
         BLOCK_DMODEL=Lk,
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
+        BLOCK_N=BLOCK,
         num_warps=num_warps,
-        num_stages=num_stages,
+        num_stages=1,
     )
 
     torch.cuda.synchronize()
@@ -425,6 +362,6 @@ def context_attention_fwd_no_prompt_cache(q, k, v, o, b_start_loc, b_seq_len, ma
     call_cnt += 1
     if call_cnt != 1:
         sum_cost_time += ed_time - sta_time
-        print(f"[OLD-CHC]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
+        print(f"[OLD]sum_cost_time: {sum_cost_time*1000}, cnt: {call_cnt}, avg:{sum_cost_time*1000/call_cnt}")
 
-    print(f"Diff : {torch.max(old_out - o)}")
+    return
