@@ -15,6 +15,9 @@ from io import BytesIO
 from PIL import Image
 import time
 import torch
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 class VisualManager:
@@ -38,7 +41,7 @@ class VisualManager:
         self.waiting_reqs = []
         self.model_weightdir = args.model_dir
         self.tp_world_size = args.tp
-        self.world_size = args.tp
+        self.vit_world_size = args.visual_dp
         self.infer_batch_size = infer_batch_size
         self.trust_remote_code = args.trust_remote_code
         self.args = args
@@ -47,20 +50,24 @@ class VisualManager:
     async def wait_to_model_ready(self):
 
         self.model_rpcs: List[VisualModelRpcClient] = []
-        for rank_id in range(self.world_size):
-            rpc_model = await start_model_process(port=self.model_rpcs_ports[rank_id], world_size=self.world_size)
+        for rank_id in range(self.vit_world_size):
+            print(f"self.vit_world_size is {self.vit_world_size}")
+            rpc_model = await start_model_process(
+                port=self.model_rpcs_ports[rank_id], vit_world_size=self.vit_world_size
+            )
             self.model_rpcs.append(rpc_model)
 
         init_model_ret = []
-        for rank_id in range(self.world_size):  # async init model process
+        for rank_id in range(self.vit_world_size):  # async init model process
             kvargs = {
                 "weight_dir": self.model_weightdir,
                 "trust_remote_code": self.trust_remote_code,
-                "world_size": self.world_size,
+                "vit_world_size": self.vit_world_size,
                 "client_port": self.client_port,
                 "rank_id": rank_id,
                 "data_type": self.args.data_type,
                 "nccl_port": self.args.nccl_port,
+                "visual_nccl_port": self.args.visual_nccl_port,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
         await asyncio.gather(*init_model_ret)
@@ -77,37 +84,17 @@ class VisualManager:
         if len(uuids) == 0:
             return
         # uuids -> PIL Images
-        images = []
-        for uid in uuids:
-            image_data = read_shm(get_shm_name_data(uid))
-            images.append(Image.open(BytesIO(image_data)))
-            # print(" + got pil image:", images[-1].size, images[-1].mode)
         tasks = []
-        for tp_rank in range(self.world_size):
-            assigned_images = [images[i] for i in range(tp_rank, len(images), self.world_size)]
-            assigned_uuids = [uuids[i] for i in range(tp_rank, len(uuids), self.world_size)]
-            if assigned_images:
-                task = asyncio.create_task(self.encode_and_store(tp_rank, assigned_images, assigned_uuids))
+        for tp_rank in range(self.vit_world_size):
+            assigned_uuids = [uuids[i] for i in range(tp_rank, len(uuids), self.vit_world_size)]
+            if assigned_uuids:
+                logging.info(f"tp {tp_rank} is processing {assigned_uuids}")
+                task = asyncio.create_task(self.model_rpcs[tp_rank].encode(assigned_uuids))
                 tasks.append(task)
 
         # rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]
         await asyncio.gather(*tasks)
-        torch.cuda.synchronize()
         return
-
-    async def encode_and_store(self, tp_rank, assigned_images, assigned_uuids):
-        # aynsc vit-encode
-        img_embeds = []
-        result = await self.model_rpcs[tp_rank].encode(assigned_images)
-        img_embeds.extend(obtain(result))
-        print(f"cuda{tp_rank} is work on uuid {assigned_uuids}")
-        print("len of img_embeds is", len(img_embeds))
-        # write img_embed to shm
-        for i, uid in enumerate(assigned_uuids):
-            if not self.cache_client.root.get_item_embed(uid):
-                cur_embed_bytes = tensor2bytes(img_embeds[i])
-                create_shm(get_shm_name_embed(uid), cur_embed_bytes)
-                self.cache_client.root.set_item_embed(uid)
 
     async def loop_for_fwd(self):
         while True:

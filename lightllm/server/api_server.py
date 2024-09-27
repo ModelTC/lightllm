@@ -465,6 +465,13 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--grouping_key", action="append", default=[], help="grouping_key for the monitor in the form key=value"
     )
     parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
+    parser.add_argument("--visual_dp", type=int, default=1, help="number of data parallel instances for ViT")
+    parser.add_argument(
+        "--visual_nccl_port",
+        type=int,
+        default=29500,
+        help="the visual_nccl_port to build a distributed environment for Vit",
+    )
     parser.add_argument(
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
@@ -521,7 +528,9 @@ def main():
 
     logger.info(f"all start args:{args}")
 
-    can_use_ports = alloc_can_use_network_port(num=6 + args.tp * 2, used_nccl_port=args.nccl_port)
+    can_use_ports = alloc_can_use_network_port(
+        num=6 + args.tp + args.visual_dp, used_nccl_port=[args.nccl_port, args.visual_nccl_port]
+    )
     router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
     model_rpc_ports = can_use_ports[6 : 6 + args.tp]
     visual_model_rpc_ports = can_use_ports[6 + args.tp :]

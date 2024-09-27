@@ -22,30 +22,35 @@ class VisualModelRpcServer(rpyc.Service):
         import torch
         import torch.distributed as dist
 
-        world_size = kvargs["world_size"]
+        vit_world_size = kvargs["vit_world_size"]
         self.tp_rank = kvargs["rank_id"]
         client_port = kvargs["client_port"]
         data_type = kvargs["data_type"]
         weight_dir = kvargs["weight_dir"]
         model_kvargs = {
             "tp_rank": self.tp_rank,
-            "world_size": world_size,
+            "vit_world_size": vit_world_size,
             "weight_dir": weight_dir,
             "client_port": client_port,
             "data_type": data_type,
         }
-        os.environ["MASTER_ADDR"] = "127.0.0.1"
-        os.environ["MASTER_PORT"] = str(kvargs["nccl_port"] + 1)
-        dist.init_process_group(backend="nccl", rank=self.tp_rank, world_size=world_size)
+        dist.init_process_group(
+            backend="nccl",
+            init_method=f'tcp://127.0.0.1:{kvargs["visual_nccl_port"]}',
+            rank=self.tp_rank,
+            world_size=vit_world_size,
+        )
         torch.cuda.set_device(self.tp_rank)
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
 
         try:
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
-                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
+                self.model = QWenVisionTransformer(model_kvargs, **model_cfg["visual"]).eval().bfloat16()
             elif self.model_type == "qwen2_vl":
-                self.model = Qwen2VisionTransformerPretrainedModel(**model_cfg["vision_config"]).eval().bfloat16()
+                self.model = (
+                    Qwen2VisionTransformerPretrainedModel(model_kvargs, **model_cfg["vision_config"]).eval().bfloat16()
+                )
             elif self.model_type == "llava":
                 self.model = LlavaVisionModel(model_kvargs)
             elif self.model_type == "internlmxcomposer2":
@@ -79,11 +84,11 @@ class VisualModelRpcServer(rpyc.Service):
 
 
 class VisualModelRpcClient:
-    def __init__(self, model_rpc, world_size, rpc_server_process=None):
+    def __init__(self, model_rpc, vit_world_size, rpc_server_process=None):
         self.model: VisualModelRpcServer = model_rpc
-        self.world_size = world_size
+        self.vit_world_size = vit_world_size
         self.rpc_server_process = rpc_server_process
-        self.use_rpc = self.world_size != 1
+        self.use_rpc = self.vit_world_size != 1
         if self.use_rpc:
 
             def async_wrap(f):
@@ -112,8 +117,8 @@ class VisualModelRpcClient:
         else:
             return
 
-    async def encode(self, images):
-        ans = self._encode(images)
+    async def encode(self, uuids):
+        ans = self._encode(uuids)
         if self.use_rpc:
             return await ans
         else:
@@ -134,9 +139,9 @@ def _init_env(port):
     return
 
 
-async def start_model_process(port, world_size):
-    if world_size == 1:
-        return VisualModelRpcClient(VisualModelRpcServer(), world_size)
+async def start_model_process(port, vit_world_size):
+    if vit_world_size == 1:
+        return VisualModelRpcClient(VisualModelRpcServer(), vit_world_size)
     import multiprocessing
 
     proc = multiprocessing.Process(target=_init_env, args=(port,))
@@ -154,4 +159,4 @@ async def start_model_process(port, world_size):
         raise Exception("init rpc env error!")
 
     assert proc.is_alive()
-    return VisualModelRpcClient(con.root, world_size, rpc_server_process=proc)
+    return VisualModelRpcClient(con.root, vit_world_size, rpc_server_process=proc)

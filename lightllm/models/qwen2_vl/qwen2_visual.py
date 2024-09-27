@@ -32,6 +32,7 @@ import requests
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 import rpyc
 from io import BytesIO
+from rpyc.utils.classic import obtain
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 from transformers.modeling_utils import PreTrainedModel
@@ -295,6 +296,7 @@ class Qwen2VLVisionBlock(nn.Module):
 class Qwen2VisionTransformerPretrainedModel(nn.Module):
     def __init__(
         self,
+        kvargs,
         depth=32,
         embed_dim=1280,
         hidden_size=3584,
@@ -307,6 +309,10 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         temporal_patch_size=2,
         **kwargs,
     ):
+        self.tp_tank_ = kvargs["tp_rank"]
+        self.world_size_ = kvargs["vit_world_size"]
+        self.client_port = kvargs["client_port"]
+        self.cache_client = rpyc.connect("localhost", self.client_port)
         super().__init__()
         self.depth = depth
         self.embed_dim = embed_dim
@@ -427,15 +433,38 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
 
         self.load_state_dict(weight_dict)
 
-    def encode(self, image_items: List[Union[str, Image.Image]]):
+    def encode(self, image_items: List[Union[int, str, torch.Tensor, Image.Image]]):
         img_tensors = []
         valid_ids = []
         valid_id = 0
         img_grids = []
+        uuids = []
         for i, url in enumerate(image_items):
+            if self.world_size_ != 1:
+                url = obtain(url)
             if isinstance(url, Image.Image):
                 t = get_image(url)
                 image_inputs = self.processor.preprocess(images=t, return_tensors="pt")
+                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device="cuda")
+                image_grid_thw = image_inputs["image_grid_thw"]
+                img_tensors.append(pixel_values)
+                img_grids.append(image_grid_thw)
+            elif isinstance(url, torch.Tensor):
+                img_tensors.append(url)
+            elif isinstance(url, int):
+                uuids.append(url)
+                image_data = read_shm(get_shm_name_data(url))
+                image_data = Image.open(BytesIO(image_data))
+                image_data = get_image(image_data)
+                image_inputs = self.processor.preprocess(images=image_data, return_tensors="pt")
+                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device="cuda")
+                image_grid_thw = image_inputs["image_grid_thw"]
+                img_tensors.append(pixel_values)
+                img_grids.append(image_grid_thw)
+            elif url.startswith("http://") or url.startswith("https://"):
+                image_data = Image.open(requests.get(url, stream=True).raw)
+                image_data = get_image(image_data)
+                image_inputs = self.processor.preprocess(images=image_data, return_tensors="pt")
                 pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device="cuda")
                 image_grid_thw = image_inputs["image_grid_thw"]
                 img_tensors.append(pixel_values)
@@ -461,4 +490,15 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         pixel_values = pixel_values.type(self.get_dtype())
         all_img_embeds = self.forward(pixel_values, grid_thw=image_grid_thw).to(self.device)
 
-        return [all_img_embeds[start:end] for start, end in valid_ids]
+        if len(uuids) == 0:
+            return [all_img_embeds[start:end] for start, end in valid_ids]
+        else:
+            for i in range(len(uuids)):
+                uid = uuids[i]
+                if not self.cache_client.root.get_item_embed(uid):
+                    start, end = valid_ids[i]
+                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
+                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
+                    self.cache_client.root.set_item_embed(uuids[i])
+
+        return

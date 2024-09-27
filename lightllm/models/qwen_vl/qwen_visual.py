@@ -11,7 +11,8 @@ from functools import partial
 from PIL import Image
 from typing import Callable, Optional, Sequence, Tuple, List, Union
 import numpy as np
-
+import rpyc
+from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -346,7 +347,9 @@ class QWenVisionTransformer(nn.Module):
         **kwargs
     ):
         self.tp_rank_ = kvargs["tp_rank"]
-        self.world_size_ = kvargs["world_size"]
+        self.world_size_ = kvargs["vit_world_size"]
+        self.client_port = kvargs["client_port"]
+        self.cache_client = rpyc.connect("localhost", self.client_port)
         super().__init__()
         image_height, image_width = self.image_size = (image_size, image_size)
         patch_height, patch_width = self.patch_size = (patch_size, patch_size)
@@ -417,21 +420,52 @@ class QWenVisionTransformer(nn.Module):
 
         return x
 
-    def encode(self, image_items: List[Union[str, Image.Image]]):
-        images = []
-        for item in image_items:
+    def encode(self, image_items: List[Union[int, str, torch.Tensor, Image.Image]]):
+        img_tensors = []
+        uuids = []
+        valid_id = 0
+        valid_ids = []
+        for i, item in enumerate(image_items):
             if self.world_size_ != 1:
                 item = obtain(item)
             if isinstance(item, Image.Image):
-                image = item
+                image = item.convert("RGB")
+                t = self.image_transform(image)
+                img_tensors.append(t)
+            elif isinstance(item, torch.Tensor):
+                img_tensors.append(item)
+            elif isinstance(item, int):
+                uuids.append(item)
+                image_data = read_shm(get_shm_name_data(item))
+                image_data = Image.open(BytesIO(image_data)).convert("RGB")
+                t = self.image_transform(image_data)
+                img_tensors.append(t)
             elif item.startswith("http://") or item.startswith("https://"):
                 image = Image.open(requests.get(item, stream=True).raw)
             else:
-                image = Image.open(item)
-            image = image.convert("RGB")
-            images.append(self.image_transform(image))
-        images = torch.stack(images, dim=0)
-        return self(images)
+                raise Exception("Unsupport input types: {} for {}".format(type(item), item))
+            cur_num = img_tensors[-1].shape[0]
+
+            valid_ids.append([valid_id, valid_id + cur_num])
+            valid_id += cur_num
+        if len(img_tensors) <= 0:
+            return None
+
+        pixel_values = torch.stack(img_tensors, dim=0)
+        all_img_embeds = self(pixel_values)
+
+        if len(uuids) == 0:
+            return [all_img_embeds[start:end] for start, end in valid_ids]
+        else:
+            for i in range(len(uuids)):
+                uid = uuids[i]
+                if not self.cache_client.root.get_item_embed(uid):
+                    start, end = valid_ids[i]
+                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
+                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
+                    self.cache_client.root.set_item_embed(uuids[i])
+
+        return
 
     def load_model(self, weight_dir):
         import os
