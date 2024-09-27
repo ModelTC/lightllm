@@ -39,11 +39,8 @@ class InferStateInfo:
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         pass
 
-    def copy_(self, new_infer_state):
-        self.b_req_idx.copy_(new_infer_state.b_req_idx)
-        self.b_start_loc.copy_(new_infer_state.b_start_loc)
-        if self.b_ready_cache_len:
-            self.b_ready_cache_len.copy_(new_infer_state.b_ready_cache_len)
-        self.b_seq_len.copy_(new_infer_state.b_seq_len)
-        self.mem_index.copy_(new_infer_state.mem_index)
-        self.max_len_in_batch = new_infer_state.max_len_in_batch
+    def copy_for_cuda_graph(self, new_infer_state):
+        for attr_name, attr_value in vars(new_infer_state).items():
+            if isinstance(attr_value, torch.Tensor):
+                getattr(self, attr_name).copy_(attr_value)
+        return

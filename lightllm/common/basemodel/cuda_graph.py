@@ -22,7 +22,8 @@ class CudaGraph:
         batch_size = input_ids.shape[0]
         infer_state.max_len_in_batch = self.graph_max_len_in_batch
         infer_state.total_token_num = self.graph_max_len_in_batch * batch_size
-        for _ in range(2):
+        # warmup 
+        for _ in range(1):
             torch.cuda.synchronize()
             decode_func(input_ids, infer_state)
             torch.cuda.synchronize()
@@ -36,6 +37,6 @@ class CudaGraph:
         batch_size = input_ids.shape[0]
         graph_obj, graph_input_ids, graph_infer_state, graph_predict_logics = self.graph[batch_size]
         graph_input_ids.copy_(input_ids)
-        graph_infer_state.copy_(infer_state)
+        graph_infer_state.copy_for_cuda_graph(infer_state)
         graph_obj.replay()
         return graph_predict_logics

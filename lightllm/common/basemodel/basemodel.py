@@ -289,7 +289,9 @@ class TpPartBaseModel:
 
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager
-
+        
+        # 在使用 cuda graph 特性的时候，必须保证每次推理的流程一致
+        # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
         alloc_mem = None if self.graph is not None else self.mem_manager.alloc_contiguous(batch_size)
         if alloc_mem is not None:
             infer_state.mem_is_contiguous = True
