@@ -58,9 +58,18 @@ class MetricServer(rpyc.Service):
         return data
 
     def push_metrics(self):
+        time_counter = 0
         while True:
-            self.monitor.push_metrices()
-            time.sleep(self.interval)
+            try:
+                self.monitor.push_metrices()
+                if time_counter >= 60:
+                    logger.info("push metrices success")
+                    time_counter = 0
+            except:
+                pass
+            finally:
+                time.sleep(self.interval)
+                time_counter += self.interval
 
 
 class MetricClient(threading.Thread):

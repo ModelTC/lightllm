@@ -12,6 +12,7 @@ from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
 from lightllm.models.llava.llava_visual import LlavaVisionModel
 from lightllm.models.internlm_xcomposer.internlm_visual import InternVisionModel
 from lightllm.models.internvl.internvl_visual import InternVLVisionModel
+from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrainedModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 
@@ -42,7 +43,9 @@ class VisualModelRpcServer(rpyc.Service):
         try:
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
-                self.model = QWenVisionTransformer(model_kvargs, **model_cfg["visual"]).eval().bfloat16()
+                self.model = QWenVisionTransformer(**model_cfg["visual"]).eval().bfloat16()
+            elif self.model_type == "qwen2_vl":
+                self.model = Qwen2VisionTransformerPretrainedModel(**model_cfg["vision_config"]).eval().bfloat16()
             elif self.model_type == "llava":
                 self.model = LlavaVisionModel(model_kvargs)
             elif self.model_type == "internlmxcomposer2":

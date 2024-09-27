@@ -76,6 +76,8 @@ server = uvicorn.Server(uvicorn.Config(app))
 
 isFirst = True
 metric_client = None
+global args
+args = None
 
 
 def first_set_handle_loop():
@@ -104,9 +106,16 @@ def readiness():
     return {"status": "ok"}
 
 
-@app.get("/healthz")
-@app.get("/health")
-@app.head("/health")
+@app.get("/get_model_name")
+@app.post("/get_model_name")
+def get_model_name():
+    global args
+    return {"model_name": args.model_name}
+
+
+@app.get("/healthz", summary="Check server health")
+@app.get("/health", summary="Check server health")
+@app.head("/health", summary="Check server health")
 async def healthcheck(request: Request):
     first_set_handle_loop()
     if os.environ.get("DEBUG_HEALTHCHECK_RETURN_FAIL") == "true":
@@ -114,13 +123,13 @@ async def healthcheck(request: Request):
 
     from lightllm.utils.health_check import health_check
 
-    if health_check(httpserver_manager, g_id_gen, request):
+    if await health_check(httpserver_manager, g_id_gen, request):
         return JSONResponse({"message": "Ok"}, status_code=200)
     else:
         return JSONResponse({"message": "Error"}, status_code=404)
 
 
-@app.get("/token_load")
+@app.get("/token_load", summary="Get the current server's load of tokens")
 async def token_load(request: Request):
     return JSONResponse(
         {
@@ -311,10 +320,17 @@ async def shutdown():
     return
 
 
-def main():
+def make_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="default_model_name",
+        help="just help to distinguish internal model name, use 'host:port/get_model_name' to get",
+    )
 
     parser.add_argument(
         "--model_dir",
@@ -407,6 +423,7 @@ def main():
     parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
     parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
     parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
+    parser.add_argument("--simple_constraint_mode", action="store_true", help="output constraint mode")
 
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
@@ -452,6 +469,12 @@ def main():
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
 
+    return parser
+
+
+def main():
+    parser = make_argument_parser()
+    global args
     args = parser.parse_args()
 
     global g_generate_func
@@ -470,13 +493,7 @@ def main():
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
 
     # 这些模式不能同时设置。
-    assert [
-        args.use_reward_model,
-        args.splitfuse_mode,
-        args.beam_mode,
-        args.diverse_mode,
-        args.token_healing_mode,
-    ].count(True) <= 1
+    assert [args.splitfuse_mode, args.beam_mode, args.diverse_mode, args.token_healing_mode].count(True) <= 1
     # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
     if args.use_dynamic_prompt_cache:
         assert args.beam_mode is False
