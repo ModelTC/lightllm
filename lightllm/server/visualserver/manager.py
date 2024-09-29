@@ -15,10 +15,9 @@ from io import BytesIO
 from PIL import Image
 import time
 import torch
+import logging
 
-# import logging
-
-# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 
 class VisualManager:
@@ -52,6 +51,7 @@ class VisualManager:
 
         self.model_rpcs: List[VisualModelRpcClient] = []
         for rank_id in range(self.vit_world_size):
+            print(f"self.vit_world_size is {self.vit_world_size}")
             rpc_model = await start_model_process(
                 port=self.model_rpcs_ports[rank_id], vit_world_size=self.vit_world_size
             )
@@ -88,7 +88,7 @@ class VisualManager:
         for tp_rank in range(self.vit_world_size):
             assigned_uuids = [uuids[i] for i in range(tp_rank, len(uuids), self.vit_world_size)]
             if assigned_uuids:
-                # logging.info(f"tp {tp_rank} is processing {assigned_uuids}")
+                logging.info(f"tp {tp_rank} is processing {assigned_uuids}")
                 task = asyncio.create_task(self.model_rpcs[tp_rank].encode(assigned_uuids))
                 tasks.append(task)
 
