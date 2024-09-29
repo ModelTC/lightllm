@@ -4,7 +4,7 @@ import collections
 import dataclasses
 import numpy as np
 import torch._C
-from typing import Dict, Iterable, Literal, Tuple, Union, List
+from typing import Dict, Iterable, Literal, Tuple, Union, List, Set
 from torch.storage import UntypedStorage
 from dataclasses import field
 from lightllm.utils.log_utils import init_logger
@@ -24,12 +24,8 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
         else:
             storage_weak_ptr = self.untyped_storage()._weak_ref()
             UntypedStorage._free_weak_ref(storage_weak_ptr)
-        buf_node = g_cache_manager.ptr_to_bufnode.get(storage_weak_ptr, None)
-        if buf_node:
-            _use_count = g_cache_manager.use_count(storage_weak_ptr)
-            if _use_count == 2 + len(buf_node.shape_to_tensor):
-                # 说明已经不再有其他的引用，放回到free队列中
-                g_cache_manager.free_shape_dtype_to_bufs[buf_node.shape_key].append(buf_node)
+        if storage_weak_ptr in g_cache_manager.ptr_to_bufnode:
+            g_cache_manager.changed_ptr.add(storage_weak_ptr)
         return
 
     @dataclasses.dataclass
@@ -86,6 +82,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             self.ptr_to_bufnode: Dict[int, BufNode] = {}
             self.free_shape_dtype_to_bufs: Dict[Tuple, List[BufNode]] = collections.defaultdict(list)
             self.calcu_shape_cache: Dict[torch.Size, int] = {}
+            self.changed_ptr: Set[int] = set()
             from torch._C import _storage_Use_Count as use_count
 
             # use_count 函数可以用于获取有多少 tensor 真正引用了这片显存 tensor
@@ -113,6 +110,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             self.ptr_to_bufnode.clear()
             self.free_shape_dtype_to_bufs.clear()
             self.calcu_shape_cache.clear()
+            self.changed_ptr.clear()
             return
 
         def alloc_tensor(
@@ -123,6 +121,13 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
                 return self.inner_cuda_graph_manager.alloc_tensor_for_cuda_graph(
                     self.cuda_graph_cur_batch_size, shape, data_type, device
                 )
+
+            # 回收可能消亡的 tensor
+            for ptr in self.changed_ptr:
+                t_buf_node = self.ptr_to_bufnode[ptr]
+                if self.use_count(ptr) == 1 + len(t_buf_node.shape_to_tensor):
+                    self.free_shape_dtype_to_bufs[t_buf_node.shape_key].append(t_buf_node)
+            self.changed_ptr.clear()
 
             if shape not in self.calcu_shape_cache:
                 size = np.prod(shape)
@@ -135,8 +140,8 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             if buf_node_list:
                 buf_node = buf_node_list.pop()
                 if shape not in buf_node.shape_to_tensor:
-                    mask_tensor = buf_node.inner_tensor.view(shape)
-                    buf_node.shape_to_tensor[shape] = mask_tensor
+                    mark_tensor = buf_node.inner_tensor.view(shape)
+                    buf_node.shape_to_tensor[shape] = mark_tensor
                 else:
                     mark_tensor = buf_node.shape_to_tensor[shape]
                 ans = mark_tensor.data  # 返回一个新的引用, 否则引用计数会无法判断
