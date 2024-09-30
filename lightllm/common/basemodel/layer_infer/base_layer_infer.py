@@ -20,6 +20,14 @@ class BaseLayerInfer:
         raise Exception("need to impl")
 
     def alloc_tensor(
-        self, shape: Union[torch.Size, Iterable[int]], data_type: torch.dtype, device: str = "cuda"
+        self,
+        shape: Union[torch.Size, Iterable[int]],
+        data_type: torch.dtype,
+        device: str = "cuda",
+        is_graph_out: bool = False,
     ) -> torch.Tensor:
-        return g_cache_manager.alloc_tensor(shape, data_type, device=device)
+        """
+        is_graph_out 用于标记是graph图推理中的最后一个tensor，该参数只会在开启cuda graph时生效。该tensor的复用有特殊的逻辑，用于降低显存
+        占用
+        """
+        return g_cache_manager.alloc_tensor(shape, data_type, device=device, is_graph_out=is_graph_out)

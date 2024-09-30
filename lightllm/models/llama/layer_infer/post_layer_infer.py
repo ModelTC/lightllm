@@ -101,7 +101,7 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
                 async_op=False,
             )
         logic_batch = None
-        ans_logics = self.alloc_tensor((token_num, self.vocab_size_), data_type=torch.float32)
+        ans_logics = self.alloc_tensor((token_num, self.vocab_size_), data_type=torch.float32, is_graph_out=True)
         ans_logics[:, :] = gather_data.permute(1, 0)
         gather_data = None
         return ans_logics

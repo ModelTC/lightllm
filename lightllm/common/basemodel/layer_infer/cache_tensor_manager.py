@@ -47,6 +47,8 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             self.cuda_graph_max_batch_size = cuda_graph_max_batch_size
             from torch._C import _storage_Use_Count as use_count
 
+            self.graph_out_tensor: torch.Tensor = None
+
             self.use_count = use_count
             return
 
@@ -56,6 +58,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             shape: Union[torch.Size, Iterable[int]],
             data_type: torch.dtype,
             device: str = "cuda",
+            is_graph_out: bool = False,
         ) -> torch.Tensor:
             """
             cuda graph 对应的分配需要先将shape扩大到最大batch_size 对应的shape, 然后再slice回来。
@@ -63,14 +66,25 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             size = np.prod(shape)
             assert size % cur_batch_size == 0
             max_size = size // cur_batch_size * self.cuda_graph_max_batch_size
-
             key = (max_size, data_type)
+            # graph out tensor, 只有一个， 不需要进行引用计数管理
+            if is_graph_out:
+                if self.graph_out_tensor is None:
+                    self.graph_out_tensor = torch.empty(
+                        (max_size,), dtype=data_type, device=device, requires_grad=False
+                    )
+                    logger.info(
+                        f"pid {os.getpid()} cuda graph alloc graph out mem {shape} {data_type} {size} {max_size}"
+                    )
+                return self.graph_out_tensor[0:size].view(shape)
+
             for buf_node in self.bufnodes:
                 if buf_node.shape_key == key and self.use_count(buf_node.storage_weak_ptr) == 1:
                     ans = buf_node.inner_tensor[0:size].view(shape)
                     return ans
 
             buf_tensor = torch.empty((max_size,), dtype=data_type, device=device, requires_grad=False)
+            logger.info(f"pid {os.getpid()} cuda graph alloc mem {shape} {data_type} {size} {max_size}")
             storage_weak_ptr = buf_tensor.untyped_storage()._weak_ref()
             buf_node = BufNode(buf_tensor, key, storage_weak_ptr)
             self.bufnodes.append(buf_node)
@@ -114,12 +128,16 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             return
 
         def alloc_tensor(
-            self, shape: Union[torch.Size, Iterable[int]], data_type: torch.dtype, device: str = "cuda"
+            self,
+            shape: Union[torch.Size, Iterable[int]],
+            data_type: torch.dtype,
+            device: str = "cuda",
+            is_graph_out: bool = False,
         ) -> torch.Tensor:
             # 是 cuda graph的时候，由cuda graph manager 接管
             if self.is_cuda_graph:
                 return self.inner_cuda_graph_manager.alloc_tensor_for_cuda_graph(
-                    self.cuda_graph_cur_batch_size, shape, data_type, device
+                    self.cuda_graph_cur_batch_size, shape, data_type, device, is_graph_out
                 )
 
             # 回收可能消亡的 tensor
