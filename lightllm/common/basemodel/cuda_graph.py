@@ -51,7 +51,6 @@ class CudaGraph:
             prefill_input_len = 1
             dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
             b_req_idx = model.req_manager.alloc(batch_size).int()
-            b_start_loc = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
             b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
             b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
             b_start_loc = torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
