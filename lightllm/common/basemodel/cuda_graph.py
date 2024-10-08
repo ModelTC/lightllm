@@ -65,6 +65,7 @@ class CudaGraph:
                 b_seq_len,
                 b_ready_cache_len=b_ready_cache_len,
                 is_prefill=True,
+                multimodal_params=[],
             )
             prob_out = torch.softmax(logics, dim=-1)
             predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
