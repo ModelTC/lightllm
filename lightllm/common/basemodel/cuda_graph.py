@@ -87,6 +87,6 @@ class CudaGraph:
             model.mem_manager.free_all()
             model.req_manager.free_all()
         logger.info(
-            f"Capture cudagraph success, batch_size <={self.max_batch_size}   \
-            and max_len_in_batch <= {self.graph_max_len_in_batch} will infer with cudagraph."
+            f"Capture cudagraph success, batch_size <={self.max_batch_size} "
+            f"and max_len_in_batch <= {self.graph_max_len_in_batch} will infer with cudagraph."
         )
