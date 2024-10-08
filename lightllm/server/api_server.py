@@ -512,7 +512,7 @@ def main():
     assert args.max_req_input_len < args.max_req_total_len
     assert args.max_req_total_len <= args.max_total_token_num
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
-    
+
     # splitfuse_mode 和 cuda_graph 不能同时开启
     if args.splitfuse_mode:
         assert args.disable_cudagraph
