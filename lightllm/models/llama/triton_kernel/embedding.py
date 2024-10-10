@@ -2,25 +2,27 @@ import torch
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def embedding_kernel(
-    weight, 
-    input_ids, 
-    out, 
-    vob_start_id, vob_end_id,
+    weight,
+    input_ids,
+    out,
+    vob_start_id,
+    vob_end_id,
     stride_weight_size,
     stride_weight_dim,
     stride_out_size,
     stride_out_dim,
-    hiden_size: tl.constexpr, 
-    BLOCK_SIZE: tl.constexpr
+    hiden_size: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    
+
     token_id = tl.load(input_ids + pid)
 
     if token_id < vob_start_id or token_id >= vob_end_id:
-        return 
+        return
 
     token_id -= vob_start_id
     offs_d = tl.arange(0, BLOCK_SIZE)
@@ -36,17 +38,24 @@ def embedding(input_ids, weight: torch.Tensor, vob_start_id, vob_end_id, out: to
     grid = (input_ids.shape[0], 1, 1)
 
     embedding_kernel[grid](
-        weight, input_ids, out, 
-        vob_start_id, vob_end_id,
-        weight.stride(0), weight.stride(1),
-        out.stride(0), out.stride(1),
-        weight.shape[1], BLOCK_SIZE)
+        weight,
+        input_ids,
+        out,
+        vob_start_id,
+        vob_end_id,
+        weight.stride(0),
+        weight.stride(1),
+        out.stride(0),
+        out.stride(1),
+        weight.shape[1],
+        BLOCK_SIZE,
+    )
 
 
 @torch.no_grad()
 def embedding_new(input_ids, weight, vob_start_id, vob_end_id):
     # out = self.alloc_tensor((N_CTX, DIM), data_type=torch.float32)
-    out = torch.empty((N_CTX, DIM), device='cuda', requires_grad=False)
+    out = torch.empty((N_CTX, DIM), device="cuda", requires_grad=False)
 
     embedding(input_ids, weight, vob_start_id, vob_end_id, out)
     return out
@@ -54,7 +63,7 @@ def embedding_new(input_ids, weight, vob_start_id, vob_end_id):
 
 @torch.no_grad()
 def embedding_old(input_ids, wte_weight, vob_start_id, vob_end_id):
-    input_mask = torch.empty(input_ids.shape, dtype=torch.bool, device='cuda')
+    input_mask = torch.empty(input_ids.shape, dtype=torch.bool, device="cuda")
     torch.logical_or(vob_start_id > input_ids, input_ids >= vob_end_id, out=input_mask)
     tmp_input_ids = torch.zeros_like(input_ids)
     torch.sub(input_ids, vob_start_id, out=tmp_input_ids)
@@ -78,12 +87,12 @@ if __name__ == "__main__":
     t1 = 0
     t2 = 0
 
-    wte_weight = torch.randn(VOB_SIZE, DIM, device='cuda')
+    wte_weight = torch.randn(VOB_SIZE, DIM, device="cuda")
 
-    for TP in [1,2,4,8]:
+    for TP in [1, 2, 4, 8]:
         for i in range(TEST_COUNT):
             for rank_id in range(TP):
-                input_ids = torch.randint(0, VOB_SIZE, (N_CTX,), device='cuda')
+                input_ids = torch.randint(0, VOB_SIZE, (N_CTX,), device="cuda")
 
                 vob_start_id = VOB_SIZE // TP * rank_id
                 vob_end_id = VOB_SIZE // TP * (rank_id + 1)
