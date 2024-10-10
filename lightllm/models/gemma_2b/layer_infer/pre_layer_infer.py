@@ -37,7 +37,6 @@ class Gemma_2bPreLayerInfer(PreLayerInferTpl):
         if self.world_size_ > 1:
             dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
         input_embdings = self._norm(input_embdings, infer_state, layer_weight)
-        input_embdings = self._norm(input_embdings, infer_state, layer_weight)
         return input_embdings
 
     def splitfuse_forward(
