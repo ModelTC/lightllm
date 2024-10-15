@@ -122,7 +122,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        q = self.alloc_tensor((input.size(0), layer_weight.q_weight_.size(1)), data_type=input.dtype)
+        q = self.alloc_tensor((input.size(0), layer_weight.q_weight_.size(1)), dtype=input.dtype)
         torch.mm(input, layer_weight.q_weight_, out=q)
         torch.mm(
             input,
