@@ -24,6 +24,7 @@ class VisualManager:
         router_port,
         visual_port,
         client_port,
+        model_rpc_ports,
         infer_batch_size=4,
     ):
         context = zmq.asyncio.Context(2)
@@ -37,26 +38,32 @@ class VisualManager:
         self.waiting_reqs = []
         self.model_weightdir = args.model_dir
         self.tp_world_size = args.tp
-        self.world_size = 1
+        self.vit_world_size = args.visual_dp
         self.infer_batch_size = infer_batch_size
         self.trust_remote_code = args.trust_remote_code
         self.args = args
+        self.model_rpcs_ports = model_rpc_ports
 
     async def wait_to_model_ready(self):
 
         self.model_rpcs: List[VisualModelRpcClient] = []
-        for rank_id in range(self.world_size):
-            rpc_model = await start_model_process(world_size=self.world_size)
+        for rank_id in range(self.vit_world_size):
+            rpc_model = await start_model_process(
+                port=self.model_rpcs_ports[rank_id], vit_world_size=self.vit_world_size
+            )
             self.model_rpcs.append(rpc_model)
 
         init_model_ret = []
-        for rank_id in range(self.world_size):  # async init model process
+        for rank_id in range(self.vit_world_size):  # async init model process
             kvargs = {
                 "weight_dir": self.model_weightdir,
                 "trust_remote_code": self.trust_remote_code,
+                "vit_world_size": self.vit_world_size,
                 "client_port": self.client_port,
                 "rank_id": rank_id,
                 "data_type": self.args.data_type,
+                "nccl_port": self.args.nccl_port,
+                "visual_nccl_port": self.args.visual_nccl_port,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
         await asyncio.gather(*init_model_ret)
@@ -73,25 +80,15 @@ class VisualManager:
         if len(uuids) == 0:
             return
         # uuids -> PIL Images
-        images = []
-        for uid in uuids:
-            image_data = read_shm(get_shm_name_data(uid))
-            images.append(Image.open(BytesIO(image_data)))
-            # print(" + got pil image:", images[-1].size, images[-1].mode)
-        rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]
-        ans = await asyncio.gather(*rets)
-        if self.world_size != 1:
-            img_embed = obtain(ans[0])
-        else:
-            img_embed = ans[0]
-        torch.cuda.synchronize()
-        # b = time.time()
-        for i in range(len(uuids)):
-            # print(" + set_item_embed:", uuids[i], img_embed[i].shape)
-            if not self.cache_client.root.get_item_embed(uuids[i]):
-                cur_embed_bytes = tensor2bytes(img_embed[i])
-                create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                self.cache_client.root.set_item_embed(uuids[i])
+        tasks = []
+        for tp_rank in range(self.vit_world_size):
+            assigned_uuids = [uuids[i] for i in range(tp_rank, len(uuids), self.vit_world_size)]
+            if assigned_uuids:
+                task = asyncio.create_task(self.model_rpcs[tp_rank].encode(assigned_uuids))
+                tasks.append(task)
+
+        # rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]
+        await asyncio.gather(*tasks)
         return
 
     async def loop_for_fwd(self):
@@ -140,7 +137,7 @@ class VisualManager:
         return
 
 
-def start_visual_process(args, router_port, visual_port, client_port, pipe_writer):
+def start_visual_process(args, router_port, visual_port, client_port, model_rpc_ports, pipe_writer):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -148,7 +145,7 @@ def start_visual_process(args, router_port, visual_port, client_port, pipe_write
     graceful_registry(inspect.currentframe().f_code.co_name)
 
     try:
-        visualserver = VisualManager(args, router_port, visual_port, client_port)
+        visualserver = VisualManager(args, router_port, visual_port, client_port, model_rpc_ports)
         asyncio.run(visualserver.wait_to_model_ready())
     except Exception as e:
         import traceback
