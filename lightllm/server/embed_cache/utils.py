@@ -13,9 +13,9 @@ def tensor2bytes(t):
     return buf.read()
 
 
-def bytes2tensor(b):
+def bytes2tensor(b, device):
     # return torch.from_numpy(np.frombuffer(b, dtype=np.float16)).cuda()
-    return torch.load(BytesIO(b))
+    return torch.load(BytesIO(b), map_location=device)
 
 
 def create_shm(name, data):
