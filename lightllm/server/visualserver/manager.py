@@ -52,11 +52,9 @@ class VisualManager:
         for dp_rank_id in range(self.vit_dp):
             tp_ports_each_dp = self.visual_model_rpcs_ports[dp_rank_id]
             for tp_rank_id in range(self.vit_tp):
-                rpc_model = await start_model_process(
-                    port=tp_ports_each_dp[tp_rank_id], vit_tp=self.vit_tp
-                )
+                rpc_model = await start_model_process(port=tp_ports_each_dp[tp_rank_id], vit_tp=self.vit_tp)
                 self.model_rpcs[dp_rank_id].append(rpc_model)
-        
+
         init_model_ret = []
         for dp_rank_id in range(self.vit_dp):  # async init model process
             for tp_rank_id in range(self.vit_tp):
@@ -68,12 +66,12 @@ class VisualManager:
                     "client_port": self.client_port,
                     "tp_rank_id": tp_rank_id,
                     "dp_rank_id": dp_rank_id,
-                    "vit_rank_id" : dp_rank_id * self.vit_tp + tp_rank_id,
+                    "vit_rank_id": dp_rank_id * self.vit_tp + tp_rank_id,
                     "data_type": self.args.data_type,
                     "visual_nccl_port": self.args.visual_nccl_port[dp_rank_id],
-                    "visual_gpu_ids":self.args.visual_gpu_ids
+                    "visual_gpu_ids": self.args.visual_gpu_ids,
                 }
-                init_model_ret.append(self.model_rpcs[dp_rank_id][tp_rank_id].init_model(kvargs)) 
+                init_model_ret.append(self.model_rpcs[dp_rank_id][tp_rank_id].init_model(kvargs))
         await asyncio.gather(*init_model_ret)
         return
 

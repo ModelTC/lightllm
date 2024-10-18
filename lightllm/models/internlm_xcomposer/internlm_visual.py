@@ -20,7 +20,7 @@ class InternVisionModel:
         self.world_size_ = kvargs["vit_world_size"]
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
-        self.device = torch.device(f'cuda:{self.visual_gpu}')
+        self.device = torch.device(f"cuda:{self.visual_gpu}")
         pass
 
     def load_projector_update(self, config, weight_dir):

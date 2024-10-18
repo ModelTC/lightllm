@@ -22,7 +22,7 @@ class LlavaVisionModel:
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
         self.visual_gpu = kvargs["visual_gpu"]
-        self.device = torch.device(f'cuda:{self.visual_gpu}')
+        self.device = torch.device(f"cuda:{self.visual_gpu}")
         pass
 
     def load_model(self, weight_dir):

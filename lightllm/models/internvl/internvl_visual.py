@@ -26,7 +26,7 @@ class InternVLVisionModel:
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
         self.visual_gpu = kvargs["visual_gpu"]
-        self.device = torch.device(f'cuda:{self.visual_gpu}')
+        self.device = torch.device(f"cuda:{self.visual_gpu}")
         pass
 
     def load_model(self, weight_dir):
@@ -80,7 +80,6 @@ class InternVLVisionModel:
         imgs = torch.cat(img_tensors, dim=0)
         pixel_values = imgs.to(device=self.device, dtype=self.dtype)
         all_img_embeds = self.model.extract_feature(pixel_values)
-        current_device = torch.cuda.current_device()
 
         if len(uuids) == 0:
             return [all_img_embeds[start:end] for start, end in valid_ids]

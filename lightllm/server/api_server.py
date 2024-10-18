@@ -365,7 +365,9 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM",
     )
-    parser.add_argument("--eos_id", nargs="+", type=int, default=[2], help="eos stop token id")
+    parser.add_argument(
+        "--eos_id", nargs="+", type=int, default=None, help="eos stop token id, if None, will load from config.json"
+    )
     parser.add_argument(
         "--running_max_req_size", type=int, default=1000, help="the max size for forward requests in the same time"
     )
@@ -472,7 +474,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--visual_nccl_ports",
         type=str,
         default="29500",
-        help="Comma-separated list of NCCL ports to build a distributed environment for Vit."
+        help="Comma-separated list of NCCL ports to build a distributed environment for Vit.",
     )
     parser.add_argument(
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
@@ -529,19 +531,21 @@ def main():
     # 部分模式还不能支持与高级动态调度算法协同，to do.
     if args.beam_mode or args.diverse_mode:
         assert args.router_token_ratio == 0.0
-    
+
     # 检查GPU数量是否足够
-    visual_gpu_ids = [int(gpu_id) for gpu_id in args.visual_gpu_ids.split(",")]  
+    visual_gpu_ids = [int(gpu_id) for gpu_id in args.visual_gpu_ids.split(",")]
     total_required_gpus = args.visual_dp * args.visual_tp
     if len(visual_gpu_ids) < total_required_gpus:
-        raise ValueError(f"Not enough GPUs specified. You need at least {total_required_gpus} GPUs, but got {len(visual_gpu_ids)}. Use --visual_gpu_ids to set. i.g. --visual_gpu_ids 0,2,3,5")
+        raise ValueError(
+            f"Not enough GPUs specified. You need at least {total_required_gpus} GPUs, but got {len(visual_gpu_ids)}."
+        )
     else:
         args.visual_gpu_ids = visual_gpu_ids[:total_required_gpus]
-    
-    visual_nccl_port_ids = [int(nccl_port_id) for nccl_port_id in args.visual_nccl_ports.split(",")]  
+
+    visual_nccl_port_ids = [int(nccl_port_id) for nccl_port_id in args.visual_nccl_ports.split(",")]
     if len(visual_nccl_port_ids) != args.visual_dp:
         raise ValueError(f"The number of ports ({len(visual_nccl_port_ids)}) does not match vit_dp ({args.visual_dp}).")
-    
+
     args.visual_nccl_port = visual_nccl_port_ids
 
     if not args.splitfuse_mode:
@@ -560,6 +564,18 @@ def main():
             batch_max_tokens = max(batch_max_tokens, args.splitfuse_block_size)
             args.batch_max_tokens = batch_max_tokens
 
+    # help to manage data stored on Ceph
+    if "s3://" in args.model_dir:
+        from lightllm.utils.petrel_helper import s3_model_prepare
+
+        s3_model_prepare(args.model_dir)
+
+    # 如果args.eos_id 是 None, 从 config.json 中读取 eos_token_id 相关的信息，赋值给 args
+    if args.eos_id is None:
+        from lightllm.utils.config_utils import get_eos_token_ids
+
+        args.eos_id = get_eos_token_ids(args.model_dir)
+
     logger.info(f"all start args:{args}")
 
     can_use_ports = alloc_can_use_network_port(
@@ -570,7 +586,9 @@ def main():
 
     visual_model_tp_ports = []
     for dp_index in range(args.visual_dp):
-        tp_ports_for_dp = can_use_ports[6 + args.tp + dp_index * args.visual_tp : 6 + args.tp + (dp_index + 1) * args.visual_tp]
+        tp_ports_for_dp = can_use_ports[
+            6 + args.tp + dp_index * args.visual_tp : 6 + args.tp + (dp_index + 1) * args.visual_tp
+        ]
         visual_model_tp_ports.append(tp_ports_for_dp)
 
     if args.enable_multimodal:
@@ -589,12 +607,6 @@ def main():
     )
     global metric_client
     metric_client = MetricClient(metric_port)
-
-    # help to manage data stored on Ceph
-    if "s3://" in args.model_dir:
-        from lightllm.utils.petrel_helper import s3_model_prepare
-
-        s3_model_prepare(args.model_dir)
 
     global httpserver_manager
     httpserver_manager = HttpServerManager(
