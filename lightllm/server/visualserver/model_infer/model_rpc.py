@@ -32,24 +32,23 @@ class VisualModelRpcServer(rpyc.Service):
         visual_gpu_ids = kvargs["visual_gpu_ids"]
         visual_nccl_port = kvargs["visual_nccl_port"]
         self.vit_rank_id = kvargs["vit_rank_id"]
-        
+
         model_kvargs = {
             "tp_rank_id": self.tp_rank_id,
             "vit_tp": self.vit_tp,
             "weight_dir": weight_dir,
             "client_port": client_port,
             "data_type": data_type,
-            "vit_rank_id":self.vit_rank_id,
-            "visual_gpu":visual_gpu_ids[self.vit_rank_id]
+            "vit_rank_id": self.vit_rank_id,
+            "visual_gpu": visual_gpu_ids[self.vit_rank_id],
         }
         if self.vit_tp != 1:
             dist.init_process_group(
                 backend="nccl",
-                init_method=f'tcp://127.0.0.1:{visual_nccl_port}',# 改这里 tp 才需要nccl， dp不需要， api_server里也要改（需要port应该，nccl_port不需要把？）
+                init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
                 rank=self.tp_rank_id,
                 world_size=self.vit_tp,
             )
-        print(f"self.tp_rank_id:{self.tp_rank_id}, self.vit_rank_id:{self.vit_rank_id},visual_gpu_ids[self.vit_rank_id] is {visual_gpu_ids[self.vit_rank_id]} ")
         torch.cuda.set_device(visual_gpu_ids[self.vit_rank_id])
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
 

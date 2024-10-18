@@ -48,7 +48,7 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
                     continue
                 # pull the img_embeds by uid from shm
                 data = read_shm(get_shm_name_embed(img["uuid"]))
-                img_weight.append(bytes2tensor(data, device).reshape(img["token_num"], -1))
+                img_weight.append(bytes2tensor(data).reshape(img["token_num"], -1))
                 img_start_token_ids.append(img["token_id"])
                 img_token_lens.append(img["token_num"])
                 img_start_locs.append(img_start_loc)

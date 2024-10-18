@@ -16,11 +16,11 @@ from lightllm.utils.log_utils import init_logger
 
 class InternVisionModel:
     def __init__(self, kvargs):
-        self.tp_rank_ = kvargs["tp_rank"]
-        self.world_size_ = kvargs["vit_world_size"]
         self.client_port = kvargs["client_port"]
+        self.visual_gpu = kvargs["visual_gpu"]
+        self.vit_tp = kvargs["vit_tp"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
-        self.device = torch.device(f'cuda:{self.visual_gpu}')
+        self.device = torch.device(f"cuda:{self.visual_gpu}")
         pass
 
     def load_projector_update(self, config, weight_dir):
@@ -161,7 +161,7 @@ class InternVisionModel:
         valid_id = 0
         valid_ids = []
         for i, item in enumerate(image_items):
-            if self.world_size_ != 1:
+            if self.vit_tp != 1:
                 item = obtain(item)
             if isinstance(item, Image.Image):
                 image = item.convert("RGB")

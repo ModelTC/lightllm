@@ -95,12 +95,14 @@ class Qwen2VLVisionConfig(PretrainedConfig):
 class PatchEmbed(nn.Module):
     def __init__(
         self,
+        device,
         patch_size: int = 14,
         temporal_patch_size: int = 2,
         in_channels: int = 3,
         embed_dim: int = 1152,
     ) -> None:
         super().__init__()
+        self.device = device
         self.patch_size = patch_size
         self.temporal_patch_size = temporal_patch_size
         self.in_channels = in_channels
@@ -113,7 +115,7 @@ class PatchEmbed(nn.Module):
         target_dtype = self.proj.weight.dtype
         hidden_states = hidden_states.view(
             -1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size
-        )
+        ).to(self.device)
         hidden_states = self.proj(hidden_states.to(dtype=target_dtype)).view(-1, self.embed_dim)
         return hidden_states
 
@@ -309,12 +311,11 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         temporal_patch_size=2,
         **kwargs,
     ):
-        self.tp_tank_ = kvargs["tp_rank"]
-        self.world_size_ = kvargs["vit_world_size"]
         self.client_port = kvargs["client_port"]
+        self.vit_tp = kvargs["vit_tp"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
         self.visual_gpu = kvargs["visual_gpu"]
-        self.device = torch.device(f'cuda:{self.visual_gpu}')
+        self.device = torch.device(f"cuda:{self.visual_gpu}")
         super().__init__()
         self.depth = depth
         self.embed_dim = embed_dim
@@ -330,6 +331,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         self.attn_implementation = "eager"
 
         self.patch_embed = PatchEmbed(
+            device=self.device,
             patch_size=self.patch_size,
             temporal_patch_size=self.temporal_patch_size,
             in_channels=self.in_channels,
@@ -442,7 +444,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         img_grids = []
         uuids = []
         for i, url in enumerate(image_items):
-            if self.world_size_ != 1:
+            if self.vit_tp != 1:
                 url = obtain(url)
             if isinstance(url, Image.Image):
                 t = get_image(url)
@@ -467,7 +469,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
                 image_data = Image.open(requests.get(url, stream=True).raw)
                 image_data = get_image(image_data)
                 image_inputs = self.processor.preprocess(images=image_data, return_tensors="pt")
-                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device="cuda")
+                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device=self.device)
                 image_grid_thw = image_inputs["image_grid_thw"]
                 img_tensors.append(pixel_values)
                 img_grids.append(image_grid_thw)
