@@ -21,6 +21,8 @@ class LlavaVisionModel:
         self.world_size_ = kvargs["vit_world_size"]
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
+        self.visual_gpu = kvargs["visual_gpu"]
+        self.device = torch.device(f'cuda:{self.visual_gpu}')
         pass
 
     def load_model(self, weight_dir):
@@ -102,7 +104,8 @@ class LlavaVisionModel:
         self.vision_tower = self.vision_tower.cuda()
         for k, v in self.projector_weights.items():
             self.projector_weights[k] = v.cuda()
-        self.device = torch.device(f"cuda:{self.tp_rank_}")
+        self.device = torch.device(self.device)
+        torch.cuda.set_device(self.device)
         return self
 
     # batch images infer

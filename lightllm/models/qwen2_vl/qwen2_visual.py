@@ -313,6 +313,8 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         self.world_size_ = kvargs["vit_world_size"]
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
+        self.visual_gpu = kvargs["visual_gpu"]
+        self.device = torch.device(f'cuda:{self.visual_gpu}')
         super().__init__()
         self.depth = depth
         self.embed_dim = embed_dim
@@ -388,11 +390,11 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
     def forward(self, hidden_states: torch.Tensor, grid_thw: torch.Tensor) -> torch.Tensor:
         hidden_states = hidden_states.to(
             dtype=self.get_dtype(),
-            device=torch.device("cuda"),
+            device=self.device,
         )
         grid_thw = grid_thw.to(
             dtype=torch.int32,
-            device=torch.device("cuda"),
+            device=self.device,
         )
 
         hidden_states = self.patch_embed(hidden_states)
@@ -445,7 +447,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
             if isinstance(url, Image.Image):
                 t = get_image(url)
                 image_inputs = self.processor.preprocess(images=t, return_tensors="pt")
-                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device="cuda")
+                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device=self.device)
                 image_grid_thw = image_inputs["image_grid_thw"]
                 img_tensors.append(pixel_values)
                 img_grids.append(image_grid_thw)
@@ -457,7 +459,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
                 image_data = Image.open(BytesIO(image_data))
                 image_data = get_image(image_data)
                 image_inputs = self.processor.preprocess(images=image_data, return_tensors="pt")
-                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device="cuda")
+                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device=self.device)
                 image_grid_thw = image_inputs["image_grid_thw"]
                 img_tensors.append(pixel_values)
                 img_grids.append(image_grid_thw)

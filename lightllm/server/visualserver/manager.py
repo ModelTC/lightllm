@@ -24,7 +24,7 @@ class VisualManager:
         router_port,
         visual_port,
         client_port,
-        model_rpc_ports,
+        visual_model_rpc_ports,
         infer_batch_size=4,
     ):
         context = zmq.asyncio.Context(2)
@@ -38,34 +38,42 @@ class VisualManager:
         self.waiting_reqs = []
         self.model_weightdir = args.model_dir
         self.tp_world_size = args.tp
-        self.vit_world_size = args.visual_dp
+        self.vit_dp = args.visual_dp
+        self.vit_tp = args.visual_tp
         self.infer_batch_size = infer_batch_size
         self.trust_remote_code = args.trust_remote_code
         self.args = args
-        self.model_rpcs_ports = model_rpc_ports
+        self.visual_model_rpcs_ports = visual_model_rpc_ports
 
     async def wait_to_model_ready(self):
 
-        self.model_rpcs: List[VisualModelRpcClient] = []
-        for rank_id in range(self.vit_world_size):
-            rpc_model = await start_model_process(
-                port=self.model_rpcs_ports[rank_id], vit_world_size=self.vit_world_size
-            )
-            self.model_rpcs.append(rpc_model)
+        self.model_rpcs: List[List[VisualModelRpcClient]] = [[] for _ in range(self.vit_dp)]
 
+        for dp_rank_id in range(self.vit_dp):
+            tp_ports_each_dp = self.visual_model_rpcs_ports[dp_rank_id]
+            for tp_rank_id in range(self.vit_tp):
+                rpc_model = await start_model_process(
+                    port=tp_ports_each_dp[tp_rank_id], vit_tp=self.vit_tp
+                )
+                self.model_rpcs[dp_rank_id].append(rpc_model)
+        
         init_model_ret = []
-        for rank_id in range(self.vit_world_size):  # async init model process
-            kvargs = {
-                "weight_dir": self.model_weightdir,
-                "trust_remote_code": self.trust_remote_code,
-                "vit_world_size": self.vit_world_size,
-                "client_port": self.client_port,
-                "rank_id": rank_id,
-                "data_type": self.args.data_type,
-                "nccl_port": self.args.nccl_port,
-                "visual_nccl_port": self.args.visual_nccl_port,
-            }
-            init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
+        for dp_rank_id in range(self.vit_dp):  # async init model process
+            for tp_rank_id in range(self.vit_tp):
+                kvargs = {
+                    "weight_dir": self.model_weightdir,
+                    "trust_remote_code": self.trust_remote_code,
+                    "vit_dp": self.vit_dp,
+                    "vit_tp": self.vit_tp,
+                    "client_port": self.client_port,
+                    "tp_rank_id": tp_rank_id,
+                    "dp_rank_id": dp_rank_id,
+                    "vit_rank_id" : dp_rank_id * self.vit_tp + tp_rank_id,
+                    "data_type": self.args.data_type,
+                    "visual_nccl_port": self.args.visual_nccl_port[dp_rank_id],
+                    "visual_gpu_ids":self.args.visual_gpu_ids
+                }
+                init_model_ret.append(self.model_rpcs[dp_rank_id][tp_rank_id].init_model(kvargs)) 
         await asyncio.gather(*init_model_ret)
         return
 
@@ -81,10 +89,10 @@ class VisualManager:
             return
         # uuids -> PIL Images
         tasks = []
-        for tp_rank in range(self.vit_world_size):
-            assigned_uuids = [uuids[i] for i in range(tp_rank, len(uuids), self.vit_world_size)]
+        for vit_dp_rank in range(self.vit_dp):
+            assigned_uuids = [uuids[i] for i in range(vit_dp_rank, len(uuids), self.vit_dp)]
             if assigned_uuids:
-                task = asyncio.create_task(self.model_rpcs[tp_rank].encode(assigned_uuids))
+                task = asyncio.create_task(self.model_rpcs[vit_dp_rank][0].encode(assigned_uuids))
                 tasks.append(task)
 
         # rets = [self.model_rpcs[tp_rank].encode(images) for tp_rank in range(self.world_size)]

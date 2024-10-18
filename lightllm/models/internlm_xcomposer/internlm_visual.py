@@ -20,6 +20,7 @@ class InternVisionModel:
         self.world_size_ = kvargs["vit_world_size"]
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
+        self.device = torch.device(f'cuda:{self.visual_gpu}')
         pass
 
     def load_projector_update(self, config, weight_dir):
@@ -121,7 +122,7 @@ class InternVisionModel:
         self.vision_tower = self.vision_tower.cuda()
         for i in range(len(self.projector_weights)):
             self.projector_weights[i] = self.projector_weights[i].cuda()
-        self.device = torch.device(f"cuda:{self.tp_rank_}")
+        torch.cuda.set_device(self.device)
         return self
 
     # batch images infer

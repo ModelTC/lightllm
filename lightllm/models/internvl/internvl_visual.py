@@ -21,15 +21,16 @@ logger = init_logger(__name__)
 
 class InternVLVisionModel:
     def __init__(self, kvargs):
-        self.tp_rank_ = kvargs["tp_rank"]
-        self.world_size_ = kvargs["vit_world_size"]
+        self.tp_rank_id = kvargs["tp_rank_id"]
+        self.vit_tp = kvargs["vit_tp"]
         self.client_port = kvargs["client_port"]
         self.cache_client = rpyc.connect("localhost", self.client_port)
+        self.visual_gpu = kvargs["visual_gpu"]
+        self.device = torch.device(f'cuda:{self.visual_gpu}')
         pass
 
     def load_model(self, weight_dir):
         assert torch.cuda.is_available()
-        self.device = torch.device(f"cuda:{self.tp_rank_}")
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         self.config = json.load(open(os.path.join(weight_dir, "config.json")))
         self.model = AutoModel.from_pretrained(
@@ -51,7 +52,7 @@ class InternVLVisionModel:
         # load images to batch tensor
 
         for i, url in enumerate(image_items):
-            if self.world_size_ != 1:
+            if self.vit_tp != 1:
                 url = obtain(url)
             if isinstance(url, Image.Image):
                 t = load_image(url, max_num=6)
@@ -75,9 +76,11 @@ class InternVLVisionModel:
         if len(img_tensors) <= 0:
             return None
         # (b, 3, 224, 224)
+        torch.cuda.set_device(self.device)
         imgs = torch.cat(img_tensors, dim=0)
-        pixel_values = imgs.to(self.device, dtype=self.dtype)
+        pixel_values = imgs.to(device=self.device, dtype=self.dtype)
         all_img_embeds = self.model.extract_feature(pixel_values)
+        current_device = torch.cuda.current_device()
 
         if len(uuids) == 0:
             return [all_img_embeds[start:end] for start, end in valid_ids]
