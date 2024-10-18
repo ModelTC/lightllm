@@ -467,6 +467,15 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--grouping_key", action="append", default=[], help="grouping_key for the monitor in the form key=value"
     )
     parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
+    parser.add_argument("--visual_gpu_ids", type=str, default="0", help="Comma separated GPU IDs to use, e.g., '0,1,2'")
+    parser.add_argument("--visual_tp", type=int, default=1, help="number of tensort parallel instances for ViT")
+    parser.add_argument("--visual_dp", type=int, default=1, help="number of data parallel instances for ViT")
+    parser.add_argument(
+        "--visual_nccl_ports",
+        type=str,
+        default="29500",
+        help="Comma-separated list of NCCL ports to build a distributed environment for Vit.",
+    )
     parser.add_argument(
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
@@ -523,6 +532,22 @@ def main():
     if args.beam_mode or args.diverse_mode:
         assert args.router_token_ratio == 0.0
 
+    # 检查GPU数量是否足够
+    visual_gpu_ids = [int(gpu_id) for gpu_id in args.visual_gpu_ids.split(",")]
+    total_required_gpus = args.visual_dp * args.visual_tp
+    if len(visual_gpu_ids) < total_required_gpus:
+        raise ValueError(
+            f"Not enough GPUs specified. You need at least {total_required_gpus} GPUs, but got {len(visual_gpu_ids)}."
+        )
+    else:
+        args.visual_gpu_ids = visual_gpu_ids[:total_required_gpus]
+
+    visual_nccl_port_ids = [int(nccl_port_id) for nccl_port_id in args.visual_nccl_ports.split(",")]
+    if len(visual_nccl_port_ids) != args.visual_dp:
+        raise ValueError(f"The number of ports ({len(visual_nccl_port_ids)}) does not match vit_dp ({args.visual_dp}).")
+
+    args.visual_nccl_port = visual_nccl_port_ids
+
     if not args.splitfuse_mode:
         # 普通模式下
         if args.batch_max_tokens is None:
@@ -553,9 +578,18 @@ def main():
 
     logger.info(f"all start args:{args}")
 
-    can_use_ports = alloc_can_use_network_port(num=6 + args.tp, used_nccl_port=args.nccl_port)
+    can_use_ports = alloc_can_use_network_port(
+        num=6 + args.tp + args.visual_dp * args.visual_tp, used_nccl_port=[args.nccl_port, args.visual_nccl_port]
+    )
     router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
-    model_rpc_ports = can_use_ports[6:]
+    model_rpc_ports = can_use_ports[6 : 6 + args.tp]
+
+    visual_model_tp_ports = []
+    for dp_index in range(args.visual_dp):
+        tp_ports_for_dp = can_use_ports[
+            6 + args.tp + dp_index * args.visual_tp : 6 + args.tp + (dp_index + 1) * args.visual_tp
+        ]
+        visual_model_tp_ports.append(tp_ports_for_dp)
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -598,7 +632,7 @@ def main():
                 start_visual_process,
             ],
             start_args=[
-                (args, router_port, visual_port, cache_port),
+                (args, router_port, visual_port, cache_port, visual_model_tp_ports),
             ],
         )
 
