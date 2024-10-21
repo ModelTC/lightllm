@@ -54,6 +54,7 @@ def load_model(model_dir, tp_size, data_type):
     # Memory usage after loading the model
     after_memory = torch.cuda.memory_allocated()
     model_size = (after_memory - before_memory) / (1024 ** 3)  # Convert to GB
+    model_size = model_size / 2 * data_type_dict[data_type]
     return model_size
 
 
@@ -99,7 +100,7 @@ def get_total_token_nums(model_dir, tp_size, weight_data_type, kv_data_type, mem
     print(f"One GPU total size: {gpu_total_size:.2f} GB")
     # Calculate KV cache size
     kv_cache_size = get_per_kv_cache_size(model_dir, tp_size=tp_size, data_type=kv_data_type)
-    print(f"KV Cache size per GPU (TP size {tp_size}): {kv_cache_size:.2f} GB")
+    print(f"KV Cache size per token for one GPU (TP size {tp_size}): {kv_cache_size:.6f} GB")
 
     max_total_token_num = (gpu_total_size * mem_fraction - model_size) / kv_cache_size
     print("The recommended max_total_token_num is", int(max_total_token_num))
