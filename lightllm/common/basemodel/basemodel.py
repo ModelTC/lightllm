@@ -120,6 +120,7 @@ class TpPartBaseModel:
             head_dim=self.config["n_embed"] // self.config["num_attention_heads"],
             layer_num=self.config["n_layer"],
         )
+        self.max_total_token_num = self.mem_manager.size
         return
 
     def _init_req_manager(self):

@@ -110,7 +110,9 @@ class RouterManager:
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
         await asyncio.gather(*init_model_ret)
-
+        if self.max_total_token_num is None:
+            self.max_total_token_num = await self.model_rpcs[0].get_max_total_token_num()
+            self.args.max_total_token_num = self.max_total_token_num
         self.req_queue = build_req_queue(self.args, self)
         logger.info(f"use req queue {self.req_queue.__class__.__name__}")
         return

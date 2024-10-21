@@ -356,7 +356,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max_total_token_num",
         type=int,
-        default=6000,
+        default=None,
         help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
     )
     parser.add_argument(
@@ -505,7 +505,6 @@ def main():
     logger.info(f"use tgi api: {args.use_tgi_api}")
 
     assert args.max_req_input_len < args.max_req_total_len
-    assert args.max_req_total_len <= args.max_total_token_num
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
 
     # splitfuse_mode 和 cuda_graph 不能同时开启
@@ -526,18 +525,14 @@ def main():
     if not args.splitfuse_mode:
         # 普通模式下
         if args.batch_max_tokens is None:
-            batch_max_tokens = int(1 / 6 * args.max_total_token_num)
-            batch_max_tokens = max(batch_max_tokens, args.max_req_total_len)
-            args.batch_max_tokens = batch_max_tokens
+            args.batch_max_tokens = args.max_req_total_len
         else:
             assert args.batch_max_tokens >= args.max_req_total_len, "batch_max_tokens must >= max_req_total_len"
     else:
         # splitfuse 模式下
         # assert args.batch_max_tokens is not None, "need to set by yourself"
         if args.batch_max_tokens is None:
-            batch_max_tokens = int(1 / 6 * args.max_total_token_num)
-            batch_max_tokens = max(batch_max_tokens, args.splitfuse_block_size)
-            args.batch_max_tokens = batch_max_tokens
+            args.batch_max_tokens = args.splitfuse_block_size
 
     # help to manage data stored on Ceph
     if "s3://" in args.model_dir:

@@ -240,6 +240,9 @@ class ModeBackend:
     def init_custom(self):
         pass
 
+    def get_max_total_token_num(self):
+        return self.model.mem_manager.size
+
     # @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
         raise NotImplementedError()
