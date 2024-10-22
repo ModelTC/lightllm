@@ -162,11 +162,14 @@ python -m lightllm.server.api_server --model_dir /path/llama-7B     \
                                      --max_total_token_num 120000
 ~~~
 
-The parameter `max_total_token_num` is influenced by the GPU memory of the deployment environment. Use the following script to get the recommended values
+The parameter `max_total_token_num` is influenced by the GPU memory of the deployment environment. You can also specify --mem_faction to have it calculated automatically.
 
 ~~~shell
-python -m lightllm.utils.profile_max_tokens --model_dir /path/llama-7B     \
-                                     --tp 1                        
+python -m lightllm.server.api_server --model_dir /path/llama-7B     \
+                                     --host 0.0.0.0                 \
+                                     --port 8080                    \
+                                     --tp 1                         \
+                                     --mem_faction 0.9
 ~~~
 
 To initiate a query in the shell:
