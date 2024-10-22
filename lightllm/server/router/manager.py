@@ -106,6 +106,7 @@ class RouterManager:
                 "graph_max_batch_size": self.args.graph_max_batch_size,
                 "graph_max_len_in_batch": self.args.graph_max_len_in_batch,
                 "disable_cudagraph": self.args.disable_cudagraph,
+                "mem_fraction": self.args.mem_fraction,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 

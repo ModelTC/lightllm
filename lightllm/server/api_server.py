@@ -360,6 +360,13 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
     )
     parser.add_argument(
+        "--mem_fraction",
+        type=float,
+        default=0.9,
+        help="""Memory usage ratio, default is 0.9, you can specify a smaller value if OOM occurs at runtime.
+        If max_total_token_num is not specified, it will be calculated automatically based on this value.""",
+    )
+    parser.add_argument(
         "--batch_max_tokens",
         type=int,
         default=None,
@@ -506,6 +513,9 @@ def main():
 
     assert args.max_req_input_len < args.max_req_total_len
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
+    assert (
+        args.mem_fraction > 0 and args.mem_fraction < 1
+    ), f"Invalid mem_fraction {args.mem_fraction}, The expected value is between 0 and 1."
 
     # splitfuse_mode 和 cuda_graph 不能同时开启
     if args.splitfuse_mode:

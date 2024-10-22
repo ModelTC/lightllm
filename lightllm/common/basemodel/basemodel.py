@@ -55,6 +55,7 @@ class TpPartBaseModel:
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
+        self.mem_fraction = kvargs.get("mem_fraction", 0.9)
 
         self._init_datatype()
         self._init_config()
@@ -119,6 +120,7 @@ class TpPartBaseModel:
             head_num=self.config["num_attention_heads"] // self.world_size_,
             head_dim=self.config["n_embed"] // self.config["num_attention_heads"],
             layer_num=self.config["n_layer"],
+            mem_fraction=self.mem_fraction,
         )
         self.max_total_token_num = self.mem_manager.size
         return

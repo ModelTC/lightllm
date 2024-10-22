@@ -102,6 +102,7 @@ class ModeBackend:
             "graph_max_batch_size": kvargs.get("graph_max_batch_size", 16),
             "graph_max_len_in_batch": kvargs.get("graph_max_len_in_batch", 8196),
             "disable_cudagraph": kvargs.get("disable_cudagraph", False),
+            "mem_fraction": kvargs.get("mem_fraction", 0.9),
         }
 
         is_weight_only_quant = any("w6a16" in mode_ or "w8a16" in mode_ or "w4a16" in mode_ for mode_ in self.mode)
