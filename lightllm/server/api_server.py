@@ -150,6 +150,7 @@ async def generate(request: Request) -> Response:
     try:
         return await g_generate_func(request, g_id_gen, httpserver_manager)
     except Exception as e:
+        logger.error("An error occurred: %s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
@@ -159,6 +160,7 @@ async def generate_stream(request: Request) -> Response:
     try:
         return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
     except Exception as e:
+        logger.error("An error occurred: %s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
@@ -542,7 +544,11 @@ def main():
         # splitfuse 模式下
         # assert args.batch_max_tokens is not None, "need to set by yourself"
         if args.batch_max_tokens is None:
-            args.batch_max_tokens = args.splitfuse_block_size
+            args.batch_max_tokens = min(args.max_req_total_len, 16 * args.splitfuse_block_size)
+
+        assert (
+            args.batch_max_tokens > args.splitfuse_block_size
+        ), "splitfuse_mode, batch_max_tokens must >= splitfuse_block_size"
 
     # help to manage data stored on Ceph
     if "s3://" in args.model_dir:
@@ -568,6 +574,14 @@ def main():
                 start_cache_manager,
             ],
             start_args=[(cache_port, args)],
+        )
+        start_submodule_processes(
+            start_funcs=[
+                start_visual_process,
+            ],
+            start_args=[
+                (args, router_port, visual_port, cache_port),
+            ],
         )
 
     start_submodule_processes(
@@ -597,15 +611,6 @@ def main():
             (args, detokenization_port, httpserver_port),
         ],
     )
-    if args.enable_multimodal:
-        start_submodule_processes(
-            start_funcs=[
-                start_visual_process,
-            ],
-            start_args=[
-                (args, router_port, visual_port, cache_port),
-            ],
-        )
 
     if "s3://" in args.model_dir:
         from lightllm.utils.petrel_helper import s3_model_clear

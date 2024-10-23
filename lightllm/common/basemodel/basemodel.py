@@ -122,7 +122,6 @@ class TpPartBaseModel:
             layer_num=self.config["n_layer"],
             mem_fraction=self.mem_fraction,
         )
-        self.max_total_token_num = self.mem_manager.size
         return
 
     def _init_req_manager(self):

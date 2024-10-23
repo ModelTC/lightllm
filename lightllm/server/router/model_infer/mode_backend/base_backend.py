@@ -226,9 +226,10 @@ class ModeBackend:
             raise e
 
         set_random_seed(2147483647)
-
         self.radix_cache = (
-            RadixCache(str(kvargs["nccl_port"]), max_total_token_num, self.tp_rank, mem_manager=self.model.mem_manager)
+            RadixCache(
+                str(kvargs["nccl_port"]), self.model.mem_manager.size, self.tp_rank, mem_manager=self.model.mem_manager
+            )
             if self.use_dynamic_prompt_cache
             else None
         )

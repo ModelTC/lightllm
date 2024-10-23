@@ -15,11 +15,10 @@ def get_available_gpu_memory(tp_rank, world_size):
     """
     torch.cuda.empty_cache()
     free_gpu_memory, _ = torch.cuda.mem_get_info(tp_rank)
-
-    # if world_size > 1:
-    #     tensor = torch.tensor(free_gpu_memory, dtype=torch.float32).to(f"cuda:{tp_rank}")
-    #     torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.MIN)
-    #     free_gpu_memory = tensor.item()
+    if world_size > 1:
+        tensor = torch.tensor(free_gpu_memory, dtype=torch.float32).to(f"cuda:{tp_rank}")
+        torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.MIN)
+        free_gpu_memory = tensor.item()
     return free_gpu_memory / (1024 ** 3)
 
 
@@ -131,7 +130,7 @@ def main():
         choices=["float32", "float16", "bfloat16", "fp32", "fp16", "bf16", "int8", "int4"],
         help="Data type for model parameters",
     )
-    parser.add_argument("--mem_fraction", type=str, default=0.9, help="Fraction memory usage.")
+    parser.add_argument("--mem_fraction", type=float, default=0.9, help="Fraction memory usage.")
     parser.add_argument(
         "--kv_data_type",
         type=str,
