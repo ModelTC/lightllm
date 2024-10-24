@@ -31,13 +31,6 @@ class MixtralTpPartModel(TpPartBaseModel):
         super().__init__(kvargs)
         return
 
-    def _verify_params(self):
-        assert self.load_way in ["HF"], "mixtral only supports HF format to load Now!"
-        assert self.config["num_key_value_heads"] % self.world_size_ == 0
-        assert self.config["num_attention_heads"] % self.world_size_ == 0
-        assert self.config["sliding_window"] is not None
-        return
-
     def _init_config(self):
         super()._init_config()
         return

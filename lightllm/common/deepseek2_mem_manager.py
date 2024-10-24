@@ -4,7 +4,6 @@ from .mem_manager import MemoryManager
 
 
 class Deepseek2MemoryManager(MemoryManager):
-
     def get_cell_size(self):
         return self.head_num * self.head_dim * self.layer_num * torch._utils._element_size(self.dtype)
 
