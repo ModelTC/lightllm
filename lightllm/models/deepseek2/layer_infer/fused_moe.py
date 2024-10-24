@@ -291,6 +291,37 @@ def get_config_file_name(E: int, N: int, dtype: Optional[str]) -> str:
     return f"E={E},N={N},device_name={device_name}{dtype_selector}.json"
 
 
+@functools.lru_cache
+def get_moe_configs(E: int, N: int,
+                    dtype: Optional[str]) -> Optional[Dict[int, Any]]:
+    """
+    Return optimized configurations for the fused MoE kernel.
+
+    The return value will be a dictionary that maps an irregular grid of
+    batch sizes to configurations of the fused_moe kernel. To evaluate the
+    kernel on a given batch size bs, the closest batch size in the grid should
+    be picked and the associated configuration chosen to invoke the kernel.
+    """
+
+    # First look up if an optimized configuration is available in the configs
+    # directory
+    json_file_name = get_config_file_name(E, N, dtype)
+
+    config_file_path = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "vllm_configs", json_file_name)
+    if os.path.exists(config_file_path):
+        with open(config_file_path) as f:
+            logger.info("Using configuration from %s for MoE layer.",
+                        config_file_path)
+            # If a configuration has been found, return it
+            return {int(key): val for key, val in json.load(f).items()}
+
+    # If no optimized configuration is available, we will use the default
+    # configuration
+    logger.warning(
+        ("Using default MoE config. Performance might be sub-optimal! "
+         "Config file not found at %s"), config_file_path)
+    return None
 def get_default_config(
     M: int,
     E: int,
@@ -298,12 +329,49 @@ def get_default_config(
     K: int,
     topk: int,
     dtype: Optional[str],
+    is_marlin: bool = False,
 ) -> Dict[str, int]:
-    config = {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32, "GROUP_SIZE_M": 8}
-    if M <= E:
-        config = {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 64, "GROUP_SIZE_M": 1}
+    config = {
+        'BLOCK_SIZE_M': 64,
+        'BLOCK_SIZE_N': 64,
+        'BLOCK_SIZE_K': 32,
+        'GROUP_SIZE_M': 8
+    }
+    # A heuristic: fused marlin works faster with this config for small M
+    if M <= E or (is_marlin and M <= 32):
+        config = {
+            'BLOCK_SIZE_M': 16,
+            'BLOCK_SIZE_N': 32,
+            'BLOCK_SIZE_K': 64,
+            'GROUP_SIZE_M': 1
+        }
     return config
 
+def try_get_optimal_moe_config(
+    w1_shape: Tuple[int, ...],
+    w2_shape: Tuple[int, ...],
+    top_k: int,
+    dtype: Optional[str],
+    M: int,
+    override_config: Optional[Dict[str, Any]] = None,
+    is_marlin: bool = False,
+):
+    if override_config:
+        config = override_config
+    else:
+        # First try to load optimal config from the file
+        E, _, N = w2_shape
+        configs = get_moe_configs(E, N, dtype)
+
+        if configs:
+            # If an optimal configuration map has been found, look up the
+            # optimal config
+            config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
+        else:
+            # Else use the default config
+            config = get_default_config(M, E, N, w1_shape[2], top_k, dtype,
+                                        is_marlin)
+    return config
 
 # This is used by the Deepseek-V2 model
 def grouped_topk(
