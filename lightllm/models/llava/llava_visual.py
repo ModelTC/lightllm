@@ -16,12 +16,7 @@ logger = init_logger(__name__)
 
 
 class LlavaVisionModel:
-    def __init__(self, kvargs):
-        self.client_port = kvargs["client_port"]
-        self.vit_tp = kvargs["vit_tp"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
-        self.visual_gpu = kvargs["visual_gpu"]
-        self.device = torch.device(f"cuda:{self.visual_gpu}")
+    def __init__(self):
         pass
 
     def load_model(self, weight_dir):
@@ -103,14 +98,11 @@ class LlavaVisionModel:
         self.vision_tower = self.vision_tower.cuda()
         for k, v in self.projector_weights.items():
             self.projector_weights[k] = v.cuda()
-        self.device = torch.device(self.device)
-        torch.cuda.set_device(self.device)
         return self
 
     # batch images infer
     def forward(self, x):
-        x = x.half().to(device=self.device)
-
+        x = x.half().cuda()
         x = self.vision_tower(x, output_hidden_states=True)
         x = x.hidden_states[self.select_layer]
         if self.select_feature == "patch" or self.select_feature == "default":
@@ -133,35 +125,24 @@ class LlavaVisionModel:
         x = x.view(B, L, -1)
         return x
 
-    def encode(self, image_items: List[Union[int, str, torch.Tensor, Image.Image]]):
+    def encode(self, image_uuids: List):
         img_tensors = []
         uuids = []
         valid_id = 0
         valid_ids = []
-        for i, item in enumerate(image_items):
-            if self.vit_tp != 1:
-                item = obtain(item)
-            if isinstance(item, Image.Image):
-                image = item.convert("RGB")
-                t = self.image_processor.preprocess(image, return_tensors="pt")["pixel_values"]
-                img_tensors.append(t)
-            elif isinstance(item, torch.Tensor):
-                img_tensors.append(item)
-            elif isinstance(item, int):
+
+        for i, item in enumerate(image_uuids):
+            item = obtain(item)
+            if isinstance(item, int):
                 uuids.append(item)
                 image_data = read_shm(get_shm_name_data(item))
                 image_data = Image.open(BytesIO(image_data)).convert("RGB")
                 t = self.image_processor.preprocess(image_data, return_tensors="pt")["pixel_values"]
                 img_tensors.append(t)
-            elif item.startswith("http://") or item.startswith("https://"):
-                import requests
-
-                image = Image.open(requests.get(item, stream=True).raw)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(item), item))
 
             cur_num = img_tensors[-1].shape[0]
-
             valid_ids.append([valid_id, valid_id + cur_num])
             valid_id += cur_num
 
@@ -169,18 +150,6 @@ class LlavaVisionModel:
             return None
 
         img = torch.cat(img_tensors, dim=0)
-        pixel_values = img.to(self.device)
-        all_img_embeds = self.forward(pixel_values)
+        all_img_embeds = self.forward(img)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-
-        return
+        return all_img_embeds, uuids, valid_ids

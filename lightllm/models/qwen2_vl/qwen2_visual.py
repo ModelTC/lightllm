@@ -95,14 +95,12 @@ class Qwen2VLVisionConfig(PretrainedConfig):
 class PatchEmbed(nn.Module):
     def __init__(
         self,
-        device,
         patch_size: int = 14,
         temporal_patch_size: int = 2,
         in_channels: int = 3,
         embed_dim: int = 1152,
     ) -> None:
         super().__init__()
-        self.device = device
         self.patch_size = patch_size
         self.temporal_patch_size = temporal_patch_size
         self.in_channels = in_channels
@@ -115,7 +113,7 @@ class PatchEmbed(nn.Module):
         target_dtype = self.proj.weight.dtype
         hidden_states = hidden_states.view(
             -1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size
-        ).to(self.device)
+        ).cuda()
         hidden_states = self.proj(hidden_states.to(dtype=target_dtype)).view(-1, self.embed_dim)
         return hidden_states
 
@@ -298,7 +296,6 @@ class Qwen2VLVisionBlock(nn.Module):
 class Qwen2VisionTransformerPretrainedModel(nn.Module):
     def __init__(
         self,
-        kvargs,
         depth=32,
         embed_dim=1280,
         hidden_size=3584,
@@ -311,11 +308,6 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         temporal_patch_size=2,
         **kwargs,
     ):
-        self.client_port = kvargs["client_port"]
-        self.vit_tp = kvargs["vit_tp"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
-        self.visual_gpu = kvargs["visual_gpu"]
-        self.device = torch.device(f"cuda:{self.visual_gpu}")
         super().__init__()
         self.depth = depth
         self.embed_dim = embed_dim
@@ -331,7 +323,6 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         self.attn_implementation = "eager"
 
         self.patch_embed = PatchEmbed(
-            device=self.device,
             patch_size=self.patch_size,
             temporal_patch_size=self.temporal_patch_size,
             in_channels=self.in_channels,
@@ -437,39 +428,22 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
 
         self.load_state_dict(weight_dict)
 
-    def encode(self, image_items: List[Union[int, str, torch.Tensor, Image.Image]]):
+    def encode(self, image_uuids: List):
         img_tensors = []
         valid_ids = []
         valid_id = 0
         img_grids = []
         uuids = []
-        for i, url in enumerate(image_items):
-            if self.vit_tp != 1:
-                url = obtain(url)
-            if isinstance(url, Image.Image):
-                t = get_image(url)
-                image_inputs = self.processor.preprocess(images=t, return_tensors="pt")
-                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device=self.device)
-                image_grid_thw = image_inputs["image_grid_thw"]
-                img_tensors.append(pixel_values)
-                img_grids.append(image_grid_thw)
-            elif isinstance(url, torch.Tensor):
-                img_tensors.append(url)
-            elif isinstance(url, int):
+
+        for i, url in enumerate(image_uuids):
+            url = obtain(url)
+            if isinstance(url, int):
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))
                 image_data = Image.open(BytesIO(image_data))
                 image_data = get_image(image_data)
                 image_inputs = self.processor.preprocess(images=image_data, return_tensors="pt")
-                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device=self.device)
-                image_grid_thw = image_inputs["image_grid_thw"]
-                img_tensors.append(pixel_values)
-                img_grids.append(image_grid_thw)
-            elif url.startswith("http://") or url.startswith("https://"):
-                image_data = Image.open(requests.get(url, stream=True).raw)
-                image_data = get_image(image_data)
-                image_inputs = self.processor.preprocess(images=image_data, return_tensors="pt")
-                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16, device=self.device)
+                pixel_values = image_inputs["pixel_values"].to(dtype=torch.bfloat16)
                 image_grid_thw = image_inputs["image_grid_thw"]
                 img_tensors.append(pixel_values)
                 img_grids.append(image_grid_thw)
@@ -488,21 +462,10 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         imgs = torch.cat(img_tensors, dim=0)
         grid_thw = torch.cat(img_grids, dim=0)
 
-        pixel_values = imgs.to(self.device, dtype=torch.float32)
-        image_grid_thw = grid_thw.to(self.device)
+        pixel_values = imgs.cuda().to(dtype=torch.float32)
+        image_grid_thw = grid_thw.cuda()
 
         pixel_values = pixel_values.type(self.get_dtype())
-        all_img_embeds = self.forward(pixel_values, grid_thw=image_grid_thw).to(self.device)
+        all_img_embeds = self.forward(pixel_values, grid_thw=image_grid_thw)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-
-        return
+        return all_img_embeds, uuids, valid_ids
