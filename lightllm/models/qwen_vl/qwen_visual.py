@@ -346,8 +346,6 @@ class QWenVisionTransformer(nn.Module):
         output_dim: int = 512,
         **kwargs,
     ):
-        self.client_port = kvargs["client_port"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
         self.visual_gpu = kvargs["visual_gpu"]
         self.vit_tp = kvargs["vit_tp"]
         self.device = torch.device(f"cuda:{self.visual_gpu}")
@@ -445,28 +443,16 @@ class QWenVisionTransformer(nn.Module):
                 image = Image.open(requests.get(item, stream=True).raw)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(item), item))
-            cur_num = img_tensors[-1].shape[0]
 
-            valid_ids.append([valid_id, valid_id + cur_num])
-            valid_id += cur_num
+            valid_ids.append([valid_id, valid_id + 1])
+            valid_id += 1
         if len(img_tensors) <= 0:
             return None
 
         pixel_values = torch.stack(img_tensors, dim=0)
         all_img_embeds = self(pixel_values)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-
-        return
+        return all_img_embeds, uuids, valid_ids
 
     def load_model(self, weight_dir):
         import os

@@ -16,10 +16,8 @@ from lightllm.utils.log_utils import init_logger
 
 class InternVisionModel:
     def __init__(self, kvargs):
-        self.client_port = kvargs["client_port"]
         self.visual_gpu = kvargs["visual_gpu"]
         self.vit_tp = kvargs["vit_tp"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
         self.device = torch.device(f"cuda:{self.visual_gpu}")
         pass
 
@@ -194,15 +192,4 @@ class InternVisionModel:
         pixel_values = img.to(self.device)
         all_img_embeds = self.forward(pixel_values)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-
-        return
+        return all_img_embeds, uuids, valid_ids

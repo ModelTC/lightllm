@@ -25,7 +25,6 @@ class VisualManager:
         visual_port,
         client_port,
         visual_model_rpc_ports,
-        infer_batch_size=4,
     ):
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
@@ -40,17 +39,17 @@ class VisualManager:
         self.tp_world_size = args.tp
         self.vit_dp = args.visual_dp
         self.vit_tp = args.visual_tp
-        self.infer_batch_size = infer_batch_size
+        self.infer_batch_size = args.visual_infer_batch_size
         self.trust_remote_code = args.trust_remote_code
         self.args = args
-        self.visual_model_rpcs_ports = visual_model_rpc_ports
+        self.visual_model_rpc_ports = visual_model_rpc_ports
 
     async def wait_to_model_ready(self):
 
         self.model_rpcs: List[List[VisualModelRpcClient]] = [[] for _ in range(self.vit_dp)]
 
         for dp_rank_id in range(self.vit_dp):
-            tp_ports_each_dp = self.visual_model_rpcs_ports[dp_rank_id]
+            tp_ports_each_dp = self.visual_model_rpc_ports[dp_rank_id]
             for tp_rank_id in range(self.vit_tp):
                 rpc_model = await start_model_process(port=tp_ports_each_dp[tp_rank_id], vit_tp=self.vit_tp)
                 self.model_rpcs[dp_rank_id].append(rpc_model)
@@ -68,7 +67,7 @@ class VisualManager:
                     "dp_rank_id": dp_rank_id,
                     "vit_rank_id": dp_rank_id * self.vit_tp + tp_rank_id,
                     "data_type": self.args.data_type,
-                    "visual_nccl_port": self.args.visual_nccl_port[dp_rank_id],
+                    "visual_nccl_port": self.args.visual_nccl_ports[dp_rank_id],
                     "visual_gpu_ids": self.args.visual_gpu_ids,
                 }
                 init_model_ret.append(self.model_rpcs[dp_rank_id][tp_rank_id].init_model(kvargs))
