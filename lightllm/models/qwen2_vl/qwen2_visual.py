@@ -311,9 +311,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         temporal_patch_size=2,
         **kwargs,
     ):
-        self.client_port = kvargs["client_port"]
         self.vit_tp = kvargs["vit_tp"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
         self.visual_gpu = kvargs["visual_gpu"]
         self.device = torch.device(f"cuda:{self.visual_gpu}")
         super().__init__()
@@ -494,15 +492,4 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         pixel_values = pixel_values.type(self.get_dtype())
         all_img_embeds = self.forward(pixel_values, grid_thw=image_grid_thw).to(self.device)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-
-        return
+        return all_img_embeds, uuids, valid_ids

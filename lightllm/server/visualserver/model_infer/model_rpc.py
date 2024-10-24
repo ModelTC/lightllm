@@ -13,6 +13,7 @@ from lightllm.models.llava.llava_visual import LlavaVisionModel
 from lightllm.models.internlm_xcomposer.internlm_visual import InternVisionModel
 from lightllm.models.internvl.internvl_visual import InternVLVisionModel
 from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrainedModel
+from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 
@@ -26,18 +27,19 @@ class VisualModelRpcServer(rpyc.Service):
         self.vit_tp = kvargs["vit_tp"]
         self.dp_rank_id = kvargs["dp_rank_id"]
         self.tp_rank_id = kvargs["tp_rank_id"]
-        client_port = kvargs["client_port"]
+        self.client_port = kvargs["client_port"]
         data_type = kvargs["data_type"]
         weight_dir = kvargs["weight_dir"]
         visual_gpu_ids = kvargs["visual_gpu_ids"]
         visual_nccl_port = kvargs["visual_nccl_port"]
         self.vit_rank_id = kvargs["vit_rank_id"]
+        self.cache_client = rpyc.connect("localhost", self.client_port)
 
         model_kvargs = {
             "tp_rank_id": self.tp_rank_id,
             "vit_tp": self.vit_tp,
             "weight_dir": weight_dir,
-            "client_port": client_port,
+            "client_port": self.client_port,
             "data_type": data_type,
             "vit_rank_id": self.vit_rank_id,
             "visual_gpu": visual_gpu_ids[self.vit_rank_id],
@@ -70,7 +72,7 @@ class VisualModelRpcServer(rpyc.Service):
                 raise Exception(f"can not support {self.model_type} now")
 
             self.model.load_model(weight_dir)
-            self.model = self.model.cuda()
+            self.model = self.model.cuda(visual_gpu_ids[self.vit_rank_id])
         except Exception as e:
             print("#" * 16)
             print("load model error:", str(e), e, type(e))
@@ -89,7 +91,20 @@ class VisualModelRpcServer(rpyc.Service):
 
     # @calculate_time(show=False, min_cost_ms=300)
     def exposed_encode(self, images):
-        return self.forward(images)
+        if self.tp_rank_id == 0:
+            all_img_embeds, uuids, valid_ids = self.forward(images)
+            if len(uuids) == 0:
+                return [all_img_embeds[start:end] for start, end in valid_ids]
+            else:
+                for i in range(len(uuids)):
+                    uid = uuids[i]
+                    if not self.cache_client.root.get_item_embed(uid):
+                        start, end = valid_ids[i]
+                        cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
+                        create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
+                        self.cache_client.root.set_item_embed(uuids[i])
+            return
+        return
 
 
 class VisualModelRpcClient:
@@ -97,7 +112,8 @@ class VisualModelRpcClient:
         self.model: VisualModelRpcServer = model_rpc
         self.vit_tp = vit_tp
         self.rpc_server_process = rpc_server_process
-        self.use_rpc = self.vit_tp != 1
+        # self.use_rpc = self.vit_tp != 1
+        self.use_rpc = True
         if self.use_rpc:
 
             def async_wrap(f):
@@ -149,8 +165,8 @@ def _init_env(port):
 
 
 async def start_model_process(port, vit_tp):
-    if vit_tp == 1:
-        return VisualModelRpcClient(VisualModelRpcServer(), vit_tp)
+    # if vit_tp == 1:
+    #     return VisualModelRpcClient(VisualModelRpcServer(), vit_tp)
     import multiprocessing
 
     proc = multiprocessing.Process(target=_init_env, args=(port,))
