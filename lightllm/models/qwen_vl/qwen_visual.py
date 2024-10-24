@@ -335,7 +335,6 @@ class TransformerBlock(nn.Module):
 class QWenVisionTransformer(nn.Module):
     def __init__(
         self,
-        kvargs,
         image_size: int,
         patch_size: int,
         width: int,
@@ -346,11 +345,6 @@ class QWenVisionTransformer(nn.Module):
         output_dim: int = 512,
         **kwargs,
     ):
-        self.client_port = kvargs["client_port"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
-        self.visual_gpu = kvargs["visual_gpu"]
-        self.vit_tp = kvargs["vit_tp"]
-        self.device = torch.device(f"cuda:{self.visual_gpu}")
         super().__init__()
         image_height, image_width = self.image_size = (image_size, image_size)
         patch_height, patch_width = self.patch_size = (patch_size, patch_size)
@@ -421,52 +415,32 @@ class QWenVisionTransformer(nn.Module):
 
         return x
 
-    def encode(self, image_items: List[Union[int, str, torch.Tensor, Image.Image]]):
+    def encode(self, image_uuids: List):
         img_tensors = []
         uuids = []
         valid_id = 0
         valid_ids = []
-        for i, item in enumerate(image_items):
-            if self.vit_tp != 1:
-                item = obtain(item)
-            if isinstance(item, Image.Image):
-                image = item.convert("RGB")
-                t = self.image_transform(image)
-                img_tensors.append(t)
-            elif isinstance(item, torch.Tensor):
-                img_tensors.append(item)
-            elif isinstance(item, int):
+
+        for i, item in enumerate(image_uuids):
+            item = obtain(item)
+            if isinstance(item, int):
                 uuids.append(item)
                 image_data = read_shm(get_shm_name_data(item))
                 image_data = Image.open(BytesIO(image_data)).convert("RGB")
                 t = self.image_transform(image_data)
                 img_tensors.append(t)
-            elif item.startswith("http://") or item.startswith("https://"):
-                image = Image.open(requests.get(item, stream=True).raw)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(item), item))
-            cur_num = img_tensors[-1].shape[0]
 
-            valid_ids.append([valid_id, valid_id + cur_num])
-            valid_id += cur_num
+            valid_ids.append([valid_id, valid_id + 1])
+            valid_id += 1
         if len(img_tensors) <= 0:
             return None
 
         pixel_values = torch.stack(img_tensors, dim=0)
         all_img_embeds = self(pixel_values)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-
-        return
+        return all_img_embeds, uuids, valid_ids
 
     def load_model(self, weight_dir):
         import os
