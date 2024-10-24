@@ -150,6 +150,7 @@ async def generate(request: Request) -> Response:
     try:
         return await g_generate_func(request, g_id_gen, httpserver_manager)
     except Exception as e:
+        logger.error("An error occurred: %s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
@@ -159,6 +160,7 @@ async def generate_stream(request: Request) -> Response:
     try:
         return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
     except Exception as e:
+        logger.error("An error occurred: %s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
 
@@ -356,8 +358,15 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max_total_token_num",
         type=int,
-        default=6000,
+        default=None,
         help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
+    )
+    parser.add_argument(
+        "--mem_fraction",
+        type=float,
+        default=0.9,
+        help="""Memory usage ratio, default is 0.9, you can specify a smaller value if OOM occurs at runtime.
+        If max_total_token_num is not specified, it will be calculated automatically based on this value.""",
     )
     parser.add_argument(
         "--batch_max_tokens",
@@ -467,14 +476,20 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--grouping_key", action="append", default=[], help="grouping_key for the monitor in the form key=value"
     )
     parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
-    parser.add_argument("--visual_gpu_ids", type=str, default="0", help="Comma separated GPU IDs to use, e.g., '0,1,2'")
+    parser.add_argument(
+        "--visual_infer_batch_size", type=int, default=4, help="number of images to process in each inference batch"
+    )
+    parser.add_argument(
+        "--visual_gpu_ids", nargs="+", type=int, default=[0], help="List of GPU IDs to use, e.g., 0 1 2"
+    )
     parser.add_argument("--visual_tp", type=int, default=1, help="number of tensort parallel instances for ViT")
     parser.add_argument("--visual_dp", type=int, default=1, help="number of data parallel instances for ViT")
     parser.add_argument(
         "--visual_nccl_ports",
-        type=str,
-        default="29500",
-        help="Comma-separated list of NCCL ports to build a distributed environment for Vit.",
+        nargs="+",
+        type=int,
+        default=[29500],
+        help="List of NCCL ports to build a distributed environment for Vit, e.g., 29500 29501 29502",
     )
     parser.add_argument(
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
@@ -514,8 +529,10 @@ def main():
     logger.info(f"use tgi api: {args.use_tgi_api}")
 
     assert args.max_req_input_len < args.max_req_total_len
-    assert args.max_req_total_len <= args.max_total_token_num
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
+    assert (
+        args.mem_fraction > 0 and args.mem_fraction < 1
+    ), f"Invalid mem_fraction {args.mem_fraction}, The expected value is between 0 and 1."
 
     # splitfuse_mode 和 cuda_graph 不能同时开启
     if args.splitfuse_mode:
@@ -533,36 +550,38 @@ def main():
         assert args.router_token_ratio == 0.0
 
     # 检查GPU数量是否足够
-    visual_gpu_ids = [int(gpu_id) for gpu_id in args.visual_gpu_ids.split(",")]
     total_required_gpus = args.visual_dp * args.visual_tp
-    if len(visual_gpu_ids) < total_required_gpus:
+    if len(args.visual_gpu_ids) < total_required_gpus:
         raise ValueError(
-            f"Not enough GPUs specified. You need at least {total_required_gpus} GPUs, but got {len(visual_gpu_ids)}."
+            f"Not enough GPUs specified. You need at least {total_required_gpus}, but got {len(args.visual_gpu_ids)}."
         )
     else:
-        args.visual_gpu_ids = visual_gpu_ids[:total_required_gpus]
+        args.visual_gpu_ids = args.visual_gpu_ids[:total_required_gpus]
 
-    visual_nccl_port_ids = [int(nccl_port_id) for nccl_port_id in args.visual_nccl_ports.split(",")]
-    if len(visual_nccl_port_ids) != args.visual_dp:
-        raise ValueError(f"The number of ports ({len(visual_nccl_port_ids)}) does not match vit_dp ({args.visual_dp}).")
-
-    args.visual_nccl_port = visual_nccl_port_ids
+    # 检查visual_nccl_port数量是否足够
+    if len(args.visual_nccl_ports) < args.visual_dp:
+        raise ValueError(
+            f"Not enough visual_nccl_ports specified. You need at least {args.visual_dp}, "
+            f"but got ({len(args.visual_nccl_ports)})."
+        )
+    else:
+        args.visual_nccl_ports = args.visual_nccl_ports[: args.visual_dp]
 
     if not args.splitfuse_mode:
         # 普通模式下
         if args.batch_max_tokens is None:
-            batch_max_tokens = int(1 / 6 * args.max_total_token_num)
-            batch_max_tokens = max(batch_max_tokens, args.max_req_total_len)
-            args.batch_max_tokens = batch_max_tokens
+            args.batch_max_tokens = args.max_req_total_len
         else:
             assert args.batch_max_tokens >= args.max_req_total_len, "batch_max_tokens must >= max_req_total_len"
     else:
         # splitfuse 模式下
         # assert args.batch_max_tokens is not None, "need to set by yourself"
         if args.batch_max_tokens is None:
-            batch_max_tokens = int(1 / 6 * args.max_total_token_num)
-            batch_max_tokens = max(batch_max_tokens, args.splitfuse_block_size)
-            args.batch_max_tokens = batch_max_tokens
+            args.batch_max_tokens = min(args.max_req_total_len, 16 * args.splitfuse_block_size)
+
+        assert (
+            args.batch_max_tokens > args.splitfuse_block_size
+        ), "splitfuse_mode, batch_max_tokens must >= splitfuse_block_size"
 
     # help to manage data stored on Ceph
     if "s3://" in args.model_dir:
@@ -578,17 +597,18 @@ def main():
 
     logger.info(f"all start args:{args}")
 
+    already_uesd_ports = args.visual_nccl_ports + [args.nccl_port]
     can_use_ports = alloc_can_use_network_port(
-        num=6 + args.tp + args.visual_dp * args.visual_tp, used_nccl_port=[args.nccl_port, args.visual_nccl_port]
+        num=6 + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
     )
     router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
     model_rpc_ports = can_use_ports[6 : 6 + args.tp]
+    can_use_ports = can_use_ports[6 + args.tp :]
 
     visual_model_tp_ports = []
-    for dp_index in range(args.visual_dp):
-        tp_ports_for_dp = can_use_ports[
-            6 + args.tp + dp_index * args.visual_tp : 6 + args.tp + (dp_index + 1) * args.visual_tp
-        ]
+    for _ in range(args.visual_dp):
+        tp_ports_for_dp = can_use_ports[0 : args.visual_tp]
+        can_use_ports = can_use_ports[args.visual_tp :]
         visual_model_tp_ports.append(tp_ports_for_dp)
 
     if args.enable_multimodal:
@@ -597,6 +617,14 @@ def main():
                 start_cache_manager,
             ],
             start_args=[(cache_port, args)],
+        )
+        start_submodule_processes(
+            start_funcs=[
+                start_visual_process,
+            ],
+            start_args=[
+                (args, router_port, visual_port, cache_port, visual_model_tp_ports),
+            ],
         )
 
     start_submodule_processes(
@@ -626,16 +654,6 @@ def main():
             (args, detokenization_port, httpserver_port),
         ],
     )
-    if args.enable_multimodal:
-        start_submodule_processes(
-            start_funcs=[
-                start_visual_process,
-            ],
-            start_args=[
-                (args, router_port, visual_port, cache_port, visual_model_tp_ports),
-            ],
-        )
-
     if "s3://" in args.model_dir:
         from lightllm.utils.petrel_helper import s3_model_clear
 

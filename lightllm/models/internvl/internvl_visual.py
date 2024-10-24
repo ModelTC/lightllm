@@ -20,13 +20,7 @@ logger = init_logger(__name__)
 
 
 class InternVLVisionModel:
-    def __init__(self, kvargs):
-        self.tp_rank_id = kvargs["tp_rank_id"]
-        self.vit_tp = kvargs["vit_tp"]
-        self.client_port = kvargs["client_port"]
-        self.cache_client = rpyc.connect("localhost", self.client_port)
-        self.visual_gpu = kvargs["visual_gpu"]
-        self.device = torch.device(f"cuda:{self.visual_gpu}")
+    def __init__(self):
         pass
 
     def load_model(self, weight_dir):
@@ -41,25 +35,18 @@ class InternVLVisionModel:
         )
         self.model.eval().cuda()
 
-    def cuda(self):
+    def cuda(self, device):
         return self
 
-    def encode(self, image_items: List[Union[int, str, torch.Tensor, Image.Image]]):
+    def encode(self, image_uuids: List):
         img_tensors = []
         valid_ids = []
         valid_id = 0
         uuids = []
-        # load images to batch tensor
 
-        for i, url in enumerate(image_items):
-            if self.vit_tp != 1:
-                url = obtain(url)
-            if isinstance(url, Image.Image):
-                t = load_image(url, max_num=6)
-                img_tensors.append(t)
-            elif isinstance(url, torch.Tensor):
-                img_tensors.append(url)
-            elif isinstance(url, int):
+        for i, url in enumerate(image_uuids):
+            url = obtain(url)
+            if isinstance(url, int):
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))
                 image_data = Image.open(BytesIO(image_data))
@@ -69,26 +56,14 @@ class InternVLVisionModel:
                 raise Exception("Unsupport input types: {} for {}".format(type(url), url))
 
             cur_num = img_tensors[-1].shape[0]
-
             valid_ids.append([valid_id, valid_id + cur_num])
             valid_id += cur_num
 
         if len(img_tensors) <= 0:
             return None
-        # (b, 3, 224, 224)
-        torch.cuda.set_device(self.device)
+
         imgs = torch.cat(img_tensors, dim=0)
-        pixel_values = imgs.to(device=self.device, dtype=self.dtype)
+        pixel_values = imgs.cuda().to(dtype=self.dtype)
         all_img_embeds = self.model.extract_feature(pixel_values)
 
-        if len(uuids) == 0:
-            return [all_img_embeds[start:end] for start, end in valid_ids]
-        else:
-            for i in range(len(uuids)):
-                uid = uuids[i]
-                if not self.cache_client.root.get_item_embed(uid):
-                    start, end = valid_ids[i]
-                    cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
-                    create_shm(get_shm_name_embed(uuids[i]), cur_embed_bytes)
-                    self.cache_client.root.set_item_embed(uuids[i])
-        return
+        return all_img_embeds, uuids, valid_ids
