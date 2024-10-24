@@ -31,6 +31,7 @@ class MixtralTpPartModel(TpPartBaseModel):
         super().__init__(kvargs)
         return
 
+
     def _init_config(self):
         super()._init_config()
         return
