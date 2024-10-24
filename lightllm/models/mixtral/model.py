@@ -42,6 +42,12 @@ class MixtralTpPartModel(TpPartBaseModel):
         super()._init_config()
         return
 
+    def _verify_params(self):
+        assert self.load_way in ["HF"], "mixtral only supports HF format to load Now!"
+        assert self.config["num_key_value_heads"] % self.world_size_ == 0
+        assert self.config["num_attention_heads"] % self.world_size_ == 0
+        return
+    
     def _init_custom(self):
         self._init_to_get_rotary()
         return

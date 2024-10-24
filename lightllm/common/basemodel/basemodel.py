@@ -63,6 +63,7 @@ class TpPartBaseModel:
         self._verify_params()
         self._init_weights()
         self._init_mem_manager()
+        self._check_mem_size()
         self._init_req_manager()
         self._init_infer_layer()
         self._init_some_value()
@@ -122,6 +123,11 @@ class TpPartBaseModel:
             layer_num=self.config["n_layer"],
             mem_fraction=self.mem_fraction,
         )
+        return
+
+    def _check_mem_size(self):
+        self.max_total_token_num = self.mem_manager.size
+        assert self.max_seq_length < self.max_total_token_num
         return
 
     def _init_req_manager(self):
