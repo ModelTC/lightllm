@@ -34,7 +34,6 @@ import uuid
 import multiprocessing as mp
 from typing import AsyncGenerator
 
-from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 import uvicorn
@@ -71,15 +70,8 @@ logger = init_logger(__name__)
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-    await shutdown()
-
-
 g_id_gen = ReqIDGenerator()
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 server = uvicorn.Server(uvicorn.Config(app))
 
 isFirst = True
@@ -311,6 +303,7 @@ async def metrics() -> Response:
     return response
 
 
+@app.on_event("shutdown")
 async def shutdown():
     logger.info("Received signal to shutdown. Performing graceful shutdown...")
     await asyncio.sleep(3)
