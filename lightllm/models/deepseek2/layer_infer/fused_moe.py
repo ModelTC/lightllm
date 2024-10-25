@@ -292,8 +292,7 @@ def get_config_file_name(E: int, N: int, dtype: Optional[str]) -> str:
 
 
 @functools.lru_cache
-def get_moe_configs(E: int, N: int,
-                    dtype: Optional[str]) -> Optional[Dict[int, Any]]:
+def get_moe_configs(E: int, N: int, dtype: Optional[str]) -> Optional[Dict[int, Any]]:
     """
     Return optimized configurations for the fused MoE kernel.
 
@@ -307,21 +306,21 @@ def get_moe_configs(E: int, N: int,
     # directory
     json_file_name = get_config_file_name(E, N, dtype)
 
-    config_file_path = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "vllm_configs", json_file_name)
+    config_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "vllm_configs", json_file_name)
     if os.path.exists(config_file_path):
         with open(config_file_path) as f:
-            logger.info("Using configuration from %s for MoE layer.",
-                        config_file_path)
+            logger.info("Using configuration from %s for MoE layer.", config_file_path)
             # If a configuration has been found, return it
             return {int(key): val for key, val in json.load(f).items()}
 
     # If no optimized configuration is available, we will use the default
     # configuration
     logger.warning(
-        ("Using default MoE config. Performance might be sub-optimal! "
-         "Config file not found at %s"), config_file_path)
+        ("Using default MoE config. Performance might be sub-optimal! " "Config file not found at %s"), config_file_path
+    )
     return None
+
+
 def get_default_config(
     M: int,
     E: int,
@@ -331,21 +330,12 @@ def get_default_config(
     dtype: Optional[str],
     is_marlin: bool = False,
 ) -> Dict[str, int]:
-    config = {
-        'BLOCK_SIZE_M': 64,
-        'BLOCK_SIZE_N': 64,
-        'BLOCK_SIZE_K': 32,
-        'GROUP_SIZE_M': 8
-    }
+    config = {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32, "GROUP_SIZE_M": 8}
     # A heuristic: fused marlin works faster with this config for small M
     if M <= E or (is_marlin and M <= 32):
-        config = {
-            'BLOCK_SIZE_M': 16,
-            'BLOCK_SIZE_N': 32,
-            'BLOCK_SIZE_K': 64,
-            'GROUP_SIZE_M': 1
-        }
+        config = {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 64, "GROUP_SIZE_M": 1}
     return config
+
 
 def try_get_optimal_moe_config(
     w1_shape: Tuple[int, ...],
@@ -369,9 +359,9 @@ def try_get_optimal_moe_config(
             config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
         else:
             # Else use the default config
-            config = get_default_config(M, E, N, w1_shape[2], top_k, dtype,
-                                        is_marlin)
+            config = get_default_config(M, E, N, w1_shape[2], top_k, dtype, is_marlin)
     return config
+
 
 # This is used by the Deepseek-V2 model
 def grouped_topk(
@@ -382,6 +372,7 @@ def grouped_topk(
     num_expert_group: int = 0,
     topk_group: int = 0,
 ):
+    assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
     scores = torch.softmax(gating_output, dim=-1)
     num_token = scores.shape[0]
     group_scores = scores.view(num_token, num_expert_group, -1).max(dim=-1).values  # [n, n_group]
@@ -398,7 +389,15 @@ def grouped_topk(
 
     if renormalize:
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
-    return topk_weights, topk_ids
+    return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
+
+
+def get_config_dtype_str(dtype: torch.dtype):
+    if dtype == torch.float:
+        # avoiding cases where kernel fails when float32 MoE
+        # use fp16/bfloat16 configs
+        return "float32"
+    return None
 
 
 def fused_experts(
@@ -429,12 +428,18 @@ def fused_experts(
     # https://github.com/vllm-project/vllm/issues/5938
     CHUNK_SIZE = int(os.getenv("LIGHTLLM_FUSED_MOE_CHUNK_SIZE", 64 * 1024))
     M = min(num_tokens, CHUNK_SIZE)
+    config_dtype = get_config_dtype_str(dtype=hidden_states.dtype)
 
-    if override_config:
-        config = override_config
-    else:
+    get_config_func = functools.partial(
+        try_get_optimal_moe_config,
+        w1.shape,
+        w2.shape,
+        topk_ids.shape[1],
+        config_dtype,
+        override_config=override_config,
+    )
 
-        config = get_default_config(M, E, N, w1.shape[2], topk_ids.shape[1], "float8" if use_fp8 else None)
+    config = get_config_func(M)
 
     intermediate_cache1 = torch.empty((M, topk_ids.shape[1], N), device=hidden_states.device, dtype=hidden_states.dtype)
     intermediate_cache2 = torch.empty(
@@ -464,6 +469,7 @@ def fused_experts(
             intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
             intermediate_cache2 = intermediate_cache2[: tokens_in_chunk * topk_ids.shape[1]]
             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
+            config = get_config_func(tokens_in_chunk)
 
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
