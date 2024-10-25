@@ -44,25 +44,27 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
             self.q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
             self.q_weight_ = self.q_weight_[q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1), :]
-            self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
+            self.q_weight_ = self.mm_op.preprocess_weight(self.q_weight_)
+            # self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
 
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
             k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
-            k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = k_weight_.transpose(0, 1)
+            self.k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
+            # self.k_weight_ = k_weight_.transpose(0, 1)
 
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
             v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
-            v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = v_weight_.transpose(0, 1)
+            self.v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
+            # self.v_weight_ = v_weight_.transpose(0, 1)
 
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
             self.o_weight_ = self.o_weight_[:, q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)]
-            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
+            # self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
+            self.o_weight_ = self.mm_op.preprocess_weight(self.o_weight_)
 
-        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
+        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=0, handle_func=self.mm_op.preprocess_weight)
 
         return
 

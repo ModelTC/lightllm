@@ -122,13 +122,14 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        q = self.alloc_tensor((input.size(0), layer_weight.q_weight_.size(1)), dtype=input.dtype)
-        torch.mm(input, layer_weight.q_weight_, out=q)
-        torch.mm(
+        # q = self.alloc_tensor((input.size(0), self.tp_q_head_num_ * self.head_dim_), dtype=input.dtype)
+        q = layer_weight.mm_op.apply(input, layer_weight.q_weight_)
+        layer_weight.mm_op.apply(
             input,
             layer_weight.kv_weight_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
         )
+
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],
@@ -251,8 +252,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
         input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
-        o_tensor = self.alloc_tensor((input.size(0), layer_weight.o_weight_.size(1)), input.dtype)
-        torch.mm(input, layer_weight.o_weight_, out=o_tensor)
+        # o_tensor = self.alloc_tensor((input.size(0), layer_weight.o_weight_.size(1)), input.dtype)
+        o_tensor = torch.mm(input, layer_weight.o_weight_)
         return o_tensor
 
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight) -> torch.Tensor:

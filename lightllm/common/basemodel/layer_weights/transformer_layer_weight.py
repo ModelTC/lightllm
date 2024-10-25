@@ -1,3 +1,5 @@
+from functools import partial
+from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
 
 
@@ -10,5 +12,7 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.data_type_ = data_type
         self.network_config_ = network_config
         self.mode = mode
+        self.mm_op = MM(mode)
+        self.mm_op.preprocess_weight = partial(self.mm_op.preprocess_weight, func=self._cuda)
         self.init_static_params()
         return
