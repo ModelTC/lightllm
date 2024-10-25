@@ -7,7 +7,7 @@ from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_m
 class MMBase(abc.ABC):
     def __init__(self, mode):
         super().__init__()
-        self.quantize_method = get_quantization_method(mode)()
+        self.quantize_method = get_quantization_method(mode)
 
     def preprocess_weight(self, weight, func=None):
         """

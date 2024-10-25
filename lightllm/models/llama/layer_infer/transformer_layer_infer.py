@@ -252,19 +252,17 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
         input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
-        # o_tensor = self.alloc_tensor((input.size(0), layer_weight.o_weight_.size(1)), input.dtype)
-        o_tensor = torch.mm(input, layer_weight.o_weight_)
+        o_tensor = layer_weight.mm_op.apply(input, layer_weight.o_weight_)
         return o_tensor
 
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
-        up_gate_out = self.alloc_tensor((input.size(0), layer_weight.gate_up_proj.size(1)), input.dtype)
-        torch.mm(input, layer_weight.gate_up_proj, out=up_gate_out)
-        ffn1_out = silu_and_mul_fwd(up_gate_out)
+        up_gate_out = layer_weight.mm_op.apply(input, layer_weight.gate_up_proj)
+        ffn1_out = self.alloc_tensor((input.size(0), up_gate_out.size(1) // 2), input.dtype)
+        silu_and_mul_fwd(up_gate_out, ffn1_out)
         input = None
         up_gate_out = None
-        ffn2_out = self.alloc_tensor((ffn1_out.size(0), layer_weight.down_proj.size(1)), ffn1_out.dtype)
-        torch.mm(ffn1_out, layer_weight.down_proj, out=ffn2_out)
+        ffn2_out = layer_weight.mm_op.apply(ffn1_out, layer_weight.down_proj)
         ffn1_out = None
         return ffn2_out
 

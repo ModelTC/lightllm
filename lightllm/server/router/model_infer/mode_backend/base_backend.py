@@ -104,7 +104,7 @@ class ModeBackend:
             "disable_cudagraph": kvargs.get("disable_cudagraph", False),
         }
 
-        is_weight_only_quant = any("w6a16" in mode_ or "w8a16" in mode_ or "w4a16" in mode_ for mode_ in self.mode)
+        # is_weight_only_quant = any("w6a16" in mode_ or "w8a16" in mode_ or "w4a16" in mode_ for mode_ in self.mode)
         is_weight_activation_quant = any("w8a8" in mode_ for mode_ in self.mode)
         is_quik_activation_weight_quant = any("quik_activation_weight" in mode_ for mode_ in self.mode)
 
@@ -124,21 +124,21 @@ class ModeBackend:
                 else:
                     raise Exception(f"weight_activation_quant can not support {self.model_type}")
 
-            elif is_weight_only_quant:
-                if self.model_type == "llama":
-                    self.model = LlamaTpPartModelWQuant(model_kvargs)
-                elif self.model_type == "qwen":
-                    self.model = QWenTpPartModelWQuant(model_kvargs)
-                elif self.model_type == "gpt_bigcode":
-                    self.model = StarcoderTpPartModelWQuant(model_kvargs)
-                elif self.model_type == "internlm":
-                    self.model = InternlmTpPartModelWQuant(model_kvargs)
-                elif self.model_type == "internlm2":
-                    self.model = Internlm2TpPartModelWQuant(model_kvargs)
-                elif self.model_type == "qwen2":
-                    self.model = QWen2TpPartModelWQuant(model_kvargs)
-                else:
-                    raise Exception(f"weight_only_quant can not support {self.model_type}")
+            # elif is_weight_only_quant:
+            #     if self.model_type == "llama":
+            #         self.model = LlamaTpPartModelWQuant(model_kvargs)
+            #     elif self.model_type == "qwen":
+            #         self.model = QWenTpPartModelWQuant(model_kvargs)
+            #     elif self.model_type == "gpt_bigcode":
+            #         self.model = StarcoderTpPartModelWQuant(model_kvargs)
+            #     elif self.model_type == "internlm":
+            #         self.model = InternlmTpPartModelWQuant(model_kvargs)
+            #     elif self.model_type == "internlm2":
+            #         self.model = Internlm2TpPartModelWQuant(model_kvargs)
+            #     elif self.model_type == "qwen2":
+            #         self.model = QWen2TpPartModelWQuant(model_kvargs)
+            #     else:
+            #         raise Exception(f"weight_only_quant can not support {self.model_type}")
 
             else:  # no quant
                 if self.model_type == "bloom":
