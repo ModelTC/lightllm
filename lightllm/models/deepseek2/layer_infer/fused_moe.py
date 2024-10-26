@@ -29,15 +29,11 @@ import triton.language as tl
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 
-USE_VLLM = True
 try:
     from lightllm_vllm_kernel import moe_align_block_size as moe_align_block_size_kernel
 except ImportError:
-    from lightllm.models.deepseek2.layer_infer._custom_ops import (
-        moe_align_block_size as moe_align_block_size_kernel_custom,
-    )
+    from lightllm.models.deepseek2.layer_infer._custom_ops import moe_align_block_size as moe_align_block_size_kernel
 
-    USE_VLLM = False
 
 logger = init_logger(__name__)
 
@@ -226,12 +222,7 @@ def moe_align_block_size(
     max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_size)
     expert_ids = alloc_tensor_func((max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device)
     num_tokens_post_pad = alloc_tensor_func((1), dtype=torch.int32, device=topk_ids.device)
-    if USE_VLLM:
-        moe_align_block_size_kernel(topk_ids, num_experts, block_size, sorted_ids, expert_ids, num_tokens_post_pad)
-    else:
-        moe_align_block_size_kernel_custom(
-            topk_ids, num_experts, block_size, sorted_ids, expert_ids, num_tokens_post_pad, alloc_tensor_func
-        )
+    moe_align_block_size_kernel(topk_ids, num_experts, block_size, sorted_ids, expert_ids, num_tokens_post_pad)
     return sorted_ids, expert_ids, num_tokens_post_pad
 
 

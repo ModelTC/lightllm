@@ -35,9 +35,9 @@ def fused_topk(
 
     M, _ = hidden_states.shape
 
-    topk_weights = alloc_tensor_func(M, topk, dtype=torch.float32, device=hidden_states.device)
-    topk_ids = alloc_tensor_func(M, topk, dtype=torch.int32, device=hidden_states.device)
-    token_expert_indicies = alloc_tensor_func(M, topk, dtype=torch.int32, device=hidden_states.device)
+    topk_weights = alloc_tensor_func((M, topk), dtype=torch.float32, device=hidden_states.device)
+    topk_ids = alloc_tensor_func((M, topk), dtype=torch.int32, device=hidden_states.device)
+    token_expert_indicies = alloc_tensor_func((M, topk), dtype=torch.int32, device=hidden_states.device)
     topk_weights, topk_ids = topk_softmax(topk_weights, topk_ids, token_expert_indicies, gating_output.float(), topk)
     del token_expert_indicies  # Not used. Will be used in the future.
 
