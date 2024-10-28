@@ -11,7 +11,6 @@ from functools import partial
 from PIL import Image
 from typing import Callable, Optional, Sequence, Tuple, List, Union
 import numpy as np
-import rpyc
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 import torch
 from torch import nn
@@ -19,7 +18,6 @@ from torch.nn import functional as F
 from torch.nn.init import trunc_normal_
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
-from rpyc.utils.classic import obtain
 
 
 def get_abs_pos(abs_pos, tgt_size):
@@ -422,7 +420,6 @@ class QWenVisionTransformer(nn.Module):
         valid_ids = []
 
         for i, item in enumerate(image_uuids):
-            item = obtain(item)
             if isinstance(item, int):
                 uuids.append(item)
                 image_data = read_shm(get_shm_name_data(item))

@@ -11,7 +11,6 @@ from transformers import AutoModel, AutoTokenizer
 from lightllm.server.embed_cache.utils import read_shm, get_shm_name_data
 from io import BytesIO
 from lightllm.models.internvl.img_process import load_image
-from rpyc.utils.classic import obtain
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -43,7 +42,6 @@ class InternVLVisionModel:
         uuids = []
 
         for i, url in enumerate(image_uuids):
-            url = obtain(url)
             if isinstance(url, int):
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))

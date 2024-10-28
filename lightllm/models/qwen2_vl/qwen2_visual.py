@@ -30,7 +30,6 @@ from torchvision.transforms.functional import InterpolationMode
 from transformers import AutoModel, AutoTokenizer
 from lightllm.server.embed_cache.utils import read_shm, get_shm_name_data
 from io import BytesIO
-from rpyc.utils.classic import obtain
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 from transformers.modeling_utils import PreTrainedModel
@@ -434,7 +433,6 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
         uuids = []
 
         for i, url in enumerate(image_uuids):
-            url = obtain(url)
             if isinstance(url, int):
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))

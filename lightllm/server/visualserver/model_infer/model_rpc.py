@@ -81,6 +81,7 @@ class VisualModelRpcServer(rpyc.Service):
 
     # @calculate_time(show=False, min_cost_ms=300)
     def exposed_encode(self, images_uuids):
+        images_uuids = obtain(images_uuids)
         all_img_embeds, uuids, valid_ids = self.forward(images_uuids)
         all_img_embeds = all_img_embeds.to(torch.device("cpu"))
         if self.tp_rank_id == 0:

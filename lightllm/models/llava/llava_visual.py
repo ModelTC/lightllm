@@ -5,7 +5,6 @@ import os
 from PIL import Image
 from typing import List, Union
 from safetensors import safe_open
-from rpyc.utils.classic import obtain
 from io import BytesIO
 from lightllm.server.embed_cache.utils import read_shm, get_shm_name_data
 from lightllm.utils.log_utils import init_logger
@@ -131,7 +130,6 @@ class LlavaVisionModel:
         valid_ids = []
 
         for i, item in enumerate(image_uuids):
-            item = obtain(item)
             if isinstance(item, int):
                 uuids.append(item)
                 image_data = read_shm(get_shm_name_data(item))
