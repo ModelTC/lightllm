@@ -1,7 +1,18 @@
 from .ppl_quant import PPLW4A16QuantizationMethod
+from .torchao_quant import (
+    AOW4A16QuantizationMethod,
+    AOW8A16QuantizationMethod,
+    AOW8A8QuantizationMethod,
+    AOFP8W8A16QuantizationMethod,
+)
 
-
-QUANTIZATION_METHODS = {"ppl_w4a16": PPLW4A16QuantizationMethod}
+QUANTIZATION_METHODS = {
+    "ppl_w4a16": PPLW4A16QuantizationMethod,
+    "ao-int4wo": AOW4A16QuantizationMethod,
+    "ao-int8wo": AOW8A16QuantizationMethod,
+    "ao-w8a8": AOW8A8QuantizationMethod,
+    "ao-fp8w8a16": AOFP8W8A16QuantizationMethod,
+}
 
 
 def get_quantization_method(mode):
@@ -15,5 +26,11 @@ def get_quantization_method(mode):
         return QUANTIZATION_METHODS["ppl_w4a16"]()
     elif "flash_llm_w6a16" in mode:
         return QUANTIZATION_METHODS["flash_llm_w6a16"]()
+    elif any(["ao" in m for m in mode]):
+        ao_cfg = [m for m in mode if m.startswith("ao")][0]
+        if "int4wo" in ao_cfg:
+            group_size = int(ao_cfg.split("-")[-1])
+            return QUANTIZATION_METHODS["ao-int4wo"](group_size=group_size)
+        return QUANTIZATION_METHODS[ao_cfg]()
     else:
         return None

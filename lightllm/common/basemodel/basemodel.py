@@ -55,6 +55,7 @@ class TpPartBaseModel:
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
+        self.enable_torchao = any(["ao" in m for m in self.mode])
 
         self._init_datatype()
         self._init_config()
@@ -242,7 +243,7 @@ class TpPartBaseModel:
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager
 
-        alloc_mem = self.mem_manager.alloc_contiguous(input_ids.shape[0])
+        alloc_mem = None if self.enable_torchao else self.mem_manager.alloc_contiguous(input_ids.shape[0])
         if alloc_mem is not None:
             infer_state.mem_is_contiguous = True
             infer_state.mem_index = alloc_mem[0]

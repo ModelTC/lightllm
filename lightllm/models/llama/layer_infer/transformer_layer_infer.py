@@ -124,11 +124,11 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     ) -> torch.Tensor:
         # q = self.alloc_tensor((input.size(0), self.tp_q_head_num_ * self.head_dim_), dtype=input.dtype)
         q = layer_weight.mm_op.apply(input, layer_weight.q_weight_)
-        layer_weight.mm_op.apply(
+        cache_kv = layer_weight.mm_op.apply(
             input,
             layer_weight.kv_weight_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
 
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
