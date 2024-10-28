@@ -28,9 +28,7 @@ from typing import List, Union
 from torchvision import transforms as T
 from torchvision.transforms.functional import InterpolationMode
 from transformers import AutoModel, AutoTokenizer
-import requests
-from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
-import rpyc
+from lightllm.server.embed_cache.utils import read_shm, get_shm_name_data
 from io import BytesIO
 from rpyc.utils.classic import obtain
 from transformers.configuration_utils import PretrainedConfig

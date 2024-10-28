@@ -27,8 +27,12 @@ import torch
 import triton
 import triton.language as tl
 from lightllm.utils.log_utils import init_logger
-import lightllm.models.deepseek2.layer_infer._custom_ops as ops
 from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
+
+try:
+    from lightllm_vllm_kernel import moe_align_block_size as moe_align_block_size_kernel
+except ImportError:
+    from lightllm.models.deepseek2.layer_infer._custom_ops import moe_align_block_size as moe_align_block_size_kernel
 
 
 logger = init_logger(__name__)
@@ -173,7 +177,7 @@ def fused_moe_kernel(
 
 
 def moe_align_block_size(
-    topk_ids: torch.Tensor, block_size: int, num_experts: int
+    topk_ids: torch.Tensor, block_size: int, num_experts: int, alloc_tensor_func=torch.empty
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Aligns the token distribution across experts to be compatible with block
@@ -213,12 +217,12 @@ def moe_align_block_size(
         by block_size for proper block matrix operations.
     """
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
-    sorted_ids = torch.empty((max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device)
+    sorted_ids = alloc_tensor_func((max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device)
     sorted_ids.fill_(topk_ids.numel())
     max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_size)
-    expert_ids = torch.empty((max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device)
-    num_tokens_post_pad = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
-    ops.moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids, expert_ids, num_tokens_post_pad)
+    expert_ids = alloc_tensor_func((max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device)
+    num_tokens_post_pad = alloc_tensor_func((1), dtype=torch.int32, device=topk_ids.device)
+    moe_align_block_size_kernel(topk_ids, num_experts, block_size, sorted_ids, expert_ids, num_tokens_post_pad)
     return sorted_ids, expert_ids, num_tokens_post_pad
 
 
@@ -287,6 +291,36 @@ def get_config_file_name(E: int, N: int, dtype: Optional[str]) -> str:
     return f"E={E},N={N},device_name={device_name}{dtype_selector}.json"
 
 
+@functools.lru_cache
+def get_moe_configs(E: int, N: int, dtype: Optional[str]) -> Optional[Dict[int, Any]]:
+    """
+    Return optimized configurations for the fused MoE kernel.
+
+    The return value will be a dictionary that maps an irregular grid of
+    batch sizes to configurations of the fused_moe kernel. To evaluate the
+    kernel on a given batch size bs, the closest batch size in the grid should
+    be picked and the associated configuration chosen to invoke the kernel.
+    """
+
+    # First look up if an optimized configuration is available in the configs
+    # directory
+    json_file_name = get_config_file_name(E, N, dtype)
+
+    config_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "vllm_configs", json_file_name)
+    if os.path.exists(config_file_path):
+        with open(config_file_path) as f:
+            logger.info("Using configuration from %s for MoE layer.", config_file_path)
+            # If a configuration has been found, return it
+            return {int(key): val for key, val in json.load(f).items()}
+
+    # If no optimized configuration is available, we will use the default
+    # configuration
+    logger.warning(
+        ("Using default MoE config. Performance might be sub-optimal! " "Config file not found at %s"), config_file_path
+    )
+    return None
+
+
 def get_default_config(
     M: int,
     E: int,
@@ -294,10 +328,38 @@ def get_default_config(
     K: int,
     topk: int,
     dtype: Optional[str],
+    is_marlin: bool = False,
 ) -> Dict[str, int]:
     config = {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32, "GROUP_SIZE_M": 8}
-    if M <= E:
+    # A heuristic: fused marlin works faster with this config for small M
+    if M <= E or (is_marlin and M <= 32):
         config = {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 64, "GROUP_SIZE_M": 1}
+    return config
+
+
+def try_get_optimal_moe_config(
+    w1_shape: Tuple[int, ...],
+    w2_shape: Tuple[int, ...],
+    top_k: int,
+    dtype: Optional[str],
+    M: int,
+    override_config: Optional[Dict[str, Any]] = None,
+    is_marlin: bool = False,
+):
+    if override_config:
+        config = override_config
+    else:
+        # First try to load optimal config from the file
+        E, _, N = w2_shape
+        configs = get_moe_configs(E, N, dtype)
+
+        if configs:
+            # If an optimal configuration map has been found, look up the
+            # optimal config
+            config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
+        else:
+            # Else use the default config
+            config = get_default_config(M, E, N, w1_shape[2], top_k, dtype, is_marlin)
     return config
 
 
@@ -310,6 +372,7 @@ def grouped_topk(
     num_expert_group: int = 0,
     topk_group: int = 0,
 ):
+    assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
     scores = torch.softmax(gating_output, dim=-1)
     num_token = scores.shape[0]
     group_scores = scores.view(num_token, num_expert_group, -1).max(dim=-1).values  # [n, n_group]
@@ -326,7 +389,15 @@ def grouped_topk(
 
     if renormalize:
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
-    return topk_weights, topk_ids
+    return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
+
+
+def get_config_dtype_str(dtype: torch.dtype):
+    if dtype == torch.float:
+        # avoiding cases where kernel fails when float32 MoE
+        # use fp16/bfloat16 configs
+        return "float32"
+    return None
 
 
 def fused_experts(
@@ -342,6 +413,7 @@ def fused_experts(
     w2_scale: Optional[torch.Tensor] = None,
     a1_scale: Optional[torch.Tensor] = None,
     a2_scale: Optional[torch.Tensor] = None,
+    alloc_tensor_func=torch.empty,
 ):
     # Check constraints.
     assert hidden_states.shape[1] == w1.shape[2], "Hidden size mismatch"
@@ -357,18 +429,26 @@ def fused_experts(
     # https://github.com/vllm-project/vllm/issues/5938
     CHUNK_SIZE = int(os.getenv("LIGHTLLM_FUSED_MOE_CHUNK_SIZE", 64 * 1024))
     M = min(num_tokens, CHUNK_SIZE)
+    config_dtype = get_config_dtype_str(dtype=hidden_states.dtype)
 
-    if override_config:
-        config = override_config
-    else:
+    get_config_func = functools.partial(
+        try_get_optimal_moe_config,
+        w1.shape,
+        w2.shape,
+        topk_ids.shape[1],
+        config_dtype,
+        override_config=override_config,
+    )
 
-        config = get_default_config(M, E, N, w1.shape[2], topk_ids.shape[1], "float8" if use_fp8 else None)
+    config = get_config_func(M)
 
-    intermediate_cache1 = torch.empty((M, topk_ids.shape[1], N), device=hidden_states.device, dtype=hidden_states.dtype)
-    intermediate_cache2 = torch.empty(
+    intermediate_cache1 = alloc_tensor_func(
+        (M, topk_ids.shape[1], N), device=hidden_states.device, dtype=hidden_states.dtype
+    )
+    intermediate_cache2 = alloc_tensor_func(
         (M * topk_ids.shape[1], N // 2), device=hidden_states.device, dtype=hidden_states.dtype
     )
-    intermediate_cache3 = torch.empty(
+    intermediate_cache3 = alloc_tensor_func(
         (M, topk_ids.shape[1], w2.shape[1]), device=hidden_states.device, dtype=hidden_states.dtype
     )
 
@@ -377,7 +457,9 @@ def fused_experts(
     if inplace:
         out_hidden_states = hidden_states
     else:
-        out_hidden_states = torch.empty_like(hidden_states)
+        out_hidden_states = alloc_tensor_func(
+            hidden_states.shape, device=hidden_states.device, dtype=hidden_states.dtype
+        )
 
     for chunk in range((num_tokens // CHUNK_SIZE) + 1):
         begin_chunk_idx, end_chunk_idx = (chunk * CHUNK_SIZE, min((chunk + 1) * CHUNK_SIZE, num_tokens))
@@ -392,12 +474,16 @@ def fused_experts(
             intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
             intermediate_cache2 = intermediate_cache2[: tokens_in_chunk * topk_ids.shape[1]]
             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
+            config = get_config_func(tokens_in_chunk)
 
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
 
+        # 注意 moe_align_block_size 函数不能使用框架自己的缓存tensor管理框架
+        # 主要是其申请的tensor大小没有与batch size的线性关系，导致与缓存tensor管理
+        # 框架存在了一些不兼容的情况
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-            curr_topk_ids, config["BLOCK_SIZE_M"], E
+            curr_topk_ids, config["BLOCK_SIZE_M"], E, alloc_tensor_func=torch.empty
         )
 
         invoke_fused_moe_kernel(

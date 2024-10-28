@@ -7,8 +7,7 @@ from typing import List, Union
 from safetensors import safe_open
 from rpyc.utils.classic import obtain
 from io import BytesIO
-import rpyc
-from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
+from lightllm.server.embed_cache.utils import read_shm, get_shm_name_data
 from lightllm.utils.log_utils import init_logger
 
 
