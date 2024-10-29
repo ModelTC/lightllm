@@ -40,4 +40,12 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         return weight.cuda(), scale.cuda()
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
-        return apply_int8_linear(input_tensor, weights[0], weights[1], bias=bias)
+        x_q, x_scale, x_zp = ops.scaled_int8_quant(input_tensor, scale=None, azp=None, symmetric=True)
+        m = input_tensor.shape[0]
+        n = weights[0].shape[1]
+        if out is None:
+            out = g_cache_manager.alloc_tensor(
+                (m, n), input_tensor.dtype, device=input_tensor.device, is_graph_out=False
+            )
+        torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
+        return out

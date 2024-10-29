@@ -36,5 +36,8 @@ def get_quantization_method(mode):
             group_size = int(ao_cfg.split("-")[-1])
             return QUANTIZATION_METHODS["ao-int4wo"](group_size=group_size)
         return QUANTIZATION_METHODS[ao_cfg]()
+    elif any(["vllm" in m for m in mode]):
+        vllm_cfg = [m for m in mode if m.startswith("vllm")][0]
+        return QUANTIZATION_METHODS[vllm_cfg]()
     else:
         return None
