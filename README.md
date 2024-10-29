@@ -71,7 +71,7 @@ LightLLM is a Python-based LLM (Large Language Model) inference and serving fram
 
 > InternVL-Chat(InternLM2) needs to set the parameter '--eos_id 92542 --trust_remote_code'.
 
-> Qwen2-VL-7b needs to set the parameter '--eos_id 151645 --trust_remote_code'.
+> Qwen2-VL-7b needs to set the parameter '--eos_id 151645 --trust_remote_code', and use 'pip install git+https://github.com/huggingface/transformers' to upgrade to the latest version.
 
 > Stablelm needs to set the parameter '--trust_remote_code'.
 
@@ -162,7 +162,15 @@ python -m lightllm.server.api_server --model_dir /path/llama-7B     \
                                      --max_total_token_num 120000
 ~~~
 
-The parameter `max_total_token_num` is influenced by the GPU memory of the deployment environment. A larger value for this parameter allows for the processing of more concurrent requests, thereby increasing system concurrency. For more startup parameters, please refer to [api_server.py](lightllm/server/api_server.py) or [ApiServerArgs.md](docs/ApiServerArgs.md).
+The parameter `max_total_token_num` is influenced by the GPU memory of the deployment environment. You can also specify --mem_faction to have it calculated automatically.
+
+~~~shell
+python -m lightllm.server.api_server --model_dir /path/llama-7B     \
+                                     --host 0.0.0.0                 \
+                                     --port 8080                    \
+                                     --tp 1                         \
+                                     --mem_faction 0.9
+~~~
 
 To initiate a query in the shell:
 
