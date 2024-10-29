@@ -2,10 +2,9 @@ import torch
 from .quantize_method import QuantizationMethod
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 import torch.nn.functional as F
-from lightllm.utils.log_utils import init_logger
 
-logger = init_logger(__name__)
 try:
+    HAS_TORCH_AO = True
     from torchao.dtypes import to_affine_quantized_intx, AffineQuantizedTensor
     from torchao.dtypes import TensorCoreTiledLayoutType
     from torchao.quantization.quant_primitives import MappingType, ZeroPointDomain
@@ -23,12 +22,13 @@ try:
         TORCH_VERSION_AT_LEAST_2_5,
     )
 except:
-    logger.warning("torchao is not installed, you can't use quant api of it")
+    HAS_TORCH_AO = False
 
 
 class AOBaseQuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()
+        assert HAS_TORCH_AO, "torchao is not installed, you can't use quant api of it"
         assert TORCH_VERSION_AT_LEAST_2_4, "torchao requires torch >=2.4"
         self.quant_func = None
 
@@ -40,7 +40,7 @@ class AOBaseQuantizationMethod(QuantizationMethod):
         return dummy_linear.weight
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
-        pass
+        return F.linear(input_tensor, weights, bias)
 
 
 class AOW4A16QuantizationMethod(AOBaseQuantizationMethod):
@@ -55,30 +55,17 @@ class AOW4A16QuantizationMethod(AOBaseQuantizationMethod):
         self.group_size = group_size
         self.quant_func = int4_weight_only(group_size=self.group_size)
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
-        """ """
-        return F.linear(input_tensor, weights, bias)
-        # return AffineQuantizedTensor._quantized_linear_op(input_tensor, weights, bias)
-
 
 class AOW8A8QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.quant_func = int8_dynamic_activation_int8_weight()
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
-        """ """
-        return F.linear(input_tensor, weights, bias)
-
 
 class AOW8A16QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.quant_func = int8_weight_only()
-
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
-        """ """
-        return F.linear(input_tensor, weights, bias)
 
 
 class AOFP8W8A16QuantizationMethod(AOBaseQuantizationMethod):
@@ -88,5 +75,9 @@ class AOFP8W8A16QuantizationMethod(AOBaseQuantizationMethod):
         assert is_cuda_8_9, "FP8 requires GPU with compute capability >= 8.9"
         self.quant_func = float8_weight_only()
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
-        """ """
+
+class AOFP6W6A16QuantizationMethod(AOBaseQuantizationMethod):
+    def __init__(self):
+        super().__init__()
+        assert TORCH_VERSION_AT_LEAST_2_5, "torchao fp6 requires torch >=2.5"
+        self.quant_func = fpx_weight_only(3, 2)
