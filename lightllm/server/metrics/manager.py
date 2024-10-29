@@ -73,10 +73,10 @@ class MetricServer(rpyc.Service):
 
 
 class MetricClient(threading.Thread):
-    def __init__(self, port):
+    def __init__(self, url):
         super().__init__()
-        self.port = port
-        self.conn = rpyc.connect("localhost", self.port)
+        self.hostname, self.port = url.split(":")
+        self.conn = rpyc.connect(self.hostname, int(self.port))
 
         def async_wrap(f):
             f = rpyc.async_(f)
@@ -135,7 +135,7 @@ class MetricClient(threading.Thread):
                 logger.error(f"monitor error {str(e)}")
 
 
-def start_metric_manager(port: int, args, pipe_writer):
+def start_metric_manager(hostname: str, port: int, args, pipe_writer):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -149,6 +149,6 @@ def start_metric_manager(port: int, args, pipe_writer):
 
     from rpyc.utils.server import ThreadedServer
 
-    t = ThreadedServer(service, port=port)
+    t = ThreadedServer(service, hostname=hostname, port=port)
     pipe_writer.send("init ok")
     t.start()

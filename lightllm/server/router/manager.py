@@ -58,9 +58,11 @@ class RouterManager:
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
         self.recv_from_httpserver.bind(f"tcp://127.0.0.1:{router_port}")
+        logger.info(f"router bind to recv_from_httpserver {router_port}")
 
         self.send_to_detokenization = context.socket(zmq.PUSH)
         self.send_to_detokenization.connect(f"tcp://127.0.0.1:{detokenization_port}")
+        logger.info(f"router connect to send_to_detokenization {detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
 
         self.is_splitfuse_mode = args.splitfuse_mode
@@ -68,7 +70,7 @@ class RouterManager:
         self.splitfuse_block_size = args.splitfuse_block_size
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
-        self.metric_client = MetricClient(metric_port)
+        self.metric_client = MetricClient(f"{args.host}:{metric_port}")
         return
 
     async def wait_to_model_ready(self):

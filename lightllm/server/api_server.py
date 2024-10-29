@@ -644,20 +644,20 @@ def main():
         start_funcs=[
             start_metric_manager,
         ],
-        start_args=[(metric_port, args)],
+        start_args=[(args.host, metric_port, args)],
     )
     global metric_client
-    metric_client = MetricClient(metric_port)
+    metric_client = MetricClient(f"{args.host}:{metric_port}")
 
     global httpserver_manager
     httpserver_manager = HttpServerManager(
         args,
-        router_port=router_port,
-        cache_port=cache_port,
-        visual_port=visual_port,
-        httpserver_port=httpserver_port,
+        push_to_router_urls=[f"{args.host}:{router_port}"],
+        cache_url=f"{args.host}:{cache_port}",
+        pull_from_detokenization_urls=[f"{args.host}:{httpserver_port}"],
+        visual_url=f"{args.host}:{visual_port}",
+        metric_url=f"{args.host}:{metric_port}",
         enable_multimodal=args.enable_multimodal,
-        metric_port=metric_port,
     )
 
     start_submodule_processes(

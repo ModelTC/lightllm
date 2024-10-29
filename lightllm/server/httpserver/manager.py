@@ -1,4 +1,5 @@
 import sys
+from typing import AsyncGenerator
 import zmq
 import zmq.asyncio
 import asyncio
@@ -24,26 +25,34 @@ class HttpServerManager:
     def __init__(
         self,
         args,
-        router_port,
-        cache_port,
-        httpserver_port,
-        visual_port,
-        metric_port,
+        push_to_router_urls,
+        cache_url,
+        pull_from_detokenization_urls,
+        visual_url,
+        metric_url,
         enable_multimodal,
     ):
         self.args = args
-        context = zmq.asyncio.Context(2)
-        self.send_to_router = context.socket(zmq.PUSH)
-        self.send_to_router.connect(f"tcp://127.0.0.1:{router_port}")
+        context = zmq.asyncio.Context(len(push_to_router_urls) + len(pull_from_detokenization_urls) + 1)
+
+        self.send_to_router_sockets = [context.socket(zmq.PUSH) for _ in range(len(push_to_router_urls))]
+        for i, url in enumerate(push_to_router_urls):
+            logger.info(f"connect to send_to_router {url}")
+            self.send_to_router_sockets[i].connect(f"tcp://{url}")
 
         self.enable_multimodal = enable_multimodal
         if self.enable_multimodal:
-            self.cache_client = rpyc.connect("localhost", cache_port)
+            cache_host, cache_port = cache_url.split(":")
+            self.cache_client = rpyc.connect(cache_host, int(cache_port))
             self.send_to_visual = context.socket(zmq.PUSH)
-            self.send_to_visual.connect(f"tcp://127.0.0.1:{visual_port}")
+            self.send_to_visual.connect(f"tcp://{visual_url}")
 
-        self.recv_from_detokenization = context.socket(zmq.PULL)
-        self.recv_from_detokenization.bind(f"tcp://127.0.0.1:{httpserver_port}")
+        self.recv_from_detokenization_sockets = [
+            context.socket(zmq.PULL) for _ in range(len(pull_from_detokenization_urls))
+        ]
+        for i, url in enumerate(pull_from_detokenization_urls):
+            logger.info(f"bind to recv_from_detokenization {url}")
+            self.recv_from_detokenization_sockets[i].bind(f"tcp://{url}")
 
         self.tokenizer = get_tokenizer(args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code)
 
@@ -51,7 +60,7 @@ class HttpServerManager:
 
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
-        self.metric_client = MetricClient(metric_port)
+        self.metric_client = MetricClient(metric_url)
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -153,7 +162,7 @@ class HttpServerManager:
             )
         verify_time_end = time.time()
 
-        req_status = ReqStatus(group_request_id, multimodal_params)
+        req_status = ReqStatus(group_request_id, multimodal_params, self._assign_router_idx(group_request_id))
         event = req_status.event
         self.req_id_to_out_inf[group_request_id] = req_status
 
@@ -162,7 +171,7 @@ class HttpServerManager:
                 (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time)
             )
         else:
-            self.send_to_router.send_pyobj(
+            self.send_to_router_sockets[req_status.router_idx].send_pyobj(
                 (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time)
             )
 
@@ -175,7 +184,7 @@ class HttpServerManager:
                 pass
 
             if request is not None and await request.is_disconnected():
-                await self.abort(group_request_id)
+                await self.abort(group_request_id, req_status)
                 raise Exception(f"req_id {group_request_id} disconnected")
 
             async with req_status.lock:
@@ -237,9 +246,12 @@ class HttpServerManager:
                 req_status.out_token_info_list.clear()
         return
 
-    async def abort(self, group_request_id):
+    def _assign_router_idx(self, group_request_id):
+        return hash(group_request_id) % len(self.send_to_router_sockets)
+
+    async def abort(self, group_request_id, req_status):
         abort_req = AbortReq(group_req_id=group_request_id)
-        self.send_to_router.send_pyobj(abort_req)
+        self.send_to_router_sockets[req_status.router_idx].send_pyobj(abort_req)
         if self.enable_multimodal:
             self.send_to_visual.send_pyobj(abort_req)
         try:
@@ -251,9 +263,23 @@ class HttpServerManager:
         logger.warning(f"aborted group_request_id {group_request_id}")
         return
 
-    async def handle_loop(self):
+    async def _recv_from_socket(self, socket):
+        message = await socket.recv_pyobj()  # 接收来自 socket 的消息
+        return message  # 每次接收到消息就 yield 出去
+
+    async def _recv_from_sockets(self, sockets):
+        tasks = {asyncio.create_task(self._recv_from_socket(socket)): socket for socket in sockets}
         while True:
-            recv_ans: BatchStrOut = await self.recv_from_detokenization.recv_pyobj()
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                socket = tasks.pop(task)
+                message = await task
+                yield message
+                new_task = asyncio.create_task(self._recv_from_socket(socket))
+                tasks[new_task] = socket
+
+    async def handle_loop(self):
+        async for recv_ans in self._recv_from_sockets(self.recv_from_detokenization_sockets):
             assert isinstance(recv_ans, BatchStrOut), f"error recv type {type(recv_ans)}"
             for sub_req_id, text, metadata, finish_status in recv_ans.reqs_infs:
                 finish_status = FinishStatus(finish_status)
@@ -272,9 +298,10 @@ class HttpServerManager:
 
 
 class ReqStatus:
-    def __init__(self, req_id, multimodal_params) -> None:
+    def __init__(self, req_id, multimodal_params, router_idx) -> None:
         self.req_id = req_id
         self.multimodal_params = multimodal_params
         self.lock = asyncio.Lock()
         self.event = asyncio.Event()
         self.out_token_info_list = []
+        self.router_idx = router_idx
