@@ -62,6 +62,11 @@ class InferSamplingParams:
         self.regex_guide = None
         self.fsm_current_state: int = 0
         self.allowed_token_ids = allowed_token_ids
+        # this check is not very good to placed here. to do...
+        if self.allowed_token_ids is not None:
+            if not all(e < vocab_size for e in self.allowed_token_ids):
+                logger.error("allowed_token_ids contain tokenid >= vobsize, we remove these token ids")
+                self.allowed_token_ids = [e for e in self.allowed_token_ids if e < vocab_size]
         return
 
     def has_constraint_setting(self) -> bool:
