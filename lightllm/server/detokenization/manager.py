@@ -5,7 +5,7 @@ import asyncio
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
 import zmq.asyncio
-from ..io_struct import BatchTokenIdOut, ReqDetokenizationState, BatchStrOut, AbortReq, FinishStatus
+from ..io_struct import BatchTokenIdOut, IdleReq, ReqDetokenizationState, BatchStrOut, AbortReq, FinishStatus
 from ..req_id_generator import convert_sub_id_to_group_id
 from typing import Union
 from .decode import decode_token
@@ -24,16 +24,24 @@ class DeTokenizationManager:
         eos_id,
         model_weightdir,
         tokenizor_mode,
-        detokenization_port,
-        httpserver_port,
+        router_to_detokenization_urls,
+        detokenization_to_httpserver_url,
+        detokenization_to_spd_url,
         trust_remote_code,
     ):
-        context = zmq.asyncio.Context(2)
-        self.recv_from_router = context.socket(zmq.PULL)
-        self.recv_from_router.bind(f"tcp://127.0.0.1:{detokenization_port}")
+        context = zmq.asyncio.Context(len(router_to_detokenization_urls) + 2)
+        self.recv_from_routers = []
+        for detokenzation_url in router_to_detokenization_urls:
+            recv_from_router = context.socket(zmq.PULL)
+            recv_from_router.bind(f"tcp://{detokenzation_url}")
+            self.recv_from_routers.append(recv_from_router)
 
         self.send_to_httpserver = context.socket(zmq.PUSH)
-        self.send_to_httpserver.connect(f"tcp://127.0.0.1:{httpserver_port}")
+        self.send_to_httpserver.connect(f"tcp://{detokenization_to_httpserver_url}")
+
+        if detokenization_to_spd_url is not None:
+            self.send_to_spd = context.socket(zmq.PUSH)
+            self.send_to_spd.connect(f"tcp://{detokenization_to_spd_url}")
 
         self.tokenizer = get_tokenizer(model_weightdir, tokenizor_mode, trust_remote_code=trust_remote_code)
         self.all_special_ids = set(self.tokenizer.all_special_ids)
@@ -45,12 +53,40 @@ class DeTokenizationManager:
         self.token_id_to_token = {token_id: token for token, token_id in self.tokenizer.get_vocab().items()}
         return
 
-    async def handle_loop(self):
+    async def wait_router_ready(self):
+        for recv_from_router in self.recv_from_routers:
+            recv_ans: IdleReq = await recv_from_router.recv_pyobj()
+            assert isinstance(recv_ans, IdleReq), f"error recv type {type(recv_ans)}"
+            if recv_ans.dist_type in ["prefill", "normal"]:
+                self.send_to_httpserver.send_pyobj(recv_ans)
+            elif recv_ans.dist_type == "decode":
+                self.send_to_spd.send_pyobj(recv_ans)
+            else:
+                raise ValueError(f"error dist_type {recv_ans.dist_type}")
+        logger.info("all the routers are ready !!!")
+
+    async def _recv_from_socket(self, socket):
+        message = await socket.recv_pyobj()  # 接收来自 socket 的消息
+        return message  # 每次接收到消息就 yield 出去
+
+    async def _recv_from_sockets(self, sockets):
+        tasks = {asyncio.create_task(self._recv_from_socket(socket)): socket for socket in sockets}
         while True:
-            try:
-                recv_obj: Union[
-                    BatchTokenIdOut, ReqDetokenizationState, AbortReq
-                ] = await self.recv_from_router.recv_pyobj()
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                socket = tasks.pop(task)
+                message = await task
+                yield message
+                new_task = asyncio.create_task(self._recv_from_socket(socket))
+                tasks[new_task] = socket
+
+    async def handle_loop(self):
+        try:
+            async for recv_obj in self._recv_from_sockets(self.recv_from_routers):
+                assert isinstance(
+                    recv_obj, (BatchTokenIdOut, ReqDetokenizationState, AbortReq)
+                ), f"type is not right {type(recv_obj)}"
+
                 assert isinstance(
                     recv_obj, (BatchTokenIdOut, ReqDetokenizationState, AbortReq)
                 ), f"type is not right {type(recv_obj)}"
@@ -114,13 +150,15 @@ class DeTokenizationManager:
                             except:
                                 pass
                     self.send_to_httpserver.send_pyobj(new_batch_str_out)
-            except Exception as e:
-                logger.error(f"detoken process has exception {str(e)}")
-                traceback.print_exc()
-                pass
+        except Exception as e:
+            logger.error(f"detoken process has exception {str(e)}")
+            traceback.print_exc()
+            pass
 
 
-def start_detokenization_process(args, detokenization_port, httpserver_port, pipe_writer):
+def start_detokenization_process(
+    args, router_to_detokenization_urls, detokenization_to_httpserver_url, detokenization_to_spd_url, pipe_writer
+):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -132,8 +170,9 @@ def start_detokenization_process(args, detokenization_port, httpserver_port, pip
             args.eos_id,
             args.model_dir,
             args.tokenizer_mode,
-            detokenization_port=detokenization_port,
-            httpserver_port=httpserver_port,
+            router_to_detokenization_urls=router_to_detokenization_urls,
+            detokenization_to_httpserver_url=detokenization_to_httpserver_url,
+            detokenization_to_spd_url=detokenization_to_spd_url,
             trust_remote_code=args.trust_remote_code,
         )
     except Exception as e:
@@ -141,5 +180,6 @@ def start_detokenization_process(args, detokenization_port, httpserver_port, pip
         raise
     pipe_writer.send("init ok")
     loop = asyncio.get_event_loop()
+    loop.run_until_complete(router.wait_router_ready())
     loop.run_until_complete(router.handle_loop())
     return

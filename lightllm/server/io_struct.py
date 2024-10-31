@@ -276,6 +276,7 @@ class Batch:
         # 该参数只会在batch init， prefill， decode 后进行更新，并在剔除请求时减少
         # 在 batch rpc init 之后才会被填充正确的值，初始化为 None
         self.batch_decode_need_tokens = None
+        self.p2p_idx = None
         return
 
     def input_tokens(self):
@@ -326,6 +327,10 @@ class Batch:
     def simple_log(self):
         return f"batch_id={self.batch_id}, time:{time.time()}s req_ids:{[req.request_id for req in self.reqs]}"
 
+    def set_p2p_idx(self, p2p_idx):
+        self.p2p_idx = p2p_idx
+        return
+
 
 class BatchTokenIdOut:
     def __init__(self):
@@ -335,6 +340,11 @@ class BatchTokenIdOut:
 class BatchStrOut:
     def __init__(self):
         self.reqs_infs: List[Tuple[int, str, Dict, int]] = []  # [req_id, token_str, gen_metadata, finish_status]
+
+
+class IdleReq:
+    def __init__(self, dist_type):
+        self.dist_type = dist_type
 
 
 class AbortReq:

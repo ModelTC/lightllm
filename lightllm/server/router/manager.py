@@ -1,5 +1,6 @@
 import copy
 import time
+import math
 import uuid
 import uvloop
 import asyncio
@@ -8,9 +9,10 @@ import rpyc
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
 import zmq.asyncio
+from threading import Event as ThreadEvent, Lock as ThreadLock
 from typing import Dict, List, Optional
 from ..sampling_params import SamplingParams
-from ..io_struct import Req, NormalReq, SplitFuseReq, TokenHealingReq, Batch
+from ..io_struct import IdleReq, Req, NormalReq, SplitFuseReq, TokenHealingReq, Batch
 from ..multimodal_params import MultimodalParams
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import build_req_queue
@@ -31,7 +33,16 @@ logger = init_logger(__name__)
 
 
 class RouterManager:
-    def __init__(self, args, router_port, detokenization_port, model_rpc_ports, metric_port):
+    def __init__(
+        self,
+        args,
+        httpserver_to_router_url,
+        router_to_detokenization_url,
+        model_rpc_ports,
+        metric_url,
+        spd_to_router_url,
+        decode_scheduler_url,
+    ):
         self.args = args
         self.model_weightdir = args.model_dir
         self.world_size = args.tp
@@ -57,12 +68,12 @@ class RouterManager:
 
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
-        self.recv_from_httpserver.bind(f"tcp://127.0.0.1:{router_port}")
-        logger.info(f"router bind to recv_from_httpserver {router_port}")
+        self.recv_from_httpserver.bind(f"tcp://{httpserver_to_router_url}")
+        logger.info(f"router bind to recv_from_httpserver {httpserver_to_router_url}")
 
         self.send_to_detokenization = context.socket(zmq.PUSH)
-        self.send_to_detokenization.connect(f"tcp://127.0.0.1:{detokenization_port}")
-        logger.info(f"router connect to send_to_detokenization {detokenization_port}")
+        self.send_to_detokenization.connect(f"tcp://{router_to_detokenization_url}")
+        logger.info(f"router connect to send_to_detokenization {router_to_detokenization_url}")
         self.model_rpc_ports = model_rpc_ports
 
         self.is_splitfuse_mode = args.splitfuse_mode
@@ -70,7 +81,24 @@ class RouterManager:
         self.splitfuse_block_size = args.splitfuse_block_size
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
-        self.metric_client = MetricClient(f"{args.host}:{metric_port}")
+        self.metric_client = MetricClient(metric_url)
+
+        dist_mode = getattr(args, "dist_mode", "normal")
+        assert dist_mode in ["normal", "prefill", "decode"], f"Error dist mode {dist_mode}"
+        self.dist_mode = dist_mode
+        if self.dist_mode == "decode":
+            self.commit_history = {}
+            self.commit_amount = 0
+            self.commit_lock = ThreadLock()
+            self.decode_recv_count = 0
+            self.recv_from_decode_scheduler = context.socket(zmq.PULL)
+            self.recv_from_decode_scheduler.bind(f"tcp://{spd_to_router_url}")
+            self.thread_event = ThreadEvent()
+            self.thread_event.set()
+        elif self.dist_mode == "prefill":
+            self._req_to_target_instance = {}
+            self.decode_scheduler_url = f"http://{decode_scheduler_url}"
+            self.dropped_reqs = []
         return
 
     async def wait_to_model_ready(self):
@@ -121,6 +149,7 @@ class RouterManager:
             )
         self.req_queue = build_req_queue(self.args, self)
         logger.info(f"use req queue {self.req_queue.__class__.__name__}")
+        self.send_to_detokenization.send_pyobj(IdleReq(self.dist_mode))
         return
 
     def add_req(
@@ -216,6 +245,16 @@ class RouterManager:
                 await asyncio.sleep(0.01)  # 10ms
 
     async def _step(self):
+        if self.dist_mode == "normal":
+            await self._normal_step()
+        elif self.dist_mode == "prefill":
+            await self._prefill_only_step()
+        elif self.dist_mode == "decode":
+            await self._decode_only_step()
+        else:
+            raise ValueError(f"Error dist mode {self.dist_mode}")
+
+    async def _normal_step(self):
         """
         事件处理循环
         """
@@ -266,6 +305,124 @@ class RouterManager:
             self.has_wait_tokens = 0
             return
         return
+
+    async def _prefill_only_step(self):
+        assert self.running_batch is None, "prefill runnig batch must be none, as the prefill is ONE STEP "
+        new_batch = self.req_queue.generate_new_batch(self.running_batch)
+        if new_batch is not None:
+            self.running_batch = new_batch
+            await self._request_for_decode_scheduler(new_batch)
+            if self.dropped_reqs:
+                self.req_queue.back_to_wait_list(self.dropped_reqs)
+                self.dropped_reqs = []
+            await self._init_batch(new_batch)
+            await self._prefill_communicating_with_decode_scheduler(new_batch)
+            self.stats_tool.count_prompt_tokens(new_batch)
+            await self._prefill_batch(new_batch)
+            self._filter_runing_batch()
+            await self._remove_batch(new_batch)
+            self.has_wait_tokens = 0
+            self.running_batch = None
+        return
+
+    async def _prefill_communicating_with_decode_scheduler(self, batch: Batch):
+        req_ids = [req.request_id for req in batch.reqs]
+        target_instance_id = self._req_to_target_instance[req_ids[0]]
+        tasks = []
+        for idx, rpc in enumerate(self.model_rpcs):
+            tasks.append(
+                rpc.send_request(
+                    batch.batch_id,
+                    target_instance_id * self.world_size + idx,
+                )
+            )
+        ans = await asyncio.gather(*tasks)
+        assert all([a == ans[0] for a in ans]), f"Error at communicating with decode scheduler {ans}"
+        batch.set_p2p_idx(ans[0])
+
+    async def _decode_only_step(self):
+        if self.running_batch is None:
+            new_batch = self.req_queue.generate_new_batch(self.running_batch)
+            if new_batch is None:
+                return
+            else:
+                await self._init_batch(new_batch)
+                self.running_batch = new_batch
+        else:
+            if self.has_wait_tokens >= self.max_wait_tokens:
+                new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
+                self.has_wait_tokens = 0
+                if new_mini_batch is not None:
+                    await self._init_batch(new_mini_batch)
+                    await self._merge_batch(self.running_batch, new_mini_batch)
+                    self.running_batch.merge(new_mini_batch)
+
+        assert self._can_decode(self.running_batch), "can not decode"
+        self.stats_tool.count_output_tokens(self.running_batch)
+        await self._decode_batch(self.running_batch)
+        self._filter_runing_batch()
+        self.has_wait_tokens += 1
+
+    async def recv_req(self, req_info_list: list, commit_id: str):
+        self.decode_recv_count += 1
+        new_reqs = []
+        for req_info in req_info_list:
+            prompt_ids = req_info["input_id"]
+            sampling_params = SamplingParams(**req_info["sampling_param"])
+            multimodal_params = MultimodalParams(**req_info["multimodal_params"])
+            req_id = req_info["request_id"]
+            cur_kv_len = len(prompt_ids) + 1
+            req = NormalReq(req_id, prompt_ids, sampling_params, multimodal_params)
+            req.cur_kv_len = cur_kv_len
+            req.is_recv = True
+            if req_info["req_status"] == "ReqRunStatus.PAUSED_AND_OFFLOAD":
+                req.req_status = ReqRunStatus.PAUSED_AND_OFFLOAD
+            else:
+                raise ValueError(f"Error at recv_req {req_info['req_status']}")
+            self.req_queue.pause_req_dict[req.request_id] = req
+            self.req_queue.append(req)
+            new_reqs.append(req)
+            self.decode_recv_count -= 1
+        self._uncommit_req(int(commit_id))
+
+    async def _request_for_decode_scheduler(self, batch: Batch):
+        data = []
+        needed_tokens = 0
+        cum_tokens = []
+        for req in batch.reqs:
+            needed_tokens += len(req.prompt_ids) + req.sample_params.max_new_tokens
+            cum_tokens.append(needed_tokens)
+            org = req.req_status
+            req.req_status = ReqRunStatus.PAUSED_AND_OFFLOAD
+            data.append(req.to_json())
+            req.req_status = org
+        while True:
+            async with self._session.post(
+                self.decode_scheduler_url,
+                json=dict(
+                    req=data,
+                    source_instance_id=self.instance_id,
+                    needed_tokens=needed_tokens,
+                    cum_tokens=cum_tokens,
+                ),
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(
+                        f"Error when query the decode scheduler, status code: {resp.status}, req id: {req.request_id}"
+                    )
+                    continue
+                resp_data = await resp.json()
+                target_rank = resp_data.get("target_instance_id", -1)
+                req_num = resp_data.get("req_num", -1)
+                if target_rank == -1:
+                    logger.info("no target rank, wait for 1s")
+                    await asyncio.sleep(1)
+                    continue
+                self.dropped_reqs = batch.reqs[req_num:]
+                batch.reqs = batch.reqs[:req_num]
+                for req in batch.reqs:
+                    self._req_to_target_instance[req.request_id] = target_rank
+                break
 
     async def _init_batch(self, batch: Batch):
         reqs = [r.to_rpc_obj() for r in batch.reqs]
@@ -433,6 +590,142 @@ class RouterManager:
         else:
             return self.max_total_token_num - self.shared_can_use_token_num.get_value()
 
+    def _commit_req(self, event_id, needed_tokens):
+        try:
+            self.commit_lock.acquire(blocking=True, timeout=10)
+            self.commit_history[event_id] = needed_tokens
+            self.commit_amount += needed_tokens
+        except Exception as e:
+            logger.error(f"Error at commit req {event_id} {needed_tokens} {e}")
+            raise e
+        finally:
+            self.commit_lock.release()
+
+    def _uncommit_req(self, event_id):
+        try:
+            self.commit_lock.acquire(blocking=True, timeout=10)
+            needed_token = self.commit_history.pop(event_id)
+            self.commit_amount -= needed_token
+        except Exception as e:
+            raise e
+        finally:
+            self.commit_lock.release()
+
+    def _can_commit(self):
+        used = (
+            math.floor(
+                self.shared_token_load.get_dynamic_max_load() * self.max_total_token_num
+                + self.get_used_tokens()
+                - (0 if self.running_batch is None else self.running_batch.total_tokens())
+            )
+            + self.commit_amount
+        )
+        return used <= 0.999 * self.max_total_token_num
+
+    def _dynamic_max_load(self):
+        r"""
+        used tokens = (prompt + generated tokens) of running batch + transferred commit tokens
+        dyna max of running batch = sum of (max - generated)
+        dyna max of commit = max
+        """
+        used_tokens = self.get_used_tokens()
+        if self.running_batch is None:
+            running_batch_dynamic_max = 0
+        else:
+            total = 0
+            for req in self.running_batch.reqs:
+                total += req.sample_params.max_new_tokens - req.cur_output_len + 1
+            running_batch_dynamic_max = total
+        commit_dynamic_max = self.commit_amount
+        return used_tokens + running_batch_dynamic_max + commit_dynamic_max
+
+    async def _handle_socket_client(self, reader, writer):
+        data = await reader.read(100)
+        data_str: str = data.decode().strip()
+        now_state = self.thread_event.is_set()
+        if not self.thread_event.is_set():
+            if self._can_commit():
+                self.thread_event.set()
+                now_state = True
+        else:
+            if not self._can_commit():
+                self.thread_event.clear()
+                now_state = False
+
+        if not now_state:
+            if data_str.startswith("uncommit"):
+                event_id = int(data_str.split(":")[1])
+                self._uncommit_req(event_id)
+                message = "ok"
+            elif data_str == "load_prefill":
+                prefill_load = self.last_prefill_load.read(0)
+                prefill_req = self.last_prefill_load.read(1)
+                message = f"{prefill_load}/{self.max_total_token_num}/{prefill_req}"
+            elif data_str == "load":
+                total_req = (
+                    len(self.req_queue.waiting_req_list)
+                    + (0 if self.running_batch is None else len(self.running_batch.reqs))
+                    + len(self.commit_history)
+                )
+                message = f"{self.max_total_token_num}/{self.max_total_token_num}/{total_req}"
+            elif data_str.startswith("load_commit"):
+                message = "-1"
+            else:
+                message = "error"
+        else:
+            if data_str == "load":
+                load = (
+                    self._dynamic_max_load(),
+                    self.max_total_token_num,
+                    len(self.req_queue.waiting_req_list)
+                    + (0 if self.running_batch is None else len(self.running_batch.reqs))
+                    + len(self.commit_history),
+                )
+                message = f"{load[0]}/{load[1]}/{load[2]}"
+            elif data_str == "load_prefill":
+                prefill_load = self.last_prefill_load.read(0)
+                prefill_req = self.last_prefill_load.read(1)
+                message = f"{prefill_load}/{self.max_total_token_num}/{prefill_req}"
+            elif data_str.startswith("load_commit"):
+                event_id = int(data_str.split(":")[1])
+                needed_tokens = int(data_str.split(":")[2])
+                assert (
+                    self.dist_mode == "decode"
+                ), f"Error at load_commit {self.dist_mode}, only decode instances can recv commit"
+                load = (
+                    self._dynamic_max_load(),
+                    self.max_total_token_num,
+                    len(self.req_queue.waiting_req_list)
+                    + (0 if self.running_batch is None else len(self.running_batch.reqs))
+                    + len(self.commit_history),
+                )
+                if load[0] + needed_tokens <= load[1]:
+                    self._commit_req(event_id, needed_tokens)
+                    message = f"{load[0] + needed_tokens}/{load[1]}/{load[2]}"
+                else:
+                    message = "-1"
+            elif data_str.startswith("uncommit"):
+                event_id = int(data_str.split(":")[1])
+                self._uncommit_req(event_id)
+                message = "ok"
+            else:
+                message = "error"
+        message = message.encode()
+        writer.write(message)
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async def start_socket_server(self):
+        server = await asyncio.start_server(
+            self._handle_socket_client,
+            host=self.socket_server_addr_port[0],
+            port=self.socket_server_addr_port[1],
+        )
+        logger.info(f"start socket server at {self.socket_server_addr_port[0]}:{self.socket_server_addr_port[1]}")
+        async with server:
+            await server.serve_forever()
+
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
@@ -455,7 +748,16 @@ class RouterManager:
         return
 
 
-def start_router_process(args, router_port, detokenization_port, model_rpc_ports, metric_port, pipe_writer):
+def start_router_process(
+    args,
+    httpserver_to_router_url,
+    router_to_detokenization_url,
+    model_rpc_ports,
+    metric_url,
+    spd_to_router_url,
+    decode_scheduler_url,
+    pipe_writer,
+):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -465,10 +767,12 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
     try:
         router = RouterManager(
             args,
-            router_port=router_port,
-            detokenization_port=detokenization_port,
-            model_rpc_ports=model_rpc_ports,
-            metric_port=metric_port,
+            httpserver_to_router_url,
+            router_to_detokenization_url,
+            model_rpc_ports,
+            metric_url,
+            spd_to_router_url,
+            decode_scheduler_url,
         )
 
         asyncio.run(router.wait_to_model_ready())

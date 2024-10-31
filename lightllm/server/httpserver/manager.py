@@ -11,7 +11,7 @@ import datetime
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from ..tokenizer import get_tokenizer
-from ..io_struct import BatchStrOut, AbortReq, FinishStatus
+from ..io_struct import BatchStrOut, AbortReq, FinishStatus, IdleReq
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
 from ..sampling_params import SamplingParams
@@ -54,6 +54,13 @@ class HttpServerManager:
             logger.info(f"bind to recv_from_detokenization {url}")
             self.recv_from_detokenization_sockets[i].bind(f"tcp://{url}")
 
+        assert len(self.send_to_router_sockets) >= len(
+            self.recv_from_detokenization_sockets
+        ), "router num < detokenization num"
+        assert (
+            len(self.send_to_router_sockets) % len(self.recv_from_detokenization_sockets) == 0
+        ), "router num % detokenization num != 0"
+
         self.tokenizer = get_tokenizer(args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code)
 
         self.req_id_to_out_inf = {}  # value type (out_str, metadata, finished, event)
@@ -62,6 +69,15 @@ class HttpServerManager:
         self.max_req_total_len = args.max_req_total_len
         self.metric_client = MetricClient(metric_url)
         return
+
+    async def wait_model_init(self):
+        detokenization_num = len(self.recv_from_detokenization_sockets)
+        router_num = len(self.send_to_router_sockets)
+        for detok_idx in range(detokenization_num):
+            for router_idx in range(router_num):
+                rec_ans = await self.recv_from_detokenization_sockets[detok_idx].recv_pyobj()
+                assert isinstance(rec_ans, IdleReq), f"error recv type {type(rec_ans)}"
+        logger.info("all prefill/normal instances are ready")
 
     # connect cache server, calculate md5, alloc resource, return uuid
     async def _alloc_resource(self, data, num):

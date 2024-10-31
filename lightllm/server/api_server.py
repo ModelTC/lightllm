@@ -84,6 +84,7 @@ def first_set_handle_loop():
     global isFirst
     if isFirst:
         loop = asyncio.get_event_loop()
+        loop.create_task(httpserver_manager.wait_model_init())
         loop.create_task(httpserver_manager.handle_loop())
         isFirst = False
     return
@@ -509,6 +510,13 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
                 The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
     )
+
+    # separate prefill and decode
+    parser.add_argument(
+        "--enable_spd",
+        action="store_true",
+        help="Enable the separate prefill and decode mode",
+    )
     return parser
 
 
@@ -612,9 +620,16 @@ def main():
 
     already_uesd_ports = args.visual_nccl_ports + [args.nccl_port]
     can_use_ports = alloc_can_use_network_port(
-        num=6 + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
+        num=6 + args.tp + args.visual_dp * args.visual_tp + int(args.enable_spd) * 3, used_nccl_ports=already_uesd_ports
     )
     router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
+    detokenization_to_httpserver_url = f"{args.host}:{httpserver_port}"
+    metric_url = f"{args.host}:{metric_port}"
+    cache_url = f"{args.host}:{cache_port}"
+    httpserver_to_router_urls = [f"{args.host}:{router_port}"]
+    router_to_detokenization_urls = [f"{args.host}:{detokenization_port}"]
+    visual_url = f"{args.host}:{visual_port}"
+
     model_rpc_ports = can_use_ports[6 : 6 + args.tp]
     can_use_ports = can_use_ports[6 + args.tp :]
 
@@ -623,6 +638,19 @@ def main():
         tp_ports_for_dp = can_use_ports[0 : args.visual_tp]
         can_use_ports = can_use_ports[args.visual_tp :]
         visual_model_tp_ports.append(tp_ports_for_dp)
+
+    if args.enable_spd:
+        detokenization_to_spd_port = can_use_ports[0]
+        spd_to_router_port = can_use_ports[1]
+        spd_app_port = can_use_ports[2]
+        can_use_ports = can_use_ports[3:]
+        detokenization_to_spd_url = f"{args.host}:{detokenization_to_spd_port}"
+        spd_to_router_url = f"{args.host}:{spd_to_router_port}"
+        spd_controller_url = f"{args.host}:{spd_app_port}"
+    else:
+        detokenization_to_spd_url = None
+        spd_to_router_url = None
+        spd_controller_url = None
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -647,26 +675,59 @@ def main():
         start_args=[(args.host, metric_port, args)],
     )
     global metric_client
-    metric_client = MetricClient(f"{args.host}:{metric_port}")
+    metric_client = MetricClient(metric_url)
 
     global httpserver_manager
     httpserver_manager = HttpServerManager(
         args,
-        push_to_router_urls=[f"{args.host}:{router_port}"],
-        cache_url=f"{args.host}:{cache_port}",
-        pull_from_detokenization_urls=[f"{args.host}:{httpserver_port}"],
-        visual_url=f"{args.host}:{visual_port}",
-        metric_url=f"{args.host}:{metric_port}",
+        push_to_router_urls=httpserver_to_router_urls,
+        cache_url=cache_url,
+        pull_from_detokenization_urls=[detokenization_to_httpserver_url],
+        visual_url=visual_url,
+        metric_url=metric_url,
         enable_multimodal=args.enable_multimodal,
     )
 
     start_submodule_processes(
-        start_funcs=[start_router_process, start_detokenization_process],
+        start_funcs=[start_detokenization_process],
         start_args=[
-            (args, router_port, detokenization_port, model_rpc_ports, metric_port),
-            (args, detokenization_port, httpserver_port),
+            (args, router_to_detokenization_urls, detokenization_to_httpserver_url, detokenization_to_spd_url),
         ],
     )
+
+    def group_zip(iter_a, iter_b):
+        len_a = len(iter_a)
+        len_b = len(iter_b)
+        if len_a > len_b:
+            assert len_a % len_b == 0
+            for i in range(len_a):
+                yield iter_a[i], iter_b[i // (len_a // len_b)]
+        elif len_a < len_b:
+            assert len_b % len_a == 0
+            for i in range(len_b):
+                yield iter_a[i // (len_b // len_a)], iter_b[i]
+        else:
+            for a, b in zip(iter_a, iter_b):
+                yield a, b
+
+    # for httpserver_to_router_url in httpserver_to_router_urls:
+    for httpserver_to_router_url, router_to_detokenization_url in group_zip(
+        httpserver_to_router_urls, router_to_detokenization_urls
+    ):
+        start_submodule_processes(
+            start_funcs=[start_router_process],
+            start_args=[
+                (
+                    args,
+                    httpserver_to_router_url,
+                    router_to_detokenization_url,
+                    model_rpc_ports,
+                    metric_url,
+                    spd_to_router_url,
+                    spd_controller_url,
+                )
+            ],
+        )
     if "s3://" in args.model_dir:
         from lightllm.utils.petrel_helper import s3_model_clear
 
