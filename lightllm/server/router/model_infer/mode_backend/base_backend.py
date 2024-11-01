@@ -13,15 +13,9 @@ from rpyc.utils.classic import obtain
 
 from lightllm.models.bloom.model import BloomTpPartModel
 from lightllm.models.llama.model import LlamaTpPartModel
-from lightllm.models.llama_wquant.model import LlamaTpPartModelWQuant
-from lightllm.models.llama_awquant.model import LlamaTpPartModelAWQuant
-from lightllm.models.llama_quik.model import LlamaTpPartModelQuik
-from lightllm.models.qwen2_wquant.model import QWen2TpPartModelWQuant
 from lightllm.models.starcoder.model import StarcoderTpPartModel
-from lightllm.models.starcoder_wquant.model import StarcoderTpPartModelWQuant
 from lightllm.models.starcoder2.model import Starcoder2TpPartModel
 from lightllm.models.qwen.model import QWenTpPartModel
-from lightllm.models.qwen_wquant.model import QWenTpPartModelWQuant
 from lightllm.models.baichuan7b.model import Baichuan7bTpPartModel
 from lightllm.models.baichuan13b.model import Baichuan13bTpPartModel
 from lightllm.models.baichuan2_7b.model import Baichuan2_7bTpPartModel
@@ -31,8 +25,6 @@ from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.stablelm.model import StablelmTpPartModel
 from lightllm.models.internlm2.model import Internlm2TpPartModel
 from lightllm.models.internlm2_reward.model import Internlm2RewardTpPartModel
-from lightllm.models.internlm_wquant.model import InternlmTpPartModelWQuant
-from lightllm.models.internlm2_wquant.model import Internlm2TpPartModelWQuant
 from lightllm.models.yi.model import YiTpPartModel
 from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.models.minicpm.model import MiniCPMTpPartModel

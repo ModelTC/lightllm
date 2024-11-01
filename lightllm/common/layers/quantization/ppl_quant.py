@@ -51,3 +51,29 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
         else:
             out.add_(bias)
             return out
+
+
+class PPLW6A16QuantizationMethod(QuantizationMethod):
+    def __init__(self, group_size=128):
+        super().__init__()
+        self.group_size = group_size
+
+    def quantize(self, weight: torch.Tensor):
+        weight = weight.to(dtype=torch.float32).cpu()
+        M = weight.shape[0]
+        N = weight.shape[1]
+        fp6_weight = torch.zeros((M, (N * 6) // 32), dtype=torch.int32, device="cpu")
+        weight_max = torch.abs(weight).amax(-1, keepdim=True)
+        scale = weight_max / 28
+        quant_half = (weight / (scale.view(M, 1) * (2 ** 12))).half().contiguous()
+        from flash_llm_fp6_llm import weight_quant_to_fp6
+
+        fp6_weight = weight_quant_to_fp6(quant_half, fp6_weight, True)
+        return fp6_weight.cuda(), scale.half().contiguous().cuda()
+
+    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
+        """ """
+        from flash_llm_fp6_llm import linear_forward_cuda
+
+        qweight, scale = weights
+        return linear_forward_cuda(input_tensor, qweight, scale, 1)
