@@ -39,7 +39,7 @@ class TpPartBaseModel:
 
     def __init__(self, kvargs):
         self.tp_rank_ = kvargs["tp_rank"]
-        self.world_size_ = kvargs["world_size"]
+        self.world_size_ = kvargs["local_world_size"]
         self.weight_dir_ = kvargs["weight_dir"]
         self.max_total_token_num = kvargs["max_total_token_num"]
         self.batch_max_tokens = kvargs.get("batch_max_tokens", None)

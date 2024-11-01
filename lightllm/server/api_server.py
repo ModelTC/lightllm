@@ -24,6 +24,7 @@ import uvloop
 import sys
 import os
 import rpyc
+from copy import deepcopy
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -84,7 +85,6 @@ def first_set_handle_loop():
     global isFirst
     if isFirst:
         loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.wait_model_init())
         loop.create_task(httpserver_manager.handle_loop())
         isFirst = False
     return
@@ -93,6 +93,11 @@ def first_set_handle_loop():
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
     metric_client.counter_inc("lightllm_request_failure")
     return JSONResponse({"message": message}, status_code=status_code.value)
+
+
+@app.on_event("startup")
+async def startup_event():
+    await httpserver_manager.wait_model_init()
 
 
 @app.get("/liveness")
@@ -517,6 +522,9 @@ def make_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable the separate prefill and decode mode",
     )
+    parser.add_argument(
+        "--model_instance_num", type=int, default=1, help="the number of model instances controlled by httpserver. "
+    )
     return parser
 
 
@@ -620,18 +628,34 @@ def main():
 
     already_uesd_ports = args.visual_nccl_ports + [args.nccl_port]
     can_use_ports = alloc_can_use_network_port(
-        num=6 + args.tp + args.visual_dp * args.visual_tp + int(args.enable_spd) * 3, used_nccl_ports=already_uesd_ports
+        num=args.model_instance_num
+        + args.model_instance_num
+        + 4
+        + args.tp * args.model_instance_num
+        + args.visual_dp * args.visual_tp
+        + int(args.enable_spd) * 3,
+        used_nccl_ports=already_uesd_ports,
     )
-    router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
+    router_ports = can_use_ports[0 : args.model_instance_num]
+    can_use_ports = can_use_ports[args.model_instance_num :]
+    detokenization_ports = can_use_ports[0 : args.model_instance_num]
+    can_use_ports = can_use_ports[args.model_instance_num :]
+    httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:4]
+    can_use_ports = can_use_ports[4:]
     detokenization_to_httpserver_url = f"{args.host}:{httpserver_port}"
     metric_url = f"{args.host}:{metric_port}"
     cache_url = f"{args.host}:{cache_port}"
-    httpserver_to_router_urls = [f"{args.host}:{router_port}"]
-    router_to_detokenization_urls = [f"{args.host}:{detokenization_port}"]
+    httpserver_to_router_urls = [f"{args.host}:{router_port}" for router_port in router_ports]
+    router_to_detokenization_urls = [
+        f"{args.host}:{detokenization_port}" for detokenization_port in detokenization_ports
+    ]
     visual_url = f"{args.host}:{visual_port}"
 
-    model_rpc_ports = can_use_ports[6 : 6 + args.tp]
-    can_use_ports = can_use_ports[6 + args.tp :]
+    model_rpc_ports_pairs = []
+    for _ in range(args.model_instance_num):
+        model_rpc_ports = can_use_ports[0 : args.tp]
+        can_use_ports = can_use_ports[args.tp :]
+        model_rpc_ports_pairs.append(model_rpc_ports)
 
     visual_model_tp_ports = []
     for _ in range(args.visual_dp):
@@ -664,7 +688,7 @@ def main():
                 start_visual_process,
             ],
             start_args=[
-                (args, router_port, visual_port, cache_port, visual_model_tp_ports),
+                (args, httpserver_to_router_urls[0], visual_url, cache_url, visual_model_tp_ports),
             ],
         )
 
@@ -711,23 +735,30 @@ def main():
                 yield a, b
 
     # for httpserver_to_router_url in httpserver_to_router_urls:
-    for httpserver_to_router_url, router_to_detokenization_url in group_zip(
-        httpserver_to_router_urls, router_to_detokenization_urls
+    _func_list = []
+    _args_list = []
+    for idx, (httpserver_to_router_url, router_to_detokenization_url) in enumerate(
+        group_zip(httpserver_to_router_urls, router_to_detokenization_urls)
     ):
-        start_submodule_processes(
-            start_funcs=[start_router_process],
-            start_args=[
-                (
-                    args,
-                    httpserver_to_router_url,
-                    router_to_detokenization_url,
-                    model_rpc_ports,
-                    metric_url,
-                    spd_to_router_url,
-                    spd_controller_url,
-                )
-            ],
+        model_rpc_ports = model_rpc_ports_pairs[idx]
+        _args = deepcopy(args)
+        _args.model_instance_id = idx
+        _func_list.append(start_router_process)
+        _args_list.append(
+            (
+                _args,
+                httpserver_to_router_url,
+                router_to_detokenization_url,
+                model_rpc_ports,
+                metric_url,
+                spd_to_router_url,
+                spd_controller_url,
+            )
         )
+    start_submodule_processes(
+        start_funcs=_func_list,
+        start_args=_args_list,
+    )
     if "s3://" in args.model_dir:
         from lightllm.utils.petrel_helper import s3_model_clear
 

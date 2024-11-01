@@ -45,7 +45,9 @@ class RouterManager:
     ):
         self.args = args
         self.model_weightdir = args.model_dir
-        self.world_size = args.tp
+        self.local_world_size = args.tp
+        self.model_instance_num = args.model_instance_num
+        self.model_instance_id = args.model_instance_id
         self.load_way = args.load_way
         self.mode = args.mode
         self.max_total_token_num = args.max_total_token_num
@@ -104,16 +106,20 @@ class RouterManager:
     async def wait_to_model_ready(self):
         # 初始化模型
         self.model_rpcs: List[ModelRpcClient] = []
-        for rank_id in range(self.world_size):
-            rpc_model = await start_model_process(port=self.model_rpc_ports[rank_id], world_size=self.world_size)
+        logger.info(f"start model rpcs {self.model_rpc_ports}")
+        for rank_id in range(self.local_world_size):
+            rpc_model = await start_model_process(port=self.model_rpc_ports[rank_id], world_size=self.local_world_size)
             self.model_rpcs.append(rpc_model)
 
         init_model_ret = []
-        for rank_id in range(self.world_size):  # async init model process
+        for rank_id in range(self.local_world_size):  # async init model process
             kvargs = {
                 "args": self.args,
-                "rank_id": rank_id,
-                "world_size": self.world_size,
+                "rank_id": rank_id + self.local_world_size * self.model_instance_id,
+                "world_size": self.local_world_size * self.model_instance_num,
+                "model_instance_id": self.model_instance_id,
+                "model_instance_num": self.model_instance_num,
+                "local_world_size": self.local_world_size,
                 "weight_dir": self.model_weightdir,
                 "load_way": self.load_way,
                 "max_total_token_num": self.max_total_token_num,
@@ -178,6 +184,7 @@ class RouterManager:
             req_group.append(req)
 
         self.req_queue.extend(req_group)
+        logger.info(f"req_id: {group_req_id} add to req_queue prompt_ids: {prompt_ids}")
         self.send_to_detokenization.send_pyobj(
             ReqDetokenizationState(
                 group_req_id,
@@ -333,7 +340,7 @@ class RouterManager:
             tasks.append(
                 rpc.send_request(
                     batch.batch_id,
-                    target_instance_id * self.world_size + idx,
+                    target_instance_id * self.local_world_size + idx,
                 )
             )
         ans = await asyncio.gather(*tasks)
@@ -426,9 +433,9 @@ class RouterManager:
 
     async def _init_batch(self, batch: Batch):
         reqs = [r.to_rpc_obj() for r in batch.reqs]
-        rets = [self.model_rpcs[tp_rank].init_batch(batch.batch_id, reqs) for tp_rank in range(self.world_size)]
+        rets = [self.model_rpcs[tp_rank].init_batch(batch.batch_id, reqs) for tp_rank in range(self.local_world_size)]
         ans = await asyncio.gather(*rets)
-        if self.world_size != 1:
+        if self.local_world_size != 1:
             req_to_req_status = obtain(ans[0])
         else:
             req_to_req_status = ans[0]
@@ -454,9 +461,9 @@ class RouterManager:
         await self._init_batch(batch)
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
-            rets = [self.model_rpcs[tp_rank].prefill_batch(batch.batch_id) for tp_rank in range(self.world_size)]
+            rets = [self.model_rpcs[tp_rank].prefill_batch(batch.batch_id) for tp_rank in range(self.local_world_size)]
             ans = await asyncio.gather(*rets)
-            if self.world_size != 1:
+            if self.local_world_size != 1:
                 req_to_out_status = obtain(ans[0])
             else:
                 req_to_out_status = ans[0]
@@ -474,9 +481,9 @@ class RouterManager:
     async def _decode_batch(self, batch: Batch):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
-        rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.world_size)]
+        rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.local_world_size)]
         ans = await asyncio.gather(*rets)
-        if self.world_size != 1:
+        if self.local_world_size != 1:
             req_to_out_status = obtain(ans[0])
         else:
             req_to_out_status = ans[0]
@@ -494,27 +501,29 @@ class RouterManager:
     async def _filter_batch(self, batch: Batch, unfinished_req_ids, finished_req_ids: List):
         rets = [
             self.model_rpcs[tp_rank].filter_batch(batch.batch_id, unfinished_req_ids, finished_req_ids)
-            for tp_rank in range(self.world_size)
+            for tp_rank in range(self.local_world_size)
         ]
         await asyncio.gather(*rets)
         return
 
     async def _merge_batch(self, batch1, batch2):
         rets = [
-            self.model_rpcs[tp_rank].merge_batch(batch1.batch_id, batch2.batch_id) for tp_rank in range(self.world_size)
+            self.model_rpcs[tp_rank].merge_batch(batch1.batch_id, batch2.batch_id)
+            for tp_rank in range(self.local_world_size)
         ]
         await asyncio.gather(*rets)
         return
 
     async def _remove_batch(self, batch):
-        rets = [self.model_rpcs[tp_rank].remove_batch(batch.batch_id) for tp_rank in range(self.world_size)]
+        rets = [self.model_rpcs[tp_rank].remove_batch(batch.batch_id) for tp_rank in range(self.local_world_size)]
         await asyncio.gather(*rets)
         return
 
     async def _pause_reqs(self, batch: Batch, pasue_reqs):
         pasue_reqs_info = [(r.request_id, r.req_status) for r in pasue_reqs]
         rets = [
-            self.model_rpcs[tp_rank].pause_reqs(batch.batch_id, pasue_reqs_info) for tp_rank in range(self.world_size)
+            self.model_rpcs[tp_rank].pause_reqs(batch.batch_id, pasue_reqs_info)
+            for tp_rank in range(self.local_world_size)
         ]
         await asyncio.gather(*rets)
         return
@@ -576,7 +585,6 @@ class RouterManager:
                     batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, req.finish_status.value))
                 else:
                     batch_out.reqs_infs.append((req_id, new_token_id, new_gen_metadata, FinishStatus.NO_FINISH))
-
         self.send_to_detokenization.send_pyobj(batch_out)
         return
 

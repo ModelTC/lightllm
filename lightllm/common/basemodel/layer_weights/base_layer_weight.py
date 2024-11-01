@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import threading
+from lightllm.utils.dist_utils import get_device_id
 
 
 class BaseLayerWeight:
@@ -29,9 +30,9 @@ class BaseLayerWeight:
 
     def _cuda(self, cpu_tensor):
         if self.tp_rank_ is None:
-            return cpu_tensor.contiguous().to(self.data_type_).cuda()
+            return cpu_tensor.contiguous().to(self.data_type_).to(get_device_id())
         else:
-            return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
+            return cpu_tensor.contiguous().to(self.data_type_).to(get_device_id())
 
     def _try_cat_to(self, source_tensor_names, dest_name, cat_dim, handle_func=None):
         if all(hasattr(self, src_name) for src_name in source_tensor_names) and not hasattr(self, dest_name):

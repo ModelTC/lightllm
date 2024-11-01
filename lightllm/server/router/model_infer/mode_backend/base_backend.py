@@ -48,8 +48,11 @@ from lightllm.models.qwen2_vl.model import Qwen2VLTpPartModel
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.dist_utils import set_device_id, get_device_id, set_dist_group
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+
+logger = init_logger(__name__)
 
 
 class ModeBackend:
@@ -61,9 +64,14 @@ class ModeBackend:
         import torch.distributed as dist
 
         world_size = kvargs["world_size"]
+        local_world_size = kvargs["local_world_size"]
+        rank_id = kvargs["rank_id"]
+        model_instance_id = kvargs["model_instance_id"]
         self.args = kvargs.get("args", None)
         self.is_multimodal = False
-        self.tp_rank = kvargs["rank_id"]
+        self.rank_id = kvargs["rank_id"]
+        self.tp_rank = kvargs["rank_id"] % kvargs["local_world_size"]
+        self.device_id = self.rank_id % torch.cuda.device_count()
         self.world_size = kvargs["world_size"]
         self.load_way = kvargs["load_way"]
         self.mode = kvargs["mode"]
@@ -79,16 +87,26 @@ class ModeBackend:
         self.weight_dir = kvargs["weight_dir"]
         max_total_token_num = kvargs["max_total_token_num"]
 
-        dist.init_process_group(
-            "nccl", init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=self.tp_rank, world_size=world_size
+        nccl_port = kvargs["nccl_port"]
+        logger.info(
+            f"rank_id: {rank_id}, world_size: {world_size}, local_world_size: {local_world_size} nccl_port: {nccl_port}"
         )
-        torch.cuda.set_device(self.tp_rank)
+        dist.init_process_group(
+            "nccl", init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=rank_id, world_size=world_size
+        )
+
+        set_device_id(self.device_id)
+        torch.cuda.set_device(get_device_id())
+        local_group = dist.new_group(
+            list(range(local_world_size * model_instance_id, local_world_size * (model_instance_id + 1)))
+        )
+        set_dist_group(local_group)
 
         model_cfg, _ = PretrainedConfig.get_config_dict(self.weight_dir)
 
         model_kvargs = {
             "tp_rank": self.tp_rank,
-            "world_size": self.world_size,
+            "local_world_size": local_world_size,
             "weight_dir": self.weight_dir,
             "max_total_token_num": max_total_token_num,
             "load_way": self.load_way,

@@ -11,6 +11,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.common.basemodel import PostLayerInferTpl
 from lightllm.utils.infer_utils import mark_cost_time
+from lightllm.utils.dist_utils import local_all_gather
 
 
 class LlamaPostLayerInfer(PostLayerInferTpl):
@@ -94,11 +95,8 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         else:
             gather_data = self.alloc_tensor((self.vocab_size_, token_num), dtype=input_embdings_dtype)
             split_indexes = np.linspace(0, self.vocab_size_, self.world_size_ + 1, dtype=np.int64)
-            dist.all_gather(
-                [gather_data[split_indexes[i] : split_indexes[i + 1], :] for i in range(self.world_size_)],
-                logic_batch,
-                group=None,
-                async_op=False,
+            local_all_gather(
+                [gather_data[split_indexes[i] : split_indexes[i + 1], :] for i in range(self.world_size_)], logic_batch
             )
         logic_batch = None
         ans_logics = self.alloc_tensor((token_num, self.vocab_size_), dtype=torch.float32, is_graph_out=True)

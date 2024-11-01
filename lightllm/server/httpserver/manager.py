@@ -68,6 +68,7 @@ class HttpServerManager:
         self.max_req_input_len = args.max_req_input_len
         self.max_req_total_len = args.max_req_total_len
         self.metric_client = MetricClient(metric_url)
+        self.req2router = {}
         return
 
     async def wait_model_init(self):
@@ -263,7 +264,11 @@ class HttpServerManager:
         return
 
     def _assign_router_idx(self, group_request_id):
-        return hash(group_request_id) % len(self.send_to_router_sockets)
+        if group_request_id in self.req2router:
+            return self.req2router[group_request_id]
+        router_idx = len(self.req2router) % len(self.send_to_router_sockets)
+        self.req2router[group_request_id] = router_idx
+        return router_idx
 
     async def abort(self, group_request_id, req_status):
         abort_req = AbortReq(group_req_id=group_request_id)

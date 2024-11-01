@@ -35,6 +35,7 @@ class DeTokenizationManager:
             recv_from_router = context.socket(zmq.PULL)
             recv_from_router.bind(f"tcp://{detokenzation_url}")
             self.recv_from_routers.append(recv_from_router)
+        logger.info(f"get {len(self.recv_from_routers)} routers {router_to_detokenization_urls}")
 
         self.send_to_httpserver = context.socket(zmq.PUSH)
         self.send_to_httpserver.connect(f"tcp://{detokenization_to_httpserver_url}")
@@ -84,11 +85,7 @@ class DeTokenizationManager:
         try:
             async for recv_obj in self._recv_from_sockets(self.recv_from_routers):
                 assert isinstance(
-                    recv_obj, (BatchTokenIdOut, ReqDetokenizationState, AbortReq)
-                ), f"type is not right {type(recv_obj)}"
-
-                assert isinstance(
-                    recv_obj, (BatchTokenIdOut, ReqDetokenizationState, AbortReq)
+                    recv_obj, (BatchTokenIdOut, ReqDetokenizationState, AbortReq, IdleReq)
                 ), f"type is not right {type(recv_obj)}"
                 if isinstance(recv_obj, ReqDetokenizationState):
                     # 将解序列对象复制 best_of 份， 并为其生成请求id

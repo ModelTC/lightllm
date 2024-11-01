@@ -21,18 +21,19 @@ class VisualManager:
     def __init__(
         self,
         args,
-        router_port,
-        visual_port,
-        cache_port,
+        router_url,
+        visual_url,
+        cache_url,
         visual_model_rpc_ports,
     ):
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
-        self.send_to_router.connect(f"tcp://127.0.0.1:{router_port}")
+        self.send_to_router.connect(f"tcp://{router_url}")
 
         self.recv_from_httpserver = context.socket(zmq.PULL)
-        self.recv_from_httpserver.bind(f"tcp://127.0.0.1:{visual_port}")
-        self.cache_client = rpyc.connect("localhost", cache_port)
+        self.recv_from_httpserver.bind(f"tcp://{visual_url}")
+        cache_host, cache_port = cache_url.split(":")
+        self.cache_client = rpyc.connect(cache_host, int(cache_port))
         self.cache_port = cache_port
         self.waiting_reqs = []
         self.model_weightdir = args.model_dir
@@ -141,7 +142,7 @@ class VisualManager:
         return
 
 
-def start_visual_process(args, router_port, visual_port, cache_port, model_rpc_ports, pipe_writer):
+def start_visual_process(args, router_url, visual_url, cache_url, model_rpc_ports, pipe_writer):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -149,7 +150,7 @@ def start_visual_process(args, router_port, visual_port, cache_port, model_rpc_p
     graceful_registry(inspect.currentframe().f_code.co_name)
 
     try:
-        visualserver = VisualManager(args, router_port, visual_port, cache_port, model_rpc_ports)
+        visualserver = VisualManager(args, router_url, visual_url, cache_url, model_rpc_ports)
         asyncio.run(visualserver.wait_to_model_ready())
     except Exception as e:
         import traceback

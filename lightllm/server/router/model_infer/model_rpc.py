@@ -20,7 +20,9 @@ logger = init_logger(__name__)
 
 class ModelRpcServer(rpyc.Service):
     def exposed_init_model(self, kvargs):
+        self.rank = kvargs["rank_id"] % kvargs["local_world_size"]
         self.world_size = kvargs["world_size"]
+        self.local_world_size = kvargs["local_world_size"]
         if self.world_size != 1:
             kvargs = obtain(kvargs)
             self.world_size = kvargs["world_size"]
