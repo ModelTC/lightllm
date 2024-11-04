@@ -22,19 +22,16 @@ class BaiChuan7bTransformerLayerWeight(LlamaTransformerLayerWeight):
             qkv_weights = weights[f"model.layers.{self.layer_num_}.self_attn.W_pack.weight"]
             split_size = qkv_weights.shape[0] // 3
             q_weights, k_weights, v_weights = torch.split(qkv_weights, split_size, dim=0)
-            self.q_weight_ = q_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-            self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
-            k_weight_ = k_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = k_weight_.transpose(0, 1)
-            v_weight_ = v_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = v_weight_.transpose(0, 1)
+            q_weight_ = q_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
+            self.q_weight_ = self.mm_op.preprocess_weight(q_weight_)
+            self.k_weight_ = k_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
+            self.v_weight_ = v_weights[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
 
-        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
-
+        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=0, handle_func=self.mm_op.preprocess_weight)
         # attention output dense params
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
-            self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][
+            o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"][
                 :, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)
             ]
-            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
+            self.o_weight_ = self.mm_op.preprocess_weight(o_weight_)
         return

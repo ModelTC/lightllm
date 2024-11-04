@@ -56,7 +56,7 @@ class Starcoder2TransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.weight" in weights:
             self.q_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"]
             self.q_weight_ = self.q_weight_[q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1), :]
-            self.q_weight_ = self._cuda(self.q_weight_.transpose(0, 1))
+            self.q_weight_ = self.mm_op.preprocess_weight(self.q_weight_)
         if f"model.layers.{self.layer_num_}.self_attn.q_proj.bias" in weights:
             self.q_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.q_proj.bias"][
                 q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)
@@ -64,22 +64,20 @@ class Starcoder2TransformerLayerWeight(TransformerLayerWeight):
             self.q_bias_ = self._cuda(self.q_bias_)
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.weight" in weights:
             k_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.weight"]
-            k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.k_weight_ = k_weight_.transpose(0, 1)
+            self.k_weight_ = k_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
         if f"model.layers.{self.layer_num_}.self_attn.k_proj.bias" in weights:
             self.k_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.k_proj.bias"][
                 kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1)
             ]
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.weight" in weights:
             v_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"]
-            v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
-            self.v_weight_ = v_weight_.transpose(0, 1)
+            self.v_weight_ = v_weight_[kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1), :]
         if f"model.layers.{self.layer_num_}.self_attn.v_proj.bias" in weights:
             self.v_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.v_proj.bias"][
                 kv_split_n_embed * self.tp_rank_ : kv_split_n_embed * (self.tp_rank_ + 1)
             ]
 
-        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
+        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=0, handle_func=self.mm_op.preprocess_weight)
 
         self._try_cat_to(["k_bias_", "v_bias_"], "kv_bias_", cat_dim=0)
 
@@ -87,10 +85,10 @@ class Starcoder2TransformerLayerWeight(TransformerLayerWeight):
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
             self.o_weight_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"]
             self.o_weight_ = self.o_weight_[:, q_split_n_embed * self.tp_rank_ : q_split_n_embed * (self.tp_rank_ + 1)]
-            self.o_weight_ = self._cuda(self.o_weight_.transpose(0, 1))
+            self.o_weight_ = self.mm_op.preprocess_weight(self.o_weight_)
         if f"model.layers.{self.layer_num_}.self_attn.o_proj.bias" in weights:
             self.o_bias_ = weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.bias"]
-            self.o_bias_ = self._cuda(self.o_bias_)
+            self.o_bias_ = self._cuda(self.o_bias_) / self.world_size_
         return
 
     def _load_ffn_weights(self, weights):
@@ -107,11 +105,8 @@ class Starcoder2TransformerLayerWeight(TransformerLayerWeight):
         split_inter_size = intermediate_size // self.world_size_
         if f"model.layers.{self.layer_num_}.mlp.c_fc.weight" in weights:
             self.ffn_1_weight_ = weights[f"model.layers.{self.layer_num_}.mlp.c_fc.weight"].to(self.data_type_)
-            self.ffn_1_weight_ = (
+            self.ffn_1_weight_ = self.mm_op.preprocess_weight(
                 self.ffn_1_weight_[split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :]
-                .transpose(0, 1)
-                .contiguous()
-                .cuda()
             )
 
         if f"model.layers.{self.layer_num_}.mlp.c_fc.bias" in weights:
@@ -126,16 +121,13 @@ class Starcoder2TransformerLayerWeight(TransformerLayerWeight):
 
         if f"model.layers.{self.layer_num_}.mlp.c_proj.weight" in weights:
             self.ffn_2_weight_ = weights[f"model.layers.{self.layer_num_}.mlp.c_proj.weight"].to(self.data_type_)
-            self.ffn_2_weight_ = (
+            self.ffn_2_weight_ = self.mm_op.preprocess_weight(
                 self.ffn_2_weight_[:, split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1)]
-                .transpose(0, 1)
-                .contiguous()
-                .cuda()
             )
 
         if f"model.layers.{self.layer_num_}.mlp.c_proj.bias" in weights:
             self.ffn_2_bias_ = (
                 weights[f"model.layers.{self.layer_num_}.mlp.c_proj.bias"].to(self.data_type_).contiguous().cuda()
-            )
+            ) / self.world_size_
 
         return

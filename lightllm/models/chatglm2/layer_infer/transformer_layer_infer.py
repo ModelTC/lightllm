@@ -27,17 +27,17 @@ class ChatGLM2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_qkv(
         self, input_emb, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight
     ):
-        q = torch.addmm(
-            layer_weight.q_bias_, input_emb.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0
+        q = layer_weight.mm_op.apply(
+            input_emb.view(-1, self.embed_dim_),
+            layer_weight.q_weight_,
+            bias=layer_weight.q_bias_,
         )
-        torch.addmm(
-            layer_weight.kv_bias_,
+        cache_kv = layer_weight.mm_op.apply(
             input_emb.view(-1, self.embed_dim_),
             layer_weight.kv_weight_,
-            beta=1.0,
-            alpha=1.0,
+            bias=layer_weight.kv_bias_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],
@@ -48,8 +48,14 @@ class ChatGLM2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: ChatGLM2TransformerLayerWeight):
 
-        ffn1_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_up_proj)
+        ffn1_out = layer_weight.mm_op.apply(
+            input.view(-1, self.embed_dim_),
+            layer_weight.gate_up_proj,
+        )
         act_out = self.swiglu(ffn1_out)
         ffn1_out = None
-        ffn2_out = torch.mm(act_out, layer_weight.down_proj)
+        ffn2_out = layer_weight.mm_op.apply(
+            act_out,
+            layer_weight.down_proj,
+        )
         return ffn2_out

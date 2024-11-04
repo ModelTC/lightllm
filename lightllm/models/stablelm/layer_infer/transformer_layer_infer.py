@@ -16,7 +16,7 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.partial_rotary_factor = self.network_config_.get("partial_rotary_factor", 1)
         return
-    
+
     def _bind_norm(self):
         self._att_norm = partial(StablelmTransformerLayerInfer._att_norm, self)
         self._ffn_norm = partial(StablelmTransformerLayerInfer._ffn_norm, self)
@@ -25,17 +25,15 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
     ) -> torch.Tensor:
-        q = torch.addmm(
-            layer_weight.q_bias_, input.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0
+        q = layer_weight.mm_op.pre.apply(
+            input.view(-1, self.embed_dim_), layer_weight.q_weight_, bias=layer_weight.q_bias_
         )
-        torch.addmm(
-            layer_weight.kv_bias_,
+        cache_kv = layer_weight.mm_op.pre.apply(
             input.view(-1, self.embed_dim_),
             layer_weight.kv_weight_,
-            beta=1.0,
-            alpha=1.0,
+            bias=layer_weight.kv_bias_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],
@@ -48,13 +46,15 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
     ) -> torch.Tensor:
-        o_tensor = torch.mm(
+        o_tensor = layer_weight.mm_op.pre.apply(
             input.view(-1, self.tp_o_head_num_ * self.head_dim_),
             layer_weight.o_weight_,
         )
         return o_tensor
 
-    def _att_norm(self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight) -> torch.Tensor:
+    def _att_norm(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
+    ) -> torch.Tensor:
         return layernorm_forward(
             input.view(-1, self.embed_dim_),
             weight=layer_weight.att_norm_weight_,
@@ -62,7 +62,9 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
             eps=self.eps_,
         )
 
-    def _ffn_norm(self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight) -> torch.Tensor:
+    def _ffn_norm(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
+    ) -> torch.Tensor:
         return layernorm_forward(
             input.view(-1, self.embed_dim_),
             weight=layer_weight.ffn_norm_weight_,

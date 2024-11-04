@@ -61,23 +61,19 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
             att_qkv_dense_weight = weights[f"h.{self.layer_num_}.self_attention.query_key_value.weight"].reshape(
                 head_num, 3, -1, n_embed
             )
-            self.q_weight_ = self._cuda(
-                att_qkv_dense_weight[:, 0, :, :]
-                .reshape(-1, n_embed)[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-                .transpose(0, 1)
+            self.q_weight_ = self.mm_op.preprocess_weight(
+                att_qkv_dense_weight[:, 0, :, :].reshape(-1, n_embed)[
+                    split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :
+                ]
             )
-            self.k_weight_ = (
-                att_qkv_dense_weight[:, 1, :, :]
-                .reshape(-1, n_embed)[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-                .transpose(0, 1)
-            )
-            self.v_weight_ = (
-                att_qkv_dense_weight[:, 2, :, :]
-                .reshape(-1, n_embed)[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
-                .transpose(0, 1)
-            )
+            self.k_weight_ = att_qkv_dense_weight[:, 1, :, :].reshape(-1, n_embed)[
+                split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :
+            ]
+            self.v_weight_ = att_qkv_dense_weight[:, 2, :, :].reshape(-1, n_embed)[
+                split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :
+            ]
 
-        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
+        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=0, handle_func=self.mm_op.preprocess_weight)
 
         if f"h.{self.layer_num_}.self_attention.query_key_value.bias" in weights:
             n_embed = self.network_config_["n_embed"]
@@ -103,13 +99,13 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
         if f"h.{self.layer_num_}.self_attention.dense.weight" in weights:
             n_embed = self.network_config_["n_embed"]
             split_n_embed = n_embed // self.world_size_
-            self.o_weight_ = self._cuda(
+            self.o_weight_ = self.mm_op.preprocess_weight(
                 weights[f"h.{self.layer_num_}.self_attention.dense.weight"][
                     :, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)
-                ].transpose(0, 1)
+                ]
             )
         if f"h.{self.layer_num_}.self_attention.dense.bias" in weights:
-            self.o_bias_ = self._cuda(weights[f"h.{self.layer_num_}.self_attention.dense.bias"])
+            self.o_bias_ = self._cuda(weights[f"h.{self.layer_num_}.self_attention.dense.bias"]) / self.world_size_
         return
 
     def _load_ffn_weights(self, weights):
@@ -123,10 +119,8 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
             n_embed = self.network_config_["n_embed"] * 4
             split_n_embed = n_embed // self.world_size_
             self.ffn_1_weight_ = weights[f"h.{self.layer_num_}.mlp.dense_h_to_4h.weight"]
-            self.ffn_1_weight_ = self._cuda(
-                self.ffn_1_weight_[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :].transpose(
-                    0, 1
-                )
+            self.ffn_1_weight_ = self.mm_op.preprocess_weight(
+                self.ffn_1_weight_[split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1), :]
             )
 
         if f"h.{self.layer_num_}.mlp.dense_h_to_4h.bias" in weights:
@@ -141,14 +135,12 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
             n_embed = self.network_config_["n_embed"] * 4
             split_n_embed = n_embed // self.world_size_
             self.ffn_2_weight_ = weights[f"h.{self.layer_num_}.mlp.dense_4h_to_h.weight"]
-            self.ffn_2_weight_ = self._cuda(
-                self.ffn_2_weight_[:, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)].transpose(
-                    0, 1
-                )
+            self.ffn_2_weight_ = self.mm_op.preprocess_weight(
+                self.ffn_2_weight_[:, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)]
             )
 
         if f"h.{self.layer_num_}.mlp.dense_4h_to_h.bias" in weights:
-            self.ffn_2_bias_ = self._cuda(weights[f"h.{self.layer_num_}.mlp.dense_4h_to_h.bias"])
+            self.ffn_2_bias_ = self._cuda(weights[f"h.{self.layer_num_}.mlp.dense_4h_to_h.bias"]) / self.world_size_
         return
 
     def _generate_alibi(self, n_head, dtype=torch.float16):

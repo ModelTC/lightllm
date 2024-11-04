@@ -39,16 +39,13 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
         tp_kv_head_dim = multi_query_group_num // self.world_size_ * head_dim
         split_n_embed = n_embed // self.world_size_
         if f"transformer.encoder.layers.{self.layer_num_}.self_attention.query_key_value.weight" in weights:
-            qkv_weight_ = (
-                weights[f"transformer.encoder.layers.{self.layer_num_}.self_attention.query_key_value.weight"]
-                .transpose(0, 1)
-                .contiguous()
-                .to(self.data_type_)
-            )
+            qkv_weight_ = weights[
+                f"transformer.encoder.layers.{self.layer_num_}.self_attention.query_key_value.weight"
+            ].to(self.data_type_)
             self.q_weight_ = qkv_weight_[:, :n_embed][
                 :, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)
             ]
-            self.q_weight_ = self._cuda(self.q_weight_)
+            self.q_weight_ = self.mm_op.preprocess_weight(self.q_weight_)
             k_weight_ = qkv_weight_[:, n_embed : n_embed + head_dim * multi_query_group_num]
             self.k_weight_ = k_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
 
@@ -57,7 +54,7 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
             ]
             self.v_weight_ = v_weight_[:, tp_kv_head_dim * self.tp_rank_ : tp_kv_head_dim * (self.tp_rank_ + 1)]
 
-        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=1)
+        self._try_cat_to(["k_weight_", "v_weight_"], "kv_weight_", cat_dim=0, handle_func=self.mm_op.preprocess_weight)
 
         if f"transformer.encoder.layers.{self.layer_num_}.self_attention.query_key_value.bias" in weights:
 
@@ -79,8 +76,7 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
         if f"transformer.encoder.layers.{self.layer_num_}.self_attention.dense.weight" in weights:
             self.o_weight_ = weights[f"transformer.encoder.layers.{self.layer_num_}.self_attention.dense.weight"]
             self.o_weight_ = self.o_weight_[:, split_n_embed * self.tp_rank_ : split_n_embed * (self.tp_rank_ + 1)]
-            self.o_weight_ = self.o_weight_.transpose(0, 1)
-            self.o_weight_ = self._cuda(self.o_weight_)
+            self.o_weight_ = self.mm_op.preprocess_weight(self.o_weight_)
 
     def _load_ffn_weights(self, weights):
         if f"transformer.encoder.layers.{self.layer_num_}.post_attention_layernorm.weight" in weights:
@@ -97,14 +93,14 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
                 self.data_type_
             )
             gate_proj = tweights[:ffn_hidden_size, :]
-            gate_proj = gate_proj[split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :]
-            self.gate_proj = gate_proj.transpose(0, 1)
+            self.gate_proj = gate_proj[split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :]
 
             up_proj = tweights[ffn_hidden_size : 2 * ffn_hidden_size, :]
-            up_proj = up_proj[split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :]
-            self.up_proj = up_proj.transpose(0, 1)
+            self.up_proj = up_proj[split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1), :]
 
-            self._try_cat_to(["gate_proj", "up_proj"], "gate_up_proj", cat_dim=1)
+            self._try_cat_to(
+                ["gate_proj", "up_proj"], "gate_up_proj", cat_dim=0, handle_func=self.mm_op.preprocess_weight
+            )
 
         if f"transformer.encoder.layers.{self.layer_num_}.mlp.dense_4h_to_h.weight" in weights:
             self.down_proj = weights[f"transformer.encoder.layers.{self.layer_num_}.mlp.dense_4h_to_h.weight"].to(
@@ -112,6 +108,6 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
             )
             self.down_proj = self.down_proj[
                 :, split_inter_size * self.tp_rank_ : split_inter_size * (self.tp_rank_ + 1)
-            ].transpose(0, 1)
-            self.down_proj = self._cuda(self.down_proj)
+            ]
+            self.down_proj = self.mm_op.preprocess_weight(self.down_proj)
         return

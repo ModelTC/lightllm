@@ -24,17 +24,13 @@ class Qwen2TransformerLayerInfer(LlamaTransformerLayerInfer):
         layer_weight: Qwen2TransformerLayerWeight,
     ) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
-        dtype = input.dtype
-        q = self.alloc_tensor((input.shape[0], layer_weight.q_weight_.shape[1]), dtype=dtype)
-        torch.addmm(layer_weight.q_bias_, input, layer_weight.q_weight_, beta=1.0, alpha=1.0, out=q)
-        torch.addmm(
-            layer_weight.kv_bias_,
+        q = layer_weight.mm_op.apply(input, layer_weight.q_weight_, bias=layer_weight.q_bias_)
+        cache_kv = torch.addmm(
             input,
             layer_weight.kv_weight_,
-            beta=1.0,
-            alpha=1.0,
+            bias=layer_weight.kv_bias_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],

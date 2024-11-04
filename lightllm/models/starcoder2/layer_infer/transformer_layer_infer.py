@@ -48,13 +48,13 @@ class Starcoder2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_qkv(
         self, input, cache_kv, infer_state: MistralInferStateInfo, layer_weight: Starcoder2TransformerLayerWeight
     ) -> torch.Tensor:
-        q = torch.addmm(layer_weight.q_bias_, input.view(-1, self.embed_dim_), layer_weight.q_weight_)
-        torch.addmm(
-            layer_weight.kv_bias_,
+        q = layer_weight.mm_op.apply(input.view(-1, self.embed_dim_), layer_weight.q_weight_, bias=layer_weight.q_bias_)
+        cache_kv = layer_weight.mm_op.apply(
             input.view(-1, self.embed_dim_),
             layer_weight.kv_weight_,
+            bias=layer_weight.kv_bias_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],
@@ -66,24 +66,21 @@ class Starcoder2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: MistralInferStateInfo, layer_weight: Starcoder2TransformerLayerWeight
     ) -> torch.Tensor:
-        o_tensor = torch.addmm(
-            layer_weight.o_bias_,
-            input.view(-1, self.tp_o_head_num_ * self.head_dim_),
-            layer_weight.o_weight_,
-            beta=1.0 / self.world_size_,
+        o_tensor = layer_weight.mm_op.apply(
+            input.view(-1, self.tp_o_head_num_ * self.head_dim_), layer_weight.o_weight_, bias=layer_weight.o_bias_
         )
         return o_tensor
 
     def _ffn(
         self, input, infer_state: MistralInferStateInfo, layer_weight: Starcoder2TransformerLayerWeight
     ) -> torch.Tensor:
-        ffn1_out = torch.addmm(layer_weight.ffn_1_bias_, input.view(-1, self.embed_dim_), layer_weight.ffn_1_weight_)
+        ffn1_out = layer_weight.mm_op.apply(
+            input.view(-1, self.embed_dim_), layer_weight.ffn_1_weight_, bias=layer_weight.ffn_1_bias_
+        )
         input = None
         gelu_out = torch.nn.functional.gelu(ffn1_out, approximate="tanh")
         ffn1_out = None
-        ffn2_out = torch.addmm(
-            layer_weight.ffn_2_bias_, gelu_out, layer_weight.ffn_2_weight_, beta=1.0 / self.world_size_
-        )
+        ffn2_out = layer_weight.mm_op.apply(gelu_out, layer_weight.ffn_2_weight_, bias=layer_weight.ffn_2_bias_)
         gelu_out = None
         return ffn2_out
 

@@ -17,17 +17,13 @@ class InternlmTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: InternlmTransformerLayerWeight
     ) -> torch.Tensor:
-        q = torch.addmm(
-            layer_weight.q_bias_, input.view(-1, self.embed_dim_), layer_weight.q_weight_, beta=1.0, alpha=1.0
-        )
-        torch.addmm(
-            layer_weight.kv_bias_,
+        q = layer_weight.mm_op.apply(input.view(-1, self.embed_dim_), layer_weight.q_weight_, bias=layer_weight.q_bias_)
+        cache_kv = layer_weight.mm_op.apply(
             input.view(-1, self.embed_dim_),
             layer_weight.kv_weight_,
-            beta=1.0,
-            alpha=1.0,
+            bias=layer_weight.kv_bias_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
-        )
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         rotary_emb_fwd(
             q.view(-1, self.tp_q_head_num_, self.head_dim_),
             cache_kv[:, 0 : self.tp_k_head_num_, :],
@@ -39,10 +35,9 @@ class InternlmTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: InternlmTransformerLayerWeight
     ) -> torch.Tensor:
-        o_tensor = torch.addmm(
-            layer_weight.o_bias_,
+        o_tensor = layer_weight.mm_op.applys(
             input.view(-1, self.tp_o_head_num_ * self.head_dim_),
             layer_weight.o_weight_,
-            beta=1.0 / self.world_size_,
+            bias=layer_weight.o_bias_,
         )
         return o_tensor

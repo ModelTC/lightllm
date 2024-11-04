@@ -18,15 +18,23 @@ class Gemma_2bTransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
-        self.tp_k_head_num_ = network_config["num_key_value_heads"] # [SYM] always == 1
+        self.tp_k_head_num_ = network_config["num_key_value_heads"]  # [SYM] always == 1
         self.tp_v_head_num_ = network_config["num_key_value_heads"]
         return
 
-    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: Gemma_2bTransformerLayerWeight) -> torch.Tensor:
-        up_gate_out = torch.mm(input.view(-1, self.embed_dim_), layer_weight.gate_up_proj)
+    def _ffn(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: Gemma_2bTransformerLayerWeight
+    ) -> torch.Tensor:
+        up_gate_out = layer_weight.mm_op.apply(
+            input.view(-1, self.embed_dim_),
+            layer_weight.gate_up_proj,
+        )
         ffn1_out = gelu_and_mul_fwd(up_gate_out)
         input = None
         up_gate_out = None
-        ffn2_out = torch.mm(ffn1_out, layer_weight.down_proj)
+        ffn2_out = layer_weight.mm_op.apply(
+            ffn1_out,
+            layer_weight.down_proj,
+        )
         ffn1_out = None
         return ffn2_out
