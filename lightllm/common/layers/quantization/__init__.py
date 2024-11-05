@@ -6,7 +6,7 @@ from .torchao_quant import (
     AOFP8W8A16QuantizationMethod,
     AOFP6W6A16QuantizationMethod,
 )
-from .vllm_quant import vLLMw8a8QuantizationMethod
+from .vllm_quant import vLLMw8a8QuantizationMethod, vLLMFP8w8a8QuantizationMethod
 
 QUANTIZATION_METHODS = {
     "ppl_w4a16": PPLW4A16QuantizationMethod,
@@ -17,6 +17,7 @@ QUANTIZATION_METHODS = {
     "ao-fp8w8a16": AOFP8W8A16QuantizationMethod,
     "ao-fp6w6a16": AOFP6W6A16QuantizationMethod,
     "vllm-w8a8": vLLMw8a8QuantizationMethod,
+    "vllm-fp8w8a8": vLLMFP8w8a8QuantizationMethod,
 }
 
 

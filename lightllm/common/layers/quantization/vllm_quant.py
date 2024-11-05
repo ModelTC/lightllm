@@ -49,3 +49,23 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
             )
         torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
         return out
+
+
+class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
+    def __init__(self):
+        super().__init__()
+
+    def quantize(self, weight: torch.Tensor):
+        qweight, weight_scale = ops.scaled_fp8_quant(weight.cuda(), scale=None, use_per_token_if_dynamic=True)
+        return qweight.transpose(0, 1), weight_scale
+
+    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
+        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+        m = input_tensor.shape[0]
+        n = weights[0].shape[1]
+        if out is None:
+            out = g_cache_manager.alloc_tensor(
+                (m, n), input_tensor.dtype, device=input_tensor.device, is_graph_out=False
+            )
+        torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
+        return out
