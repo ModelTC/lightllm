@@ -56,6 +56,7 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
         "b_seq_len": nopad_b_seq_len,
         "b_ready_cache_len": b_ready_cache_len,
         "is_prefill": True,
+        "batch_id": batch.batch_id,
     }
     if is_multimodal:
         kwargs["multimodal_params"] = batch_multimodal_params
@@ -105,6 +106,7 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
         "b_start_loc": nopad_b_start_loc,
         "b_seq_len": nopad_b_seq_len,
         "is_prefill": False,
+        "batch_id": batch.batch_id,
     }
     # dynamic prompt cache 准备 token
     if radix_cache is not None:

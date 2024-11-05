@@ -1,22 +1,6 @@
+import torch
 import triton
 import triton.language as tl
-
-
-def init_req_to_token_indexes(
-    req_to_token_indexs, b_req_idx, b_seq_len, b_ready_cache_len, max_len_in_batch, alloc_mem_index
-):
-    start_index = 0
-    b_seq_len_numpy = b_seq_len.cpu().numpy()
-    b_ready_cache_len_numpy = b_ready_cache_len.cpu().numpy()
-    b_req_idx_numpy = b_req_idx.cpu().numpy()
-    for i in range(len(b_seq_len)):
-        cur_seq_len = b_seq_len_numpy[i]
-        cur_ready_cache_len = b_ready_cache_len_numpy[i]
-        req_to_token_indexs[b_req_idx_numpy[i], cur_ready_cache_len:cur_seq_len] = alloc_mem_index[
-            start_index : start_index + cur_seq_len - cur_ready_cache_len
-        ]
-        start_index += cur_seq_len - cur_ready_cache_len
-    return
 
 
 @triton.jit
@@ -101,3 +85,17 @@ def scatter_kvs_to_idx(tgt, src, idx):
         num_warps=num_warps,
         num_stages=1,
     )
+
+
+# INFO 11-05 10:25:12 [impl.py:86] gather_kvs shape torch.Size([4, 2048]) dtype torch.bfloat16 device cuda:1
+# INFO 11-05 10:25:12 [impl.py:87] kv_buffer shape torch.Size([400000, 16, 128]) dtype torch.bfloat16 device cuda:1
+# INFO 11-05 10:25:12 [impl.py:88] alloc_idx shape torch.Size([4]) dtype torch.int32 device cuda:1
+
+
+if __name__ == "__main__":
+    torch.cuda.set_device(1)
+    tgt = torch.zeros((4, 2048), dtype=torch.bfloat16, device="cuda")
+    src = torch.zeros((400000, 16, 128), dtype=torch.bfloat16, device="cuda")
+    idx = torch.tensor([0, 1, 2, 3], dtype=torch.int32, device="cuda")
+    print(tgt.cuda())
+    scatter_kvs_to_idx(src, tgt, idx)

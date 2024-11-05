@@ -4,6 +4,7 @@ import torch
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.utils.profile_max_tokens import get_available_gpu_memory, get_total_gpu_memory
+from .infer_utils import gather_kvs_from_idx, scatter_kvs_to_idx
 
 logger = init_logger(__name__)
 
@@ -40,6 +41,12 @@ class MemoryManager:
             head_dim,
             layer_num,
         )
+
+        self.batch2target = {}
+        self.batch2curlayer = {}
+        self.batch2callback = {}
+        self.unfinished_jobs = []
+        self.p2p_stream = torch.cuda.Stream(device="cuda")
 
     def get_cell_size(self):
         return 2 * self.head_num * self.head_dim * self.layer_num * torch._utils._element_size(self.dtype)
@@ -160,3 +167,64 @@ class MemoryManager:
         self._free_buffers()
         self._init_buffers(size, dtype, head_num, head_dim, layer_num)
         return
+
+    def send_request_layer(self, p2p_cnt):
+        layer_idx, prefill_tokens, gather_kvs = self.batch2curlayer[p2p_cnt]
+        target_rank = self.batch2target[p2p_cnt]
+        if layer_idx == self.layer_num:
+            self.batch2curlayer.pop(p2p_cnt)
+            self.batch2target.pop(p2p_cnt)
+            fn, last_token = self.batch2callback.pop(p2p_cnt)
+            last_token = last_token()
+            fn()
+            last_token = torch.tensor(last_token, dtype=torch.int32, device="cuda")
+            work = torch.distributed.isend(last_token, dst=target_rank)
+            self.unfinished_jobs.append(work)
+            return
+        with torch.cuda.stream(self.p2p_stream):
+            gather_kvs_from_idx(
+                gather_kvs, self.kv_buffer[layer_idx].view(self.kv_buffer[0].shape[0], -1), prefill_tokens
+            )
+            work = torch.distributed.isend(gather_kvs, dst=target_rank)
+            self.unfinished_jobs.append(work)
+            self.batch2curlayer[p2p_cnt][0] += 1
+
+    def update(self):
+        assert (
+            len(self.batch2curlayer) <= 1
+        ), f"more than 1 requests are running, which is impossible in prefill stage {len(self.layer_cnt)}"
+        if len(self.batch2curlayer) == 0:
+            return
+        p2p_cnt = list(self.batch2curlayer.keys())[0]
+        self.send_request_layer(p2p_cnt)
+
+    def sync(self):
+        for w in self.unfinished_jobs:
+            w.wait()
+        self.unfinished_jobs = []
+        self.p2p_stream.synchronize()
+
+    def commit(self, batch_id, target_rank, callback, last_token):
+        p2p_cnt = batch_id
+        self.batch2target[p2p_cnt] = target_rank
+        self.batch2callback[p2p_cnt] = (callback, last_token)
+        return
+
+    def post_commit(self, batch_id, b_req_idx, b_seq_len, req_to_token_indexs):
+        if batch_id is None:
+            return
+        if batch_id not in self.batch2curlayer:
+            prefill_tokens = []
+            for req_idx, seq_len in zip(b_req_idx, b_seq_len):
+                tokens = req_to_token_indexs[req_idx][:seq_len]
+                prefill_tokens.append(tokens)
+            prefill_tokens = torch.cat(prefill_tokens, dim=0)
+            total_len = prefill_tokens.shape[0]
+            buffer = torch.empty(
+                (total_len, 2 * self.head_num * self.head_dim),
+                dtype=self.dtype,
+                device="cuda",
+            )
+            self.batch2curlayer[batch_id] = [0, prefill_tokens, buffer]
+        else:
+            raise ValueError("repeated commit")

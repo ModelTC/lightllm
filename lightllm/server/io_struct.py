@@ -69,6 +69,16 @@ class Req:
             "req_status": self.req_status,
         }
 
+    def to_json(self):
+        return {
+            "request_id": self.request_id,
+            "group_req_id": self.group_req_id,
+            "input_id": self.prompt_ids,
+            "sampling_param": self.sample_params.to_dict(),
+            "multimodal_params": self.multimodal_params.to_dict(),
+            "req_status": str(self.req_status),
+        }
+
     def __repr__(self):
         return f"request_id(n={self.request_id}, " f"prompt_ids={self.prompt_ids}, "
 
@@ -325,7 +335,10 @@ class Batch:
         return f"batch_id={self.batch_id}, " f"reqs={self.reqs}, "
 
     def simple_log(self):
-        return f"batch_id={self.batch_id}, time:{time.time()}s req_ids:{[req.request_id for req in self.reqs]}"
+        return (
+            f"batch_id={self.batch_id}, time:{time.time()}s "
+            f"req_ids:{[req.request_id for req in self.reqs]} len:{len(self.reqs)}"
+        )
 
     def set_p2p_idx(self, p2p_idx):
         self.p2p_idx = p2p_idx
@@ -342,9 +355,52 @@ class BatchStrOut:
         self.reqs_infs: List[Tuple[int, str, Dict, int]] = []  # [req_id, token_str, gen_metadata, finish_status]
 
 
+class RouterLoadOut:
+    def __init__(self, model_instance_id, dist_type, load, req):
+        self.model_instance_id = model_instance_id
+        self.dist_type = dist_type
+        self.load = load
+        self.req = req
+
+
 class IdleReq:
     def __init__(self, dist_type):
         self.dist_type = dist_type
+
+
+class SPDAssignReq:
+    def __init__(self, cum_token, model_instance_id, commit_id, req_info):
+        self.cum_token = cum_token
+        self.model_instance_id = model_instance_id
+        self.commit_id = commit_id
+        self.req_info = req_info
+
+    def to_http_obj(self):
+        return {
+            "cum_token": self.cum_token,
+            "model_instance_id": self.model_instance_id,
+            "commit_id": self.commit_id,
+            "req_info": self.req_info,
+        }
+
+    @staticmethod
+    def from_http_obj(http_obj):
+        return SPDAssignReq(
+            http_obj["cum_token"], http_obj["model_instance_id"], http_obj["commit_id"], http_obj["req_info"]
+        )
+
+
+class SPDPreCommitReq:
+    def __init__(self, commit_id, total_tokens) -> None:
+        self.commit_id = commit_id
+        self.total_tokens = total_tokens
+
+
+class SPDCommitReq:
+    def __init__(self, commit_id, source_instance, req_info) -> None:
+        self.commit_id = commit_id
+        self.source_instance = source_instance
+        self.req_info = req_info
 
 
 class AbortReq:

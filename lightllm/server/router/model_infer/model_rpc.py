@@ -113,6 +113,16 @@ class ModelRpcServer(rpyc.Service):
     def exposed_get_max_total_token_num(self):
         return self.backend.get_max_total_token_num()
 
+    def exposed_recv_request(self, req_info_list, src_rank):
+        if self.world_size != 1:
+            req_info_list, src_rank = obtain(req_info_list), obtain(src_rank)
+        return self.backend.recv_request(req_info_list, src_rank)
+
+    def exposed_send_request(self, batch_id, target_ranks):
+        if self.world_size != 1:
+            batch_id, target_ranks = obtain(batch_id), obtain(target_ranks)
+        return self.backend.send_request(batch_id, target_ranks)
+
 
 class ModelRpcClient:
     def __init__(self, model_rpc, world_size, rpc_server_process=None):
@@ -141,6 +151,8 @@ class ModelRpcClient:
             self._filter_batch = async_wrap(self.model.filter_batch)
             self._merge_batch = async_wrap(self.model.merge_batch)
             self._remove_batch = async_wrap(self.model.remove_batch)
+            self._send_request = async_wrap(self.model.send_request)
+            self._recv_request = async_wrap(self.model.recv_request)
             self._get_max_total_token_num = async_wrap(self.model.get_max_total_token_num)
         else:
             self._init_model = self.model.exposed_init_model
@@ -151,6 +163,8 @@ class ModelRpcClient:
             self._filter_batch = self.model.exposed_filter_batch
             self._merge_batch = self.model.exposed_merge_batch
             self._remove_batch = self.model.exposed_remove_batch
+            self._send_request = self.model.exposed_send_request
+            self._recv_request = self.model.exposed_recv_request
             self._get_max_total_token_num = self.model.exposed_get_max_total_token_num
         return
 
@@ -209,6 +223,23 @@ class ModelRpcClient:
 
     async def remove_batch(self, batch_id):
         ans = self._remove_batch(batch_id)
+        if self.use_rpc:
+            await ans
+            return
+        else:
+            return
+
+    async def send_request(self, batch_id, target_rank):
+        ans = self._send_request(batch_id, target_rank)
+        if self.use_rpc:
+            # await ans
+            # get the return values
+            return await ans
+        else:
+            return ans
+
+    async def recv_request(self, req_info_list, src_rank):
+        ans = self._recv_request(req_info_list, src_rank)
         if self.use_rpc:
             await ans
             return

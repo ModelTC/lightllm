@@ -198,6 +198,7 @@ class TpPartBaseModel:
         b_ready_cache_len: torch.Tensor = None,
         multimodal_params=None,
         is_prefill=True,
+        batch_id=None,
     ):
         if is_prefill:
             return self._prefill(
@@ -210,6 +211,7 @@ class TpPartBaseModel:
                 b_seq_len,
                 b_ready_cache_len,
                 multimodal_params,
+                batch_id,
             )
         else:
             return self._decode(
@@ -221,6 +223,7 @@ class TpPartBaseModel:
                 b_start_loc,
                 b_seq_len,
                 multimodal_params,
+                batch_id,
             )
 
     def _prefill(
@@ -234,6 +237,7 @@ class TpPartBaseModel:
         b_seq_len,
         b_ready_cache_len,
         multimodal_params,
+        batch_id,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
@@ -283,6 +287,7 @@ class TpPartBaseModel:
         )
 
         infer_state.init_some_extra_state(self, input_ids)
+        self.mem_manager.post_commit(batch_id, b_req_idx, b_seq_len, self.req_manager.req_to_token_indexs)
         predict_logics = self._context_forward(input_ids, infer_state)
         return predict_logics
 
@@ -296,6 +301,7 @@ class TpPartBaseModel:
         b_start_loc,
         b_seq_len,
         multimodal_params,
+        batch_id,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = False
@@ -431,6 +437,7 @@ class TpPartBaseModel:
         input_embs = self.pre_infer.context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
         for i in range(0, self.layers_num):
             input_embs = self.layers_infer[i].context_forward(input_embs, infer_state, self.trans_layers_weight[i])
+            self.mem_manager.update()
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
         g_cache_manager.cache_env_out()
         return predict_logics

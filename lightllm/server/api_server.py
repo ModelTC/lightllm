@@ -25,6 +25,8 @@ import sys
 import os
 import rpyc
 from copy import deepcopy
+
+from lightllm.server.separate_pd.manager import start_spd_schedule_process
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -523,6 +525,13 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="Enable the separate prefill and decode mode",
     )
     parser.add_argument(
+        "--spd_rate",
+        type=float,
+        default=0.5,
+        help="The rate of the separate prefill and decode mode, only valid if enable_spd is True, "
+        "rate = prefill / (prefill + decode)",
+    )
+    parser.add_argument(
         "--model_instance_num", type=int, default=1, help="the number of model instances controlled by httpserver. "
     )
     return parser
@@ -630,6 +639,7 @@ def main():
     can_use_ports = alloc_can_use_network_port(
         num=args.model_instance_num
         + args.model_instance_num
+        + args.model_instance_num * 2
         + 4
         + args.tp * args.model_instance_num
         + args.visual_dp * args.visual_tp
@@ -637,6 +647,10 @@ def main():
         used_nccl_ports=already_uesd_ports,
     )
     router_ports = can_use_ports[0 : args.model_instance_num]
+    can_use_ports = can_use_ports[args.model_instance_num :]
+    load_ports = can_use_ports[0 : args.model_instance_num]
+    can_use_ports = can_use_ports[args.model_instance_num :]
+    feedback_ports = can_use_ports[0 : args.model_instance_num]
     can_use_ports = can_use_ports[args.model_instance_num :]
     detokenization_ports = can_use_ports[0 : args.model_instance_num]
     can_use_ports = can_use_ports[args.model_instance_num :]
@@ -646,10 +660,25 @@ def main():
     metric_url = f"{args.host}:{metric_port}"
     cache_url = f"{args.host}:{cache_port}"
     httpserver_to_router_urls = [f"{args.host}:{router_port}" for router_port in router_ports]
+    router_load_urls = [f"{args.host}:{load_port}" for load_port in load_ports]
+    router_feedback_urls = [f"{args.host}:{feedback_port}" for feedback_port in feedback_ports]
     router_to_detokenization_urls = [
         f"{args.host}:{detokenization_port}" for detokenization_port in detokenization_ports
     ]
     visual_url = f"{args.host}:{visual_port}"
+
+    # log all ports
+    desc = f"""
+    httpserver_port: {httpserver_port}
+    visual_port: {visual_port}
+    cache_port: {cache_port}
+    metric_port: {metric_port}
+    router_ports: {router_ports}
+    load_ports: {load_ports}
+    feedback_ports: {feedback_ports}
+    detokenization_ports: {detokenization_ports}
+    """
+    logger.info(desc)
 
     model_rpc_ports_pairs = []
     for _ in range(args.model_instance_num):
@@ -671,10 +700,22 @@ def main():
         detokenization_to_spd_url = f"{args.host}:{detokenization_to_spd_port}"
         spd_to_router_url = f"{args.host}:{spd_to_router_port}"
         spd_controller_url = f"{args.host}:{spd_app_port}"
+        num_prefill = min(max(int(args.spd_rate * args.model_instance_num), args.model_instance_num - 1), 1)
+        httpserver_to_router_urls, spd_to_router_urls = (
+            httpserver_to_router_urls[:num_prefill],
+            httpserver_to_router_urls[num_prefill:],
+        )
+        prefill_router_to_detokenization_urls, decode_router_to_detokenization_urls = (
+            router_to_detokenization_urls[:num_prefill],
+            router_to_detokenization_urls[num_prefill:],
+        )
     else:
         detokenization_to_spd_url = None
         spd_to_router_url = None
         spd_controller_url = None
+        spd_to_router_urls = []
+        prefill_router_to_detokenization_urls = []
+        decode_router_to_detokenization_urls = []
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -719,6 +760,22 @@ def main():
         ],
     )
 
+    if args.enable_spd:
+        start_submodule_processes(
+            start_funcs=[start_spd_schedule_process],
+            start_args=[
+                (
+                    spd_controller_url,
+                    spd_to_router_urls,
+                    list(range(num_prefill, args.model_instance_num)),
+                    detokenization_to_spd_url,
+                    router_load_urls[num_prefill:],
+                    router_feedback_urls[num_prefill:],
+                    args.max_total_token_num,
+                ),
+            ],
+        )
+
     def group_zip(iter_a, iter_b):
         len_a = len(iter_a)
         len_b = len(iter_b)
@@ -738,11 +795,13 @@ def main():
     _func_list = []
     _args_list = []
     for idx, (httpserver_to_router_url, router_to_detokenization_url) in enumerate(
-        group_zip(httpserver_to_router_urls, router_to_detokenization_urls)
+        group_zip(httpserver_to_router_urls, prefill_router_to_detokenization_urls)
     ):
         model_rpc_ports = model_rpc_ports_pairs[idx]
         _args = deepcopy(args)
         _args.model_instance_id = idx
+        if args.enable_spd:
+            _args.dist_mode = "prefill"
         _func_list.append(start_router_process)
         _args_list.append(
             (
@@ -751,10 +810,35 @@ def main():
                 router_to_detokenization_url,
                 model_rpc_ports,
                 metric_url,
-                spd_to_router_url,
+                None,
                 spd_controller_url,
+                None,
             )
         )
+
+    for idx, (spd_to_router_url, decode_router_to_detokenizaztion_url) in enumerate(
+        group_zip(spd_to_router_urls, decode_router_to_detokenization_urls)
+    ):
+        model_rpc_ports = model_rpc_ports_pairs[idx]
+        _args = deepcopy(args)
+        _args.model_instance_id = idx + num_prefill
+        _args.dist_mode = "decode"
+        _func_list.append(start_router_process)
+        load_url = router_load_urls[idx + num_prefill]
+        feedback_url = router_feedback_urls[num_prefill + idx]
+        _args_list.append(
+            (
+                _args,
+                spd_to_router_url,
+                decode_router_to_detokenizaztion_url,
+                model_rpc_ports,
+                metric_url,
+                feedback_url,
+                spd_controller_url,
+                load_url,
+            )
+        )
+
     start_submodule_processes(
         start_funcs=_func_list,
         start_args=_args_list,
