@@ -339,16 +339,11 @@ async def kv_move_status(websocket: WebSocket):
         while True:
             # 等待接收消息，设置超时为10秒
             data = await websocket.receive_text()
-            """
-            {
-                "type": "kv_move_status",
-                "group_request_id": xxxxx,
-            }
-            """
             json_data = json.loads(data)
-            assert json_data.get("type") == "kv_move_status"
-            group_request_id = json_data.get("group_request_id")
-            await g_objs.httpserver_manager.update_req_status(group_request_id)
+            from .io_struct import UpKVStatus
+
+            upkv_status = UpKVStatus(**json_data)
+            await g_objs.httpserver_manager.update_req_status(upkv_status)
     except (WebSocketDisconnect, Exception, RuntimeError) as e:
         logger.error(f"kv_move_status client {(client_ip, client_port)} has error {str(e)}")
         logger.exception(str(e))

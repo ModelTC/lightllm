@@ -6,6 +6,9 @@ from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from typing import Dict, List, Optional, Tuple, Union
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 class ReqRunStatus(enum.Enum):
@@ -363,12 +366,28 @@ class PD_Client_Obj:
 
     def __post_init__(self):
         if self.mode not in ["prefill", "decode"]:
-            raise ValueError(f"""mode must in ["prefill", "decode"], but get {self.mode}""")
+            error_info = f"""mode must in ["prefill", "decode"], but get {self.mode}"""
+            logger.error(error_info)
+            raise ValueError(error_info)
         return
-
-    def verify(self):
-        if self.mode not in ["prefill", "decode"]:
-            raise ValueError("mode must in ['prefill', 'decode']")
 
     def to_llm_url(self):
         return f"http://{self.client_ip_port}/pd_generate_stream"
+
+
+@dataclass
+class UpKVStatus:
+    type: str = "kv_move_status"
+    group_request_id: int = None
+
+    def __post_init__(self):
+        if self.type != "kv_move_status":
+            error_info = "type only can be 'kv_move_status'"
+            logger.error(error_info)
+            raise ValueError(error_info)
+
+        if not isinstance(self.group_request_id, int):
+            error_info = "group_request_id only can be int"
+            logger.error(error_info)
+            raise ValueError(error_info)
+        return

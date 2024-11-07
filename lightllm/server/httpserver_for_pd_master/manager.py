@@ -12,7 +12,7 @@ import json
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
-from ..io_struct import FinishStatus, PD_Client_Obj
+from ..io_struct import FinishStatus, PD_Client_Obj, UpKVStatus
 from ..sampling_params import SamplingParams
 from ..multimodal_params import MultimodalParams
 from ..req_id_generator import ReqIDGenerator
@@ -43,8 +43,10 @@ class HttpServerManagerForPDMaster:
         pd_client = PD_Client_Obj(**pd_info_json)
         self.url_to_pd_nodes[pd_client.client_ip_port] = pd_client
         if pd_client.mode == "prefill":
+            self.prefill_nodes = [e for e in self.prefill_nodes if e.client_ip_port != pd_client.client_ip_port]
             self.prefill_nodes.append(pd_client)
         elif pd_client.mode == "decode":
+            self.decode_nodes = [e for e in self.decode_nodes if e.client_ip_port != pd_client.client_ip_port]
             self.decode_nodes.append(pd_client)
         else:
             assert False
@@ -63,11 +65,11 @@ class HttpServerManagerForPDMaster:
         logger.info(f"mode: {pd_client.mode} url: {pd_client.client_ip_port} removed")
         return
 
-    async def update_req_status(self, group_request_id):
+    async def update_req_status(self, upkv_status: UpKVStatus):
         try:
-            event = self.id_to_event[group_request_id]
+            event = self.id_to_event[upkv_status.group_request_id]
             event.set()
-            del self.id_to_event[group_request_id]
+            del self.id_to_event[upkv_status.group_request_id]
         except:
             pass
         return
@@ -94,20 +96,29 @@ class HttpServerManagerForPDMaster:
     ) -> Tuple[int, str, dict, FinishStatus]:
         start_time = time.time()
         group_request_id = self.id_gen.generate_id()
-        sampling_params.group_request_id = group_request_id
-        # 记录请求到达的相关信息
-        await self._log_req_header(request, group_request_id)
-        # 监控
-        self.metric_client.counter_inc("lightllm_request_count")
-        self.metric_client.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
+        try:
+            sampling_params.group_request_id = group_request_id
+            # 记录请求到达的相关信息
+            await self._log_req_header(request, group_request_id)
+            # 监控
+            self.metric_client.counter_inc("lightllm_request_count")
+            self.metric_client.histogram_observe("lightllm_request_max_new_tokens", sampling_params.max_new_tokens)
 
-        p_node, d_node = await self.select_p_d_node(prompt, sampling_params, multimodal_params)
+            p_node, d_node = await self.select_p_d_node(prompt, sampling_params, multimodal_params)
 
-        results_generator = self._wait_to_token_package(
-            p_node.to_llm_url(), d_node.to_llm_url(), start_time, prompt, sampling_params, multimodal_params, request
-        )
-        async for sub_req_id, request_output, metadata, finish_status in results_generator:
-            yield sub_req_id, request_output, metadata, finish_status
+            results_generator = self._wait_to_token_package(
+                p_node.to_llm_url(),
+                d_node.to_llm_url(),
+                start_time,
+                prompt,
+                sampling_params,
+                multimodal_params,
+                request,
+            )
+            async for sub_req_id, request_output, metadata, finish_status in results_generator:
+                yield sub_req_id, request_output, metadata, finish_status
+        finally:
+            await self.remove_req(group_request_id)
         return
 
     async def _log_req_header(self, request: Request, group_request_id: int):
@@ -146,10 +157,7 @@ class HttpServerManagerForPDMaster:
         try:
             old_max_new_tokens = sampling_params.max_new_tokens
             sampling_params.max_new_tokens = 1
-            if old_max_new_tokens == 1:
-                sampling_params.move_kv_to_decode_node = False
-            else:
-                sampling_params.move_kv_to_decode_node = True
+            sampling_params.move_kv_to_decode_node = old_max_new_tokens != 1
 
             req = await self._to_req_info(prompt, sampling_params, multimodal_params)
             async with aiohttp.ClientSession() as session:
@@ -164,6 +172,10 @@ class HttpServerManagerForPDMaster:
                                     finish_status = FinishStatus.NO_FINISH
                                 else:
                                     finish_status = FinishStatus(finish_status)
+                                # 得到 p 节点返回的 prompt_ids 信息
+                                if metadata.get("prompt_ids", None) is not None:
+                                    prompt_ids = metadata.get("prompt_ids")
+                                    prompt_ids.append(metadata.get("id"))
                                 yield sub_req_id, request_output, metadata, finish_status
                     else:
                         logger.error(f"fetch_stream error: {response.status}")
@@ -181,7 +193,7 @@ class HttpServerManagerForPDMaster:
 
             sampling_params.move_kv_to_decode_node = None
             sampling_params.max_new_tokens = old_max_new_tokens - 1
-            req = await self._to_req_info(prompt, sampling_params, multimodal_params)
+            req = await self._to_req_info(prompt_ids, sampling_params, multimodal_params)
             async with aiohttp.ClientSession() as session:
                 async with session.post(d_url, json=req) as response:
                     if response.status == 200:
@@ -195,10 +207,7 @@ class HttpServerManagerForPDMaster:
                         logger.error(f"fetch_stream error: {response.status}")
                         raise Exception(f"group_req_id {group_request_id} connection error: {response}")
         finally:
-            try:
-                del self.id_to_event[group_request_id]
-            except:
-                pass
+            await self.remove_req(group_request_id)
         return
 
     async def _wait_to_token_package(
@@ -259,7 +268,17 @@ class HttpServerManagerForPDMaster:
 
     async def abort(self, group_request_id):
         logger.warning(f"aborted group_request_id {group_request_id}")
+        try:
+            del self.id_to_event[group_request_id]
+        except:
+            pass
         return
+
+    async def remove_req(self, group_request_id):
+        try:
+            del self.id_to_event[group_request_id]
+        except:
+            pass
 
     async def handle_loop(self):
         while True:

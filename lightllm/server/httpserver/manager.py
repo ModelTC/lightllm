@@ -158,7 +158,7 @@ class HttpServerManager:
             )
 
             results_generator = self._wait_to_token_package(
-                start_time, prompt_tokens, group_request_id, sampling_params, req_status, request
+                start_time, prompt_ids, group_request_id, sampling_params, req_status, request
             )
             async for sub_req_id, request_output, metadata, finish_status in results_generator:
                 yield sub_req_id, request_output, metadata, finish_status
@@ -269,7 +269,7 @@ class HttpServerManager:
     async def _wait_to_token_package(
         self,
         start_time,
-        prompt_tokens: int,
+        prompt_ids: List[int],
         group_request_id: int,
         sampling_params: SamplingParams,
         req_status: "ReqStatus",
@@ -280,6 +280,8 @@ class HttpServerManager:
         unfinished_count = sampling_params.best_of
         out_token_counter = 0
         first_token_cost_ms = sys.float_info.max
+        prompt_tokens = len(prompt_ids)
+        is_first_token = True
 
         while True:
             try:
@@ -297,10 +299,17 @@ class HttpServerManager:
                     continue
 
                 for sub_req_id, out_str, metadata, finish_status in req_status.out_token_info_list:
-                    # pd master 节点需要这个做统计信息， 所以放在元数据中返回
+                    # pd master 节点需要这个做统计信息， 所以放在元数据中返回给 pd master 节点
                     metadata["prompt_tokens"] = prompt_tokens
+                    # p 节点返回 prompt_ids 信息，防止 d 节点重新 encode
+                    if self.pd_mode == NodeRole.P and is_first_token:
+                        metadata["prompt_ids"] = prompt_ids
+
+                    if is_first_token:
+                        first_token_cost_ms = (time.time() - start_time) * 1000
+                        is_first_token = False
+
                     out_token_counter += 1
-                    first_token_cost_ms = min((time.time() - start_time) * 1000, first_token_cost_ms)
 
                     yield sub_req_id, out_str, metadata, finish_status
                     # 如果有子请求完成，就更新计数
@@ -388,32 +397,29 @@ class HttpServerManager:
 
         while True:
             try:
-                while True:
-                    uri = f"ws://{self.args.pd_master_ip}:{self.args.pd_master_port}/register_and_keep_alive"
-                    async with websockets.connect(uri) as websocket:
-                        args_dict = vars(self.args)
-                        # 发送注册信息
-                        regist_json = {
-                            "client_ip_port": f"{self.args.host}:{self.args.port}",
-                            "rdma_ip_port": "xxxxxxxxxxxxxx",
-                            "mode": self.pd_mode.value,
-                            "start_args": args_dict,
-                        }
+                uri = f"ws://{self.args.pd_master_ip}:{self.args.pd_master_port}/register_and_keep_alive"
+                async with websockets.connect(uri) as websocket:
+                    args_dict = vars(self.args)
+                    # 发送注册信息
+                    regist_json = {
+                        "client_ip_port": f"{self.args.host}:{self.args.port}",
+                        "rdma_ip_port": "xxxxxxxxxxxxxx",
+                        "mode": self.pd_mode.value,
+                        "start_args": args_dict,
+                    }
 
-                        await websocket.send(json.dumps(regist_json))
-                        logger.info(f"Sent registration JSON: {regist_json}")
+                    await websocket.send(json.dumps(regist_json))
+                    logger.info(f"Sent registration JSON: {regist_json}")
 
-                        try:
-                            log_count = 0
-                            while True:
-                                heartbeat_message = {"type": "heartbeat"}
-                                await websocket.send(json.dumps(heartbeat_message))
-                                if log_count % 10 == 0:
-                                    logger.info(f"Sent heartbeat: {heartbeat_message}")
-                                log_count += 1
-                                await asyncio.sleep(3)
-                        except Exception as e:
-                            logger.error(f"Connection closed with error: {str(e)}")
+                    log_count = 0
+                    while True:
+                        heartbeat_message = {"type": "heartbeat"}
+                        await websocket.send(json.dumps(heartbeat_message))
+                        if log_count % 10 == 0:
+                            logger.info(f"Sent heartbeat: {heartbeat_message}")
+                        log_count += 1
+                        await asyncio.sleep(3)
+
             except Exception as e:
                 logger.error("connetion to pd_master has error")
                 logger.exception(str(e))
