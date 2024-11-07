@@ -40,6 +40,7 @@ class InferSamplingParams:
         input_penalty: bool = False,
         regular_constraint: Optional[str] = None,
         allowed_token_ids: Optional[List[int]] = None,
+        move_kv_to_decode_node: Optional[bool] = None,
     ) -> None:
         self.best_of = best_of
         self.do_sample = do_sample
@@ -62,6 +63,8 @@ class InferSamplingParams:
         self.regex_guide = None
         self.fsm_current_state: int = 0
         self.allowed_token_ids = allowed_token_ids
+        # p d mode use params
+        self.move_kv_to_decode_node = move_kv_to_decode_node
         # this check is not very good to placed here. to do...
         if self.allowed_token_ids is not None:
             if not all(e < vocab_size for e in self.allowed_token_ids):

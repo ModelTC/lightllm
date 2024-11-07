@@ -1,6 +1,7 @@
 import time
 import asyncio
 import enum
+from dataclasses import dataclass
 from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from typing import Dict, List, Optional, Tuple, Union
@@ -340,3 +341,34 @@ class BatchStrOut:
 class AbortReq:
     def __init__(self, group_req_id):
         self.group_req_id = group_req_id
+
+
+# 节点的行为
+class NodeRole(enum.Enum):
+    P = "prefill"
+    D = "decode"
+    NORMAL = "normal"
+    PD_MASTER = "pd_master"
+
+    def is_P_or_NORMAL(self):
+        return (self == NodeRole.P) or (self == NodeRole.NORMAL)
+
+
+@dataclass
+class PD_Client_Obj:
+    client_ip_port: str
+    rdma_ip_port: str
+    mode: str  # 只能是 prefill 或者 decode 节点
+    start_args: object  # 节点的启动参数信息，用于做匹配性的校验，防止运行过程中出现问题。
+
+    def __post_init__(self):
+        if self.mode not in ["prefill", "decode"]:
+            raise ValueError(f"""mode must in ["prefill", "decode"], but get {self.mode}""")
+        return
+
+    def verify(self):
+        if self.mode not in ["prefill", "decode"]:
+            raise ValueError("mode must in ['prefill', 'decode']")
+
+    def to_llm_url(self):
+        return f"http://{self.client_ip_port}/pd_generate_stream"
