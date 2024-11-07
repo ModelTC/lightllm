@@ -96,6 +96,8 @@ class ModeBackend:
             "disable_cudagraph": kvargs.get("disable_cudagraph", False),
             "mem_fraction": kvargs.get("mem_fraction", 0.9),
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
+            "quant_type": kvargs.get("quant_type", None),
+            "quant_cfg": kvargs.get("quant_cfg", None),
         }
 
         try:

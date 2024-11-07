@@ -1,10 +1,12 @@
 from functools import partial
-from lightllm.common.layers.mm import MM
+
+# from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
+from .meta_weights import MMWeight
 
 
 class TransformerLayerWeight(BaseLayerWeight):
-    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode):
+    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg):
         super().__init__()
         self.layer_num_ = layer_num
         self.tp_rank_ = tp_rank
@@ -12,7 +14,48 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.data_type_ = data_type
         self.network_config_ = network_config
         self.mode = mode
-        self.mm_op = MM(mode)
-        self.mm_op.preprocess_weight = partial(self.mm_op.preprocess_weight, func=self._cuda)
+        self.quant_cfg = quant_cfg
         self.init_static_params()
+        self.fuse_pairs = {"k_proj&v_proj": "kv_proj"}
         return
+
+    def load_hf_weights(self, weights):
+        super().load_hf_weights(weights)
+        self.fuse_weights()
+
+    def fuse_weights(self):
+        for pair_name, fuse_name in self.fuse_pairs.items():
+            attr1_name, attr2_name = pair_name.split("&")
+            if hasattr(self, fuse_name):
+                continue
+            with self.lock:
+                attr1 = getattr(self, attr1_name)
+                attr2 = getattr(self, attr2_name)
+                if attr1.verify_load() and attr2.verify_load():
+                    attr1.fuse(attr2)
+                    setattr(self, fuse_name, attr1)
+                    delattr(self, attr2_name)
+
+    def set_quantization(self):
+        if self.quant_cfg.quant_type is None:
+            return
+        mix_quant_list = self.quant_cfg.get_mixed_list(self.layer_num_)
+        # fused layers must have the same quant_method
+        for pair_name, fuse_name in self.fuse_pairs.items():
+            attr1_name, attr2_name = pair_name.split("&")
+            if attr1_name not in mix_quant_list and attr2_name not in mix_quant_list:
+                continue
+            attr1_quant_type = self.quant_cfg.get_quant_type(self.layer_num_, attr1_name)
+            attr2_quant_type = self.quant_cfg.get_quant_type(self.layer_num_, attr2_name)
+            assert (
+                attr1_quant_type == attr2_quant_type
+            ), f"""{attr1_name} and {attr2_name} expects the the same quant type,
+            but gets {attr1_quant_type} and {attr2_quant_type}."""
+
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if isinstance(attr, MMWeight):
+                if attr_name in mix_quant_list:
+                    attr.quant_method = self.quant_cfg.get_quant_method(self.layer_num_, attr_name)
+                else:
+                    attr.quant_method = self.quant_cfg.get_default_quant_method()

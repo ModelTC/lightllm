@@ -407,6 +407,21 @@ def make_argument_parser() -> argparse.ArgumentParser:
                         you need to read source code to make sure the supported detail mode for all models""",
     )
     parser.add_argument(
+        "--quant_type",
+        type=str,
+        default=None,
+        help="""Quantization method: ppl_w4a16 | ppl_w6a16
+                        | ao-int4wo | ao-int8wo | ao-fp8w8a16 | ao-fp6w6a16
+                        | vllm-w8a8 | vllm-fp8w8a8""",
+    )
+    parser.add_argument(
+        "--quant_cfg",
+        type=str,
+        default=None,
+        help="""Path of quantization config. It can be used for mixed quantization.
+            Examples can be found in lightllm/common/quantization/configs.""",
+    )
+    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",

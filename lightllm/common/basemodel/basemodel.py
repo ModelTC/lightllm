@@ -16,6 +16,7 @@ from lightllm.common.basemodel.triton_kernel.copy_kv_index_to_req import copy_kv
 from lightllm.common.basemodel.triton_kernel.splitfuse_copy_kv_index_to_req import splitfuse_copy_kv_index_to_req
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.basemodel.cuda_graph import CudaGraph
+from lightllm.common.quantization import Quantcfg
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -44,7 +45,7 @@ class TpPartBaseModel:
         self.max_total_token_num = kvargs["max_total_token_num"]
         self.batch_max_tokens = kvargs.get("batch_max_tokens", None)
         self.load_way = kvargs.get("load_way", "HF")
-        self.mode = [m.replace("int4weight", "w4a16").replace("int8weight", "w8a16") for m in kvargs.get("mode", [])]
+        self.mode = kvargs.get("mode", [])
         self.weight_dict = kvargs.get("weight_dict", None)
         self.finetune_config = kvargs.get("finetune_config", None)
         self.max_req_num = kvargs.get("max_req_num", 1000)
@@ -59,7 +60,10 @@ class TpPartBaseModel:
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
-        self.enable_torchao = any(["ao" in m for m in self.mode])
+        quant_type = kvargs.get("quant_type", None)
+        quant_cfg_path = kvargs.get("quant_cfg", None)
+        self.quant_cfg = Quantcfg(quant_type, quant_cfg_path)
+        self.enable_torchao = quant_type is not None and "ao" in quant_type
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
 
         self._init_datatype()
@@ -105,7 +109,13 @@ class TpPartBaseModel:
         )
         self.trans_layers_weight = [
             self.transformer_weight_class(
-                i, self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+                i,
+                self.tp_rank_,
+                self.world_size_,
+                self.data_type,
+                network_config=self.config,
+                mode=self.mode,
+                quant_cfg=self.quant_cfg,
             )
             for i in range(self.config["n_layer"])
         ]

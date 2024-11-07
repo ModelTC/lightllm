@@ -1,0 +1,5 @@
+quant_type: vllm-w8a8
+mix_bits:
+  - layer_name: "down_proj"
+    quant_type: "no_quant"
+    layer_nums: "all"

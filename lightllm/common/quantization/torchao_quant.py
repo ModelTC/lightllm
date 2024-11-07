@@ -1,5 +1,6 @@
 import torch
 from .quantize_method import QuantizationMethod
+from .registry import QUANTMETHODS
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 import torch.nn.functional as F
 
@@ -43,6 +44,7 @@ class AOBaseQuantizationMethod(QuantizationMethod):
         return F.linear(input_tensor, weights, bias)
 
 
+@QUANTMETHODS.register([f"ao-w4a16-{group_size}" for group_size in [32, 64, 128, 256]])
 class AOW4A16QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self, group_size=128):
         super().__init__()
@@ -56,18 +58,21 @@ class AOW4A16QuantizationMethod(AOBaseQuantizationMethod):
         self.quant_func = int4_weight_only(group_size=self.group_size)
 
 
+@QUANTMETHODS.register("ao-w8a8")
 class AOW8A8QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.quant_func = int8_dynamic_activation_int8_weight()
 
 
+@QUANTMETHODS.register("ao-w8a16")
 class AOW8A16QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.quant_func = int8_weight_only()
 
 
+@QUANTMETHODS.register("ao-fp8w8a16")
 class AOFP8W8A16QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
@@ -76,6 +81,7 @@ class AOFP8W8A16QuantizationMethod(AOBaseQuantizationMethod):
         self.quant_func = float8_weight_only()
 
 
+@QUANTMETHODS.register("ao-fp6w6a16")
 class AOFP6W6A16QuantizationMethod(AOBaseQuantizationMethod):
     def __init__(self):
         super().__init__()

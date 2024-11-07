@@ -1,8 +1,10 @@
 import torch
 from .quantize_method import QuantizationMethod
+from .registry import QUANTMETHODS
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
+@QUANTMETHODS.register("ppl-w4a16-128")
 class PPLW4A16QuantizationMethod(QuantizationMethod):
     def __init__(self, group_size=128):
         super().__init__()
@@ -53,6 +55,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
             return out
 
 
+@QUANTMETHODS.register("ppl-w6a16")
 class PPLW6A16QuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()

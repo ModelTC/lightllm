@@ -1,5 +1,6 @@
 import torch
 from .quantize_method import QuantizationMethod
+from .registry import QUANTMETHODS
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 import torch.nn.functional as F
 
@@ -26,6 +27,7 @@ class vLLMBaseQuantizationMethod(QuantizationMethod):
         pass
 
 
+@QUANTMETHODS.register(["vllm-w8a8"])
 class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
@@ -51,6 +53,7 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         return out
 
 
+@QUANTMETHODS.register(["vllm-fp8w8a8"])
 class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
