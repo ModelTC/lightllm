@@ -8,7 +8,7 @@ import time
 import hashlib
 import datetime
 import websockets
-import json
+import ujson as json
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
@@ -22,6 +22,7 @@ from ..req_id_generator import ReqIDGenerator
 from fastapi import Request
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.metrics.manager import MetricClient
+from lightllm.utils.statics_utils import MovingAverage
 
 logger = init_logger(__name__)
 
@@ -61,6 +62,7 @@ class HttpServerManager:
         self.pd_mode: NodeRole = NodeRole(self.args.run_mode)
         assert self.pd_mode in [NodeRole.P, NodeRole.D, NodeRole.NORMAL]
         self.id_gen = ReqIDGenerator()
+        self.first_time_costs = MovingAverage()
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -308,6 +310,7 @@ class HttpServerManager:
                     if is_first_token:
                         first_token_cost_ms = (time.time() - start_time) * 1000
                         is_first_token = False
+                        self.first_time_costs.add(first_token_cost_ms)
 
                     out_token_counter += 1
 
@@ -419,6 +422,7 @@ class HttpServerManager:
                             logger.info(f"Sent heartbeat: {heartbeat_message}")
                         log_count += 1
                         await asyncio.sleep(3)
+                        logger.info(f"mean first cost: {self.first_time_costs.average()} ms")
 
             except Exception as e:
                 logger.error("connetion to pd_master has error")

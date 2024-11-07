@@ -8,7 +8,7 @@ import time
 import hashlib
 import datetime
 import aiohttp
-import json
+import ujson as json
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
@@ -19,6 +19,7 @@ from ..req_id_generator import ReqIDGenerator
 from fastapi import Request
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.metrics.manager import MetricClient
+from lightllm.utils.statics_utils import MovingAverage
 
 logger = init_logger(__name__)
 
@@ -37,6 +38,9 @@ class HttpServerManagerForPDMaster:
         self.url_to_pd_nodes: Dict[str, PD_Client_Obj] = {}
 
         self.id_to_event: Dict[int, asyncio.Event] = {}
+        self.session = None
+        self.first_time_costs = MovingAverage()
+        self.create_session_costs = MovingAverage()
         return
 
     async def register_pd(self, pd_info_json):
@@ -153,6 +157,10 @@ class HttpServerManagerForPDMaster:
         group_request_id = sampling_params.group_request_id
         event = asyncio.Event()
         self.id_to_event[group_request_id] = event
+        # 初始化连接池
+        if self.session is None:
+            self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=2000, verify_ssl=False))
+            await self.session.__aenter__()
 
         try:
             old_max_new_tokens = sampling_params.max_new_tokens
@@ -160,26 +168,27 @@ class HttpServerManagerForPDMaster:
             sampling_params.move_kv_to_decode_node = old_max_new_tokens != 1
 
             req = await self._to_req_info(prompt, sampling_params, multimodal_params)
-            async with aiohttp.ClientSession() as session:
-                async with session.post(p_url, json=req) as response:
-                    if response.status == 200:
-                        async for line in response.content:
-                            line = line.decode("utf-8").strip()
-                            if line.startswith("data:"):
-                                data = line[len("data:") :].strip()
-                                sub_req_id, request_output, metadata, finish_status = json.loads(data)
-                                if old_max_new_tokens != 1:
-                                    finish_status = FinishStatus.NO_FINISH
-                                else:
-                                    finish_status = FinishStatus(finish_status)
-                                # 得到 p 节点返回的 prompt_ids 信息
-                                if metadata.get("prompt_ids", None) is not None:
-                                    prompt_ids = metadata.get("prompt_ids")
-                                    prompt_ids.append(metadata.get("id"))
-                                yield sub_req_id, request_output, metadata, finish_status
-                    else:
-                        logger.error(f"fetch_stream error: {response.status}")
-                        raise Exception(f"group_req_id {group_request_id} connection error: {response}")
+            create_start_time = time.time()
+            async with self.session.post(p_url, json=req) as response:
+                self.create_session_costs.add((time.time() - create_start_time) * 1000)
+                if response.status == 200:
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+                        if line.startswith("data:"):
+                            data = line[len("data:") :].strip()
+                            sub_req_id, request_output, metadata, finish_status = json.loads(data)
+                            if old_max_new_tokens != 1:
+                                finish_status = FinishStatus.NO_FINISH
+                            else:
+                                finish_status = FinishStatus(finish_status)
+                            # 得到 p 节点返回的 prompt_ids 信息
+                            if metadata.get("prompt_ids", None) is not None:
+                                prompt_ids = metadata.get("prompt_ids")
+                                prompt_ids.append(metadata.get("id"))
+                            yield sub_req_id, request_output, metadata, finish_status
+                else:
+                    logger.error(f"fetch_stream error: {response.status}")
+                    raise Exception(f"group_req_id {group_request_id} connection error: {response}")
 
             # 如果只需要一个输出 token，prefill 完就直接结束掉吧
             if old_max_new_tokens == 1:
@@ -194,18 +203,17 @@ class HttpServerManagerForPDMaster:
             sampling_params.move_kv_to_decode_node = None
             sampling_params.max_new_tokens = old_max_new_tokens - 1
             req = await self._to_req_info(prompt_ids, sampling_params, multimodal_params)
-            async with aiohttp.ClientSession() as session:
-                async with session.post(d_url, json=req) as response:
-                    if response.status == 200:
-                        async for line in response.content:
-                            line = line.decode("utf-8").strip()
-                            if line.startswith("data:"):
-                                data = line[len("data:") :].strip()
-                                sub_req_id, request_output, metadata, finish_status = json.loads(data)
-                                yield sub_req_id, request_output, metadata, FinishStatus(finish_status)
-                    else:
-                        logger.error(f"fetch_stream error: {response.status}")
-                        raise Exception(f"group_req_id {group_request_id} connection error: {response}")
+            async with self.session.post(d_url, json=req) as response:
+                if response.status == 200:
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+                        if line.startswith("data:"):
+                            data = line[len("data:") :].strip()
+                            sub_req_id, request_output, metadata, finish_status = json.loads(data)
+                            yield sub_req_id, request_output, metadata, FinishStatus(finish_status)
+                else:
+                    logger.error(f"fetch_stream error: {response.status}")
+                    raise Exception(f"group_req_id {group_request_id} connection error: {response}")
         finally:
             await self.remove_req(group_request_id)
         return
@@ -224,6 +232,7 @@ class HttpServerManagerForPDMaster:
         first_token_cost_ms = sys.float_info.max
         group_request_id = sampling_params.group_request_id
         unfinished_count = sampling_params.best_of
+        is_first_token = True
 
         async for sub_req_id, out_str, metadata, finish_status in self.fetch_stream(
             p_url, d_url, prompt, sampling_params, multimodal_params
@@ -233,7 +242,11 @@ class HttpServerManagerForPDMaster:
                 raise Exception(f"req_id {group_request_id} disconnected")
             prompt_tokens = metadata["prompt_tokens"]
             out_token_counter += 1
-            first_token_cost_ms = min((time.time() - start_time) * 1000, first_token_cost_ms)
+            if is_first_token:
+                first_token_cost_ms = (time.time() - start_time) * 1000
+                is_first_token = False
+                self.first_time_costs.add(first_token_cost_ms)
+
             yield sub_req_id, out_str, metadata, finish_status
             if finish_status.is_finished():
                 unfinished_count -= 1
@@ -284,4 +297,6 @@ class HttpServerManagerForPDMaster:
         while True:
             # 可以做一个定时任务
             await asyncio.sleep(10)
+            logger.info(f"mean first cost: {self.first_time_costs.average()} ms")
+            logger.info(f"create_session_costs: {self.create_session_costs.average()} ms")
         return

@@ -27,7 +27,7 @@ import rpyc
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-import json
+import ujson as json
 from http import HTTPStatus
 import uuid
 import multiprocessing as mp
