@@ -60,16 +60,15 @@ class TpPartBaseModel:
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
-        quant_type = kvargs.get("quant_type", None)
-        quant_cfg_path = kvargs.get("quant_cfg", None)
-        self.quant_cfg = Quantcfg(quant_type, quant_cfg_path)
-        self.enable_torchao = quant_type is not None and "ao" in quant_type
+        self.quant_type = kvargs.get("quant_type", None)
+        self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
 
         self._init_datatype()
         self._init_config()
         self._verify_must()
         self._verify_params()
+        self._init_quant()
         self._init_weights()
         self._init_mem_manager()
         self._check_mem_size()
@@ -102,6 +101,11 @@ class TpPartBaseModel:
         assert self.load_way == "HF", "only support HF format weights"
         assert self.config["num_key_value_heads"] % self.world_size_ == 0
         return
+
+    def _init_quant(self):
+        self.enable_torchao = self.quant_type is not None and "ao" in self.quant_type
+        self.quant_cfg = Quantcfg(self.config["n_layer"], self.quant_type, self.quant_cfg_path)
+        logger.info(f"Initial quantization. " f"The default quantization method is {self.quant_cfg.quant_type}")
 
     def _init_weights(self):
         self.pre_post_weight = self.pre_and_post_weight_class(

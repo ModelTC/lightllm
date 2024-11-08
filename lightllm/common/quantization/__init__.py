@@ -7,7 +7,8 @@ from .vllm_quant import *
 
 
 class Quantcfg:
-    def __init__(self, quant_type=None, cfg_path=None):
+    def __init__(self, layer_num, quant_type=None, cfg_path=None):
+        self.layer_num = layer_num
         self.quant_type = quant_type
         self.parse_cfg(cfg_path)
 
@@ -22,7 +23,7 @@ class Quantcfg:
         self.quant_type = data["quant_type"]
         for layer_quant_cfg in data.get("mix_bits", []):
             layer_name = layer_quant_cfg["layer_name"]
-            layer_nums = layer_quant_cfg["layer_nums"]
+            layer_nums = layer_quant_cfg.get("layer_nums", range(self.layer_num))
             layer_quant_type = layer_quant_cfg["quant_type"]
             for layer_num in layer_nums:
                 self.quant_cfg[layer_num].update({layer_name: layer_quant_type})
@@ -45,4 +46,4 @@ class Quantcfg:
         if self.quant_type is None:
             return None
         layer_cfg = self.quant_cfg[layer_num]
-        return QUANTMETHODS.get(layer_cfg["layer_name"])
+        return QUANTMETHODS.get(layer_cfg[layer_name])

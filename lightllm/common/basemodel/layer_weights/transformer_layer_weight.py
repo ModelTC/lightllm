@@ -3,6 +3,9 @@ from functools import partial
 # from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
 from .meta_weights import MMWeight
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 class TransformerLayerWeight(BaseLayerWeight):
@@ -57,5 +60,7 @@ class TransformerLayerWeight(BaseLayerWeight):
             if isinstance(attr, MMWeight):
                 if attr_name in mix_quant_list:
                     attr.quant_method = self.quant_cfg.get_quant_method(self.layer_num_, attr_name)
+                    attr_quant_type = self.quant_cfg.get_quant_type(self.layer_num_, attr_name)
+                    logger.info(f"Layer {self.layer_num_} {attr_name} is set to {attr_quant_type}")
                 else:
                     attr.quant_method = self.quant_cfg.get_default_quant_method()
