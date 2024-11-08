@@ -43,7 +43,9 @@ class BaseQueue:
         # 计算当前所有的token使用量, 如果使用了dynamic prompt cache, 使用的token量中不包含，cache tree 中未被引用的数据。
         cur_all_used_tokens = self.router.get_used_tokens()
         # 判断当前服务是否处于token使用率过高的状态，过高的情况下，调度要偏向保守
-        cur_token_ratio = cur_all_used_tokens / self.max_total_tokens
+        cur_token_ratio = (
+            cur_all_used_tokens + self.router.shared_token_load.get_frozened_token_count()
+        ) / self.max_total_tokens
         is_busy = cur_token_ratio >= self.router_token_ratio
         return is_busy
 
@@ -55,5 +57,7 @@ class BaseQueue:
 
     def update_token_load(self, current_batch: Batch):
         if self.router.shared_token_load.need_update_dynamic_max_load():
-            self.router.shared_token_load.set_dynamic_max_load(self.calcu_batch_token_load(current_batch))
+            estimated_peak_token_count, dynamic_max_load = self.calcu_batch_token_load(current_batch)
+            self.router.shared_token_load.set_estimated_peak_token_count(estimated_peak_token_count)
+            self.router.shared_token_load.set_dynamic_max_load(dynamic_max_load)
         return

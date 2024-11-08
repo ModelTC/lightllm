@@ -45,6 +45,8 @@ class RouterManager:
 
         # 共享变量，用于存储router端调度分析得到的机器负载信息
         self.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load")
+        self.shared_token_load.set_estimated_peak_token_count(0)
+        self.shared_token_load.set_frozened_token_count(0)
         self.shared_token_load.set_current_load(0.0)
         self.shared_token_load.set_logical_max_load(0.0)
         self.shared_token_load.set_dynamic_max_load(0.0)
@@ -203,7 +205,10 @@ class RouterManager:
                     int(self.shared_token_load.get_dynamic_max_load() * self.max_total_token_num),
                 )
             else:
-                self.shared_token_load.set_dynamic_max_load(0.0)
+                self.shared_token_load.set_estimated_peak_token_count(0)
+                self.shared_token_load.set_dynamic_max_load(
+                    self.shared_token_load.get_frozened_token_count() / self.max_total_token_num
+                )
                 self.shared_token_load.set_current_load(0.0)
                 if counter_count % 300 == 0:
                     self.metric_client.gauge_set("lightllm_batch_current_size", 0.0)
