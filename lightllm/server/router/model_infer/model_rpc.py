@@ -14,6 +14,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     SimpleConstraintBackend,
     FirstTokenConstraintBackend,
     ContinuesBatchBackendForPrefillNode,
+    ContinuesBatchBackendForDecodeNode,
 )
 from lightllm.utils.log_utils import init_logger
 
@@ -37,12 +38,16 @@ class ModelRpcServer(rpyc.Service):
         if kvargs.get("args", None) is not None:
             is_simple_constraint_mode = kvargs.get("args", None).simple_constraint_mode
             is_prefill_node = kvargs.get("args", None).run_mode == "prefill"
+            is_decode_node = kvargs.get("args", None).run_mode == "decode"
         else:
             is_simple_constraint_mode = False
             is_prefill_node = False
+            is_decode_node = False
         # use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         if is_prefill_node:
             self.backend = ContinuesBatchBackendForPrefillNode()
+        elif is_decode_node:
+            self.backend = ContinuesBatchBackendForDecodeNode()
         elif use_reward_model:
             self.backend = RewardModelBackend()
         elif is_splitfuse_mode:

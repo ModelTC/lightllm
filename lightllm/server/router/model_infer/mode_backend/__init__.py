@@ -8,3 +8,4 @@ from .continues_batch.impl_for_token_healing import TokenHealingBackend
 from .continues_batch.impl_for_simple_constraint_mode import SimpleConstraintBackend
 from .continues_batch.impl_for_first_token_constraint_mode import FirstTokenConstraintBackend
 from .continues_batch.prefill_node_impl.impl import ContinuesBatchBackendForPrefillNode
+from .continues_batch.decode_node_impl.impl import ContinuesBatchBackendForDecodeNode
