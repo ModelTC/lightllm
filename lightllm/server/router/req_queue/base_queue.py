@@ -53,6 +53,12 @@ class BaseQueue:
         raise NotImplementedError()
 
     def calcu_batch_token_load(self, current_batch: Batch):
+        if current_batch is None:
+            return 0, self.router.shared_token_load.get_frozened_token_count() / self.max_total_tokens
+        else:
+            return self._calcu_batch_token_load_batch_not_none(current_batch)
+
+    def _calcu_batch_token_load_batch_not_none(self, current_batch: Batch):
         raise NotImplementedError()
 
     def update_token_load(self, current_batch: Batch):

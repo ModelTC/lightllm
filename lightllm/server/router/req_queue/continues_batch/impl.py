@@ -93,9 +93,7 @@ class ContinuesBatchQueue(BaseQueue):
         else:
             return None
 
-    def calcu_batch_token_load(self, current_batch: Batch):
-        if current_batch is None:
-            return 0, 0.0
+    def _calcu_batch_token_load_batch_not_none(self, current_batch: Batch):
         is_busy = self.is_busy()
         self._init_cache_list(current_batch, is_busy)
         self.cache_len_list.sort(key=lambda x: -x[1])
