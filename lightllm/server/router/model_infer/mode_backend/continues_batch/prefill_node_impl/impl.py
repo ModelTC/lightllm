@@ -7,7 +7,6 @@ from lightllm.server.io_struct import ReqRunStatus, FinishStatus, UpKVStatus
 from lightllm.utils.log_utils import init_logger
 from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
-from .up_status import UpStatusManager
 
 logger = init_logger(__name__)
 
@@ -17,17 +16,11 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         super().__init__()
 
     def init_custom(self):
-        self.upkv_manager = UpStatusManager(self.args)
-        logger.info("start up UpStatusManager")
         return
 
     @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
         ans = self.forward(batch_id, is_prefill=True)
-        batch: InferBatch = self.cache[batch_id]
-        for req_id in batch.request_ids:
-            upkv_status = UpKVStatus(group_request_id=req_id)
-            self.upkv_manager.put_status_task(upkv_status)
         return ans
 
     @calculate_time(show=True, min_cost_ms=200)
