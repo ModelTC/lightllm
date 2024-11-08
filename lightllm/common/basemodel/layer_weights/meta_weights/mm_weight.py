@@ -1,14 +1,17 @@
 import abc
 import torch
-from .base_weight import BaseWeight
+from .base_weight import BaseWeightTpl
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
-class MMWeight(BaseWeight):
+class MMWeight(BaseWeightTpl):
     def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
         super().__init__(weight_name, data_type, bias_name)
         self.quant_method = None
         self.split_n_embed = split_n_embed
+
+    def set_quant_method(self, quant_method):
+        self.quant_method = quant_method
 
     def pre_load_weights(self, weight):
         return weight.to(self.data_type_)

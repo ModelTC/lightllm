@@ -1,8 +1,22 @@
 import torch
+from abc import ABC, abstractmethod
 from lightllm.utils.dist_utils import get_world_size, get_rank
 
 
-class BaseWeight:
+class BaseWeight(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def load_hf_weights(self, weights):
+        pass
+
+    @abstractmethod
+    def verify_load(self):
+        pass
+
+
+class BaseWeightTpl(BaseWeight):
     def __init__(self, weight_name, data_type, bias_name):
         self.weight_name = weight_name
         self.bias_name = bias_name
