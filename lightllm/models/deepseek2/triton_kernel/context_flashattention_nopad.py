@@ -4,10 +4,24 @@ import triton
 import triton.language as tl
 import math
 import torch.nn.functional as F
+from lightllm.common.autotuner import autotune, closest_power_of_2
 
 TESLA = "Tesla" in torch.cuda.get_device_name(0)
 
+configs = [
+    triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
+    for BM in [32, 64, 128]
+    for BN in [32, 64]
+    for s in ([1, 3, 5, 7])
+    for w in [4, 8]
+]
 
+
+def keep(conf):
+    return not (conf.kwargs["BLOCK_M"] * conf.kwargs["BLOCK_N"] < 128 * 128 and conf.num_warps == 8)
+
+
+@autotune(list(filter(keep, configs)), key=["max_n_ctx"], restore_value=["Out"])
 @triton.jit
 def _fwd_kernel(
     Q_nope,
@@ -39,6 +53,7 @@ def _fwd_kernel(
     stride_req_to_tokens_s,
     kv_group_num,
     b_prompt_cache_len,
+    max_n_ctx: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_ROPE_DMODEL: tl.constexpr,
@@ -184,7 +199,7 @@ def context_attention_fwd(
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
     kv_group_num = q_nope.shape[1]  # deepseekv2 的 group 就是q的head数量，类似于MQA
 
-    grid = (batch, head, triton.cdiv(max_input_len, BLOCK))  # batch, head,
+    grid = lambda meta: (batch, head, triton.cdiv(max_input_len, meta["BLOCK_M"]))
     num_warps = 4 if q_nope_dim <= 64 else 8
 
     _fwd_kernel[grid](
@@ -217,6 +232,7 @@ def context_attention_fwd(
         req_to_token_indexs.stride(1),
         kv_group_num=kv_group_num,
         b_prompt_cache_len=b_prompt_cache_len,
+        max_n_ctx=closest_power_of_2(max_input_len),
         BLOCK_M=BLOCK,
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
@@ -227,6 +243,7 @@ def context_attention_fwd(
     return
 
 
+@autotune(list(filter(keep, configs)), key=["max_n_ctx"], restore_value=["Out"])
 @triton.jit
 def _fwd_kernel_no_prompt_cache(
     Q_nope,
@@ -253,6 +270,7 @@ def _fwd_kernel_no_prompt_cache(
     stride_oh,
     stride_od,
     kv_group_num,
+    max_n_ctx: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_ROPE_DMODEL: tl.constexpr,
@@ -408,6 +426,7 @@ def context_attention_fwd_no_prompt_cache(
         o.stride(1),
         o.stride(2),
         kv_group_num=kv_group_num,
+        max_n_ctx=closest_power_of_2(max_input_len),
         BLOCK_M=BLOCK,
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
@@ -416,92 +435,3 @@ def context_attention_fwd_no_prompt_cache(
         num_stages=1,
     )
     return
-
-
-def torch_att(q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_head_dim):
-
-    xq = torch.cat([q, q_rope], dim=2).view(bs, seqlen, num_head, -1)
-    xk = torch.cat([kv, kv_rope], dim=2).view(bs, seqlen, 1, -1)
-    xv = kv.view(bs, seqlen, 1, -1)
-
-    mask = torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).cuda()
-    mask[mask == 0.0] = -100000000.0
-    mask = mask.repeat(bs, num_head, 1, 1)
-    keys = xk
-    values = xv
-    xq = xq.transpose(1, 2)
-    keys = keys.transpose(1, 2)
-    values = values.transpose(1, 2)
-    # print(xq.shape, keys.transpose(2, 3).shape)
-    scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(q_head_dim + rope_head_dim)
-    scores = F.softmax(scores.float() + mask, dim=-1).type_as(xq)
-    output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, q_head_dim)
-    return output
-
-
-def test():
-    import torch
-    import numpy as np
-
-    Z, H, N_CTX, D_HEAD, ROPE_HEAD = 1, 6, 500, 128, 64
-    dtype = torch.float16
-    Z = 1
-    q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-
-    kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-
-    o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.7, std=0.2)
-    o1 = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.7, std=0.2)
-
-    req_to_token_indexs = torch.zeros((10, Z * N_CTX), dtype=torch.int32, device="cuda")
-    max_input_len = N_CTX
-    Z = 1
-    b_start_loc = torch.zeros((Z,), dtype=torch.int32, device="cuda")
-    b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda")
-    b_req_idx = torch.ones((Z,), dtype=torch.int32, device="cuda")
-    b_prompt_cache_len = torch.zeros(1, dtype=torch.int32, device="cuda")
-    b_prompt_cache_len[0] = 0
-    prompt_cache_len = 0
-
-    b_seq_len[0] = N_CTX
-    b_req_idx[0] = 0
-    req_to_token_indexs[0][: prompt_cache_len + N_CTX] = torch.tensor(
-        np.arange(prompt_cache_len + N_CTX), dtype=torch.int32
-    ).cuda()
-
-    torch_out = torch_att(q, q_rope, kv, kv_rope, Z, N_CTX, H, D_HEAD, ROPE_HEAD)
-
-    context_attention_fwd_no_prompt_cache(q, q_rope, kv, kv_rope, o, b_start_loc, b_seq_len, max_input_len, D_HEAD)
-
-    context_attention_fwd(
-        q,
-        q_rope,
-        kv,
-        kv_rope,
-        o1,
-        b_req_idx,
-        b_start_loc,
-        b_seq_len,
-        b_prompt_cache_len,
-        N_CTX,
-        req_to_token_indexs,
-        D_HEAD,
-    )
-
-    print("max ", torch.max(torch.abs(torch_out - o)))
-    print("mean ", torch.mean(torch.abs(torch_out - o)))
-    assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
-
-    print("max ", torch.max(torch.abs(torch_out - o1)))
-    print("mean ", torch.mean(torch.abs(torch_out - o1)))
-    assert torch.allclose(torch_out, o1, atol=1e-2, rtol=0)
-
-    print("max ", torch.max(torch.abs(o - o1)))
-    print("mean ", torch.mean(torch.abs(o - o1)))
-    assert torch.allclose(o, o1, atol=1e-2, rtol=0)
-
-
-if __name__ == "__main__":
-    test()

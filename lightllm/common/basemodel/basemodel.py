@@ -61,6 +61,9 @@ class TpPartBaseModel:
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
 
+        autotune = os.environ.get("ENABLE_AUTOTUNE", "0")
+        os.environ["ENABLE_AUTOTUNE"] = "0"
+
         self._init_datatype()
         self._init_config()
         self._verify_must()
@@ -74,6 +77,11 @@ class TpPartBaseModel:
         self._init_custom()
         self._init_cudagraph()
         self._check_max_len_infer()
+
+        if autotune == "1":
+            os.environ["ENABLE_AUTOTUNE"] = "1"
+            self._autotune()
+
         torch.cuda.empty_cache()
         return
 
@@ -509,3 +517,43 @@ class TpPartBaseModel:
             logger.error(exception_str)
             raise Exception(exception_str)
         return
+
+    @torch.no_grad()
+    def _check_prefill_infer(self, prefill_len):
+        dummy_input_ids = torch.ones(prefill_len, dtype=torch.int32, device="cuda")
+        b_req_idx = self.req_manager.alloc(1).int()
+        b_seq_len = torch.ones(1, dtype=torch.int32, device="cuda")
+        b_seq_len[:] = prefill_len
+        b_ready_cache_len = torch.zeros(1, dtype=torch.int32, device="cuda")
+        b_start_loc = torch.arange(0, 1, dtype=torch.int32, device="cuda")
+        logics = self.forward(
+            1,
+            prefill_len,
+            prefill_len,
+            dummy_input_ids,
+            b_req_idx,
+            b_start_loc,
+            b_seq_len,
+            b_ready_cache_len=b_ready_cache_len,
+            is_prefill=True,
+            multimodal_params=[],
+        )
+        prob_out = torch.softmax(logics, dim=-1)
+        logics = None
+        torch.argmax(prob_out, dim=1, keepdim=True)
+        prob_out = None
+        self.req_manager.free_all()
+        self.mem_manager.free_all()
+
+    @torch.no_grad()
+    def _autotune(self):
+        prefill_len = 1
+
+        # ---------------- Autotune Prefill------------------------------
+        logger.info("begin test prefill other len infer for autotune.")
+        prefill_len = 1
+        while prefill_len < self.batch_max_tokens:
+            self._check_prefill_infer(prefill_len)
+            prefill_len *= 2
+        self._check_prefill_infer(self.batch_max_tokens)
+        logger.info("autotune done.")
