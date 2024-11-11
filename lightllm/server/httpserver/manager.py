@@ -13,7 +13,8 @@ import ujson as json
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
 from ..tokenizer import get_tokenizer
-from ..io_struct import BatchStrOut, AbortReq, FinishStatus, NodeRole
+from ..io_struct import BatchStrOut, AbortReq, FinishStatus
+from ..pd_io_struct import NodeRole
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
 from ..sampling_params import SamplingParams
@@ -405,6 +406,7 @@ class HttpServerManager:
                     args_dict = vars(self.args)
                     # 发送注册信息
                     regist_json = {
+                        "node_id": self.args.pd_node_id,
                         "client_ip_port": f"{self.args.host}:{self.args.port}",
                         "rdma_ip_port": "xxxxxxxxxxxxxx",
                         "mode": self.pd_mode.value,
@@ -426,7 +428,10 @@ class HttpServerManager:
 
             except Exception as e:
                 logger.error("connetion to pd_master has error")
-                logger.exception(str(e))
+                import random
+
+                if random.randint(0, 10) <= 1:
+                    logger.exception(str(e))
                 await asyncio.sleep(10)
                 logger.info("reconnection to pd_master")
 

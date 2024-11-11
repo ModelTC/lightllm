@@ -1,4 +1,5 @@
 import uvicorn
+import uuid
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.server import TokenLoad
 from .api_lightllm import lightllm_generate, lightllm_generate_stream
@@ -115,11 +116,9 @@ def normal_or_p_d_start(g_objs):
         args.data_type = get_dtype(args.model_dir)
         assert args.data_type in ["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"]
 
-    logger.info(f"all start args:{args}")
-
     already_uesd_ports = args.visual_nccl_ports + [args.nccl_port, args.port]
     can_use_ports = alloc_can_use_network_port(
-        num=6 + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
+        num=6 + args.tp + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
     )
     router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
     model_rpc_ports = can_use_ports[6 : 6 + args.tp]
@@ -130,6 +129,16 @@ def normal_or_p_d_start(g_objs):
         tp_ports_for_dp = can_use_ports[0 : args.visual_tp]
         can_use_ports = can_use_ports[args.visual_tp :]
         visual_model_tp_ports.append(tp_ports_for_dp)
+
+    # 申请在 p d 分离模式下，会用的端口
+    args.pd_tp_infer_rpyc_ports = can_use_ports[0 : args.tp]
+    # p d 分离模式下用于标识节点的id
+    args.pd_node_id = str(uuid.uuid4())
+    # p 节点用来建立torch kv 传输分布组的可用端口范围
+    args.pd_p_allowed_port_min = 20000
+    args.pd_p_allowed_port_max = 30000
+
+    logger.info(f"all start args:{args}")
 
     if args.enable_multimodal:
         start_submodule_processes(
@@ -183,7 +192,7 @@ def normal_or_p_d_start(g_objs):
 
         start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
 
-    g_objs.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load")
+    g_objs.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load", 1)
 
     g_objs.server.install_signal_handlers()
     uvicorn.run(

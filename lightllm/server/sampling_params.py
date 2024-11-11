@@ -39,7 +39,7 @@ class SamplingParams:
         # p d mode used params
         group_request_id: Optional[int] = None,
         # move kv to deocde node, only used in pd mode
-        move_kv_to_decode_node: Optional[bool] = None,
+        move_kv_to_decode_node: Optional[dict] = None,
     ) -> None:
         self.best_of = best_of
         self.n = n
@@ -143,8 +143,8 @@ class SamplingParams:
         if not (self.group_request_id is None or isinstance(self.group_request_id, int)):
             raise ValueError(f"group_request_id must be None or int ,but get {self.group_request_id}")
 
-        if not (self.move_kv_to_decode_node is None or isinstance(self.move_kv_to_decode_node, bool)):
-            raise ValueError(f"move_kv_to_decode_node must be None or bool, but get {self.move_kv_to_decode_node}")
+        if not (self.move_kv_to_decode_node is None or isinstance(self.move_kv_to_decode_node, dict)):
+            raise ValueError(f"move_kv_to_decode_node must be None or dict, but get {self.move_kv_to_decode_node}")
 
         self._verify_stop_sentences()
 

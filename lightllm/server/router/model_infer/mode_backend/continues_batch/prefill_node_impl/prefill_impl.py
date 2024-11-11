@@ -1,21 +1,35 @@
+import threading
 import torch
+import torch.multiprocessing as mp
+from typing import List
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
-from lightllm.server.io_struct import ReqRunStatus, FinishStatus, UpKVStatus
+from lightllm.server.io_struct import ReqRunStatus, FinishStatus
+from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
 from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
+from rpyc.utils.server import ThreadedServer
+from lightllm.utils.net_utils import alloc_can_use_network_port
 
 logger = init_logger(__name__)
 
 
 class ContinuesBatchBackendForPrefillNode(ModeBackend):
-    def __init__(self) -> None:
+    def __init__(self, info_queue: mp.Queue, mem_queue: mp.Queue) -> None:
         super().__init__()
+        self.info_queue: mp.Queue = info_queue
+        self.mem_queue: mp.Queue = mem_queue
 
     def init_custom(self):
+        from .prefill_infer_rpyc import PDPrefillInferRpcServer
+
+        t = ThreadedServer(
+            PDPrefillInferRpcServer(self), port=self.pd_rpyc_port, protocol_config={"allow_pickle": True}
+        )
+        threading.Thread(target=lambda: t.start(), daemon=True).start()
         return
 
     @calculate_time(show=False, min_cost_ms=300)
@@ -53,6 +67,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                 "id": int(next_token_id),
                 "logprob": float(next_token_logprob),
             }
+
             output_dict[req_obj.r_id] = (
                 req_obj.req_status,
                 req_obj.cur_kv_len,
@@ -62,5 +77,41 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                 None,
             )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
+        if is_prefill:
+            self.prefill_req_handle_and_frozen_tokens(run_reqs)
+
         self.cache[batch.batch_id] = batch
         return output_dict
+
+    def prefill_req_handle_and_frozen_tokens(self, run_reqs: List[InferReq]):
+        # 提前在radix cache中回收相关的信息，并添加引用信息
+        logger.info("prefill_req_handle_and_frozen_tokens")
+        try:
+            for req in run_reqs:
+                key = torch.tensor(req.input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
+                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+                prefix_len = self.radix_cache.insert(key, value)
+                self.model.mem_manager.free(self.model.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
+                if req.shared_kv_node is not None:
+                    self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
+                    req.shared_kv_node = None
+                req.cur_kv_len = 0
+                share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
+                assert len(key) == len(value)
+
+                if req.sampling_param.move_kv_to_decode_node is not None:
+                    # 将下面的请求放入到任务队列中, 注意要使用raidx cache 返回的value
+                    decode_node_info = DecodeNodeInfo(**req.sampling_param.move_kv_to_decode_node)
+                    task = KVMoveTask(
+                        group_request_id=req.group_req_id,
+                        key=key.tolist(),
+                        prefill_value=value.tolist(),
+                        decode_value=None,
+                        prefill_node_id=self.args.pd_node_id,
+                        decode_node=decode_node_info,
+                    )
+                    self.info_queue.put(task)
+        except BaseException as e:
+            logger.exception(str(e))
+        logger.info("prefill_req_handle_and_frozen_tokens end")
+        return

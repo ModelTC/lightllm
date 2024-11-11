@@ -3,6 +3,7 @@ import time
 import uuid
 import uvloop
 import asyncio
+import torch
 import rpyc
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -44,7 +45,7 @@ class RouterManager:
         self.radix_cache_client = None
 
         # 共享变量，用于存储router端调度分析得到的机器负载信息
-        self.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load")
+        self.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load", 1)
         self.shared_token_load.set_estimated_peak_token_count(0)
         self.shared_token_load.set_frozened_token_count(0)
         self.shared_token_load.set_current_load(0.0)
@@ -76,8 +77,21 @@ class RouterManager:
     async def wait_to_model_ready(self):
         # 初始化模型
         self.model_rpcs: List[ModelRpcClient] = []
+        # 用于 kv move 管理进程 和 推理进程进行tensor信息的交互。
+        self.info_queues: List[torch.multiprocessing.Queue] = [
+            torch.multiprocessing.Queue() for _ in range(self.world_size)
+        ]
+        self.mem_queues: List[torch.multiprocessing.Queue] = [
+            torch.multiprocessing.Queue() for _ in range(self.world_size)
+        ]
         for rank_id in range(self.world_size):
-            rpc_model = await start_model_process(port=self.model_rpc_ports[rank_id], world_size=self.world_size)
+            rpc_model = await start_model_process(
+                args=self.args,
+                port=self.model_rpc_ports[rank_id],
+                world_size=self.world_size,
+                info_queue=self.info_queues[rank_id],
+                mem_queue=self.mem_queues[rank_id],
+            )
             self.model_rpcs.append(rpc_model)
 
         init_model_ret = []
@@ -109,6 +123,7 @@ class RouterManager:
                 "disable_cudagraph": self.args.disable_cudagraph,
                 "mem_fraction": self.args.mem_fraction,
                 "batch_max_tokens": self.args.batch_max_tokens,
+                "pd_rpyc_port": self.args.pd_tp_infer_rpyc_ports[rank_id],  # 非 pd 模式可以不设置
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -122,6 +137,23 @@ class RouterManager:
             )
         self.req_queue = build_req_queue(self.args, self)
         logger.info(f"use req queue {self.req_queue.__class__.__name__}")
+
+        if self.args.run_mode == "prefill":
+            # 启动 prefill kv move 管理进程
+            from lightllm.server.router.model_infer.mode_backend.continues_batch.prefill_node_impl import (
+                start_prefill_kv_move_manager_process,
+            )
+
+            start_prefill_kv_move_manager_process(self.args, self.info_queues, self.mem_queues)
+
+        if self.args.run_mode == "decode":
+            # 启动 decode kv move 管理进程
+            from lightllm.server.router.model_infer.mode_backend.continues_batch.decode_node_impl import (
+                start_decode_kv_move_manager_process,
+            )
+
+            start_decode_kv_move_manager_process(self.args, self.info_queues, self.mem_queues)
+
         return
 
     def add_req(

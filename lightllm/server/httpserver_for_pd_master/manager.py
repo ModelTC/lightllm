@@ -12,7 +12,8 @@ import ujson as json
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
-from ..io_struct import FinishStatus, PD_Client_Obj, UpKVStatus
+from ..io_struct import FinishStatus
+from ..pd_io_struct import PD_Client_Obj, UpKVStatus
 from ..sampling_params import SamplingParams
 from ..multimodal_params import MultimodalParams
 from ..req_id_generator import ReqIDGenerator
@@ -84,7 +85,7 @@ class HttpServerManagerForPDMaster:
 
     async def select_p_d_node(
         self, prompt: Union[str, List[int]], sampling_params: SamplingParams, multimodal_params: MultimodalParams
-    ):
+    ) -> Tuple[PD_Client_Obj, PD_Client_Obj]:
         import random
 
         p_node = random.choice(self.prefill_nodes)
@@ -111,8 +112,8 @@ class HttpServerManagerForPDMaster:
             p_node, d_node = await self.select_p_d_node(prompt, sampling_params, multimodal_params)
 
             results_generator = self._wait_to_token_package(
-                p_node.to_llm_url(),
-                d_node.to_llm_url(),
+                p_node,
+                d_node,
                 start_time,
                 prompt,
                 sampling_params,
@@ -148,8 +149,8 @@ class HttpServerManagerForPDMaster:
 
     async def fetch_stream(
         self,
-        p_url,
-        d_url,
+        p_node: PD_Client_Obj,
+        d_node: PD_Client_Obj,
         prompt: Union[str, List[int]],
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
@@ -162,14 +163,21 @@ class HttpServerManagerForPDMaster:
             self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=2000, verify_ssl=False))
             await self.session.__aenter__()
 
+        d_start_args = d_node.start_args
+        decode_node_dict = {
+            "node_id": d_start_args["pd_node_id"],
+            "ip": d_start_args["host"],
+            "rpyc_port": d_start_args["pd_decode_rpyc_port"],
+        }
+
         try:
             old_max_new_tokens = sampling_params.max_new_tokens
             sampling_params.max_new_tokens = 1
-            sampling_params.move_kv_to_decode_node = old_max_new_tokens != 1
+            sampling_params.move_kv_to_decode_node = decode_node_dict if old_max_new_tokens != 1 else None
 
             req = await self._to_req_info(prompt, sampling_params, multimodal_params)
             create_start_time = time.time()
-            async with self.session.post(p_url, json=req) as response:
+            async with self.session.post(p_node.to_llm_url(), json=req) as response:
                 self.create_session_costs.add((time.time() - create_start_time) * 1000)
                 if response.status == 200:
                     async for line in response.content:
@@ -198,12 +206,13 @@ class HttpServerManagerForPDMaster:
                 await asyncio.wait_for(event.wait(), timeout=60)
             except asyncio.TimeoutError:
                 logger.warning(f"group_request_id: {group_request_id} time out err")
+                return
                 # raise Exception(f"group_request_id: {group_request_id} time out err, maybe kv move get questions")
 
             sampling_params.move_kv_to_decode_node = None
             sampling_params.max_new_tokens = old_max_new_tokens - 1
             req = await self._to_req_info(prompt_ids, sampling_params, multimodal_params)
-            async with self.session.post(d_url, json=req) as response:
+            async with self.session.post(d_node.to_llm_url(), json=req) as response:
                 if response.status == 200:
                     async for line in response.content:
                         line = line.decode("utf-8").strip()
@@ -220,9 +229,9 @@ class HttpServerManagerForPDMaster:
 
     async def _wait_to_token_package(
         self,
-        p_url,
-        d_url,
-        start_time,
+        p_node: PD_Client_Obj,
+        d_node: PD_Client_Obj,
+        start_time: float,
         prompt: str,
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
@@ -235,7 +244,7 @@ class HttpServerManagerForPDMaster:
         is_first_token = True
 
         async for sub_req_id, out_str, metadata, finish_status in self.fetch_stream(
-            p_url, d_url, prompt, sampling_params, multimodal_params
+            p_node, d_node, prompt, sampling_params, multimodal_params
         ):
             if await request.is_disconnected():
                 await self.abort(group_request_id)

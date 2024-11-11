@@ -316,7 +316,7 @@ class InferBatch:
                         value_tensor = value_tensor.long().cuda()
                         mem_manager.add_refs(value_tensor)  # 加 refs
                         req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
-                        r_obj.cur_kv_len = ready_cache_len
+                        r_obj.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
 
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.req_status = ReqRunStatus.RUNNING

@@ -26,6 +26,12 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=1212,
         help="when run_mode set to prefill or decode, you need set this pd_mater_port",
     )
+    parser.add_argument(
+        "--pd_decode_rpyc_port",
+        type=int,
+        default=42000,
+        help="p d mode, decode node used for kv move manager rpyc server port",
+    )
 
     parser.add_argument(
         "--model_name",

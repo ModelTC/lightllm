@@ -340,7 +340,7 @@ async def kv_move_status(websocket: WebSocket):
             # 等待接收消息，设置超时为10秒
             data = await websocket.receive_text()
             json_data = json.loads(data)
-            from .io_struct import UpKVStatus
+            from .pd_io_struct import UpKVStatus
 
             upkv_status = UpKVStatus(**json_data)
             await g_objs.httpserver_manager.update_req_status(upkv_status)

@@ -5,7 +5,7 @@ from fastapi.responses import Response, StreamingResponse
 from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from .httpserver.manager import HttpServerManager
-import json
+import ujson as json
 
 
 async def lightllm_get_score(request: Request, httpserver_manager: HttpServerManager) -> Response:

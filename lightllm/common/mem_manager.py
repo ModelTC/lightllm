@@ -63,9 +63,13 @@ class MemoryManager:
         return
 
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
-        self.kv_buffer = [
-            torch.empty((size, 2 * head_num, head_dim), dtype=dtype, device="cuda") for _ in range(layer_num)
-        ]
+        self.kv_buffer = torch.empty((layer_num, size, 2 * head_num, head_dim), dtype=dtype, device="cuda")
+
+    def alloc_kv_move_buffer(self, size, device):
+        """
+        pd 分离模式使用的特殊接口
+        """
+        return torch.empty((self.layer_num, size, 2 * self.head_num, self.head_dim), dtype=self.dtype, device=device)
 
     def _free_buffers(self):
         self.kv_buffer = None

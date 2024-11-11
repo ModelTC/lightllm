@@ -1,24 +1,32 @@
 import torch
+import torch.multiprocessing as mp
+import threading
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
-from lightllm.server.io_struct import ReqRunStatus, FinishStatus, UpKVStatus
+from lightllm.server.io_struct import ReqRunStatus, FinishStatus
+from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
 from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
 from .up_status import UpStatusManager
+from rpyc.utils.server import ThreadedServer
 
 logger = init_logger(__name__)
 
 
 class ContinuesBatchBackendForDecodeNode(ModeBackend):
-    def __init__(self) -> None:
+    def __init__(self, info_queue: mp.Queue, mem_queue: mp.Queue) -> None:
         super().__init__()
+        self.info_queue: mp.Queue = info_queue
+        self.mem_queue: mp.Queue = mem_queue
 
     def init_custom(self):
-        self.upkv_manager = UpStatusManager(self.args)
-        logger.info("start up UpStatusManager")
+        from .decode_infer_rpyc import PDDecodeInferRpcServer
+
+        t = ThreadedServer(PDDecodeInferRpcServer(self), port=self.pd_rpyc_port, protocol_config={"allow_pickle": True})
+        threading.Thread(target=lambda: t.start(), daemon=True).start()
         return
 
     # def add_batch(self, batch_id, reqs):
@@ -31,8 +39,10 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
 
     @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
-        ans = self.forward(batch_id, is_prefill=True)
-        return ans
+        # ans = self.forward(batch_id, is_prefill=True)
+        # decode 节点的 prefill 操作实际上就是啥也不操作，主要靠init batch的时候进行相关的
+        # kv 的设置， 后续可以在这里做一些验证类型的操作。
+        return {}
 
     @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):

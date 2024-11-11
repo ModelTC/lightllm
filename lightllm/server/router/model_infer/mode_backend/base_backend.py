@@ -50,6 +50,7 @@ from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.token_load import TokenLoad
 
 
 class ModeBackend:
@@ -77,6 +78,10 @@ class ModeBackend:
         self.logger = init_logger(__name__)
 
         self.weight_dir = kvargs["weight_dir"]
+        nccl_port_str = str(kvargs["nccl_port"])
+        self.shared_token_load = TokenLoad(f"{nccl_port_str}_shared_token_load", 1)
+        # p d 分离模式，decode节点才会使用的参数
+        self.pd_rpyc_port = kvargs.get("pd_rpyc_port", None)
         max_total_token_num = kvargs["max_total_token_num"]
 
         dist.init_process_group(
