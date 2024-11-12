@@ -37,7 +37,6 @@ def _fwd_kernel(
     stride_req_to_tokens_s,
     kv_group_num,
     b_prompt_cache_len,
-    max_n_ctx: tl.constexpr,
     H: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_M: tl.constexpr,
