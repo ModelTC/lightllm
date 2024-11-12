@@ -1,0 +1,116 @@
+{
+    "lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad._fwd_kernel": {
+        "max_n_ctx=1": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=2": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=4": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=8": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=16": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=32": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=64": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 64,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=128": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 64,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=256": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 64,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=512": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 64,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=1024": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=2048": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=4096": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=8192": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=16384": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        },
+        "max_n_ctx=32768": {
+            "BLOCK_M": 32,
+            "BLOCK_N": 32,
+            "num_warps": 4,
+            "num_ctas": 1,
+            "num_stages": 3
+        }
+    }
+}

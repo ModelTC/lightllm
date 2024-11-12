@@ -17,6 +17,7 @@ from lightllm.common.basemodel.triton_kernel.splitfuse_copy_kv_index_to_req impo
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.utils.log_utils import init_logger
+from lightllm.common.autotuner import get_model_name_from_model_dir
 
 logger = init_logger(__name__)
 
@@ -80,6 +81,13 @@ class TpPartBaseModel:
 
         if autotune == "1":
             os.environ["ENABLE_AUTOTUNE"] = "1"
+            model_name = get_model_name_from_model_dir(self.weight_dir_)
+            device_name = torch.cuda.get_device_name(0)
+            os.environ[
+                "AUTOTUNE_CONFIG_NAME"
+            ] = f"{model_name},{device_name},tp={self.world_size_},mode={self.mode},dtype={self.data_type}"
+            if self.tp_rank_ == 0:
+                os.environ["SAVE_AUTOTUNE_CONFIG"] = "1"
             self._autotune()
 
         torch.cuda.empty_cache()
@@ -547,8 +555,6 @@ class TpPartBaseModel:
 
     @torch.no_grad()
     def _autotune(self):
-        prefill_len = 1
-
         # ---------------- Autotune Prefill------------------------------
         logger.info("begin test prefill other len infer for autotune.")
         prefill_len = 1
