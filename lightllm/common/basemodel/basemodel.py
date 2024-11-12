@@ -17,6 +17,7 @@ from lightllm.common.basemodel.triton_kernel.splitfuse_copy_kv_index_to_req impo
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.utils.log_utils import init_logger
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 
 logger = init_logger(__name__)
 
@@ -256,6 +257,7 @@ class TpPartBaseModel:
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager
 
+        g_infer_state_lock.acquire()
         alloc_mem = self.mem_manager.alloc_contiguous(input_ids.shape[0])
         if alloc_mem is not None:
             infer_state.mem_is_contiguous = True
@@ -272,6 +274,7 @@ class TpPartBaseModel:
                 dtype=self.data_type,
                 device="cuda",
             )
+        g_infer_state_lock.release()
 
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
@@ -314,6 +317,7 @@ class TpPartBaseModel:
 
         # 在使用 cuda graph 特性的时候，必须保证每次推理的流程一致
         # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
+        g_infer_state_lock.acquire()
         alloc_mem = None if self.graph is not None else self.mem_manager.alloc_contiguous(batch_size)
         if alloc_mem is not None:
             infer_state.mem_is_contiguous = True
@@ -331,6 +335,7 @@ class TpPartBaseModel:
                 device="cuda",
             )
             copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
+        g_infer_state_lock.release()
 
         infer_state.init_some_extra_state(self, input_ids)
         if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
@@ -384,6 +389,7 @@ class TpPartBaseModel:
         infer_state.req_manager = self.req_manager
 
         alloc_size = len(input_ids)
+        g_infer_state_lock.acquire()
         alloc_mem = self.mem_manager.alloc_contiguous(alloc_size)
         if alloc_mem is not None:
             infer_state.mem_is_contiguous = True
@@ -399,6 +405,7 @@ class TpPartBaseModel:
                 dtype=self.data_type,
                 device="cuda",
             )
+        g_infer_state_lock.release()
 
         # decode 部分
         if decode_req_num != 0:

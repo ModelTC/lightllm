@@ -11,6 +11,7 @@ from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
 from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from rpyc.utils.server import ThreadedServer
 from lightllm.utils.net_utils import alloc_can_use_network_port
 
@@ -86,6 +87,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
     def prefill_req_handle_and_frozen_tokens(self, run_reqs: List[InferReq]):
         # 提前在radix cache中回收相关的信息，并添加引用信息
         logger.info("prefill_req_handle_and_frozen_tokens")
+        g_infer_state_lock.acquire()
         try:
             for req in run_reqs:
                 key = torch.tensor(req.input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
@@ -98,6 +100,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                 req.cur_kv_len = 0
                 share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
                 assert len(key) == len(value)
+                self.model.mem_manager.add_refs(value.cuda())
 
                 if req.sampling_param.move_kv_to_decode_node is not None:
                     # 将下面的请求放入到任务队列中, 注意要使用raidx cache 返回的value
@@ -113,5 +116,6 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                     self.info_queue.put(task)
         except BaseException as e:
             logger.exception(str(e))
+        g_infer_state_lock.release()
         logger.info("prefill_req_handle_and_frozen_tokens end")
         return

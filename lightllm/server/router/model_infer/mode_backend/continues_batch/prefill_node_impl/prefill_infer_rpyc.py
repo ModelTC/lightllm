@@ -4,6 +4,7 @@ import rpyc
 from typing import Dict, List, Tuple
 from rpyc.utils.classic import obtain
 from .prefill_impl import ContinuesBatchBackendForPrefillNode
+from lightllm.common.basemodel.infer_lock import acquire_lock_until_ready, release_acquired_lock
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -15,12 +16,15 @@ class PDPrefillInferRpcServer(rpyc.Service):
         self.backend = backend
         return
 
-    # pd 分离模式会使用的一些接口，用于做一些全局信息管理
-    def exposed_remove_req_refs_from_prompt_cache(self, group_req_id: int, keys: List[int], values: List[int]):
+    def on_connect(self, conn):
         rank_id = dist.get_rank()
         torch.cuda.set_device(f"cuda:{rank_id}")
+        return
 
+    # pd 分离模式会使用的一些接口，用于做一些全局信息管理
+    def exposed_remove_req_refs_from_prompt_cache(self, group_req_id: int, keys: List[int], values: List[int]):
         group_req_id, keys, values = list(map(obtain, [group_req_id, keys, values]))
+        acquire_lock_until_ready()
         radix_cache = self.backend.radix_cache
         key = torch.tensor(keys, dtype=torch.int64, device="cpu", requires_grad=False)
         share_node, kv_len, value_tensor = radix_cache.match_prefix(key, update_refs=False)
@@ -31,6 +35,7 @@ class PDPrefillInferRpcServer(rpyc.Service):
             self.backend.model.mem_manager.decrease_refs(value_tensor.cuda())
 
         logger.info(f"prefill node remove frozen tokens for req id: {group_req_id}")
+        release_acquired_lock()
         return
 
     def exposed_put_mem_manager_to_mem_queue(self):
