@@ -20,14 +20,7 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.quant_cfg = quant_cfg
         self.init_static_params()
         self.fuse_pairs = {"k_proj&v_proj": "kv_proj"}
-        self.name_mapping = {}
         return
-
-    def preprocess_weight(self, weights):
-        for old_name, new_name in self.name_mapping.items():
-            if old_name in weights:
-                weights[new_name] = weights.pop(old_name)
-        return weights
 
     def load_hf_weights(self, weights):
         super().load_hf_weights(weights)
