@@ -1,4 +1,3 @@
-import abc
 import torch
 from .base_weight import BaseWeightTpl
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
@@ -102,4 +101,34 @@ class COLMMWeight(MMWeight):
         if weight is None:
             return
         self.post_load_weights(weight)
+        return
+
+
+class CustomMMWeight(ROWMMWeight):
+    def __init__(
+        self, weight_name, data_type, split_n_embed, bias_name=None, offset=0, wait_fuse=False, disable_tp=False, custom_load=None, custom_fuse=None
+    ):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name, offset=0, wait_fuse=False, disable_tp=False)
+        self.wait_fuse = wait_fuse
+        self.offset = offset
+        self.disable_tp = disable_tp
+        self.custom_load = custom_load
+        self.custom_fuse = custom_fuse
+
+    def fuse(self, B, op=None):
+        if self.custom_fuse is None:
+            super().fuse(B, op)
+        else:
+            weight = self.custom_fuse(self, B)
+            self.post_load_weights(weight)
+
+    def load_hf_weights(self, weights):
+        if self.custom_fuse is None:
+            super().load_hf_weights(weights)
+        else:
+            weight = self.custom_load(self, weights)
+            if self.wait_fuse:
+                self.weight = weight
+                return
+            self.post_load_weights(weight)
         return
