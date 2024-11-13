@@ -64,6 +64,9 @@ class ModeBackend:
 
         world_size = kvargs["world_size"]
         self.args = kvargs.get("args", None)
+        # p d 分离模式下会有特殊的一些初始化, 所以需要传递
+        # 模式参数到模型的初始化过程中进行控制
+        self.run_mode = "normal" if self.args is None else self.args.run_mode
         self.is_multimodal = False
         self.tp_rank = kvargs["rank_id"]
         self.world_size = kvargs["world_size"]
@@ -118,6 +121,7 @@ class ModeBackend:
             "disable_cudagraph": kvargs.get("disable_cudagraph", False),
             "mem_fraction": kvargs.get("mem_fraction", 0.9),
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
+            "run_mode": self.run_mode,
         }
 
         is_weight_only_quant = any("w6a16" in mode_ or "w8a16" in mode_ or "w4a16" in mode_ for mode_ in self.mode)

@@ -1,16 +1,28 @@
 import torch
+import time
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
-from .prefill_infer_rpyc import PDPrefillInferRpcServer
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
-from lightllm.utils.net_utils import alloc_can_use_port
 
 logger = init_logger(__name__)
 
 
-def _init_env(args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]):
+# device_index 是用来指示，当前传输进程使用的用于数据传输的显卡id
+# 当模型是多卡推理的时候，需要传输的 kv 需要先移动到 device_index
+# 指定的显卡上，然后再进行传输，因为torch nccl 限制了只能操作一张显卡上的数据
+
+
+def _init_env(
+    args,
+    device_index: int,
+    nccl_ip,
+    nccl_port,
+    task_in_queue: mp.Queue,
+    task_out_queue: mp.Queue,
+    mem_queues: List[mp.Queue],
+):
     try:
         # 注册graceful 退出的处理
         from lightllm.utils.graceful_utils import graceful_registry
@@ -31,11 +43,24 @@ def _init_env(args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue:
         while True:
             move_task: KVMoveTask = task_in_queue.get()
             try:
-                for i, mem in enumerate(mem_managers):
-                    move_kv_buffer = mem.alloc_kv_move_buffer(len(move_task.key), device=f"cuda:{i}")
-                    move_kv_buffer[:, :, :, :] = mem.kv_buffer[:, move_task.prefill_value, :, :]
-                    dist.send(move_kv_buffer, dst=1)
+                start = time.time()
+                if move_task.move_kv_len != 0:
+                    logger.info(f"trans start: {move_task.to_prefill_log_info()}")
+                    token_indexes = move_task.prefill_token_indexes[-move_task.move_kv_len :]
+                    cur_mem = mem_managers[device_index]
+                    for i, mem in enumerate(mem_managers):
+                        for layer_index in range(mem.layer_num):
+                            move_buffer = mem.read_from_layer_buffer(token_indexes, layer_index)
+                            if i == device_index:
+                                dist.send(move_buffer, dst=1)
+                            else:
+                                move_size = move_buffer.numel()
+                                new_move_buffer = cur_mem.kv_move_buffer.view(-1)[0:move_size].view(move_buffer.shape)
+                                torch.cuda.comm.broadcast(move_buffer, out=[new_move_buffer])
+                                dist.send(new_move_buffer, dist=1)
+                    logger.info(f"trans finished: {move_task.to_prefill_log_info()}")
                 torch.cuda.synchronize()
+                logger.info(f"trans cost time: {(time.time() - start)}, {move_task.to_prefill_log_info()}")
                 task_out_queue.put("ok")
             except BaseException as e:
                 logger.exception(str(e))
@@ -48,9 +73,17 @@ def _init_env(args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue:
 
 
 def start_prefill_trans_process(
-    args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]
+    args,
+    device_index: int,
+    nccl_ip,
+    nccl_port,
+    task_in_queue: mp.Queue,
+    task_out_queue: mp.Queue,
+    mem_queues: List[mp.Queue],
 ):
-    proc = mp.Process(target=_init_env, args=(args, nccl_ip, nccl_port, task_in_queue, task_out_queue, mem_queues))
+    proc = mp.Process(
+        target=_init_env, args=(args, device_index, nccl_ip, nccl_port, task_in_queue, task_out_queue, mem_queues)
+    )
     proc.start()
     assert proc.is_alive()
     logger.info(f"trans kv process start, nccl_ip: {nccl_ip}, nccl_port: {nccl_port}")

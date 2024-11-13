@@ -305,6 +305,8 @@ class RadixCache:
         return
 
     def dec_node_ref_counter(self, node: TreeNode):
+        if node is None:
+            return
         # 如果减引用的是叶节点，需要先从 evict_tree_set 中移除
         old_node = node
         if old_node.is_leaf():

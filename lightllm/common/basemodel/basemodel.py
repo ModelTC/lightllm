@@ -39,6 +39,7 @@ class TpPartBaseModel:
     splitfuse_infer_state_class = SplitFuseInferStateInfo
 
     def __init__(self, kvargs):
+        self.run_mode = kvargs["run_mode"]
         self.tp_rank_ = kvargs["tp_rank"]
         self.world_size_ = kvargs["world_size"]
         self.weight_dir_ = kvargs["weight_dir"]
@@ -68,6 +69,7 @@ class TpPartBaseModel:
         self._verify_params()
         self._init_weights()
         self._init_mem_manager()
+        self._init_kv_move_buffer()
         self._check_mem_size()
         self._init_req_manager()
         self._init_infer_layer()
@@ -131,6 +133,11 @@ class TpPartBaseModel:
             mem_fraction=self.mem_fraction,
         )
         return
+
+    def _init_kv_move_buffer(self):
+        # p d 分离的推理模式下才需要做这一步初始化
+        if self.run_mode in ["prefill", "decode"]:
+            self.mem_manager.alloc_kv_move_buffer(self.max_seq_length)
 
     def _check_mem_size(self):
         self.max_total_token_num = self.mem_manager.size

@@ -1,16 +1,22 @@
-import rpyc
+import time
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
-from .decode_infer_rpyc import PDDecodeInferRpcServer
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
-from lightllm.utils.net_utils import alloc_can_use_port
 
 logger = init_logger(__name__)
 
 
-def _init_env(args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]):
+def _init_env(
+    args,
+    device_index: int,
+    nccl_ip,
+    nccl_port,
+    task_in_queue: mp.Queue,
+    task_out_queue: mp.Queue,
+    mem_queues: List[mp.Queue],
+):
     try:
         # 注册graceful 退出的处理
         from lightllm.utils.graceful_utils import graceful_registry
@@ -32,11 +38,26 @@ def _init_env(args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue:
         while True:
             move_task: KVMoveTask = task_in_queue.get()
             try:
-                for i, mem in enumerate(mem_managers):
-                    move_kv_buffer = mem.alloc_kv_move_buffer(len(move_task.key), device=f"cuda:{i}")
-                    dist.recv(move_kv_buffer, src=0)
-                    mem.kv_buffer[:, move_task.decode_value, :, :] = move_kv_buffer[:, :, :, :]
+                start = time.time()
+                if move_task.move_kv_len != 0:
+                    cur_mem = mem_managers[device_index]
+                    recive_buffer = cur_mem.get_layer_buffer_by_token_num(move_task.move_kv_len)
+                    logger.info(f"trans start: {move_task.to_decode_log_info()}")
+                    for i, mem in enumerate(mem_managers):
+                        for layer_index in range(mem.layer_num):
+                            dist.recv(recive_buffer, src=0)
+                            if i == device_index:
+                                mem.write_to_layer_buffer(move_task.decode_token_indexes, recive_buffer, layer_index)
+                            else:
+                                move_size = recive_buffer.numel()
+                                new_recive_buffer = mem.kv_move_buffer.view(-1)[0:move_size].view(recive_buffer.shape)
+                                torch.cuda.comm.broadcast(recive_buffer, out=[new_recive_buffer])
+                                mem.write_to_layer_buffer(
+                                    move_task.decode_token_indexes, new_recive_buffer, layer_index
+                                )
+                    logger.info(f"trans finished: {move_task.to_decode_log_info()}")
                 torch.cuda.synchronize()
+                logger.info(f"trans cost time: {(time.time() - start)}, {move_task.to_decode_log_info()}")
                 task_out_queue.put("ok")
             except BaseException as e:
                 logger.exception(str(e))
@@ -49,9 +70,17 @@ def _init_env(args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue:
 
 
 def start_decode_trans_process(
-    args, nccl_ip, nccl_port, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]
+    args,
+    device_index: int,
+    nccl_ip,
+    nccl_port,
+    task_in_queue: mp.Queue,
+    task_out_queue: mp.Queue,
+    mem_queues: List[mp.Queue],
 ):
-    proc = mp.Process(target=_init_env, args=(args, nccl_ip, nccl_port, task_in_queue, task_out_queue, mem_queues))
+    proc = mp.Process(
+        target=_init_env, args=(args, device_index, nccl_ip, nccl_port, task_in_queue, task_out_queue, mem_queues)
+    )
     proc.start()
     assert proc.is_alive()
     logger.info(f"decode trans kv process start, nccl_ip: {nccl_ip}, nccl_port: {nccl_port}")

@@ -64,14 +64,29 @@ class DecodeNodeInfo:
 @dataclass
 class KVMoveTask:
     group_request_id: int
-    key: List[int]  # 代表输入的token_id 序列
-    prefill_value: List[int]  # 在prefill节点上 mem manager kv buffer中的token index
-    decode_value: List[int]  # 在decode节点上 mem manager kv buffer中的token index
+    input_tokens: List[int]  # 代表输入的token_id 序列
+    prefill_token_indexes: List[int]  # 在prefill节点上 mem manager kv buffer中的token index
+    # 在decode节点上 mem manager kv buffer中的token index, 其代表的是真实占用的额外token，并不与prefill_token_indexes 一样长
+    decode_token_indexes: List[int]
+    move_kv_len: int  # 因为 prompt cache 的原因，当prefill节点和decode节点沟通后，传输的kv的数量可能少于 prefill_value 的长度
     prefill_node_id: str
     decode_node: DecodeNodeInfo
 
     def __post_init__(self):
-        if len(self.key) <= 0:
+        if len(self.input_tokens) <= 0:
             error_info = "key must len >= 1"
             logger.error(error_info)
             raise ValueError(error_info)
+
+    def to_prefill_log_info(self):
+        v_len = None if self.prefill_token_indexes is None else len(self.prefill_token_indexes)
+        log = f"id: {self.group_request_id} in_len:{len(self.input_tokens)} v_len: {v_len} move_len: {self.move_kv_len}"
+        return log
+
+    def to_decode_log_info(self):
+        v_len = None if self.decode_token_indexes is None else len(self.decode_token_indexes)
+        log = f"id: {self.group_request_id} in_len:{len(self.input_tokens)} v_len: {v_len} move_len: {self.move_kv_len}"
+        return log
+
+    def id(self):
+        return self.group_request_id

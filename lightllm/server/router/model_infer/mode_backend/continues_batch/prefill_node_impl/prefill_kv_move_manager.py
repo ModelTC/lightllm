@@ -2,9 +2,9 @@ import rpyc
 import sys
 import os
 import signal
-import torch
-import time
-import threading
+import copy
+import numpy as np
+import psutil
 from dataclasses import dataclass
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
@@ -28,6 +28,7 @@ class TransProcessObj:
     task_out_queue: mp.Queue = None
     nccl_ip: str = None
     nccl_port: str = None
+    device_index: str = None  # 使用的gpu序号
 
     def create(
         self, decode_node_id: str, decode_node_ip: str, decode_node_rpyc_port: int, manager: "PrefillKVMoveManager"
@@ -42,10 +43,11 @@ class TransProcessObj:
 
         from .prefill_trans_process import start_prefill_trans_process
 
+        device_index = manager.get_next_device_index()  # 分配 trans 进程使用的显卡
         task_in_queue = mp.Queue()
         task_out_queue = mp.Queue()
         proc = start_prefill_trans_process(
-            manager.args, nccl_ip, nccl_port, task_in_queue, task_out_queue, manager.mem_queues
+            manager.args, device_index, nccl_ip, nccl_port, task_in_queue, task_out_queue, manager.mem_queues
         )
         assert task_out_queue.get(timeout=30) == "proc_start"
         for obj in manager.infer_rpyc_objs:
@@ -62,12 +64,20 @@ class TransProcessObj:
         self.task_out_queue = task_out_queue
         self.nccl_port = nccl_port
         self.nccl_ip = nccl_ip
+        self.device_index = device_index
+        return
+
+    def check_trans_process(self):
+        process = psutil.Process(self.process.pid)
+        if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+            raise Exception(f"trans process: {self.process.pid} is dead")
         return
 
     def __del__(self):
         # 强制关闭连接和杀掉传输进程
         if self.process is not None:
             os.kill(self.process.pid, signal.SIGKILL)
+            logger.warning(f"prefill trans process {self.process.pid} is killed")
         pass
 
 
@@ -81,7 +91,7 @@ class PrefillKVMoveManager:
         for port in self.args.pd_tp_infer_rpyc_ports:
             con = retry(max_attempts=20, wait_time=2)(rpyc.connect)("localhost", port, config={"allow_pickle": True})
             self.infer_rpyc_objs.append(con.root)
-            logger.info(f"rpyc connect to port: {port} ok")
+            logger.info(f"rpyc connect to infer rpyc port: {port} ok")
 
         # 让推理进程的rpyc server 将 mem manger放入到queue中，下面进行接收
         for obj in self.infer_rpyc_objs:
@@ -91,6 +101,14 @@ class PrefillKVMoveManager:
         for _queue in self.mem_queues:
             self.mem_managers.append(_queue.get())
         logger.info("get mem manager objs from info_queues ok")
+        return
+
+    def get_next_device_index(self):
+        counts = [0 for _ in range(self.args.tp)]
+        for obj in self.node_id_to_trans_obj.values():
+            counts[obj.device_index] += 1
+        device_index = int(np.argmin(counts))
+        return device_index
 
     def get_trans_obj(self, task: KVMoveTask):
         if task.decode_node.node_id not in self.node_id_to_trans_obj:
@@ -102,44 +120,38 @@ class PrefillKVMoveManager:
     def handle_loop(self):
         try:
             while True:
-                move_tasks: List[KVMoveTask] = []
-
-                # 4 个推理子进程会执行相同的代码
-                for _queue in self.info_queues:
-                    move_task: KVMoveTask = _queue.get()
-                    move_tasks.append(move_task)
-
-                if not all(isinstance(e, KVMoveTask) for e in move_tasks):
-                    logger.error("not all receive task type is PrefillKVMoveTask")
+                move_task = self.info_queues[0].get()
+                if not isinstance(move_task, KVMoveTask):
+                    logger.error("receive type is not KVMoveTask")
                     sys.exit(-1)
 
-                logger.info("prefill node get task ok")
-
-                move_task = move_tasks[0]
+                logger.info(f"prefill node get task {move_task.to_prefill_log_info()}")
                 try:
                     trans_obj = self.get_trans_obj(move_task)
                     # 申请传输
-                    ans = obtain(trans_obj.rpyc_conn.root.request_data_transfer(move_task))
-                    if ans != "ok":
-                        raise Exception("not ok")
-                    logger.info("prefill node request_data_transfer ok")
-
+                    trans_move_task = copy.copy(move_task)
+                    # 不需要发送prefill节点的token index信息给decode节点
+                    trans_move_task.prefill_token_indexes = None
+                    # 申请发送，并收到发送长度 move_kv_len.
+                    move_kv_len = obtain(trans_obj.rpyc_conn.root.request_data_transfer(trans_move_task))
+                    if move_kv_len is None:
+                        raise Exception("request_data_transfer not ok")
+                    move_task.move_kv_len = move_kv_len
+                    logger.info(f"prefill node request_data_transfer ok, {move_task.to_prefill_log_info()}")
                     # 开始传输直到完成
                     trans_obj.task_in_queue.put(move_task, timeout=10)
                     assert trans_obj.task_out_queue.get(timeout=30) == "ok"
-                    logger.info("prefill node transfer data ok")
+                    logger.info(f"prefill node transfer data ok, req_id: {move_task.id()}")
 
                 except BaseException as e:
                     logger.exception(str(e))
-                    logger.error("kv move task has error, remove the trans_obj")
+                    logger.error(f"kv move task {move_task.to_prefill_log_info()} has error, remove the trans_obj")
                     self.node_id_to_trans_obj.pop(move_task.decode_node.node_id, None)
 
                 finally:
                     # 解除对prefill token的占用状态。
                     for infer_rpyc in self.infer_rpyc_objs:
-                        infer_rpyc.remove_req_refs_from_prompt_cache(
-                            move_task.group_request_id, move_task.key, move_task.prefill_value
-                        )
+                        infer_rpyc.remove_req_refs_from_prompt_cache(move_task.group_request_id)
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
             raise e
@@ -165,5 +177,5 @@ def start_prefill_kv_move_manager_process(args, info_queues: List[mp.Queue], mem
     proc.start()
     event.wait()
     assert proc.is_alive()
-    logger.info("prefill kv move process started")
+    logger.info("prefill kv move manager process started")
     return

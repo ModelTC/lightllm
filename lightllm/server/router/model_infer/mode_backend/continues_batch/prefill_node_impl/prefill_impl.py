@@ -13,7 +13,7 @@ from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from rpyc.utils.server import ThreadedServer
-from lightllm.utils.net_utils import alloc_can_use_network_port
+from .prefill_task_cache import g_kv_move_task_cache
 
 logger = init_logger(__name__)
 
@@ -98,22 +98,24 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
                 req.cur_kv_len = 0
-                share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
-                assert len(key) == len(value)
-                self.model.mem_manager.add_refs(value.cuda())
-
                 if req.sampling_param.move_kv_to_decode_node is not None:
+                    share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
+                    assert len(key) == len(value)
                     # 将下面的请求放入到任务队列中, 注意要使用raidx cache 返回的value
                     decode_node_info = DecodeNodeInfo(**req.sampling_param.move_kv_to_decode_node)
                     task = KVMoveTask(
                         group_request_id=req.group_req_id,
-                        key=key.tolist(),
-                        prefill_value=value.tolist(),
-                        decode_value=None,
+                        input_tokens=key.tolist(),
+                        prefill_token_indexes=value.tolist(),
+                        decode_token_indexes=None,
                         prefill_node_id=self.args.pd_node_id,
                         decode_node=decode_node_info,
+                        move_kv_len=None,
                     )
-                    self.info_queue.put(task)
+                    g_kv_move_task_cache[task.group_request_id] = (task, share_node)
+                    # 只有 0 进程发送真正的数据到队列中。
+                    if self.tp_rank == 0:
+                        self.info_queue.put(task)
         except BaseException as e:
             logger.exception(str(e))
         g_infer_state_lock.release()

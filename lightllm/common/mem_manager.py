@@ -1,6 +1,7 @@
 import re
 import os
 import torch
+from typing import List
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.utils.profile_max_tokens import get_available_gpu_memory, get_total_gpu_memory
@@ -65,11 +66,32 @@ class MemoryManager:
     def _init_buffers(self, size, dtype, head_num, head_dim, layer_num):
         self.kv_buffer = torch.empty((layer_num, size, 2 * head_num, head_dim), dtype=dtype, device="cuda")
 
-    def alloc_kv_move_buffer(self, size, device):
+    def alloc_kv_move_buffer(self, max_req_total_len):
         """
         pd 分离模式使用的特殊接口
         """
-        return torch.empty((self.layer_num, size, 2 * self.head_num, self.head_dim), dtype=self.dtype, device=device)
+        if isinstance(self, MemoryManager) and type(self) != MemoryManager:
+            raise NotImplementedError("subclass need reimpl this method")
+        self.kv_move_buffer = torch.empty(
+            (1, max_req_total_len + 8, 2 * self.head_num, self.head_dim), dtype=self.dtype, device="cuda"
+        )
+        return
+
+    def read_from_layer_buffer(self, token_indexes: List[int], layer_index: int):
+        move_size = self.kv_buffer.numel() // self.layer_num // self.size * len(token_indexes)
+        move_buffer = self.kv_move_buffer.view(-1)[0:move_size].view(
+            1, len(token_indexes), 2 * self.head_num, self.head_dim
+        )
+        move_buffer[:, :, :, :] = self.kv_buffer[layer_index, token_indexes, :, :]
+        return move_buffer
+
+    def get_layer_buffer_by_token_num(self, token_num):
+        move_size = self.kv_buffer.numel() // self.layer_num // self.size * token_num
+        return self.kv_move_buffer.view(-1)[0:move_size].view(1, token_num, 2 * self.head_num, self.head_dim)
+
+    def write_to_layer_buffer(self, token_indexes: torch.Tensor, buffer_tensor: torch.Tensor, layer_index):
+        self.kv_buffer[layer_index : layer_index + 1, token_indexes, :, :] = buffer_tensor
+        return
 
     def _free_buffers(self):
         self.kv_buffer = None
