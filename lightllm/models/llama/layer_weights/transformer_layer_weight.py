@@ -2,7 +2,7 @@ import torch
 import math
 import numpy as np
 from lightllm.common.basemodel import TransformerLayerWeight
-from lightllm.common.basemodel.layer_weights.meta_weights import BaseWeight, ROWMMWeight, COLMMWeight, NormWeight
+from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight, NormWeight
 
 
 class LlamaTransformerLayerWeight(TransformerLayerWeight):
