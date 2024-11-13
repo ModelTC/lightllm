@@ -44,8 +44,13 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
 
         BATCHSIZE = input_tensor.shape[0]
         if BATCHSIZE >= 768:
-            weight = int4_weight_decode(qweight, scale_weight, self.group_size)
-            torch.mm(input_tensor, weight.transpose(0, 1), out=out)
+            shape = (qweight.shape[0] * 8, qweight.shape[1])
+            dtype = input_tensor.dtype
+            device = input_tensor.device
+            fpweight = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            print(type(qweight), type(scale_weight), type(fpweight))
+            int4_weight_decode(qweight, scale_weight, self.group_size, fpweight)
+            torch.mm(input_tensor, fpweight.transpose(0, 1), out=out)
         else:
             matmul_i4_fp16(input_tensor, qweight, scale_weight, workspace, self.group_size, out)
         if bias is None:

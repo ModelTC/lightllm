@@ -94,8 +94,8 @@ class COLMMWeight(MMWeight):
             weight = self.pre_load_weights(weights[self.weight_name])
             weight = weight[:, start:end]
         if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type)
-            self.bias = bias.cuda(self.tp_rank_) / self.world_size_
+            bias = weights[self.bias_name].to(self.data_type_) / self.world_size_
+            self.bias = bias.cuda(self.tp_rank_)
         if weight is None:
             return
         self.post_load_weights(weight)
