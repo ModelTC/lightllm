@@ -12,7 +12,7 @@ from .prefill_infer_rpyc import PDPrefillInferRpcServer
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
-from lightllm.utils.net_utils import alloc_can_use_port
+from lightllm.utils.net_utils import find_available_port
 from lightllm.utils.retry_utils import retry
 from rpyc.utils.classic import obtain
 
@@ -36,7 +36,10 @@ class TransProcessObj:
             host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True
         )
         nccl_ip = manager.args.host
-        nccl_port = manager.get_next_nccl_port()
+        nccl_port = find_available_port(manager.args.pd_p_allowed_port_min, manager.args.pd_p_allowed_port_max)
+        if nccl_port is None:
+            raise Exception("no pd nccl port can be used")
+
         from .prefill_trans_process import start_prefill_trans_process
 
         task_in_queue = mp.Queue()
@@ -75,8 +78,6 @@ class PrefillKVMoveManager:
         self.mem_queues = mem_queues
         self.infer_rpyc_objs: List[PDPrefillInferRpcServer] = []
         self.node_id_to_trans_obj: Dict[str, TransProcessObj] = {}
-        self.kv_move_used_ports = alloc_can_use_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
-        self.port_alloc_index = 0
         for port in self.args.pd_tp_infer_rpyc_ports:
             con = retry(max_attempts=20, wait_time=2)(rpyc.connect)("localhost", port, config={"allow_pickle": True})
             self.infer_rpyc_objs.append(con.root)
@@ -90,13 +91,6 @@ class PrefillKVMoveManager:
         for _queue in self.mem_queues:
             self.mem_managers.append(_queue.get())
         logger.info("get mem manager objs from info_queues ok")
-
-    def get_next_nccl_port(
-        self,
-    ):
-        port = self.kv_move_used_ports[self.port_alloc_index % (len(self.kv_move_used_ports))]
-        self.port_alloc_index += 1
-        return port
 
     def get_trans_obj(self, task: KVMoveTask):
         if task.decode_node.node_id not in self.node_id_to_trans_obj:
