@@ -29,9 +29,9 @@ class TransformerLayerWeight(BaseLayerWeight):
     def fuse_weights(self):
         for pair_name, fuse_name in self.fuse_pairs.items():
             attr1_name, attr2_name = pair_name.split("&")
-            if hasattr(self, fuse_name):
-                continue
             with self.lock:
+                if hasattr(self, fuse_name):
+                    continue
                 attr1 = getattr(self, attr1_name)
                 attr2 = getattr(self, attr2_name)
                 if attr1.verify_load() and attr2.verify_load():
