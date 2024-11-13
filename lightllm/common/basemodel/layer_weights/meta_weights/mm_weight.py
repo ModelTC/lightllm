@@ -39,12 +39,9 @@ class MMWeight(BaseWeightTpl):
 
 
 class ROWMMWeight(MMWeight):
-    def __init__(
-        self, weight_name, data_type, split_n_embed, bias_name=None, offset=0, wait_fuse=False, disable_tp=False
-    ):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False, disable_tp=False):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
         self.wait_fuse = wait_fuse
-        self.offset = offset
         self.disable_tp = disable_tp
 
     def fuse(self, B, op="cat"):
@@ -66,8 +63,8 @@ class ROWMMWeight(MMWeight):
             rank_id = 0
         else:
             rank_id = self.tp_rank_
-        start = self.offset + self.split_n_embed * rank_id
-        end = self.offset + self.split_n_embed * (rank_id + 1)
+        start = self.split_n_embed * rank_id
+        end = self.split_n_embed * (rank_id + 1)
 
         weight = None
         if self.weight_name in weights:
