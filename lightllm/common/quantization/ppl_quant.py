@@ -47,7 +47,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
             shape = (qweight.shape[0] * 8, qweight.shape[1])
             dtype = input_tensor.dtype
             device = input_tensor.device
-            fpweight = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            fpweight = torch.empty(shape, dtype=dtype, device=device)
             int4_weight_decode(qweight, scale_weight, self.group_size, fpweight)
             torch.mm(input_tensor, fpweight.transpose(0, 1), out=out)
         else:
