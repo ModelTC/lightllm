@@ -25,13 +25,9 @@ class StablelmTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
     ) -> torch.Tensor:
-        q = layer_weight.mm_op.pre.apply(
-            input.view(-1, self.embed_dim_), layer_weight.q_weight_, bias=layer_weight.q_bias_
-        )
-        cache_kv = layer_weight.mm_op.pre.apply(
+        q = layer_weight.q_proj.mm(input.view(-1, self.embed_dim_))
+        cache_kv = layer_weight.kv_proj.mm(
             input.view(-1, self.embed_dim_),
-            layer_weight.kv_weight_,
-            bias=layer_weight.kv_bias_,
             out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_),
         ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         rotary_emb_fwd(
@@ -46,9 +42,8 @@ class StablelmTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
     ) -> torch.Tensor:
-        o_tensor = layer_weight.mm_op.pre.apply(
+        o_tensor = layer_weight.o_proj.mm(
             input.view(-1, self.tp_o_head_num_ * self.head_dim_),
-            layer_weight.o_weight_,
         )
         return o_tensor
 
@@ -57,8 +52,8 @@ class StablelmTransformerLayerInfer(LlamaTransformerLayerInfer):
     ) -> torch.Tensor:
         return layernorm_forward(
             input.view(-1, self.embed_dim_),
-            weight=layer_weight.att_norm_weight_,
-            bias=layer_weight.att_norm_bias_,
+            weight=layer_weight.att_norm_weight_.weight,
+            bias=layer_weight.att_norm_weight_.bias,
             eps=self.eps_,
         )
 
@@ -67,7 +62,7 @@ class StablelmTransformerLayerInfer(LlamaTransformerLayerInfer):
     ) -> torch.Tensor:
         return layernorm_forward(
             input.view(-1, self.embed_dim_),
-            weight=layer_weight.ffn_norm_weight_,
-            bias=layer_weight.ffn_norm_bias_,
+            weight=layer_weight.ffn_norm_weight_.weight,
+            bias=layer_weight.ffn_norm_weight_.bias,
             eps=self.eps_,
         )
