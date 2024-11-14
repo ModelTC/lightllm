@@ -32,7 +32,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
         """
         qweight, scale_weight = weights
         if workspace is None:
-            workspace = torch.empty(size=[33554432], dtype=torch.int8, device="cuda")  # 32MB workspace
+            workspace = torch.empty(size=[33554432 * 2], dtype=torch.int8, device="cuda")  # 32MB workspace
             PPLW4A16QuantizationMethod.apply.__defaults__ = (None, None, workspace)
         if out is None:
             shape = (input_tensor.shape[0], qweight.shape[0] * 8)
