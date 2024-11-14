@@ -1,3 +1,4 @@
+import asyncio
 import rpyc
 import sys
 import os
@@ -15,6 +16,7 @@ from lightllm.server.pd_io_struct import KVMoveTask
 from lightllm.utils.net_utils import find_available_port
 from lightllm.utils.retry_utils import retry
 from rpyc.utils.classic import obtain
+from rpyc import AsyncResult
 
 logger = init_logger(__name__)
 
@@ -92,15 +94,6 @@ class PrefillKVMoveManager:
             con = retry(max_attempts=20, wait_time=2)(rpyc.connect)("localhost", port, config={"allow_pickle": True})
             self.infer_rpyc_objs.append(con.root)
             logger.info(f"rpyc connect to infer rpyc port: {port} ok")
-
-        # 让推理进程的rpyc server 将 mem manger放入到queue中，下面进行接收
-        for obj in self.infer_rpyc_objs:
-            obj.put_mem_manager_to_mem_queue()
-
-        self.mem_managers: List[MemoryManager] = []
-        for _queue in self.mem_queues:
-            self.mem_managers.append(_queue.get())
-        logger.info("get mem manager objs from info_queues ok")
         return
 
     def get_next_device_index(self):
@@ -150,11 +143,20 @@ class PrefillKVMoveManager:
 
                 finally:
                     # 解除对prefill token的占用状态。
+                    futures: List[AsyncResult] = []
                     for infer_rpyc in self.infer_rpyc_objs:
-                        infer_rpyc.remove_req_refs_from_prompt_cache(move_task.group_request_id)
+                        futures.append(
+                            rpyc.async_(infer_rpyc.remove_req_refs_from_prompt_cache)(move_task.group_request_id)
+                        )
+                    asyncio.run(self.wait_all_future_finish(futures))
+
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
             raise e
+
+    async def wait_all_future_finish(self, futures: List[AsyncResult]):
+        await asyncio.gather(*[asyncio.to_thread(future.wait) for future in futures])
+        return
 
 
 def _init_env(args, info_queues: List[mp.Queue], mem_queues: List[mp.Queue], event: mp.Event):

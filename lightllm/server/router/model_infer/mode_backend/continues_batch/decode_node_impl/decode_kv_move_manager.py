@@ -1,8 +1,8 @@
 import rpyc
+import asyncio
 import sys
 import os
 import signal
-import torch
 import time
 import psutil
 import threading
@@ -18,6 +18,7 @@ from lightllm.server.pd_io_struct import KVMoveTask, UpKVStatus
 from lightllm.utils.retry_utils import retry
 import numpy as np
 import queue
+from rpyc import AsyncResult
 
 logger = init_logger(__name__)
 
@@ -84,13 +85,6 @@ class DecodeKVMoveManager(rpyc.Service):
             self.infer_rpyc_objs.append(con.root)
             logger.info(f"rpyc connect to port: {port} ok")
 
-        # 让推理进程的rpyc server 将 mem manger放入到queue中，下面进行接收
-        for obj in self.infer_rpyc_objs:
-            obj.put_mem_manager_to_mem_queue()
-        self.mem_managers: List[MemoryManager] = []
-        for _queue in self.mem_queues:
-            self.mem_managers.append(_queue.get())
-        logger.info("get mem manager objs from info_queues ok")
         from .up_status import start_up_kv_status_process
 
         self.up_status_in_queue = mp.Queue()
@@ -103,8 +97,13 @@ class DecodeKVMoveManager(rpyc.Service):
             threading.Thread(target=self.handle_loop, args=(self.task_queues[i],), daemon=True).start()
         return
 
+    async def wait_all_future_finish(self, futures: List[AsyncResult]):
+        await asyncio.gather(*[asyncio.to_thread(future.wait) for future in futures])
+        return
+
     def exposed_build_trans_process(self, prefill_node_id, nccl_ip, nccl_port):
         prefill_node_id, nccl_ip, nccl_port = list(map(obtain, [prefill_node_id, nccl_ip, nccl_port]))
+        logger.info(f"build trans infos {prefill_node_id} {nccl_ip} {nccl_port}")
         if prefill_node_id in self.node_id_to_trans_obj:
             self.node_id_to_trans_obj.pop(prefill_node_id, None)
         tran_obj = TransProcessObj()
@@ -114,21 +113,27 @@ class DecodeKVMoveManager(rpyc.Service):
 
     def exposed_request_data_transfer(self, task: KVMoveTask) -> Optional[int]:
         task = obtain(task)
+        logger.info(f"exposed_request_data_transfer in {task.to_decode_log_info()}")
         try:
             trans_obj = self.get_trans_obj(task)
             device_index = trans_obj.device_index
             assert trans_obj is not None
             value_list = []
             with self.infer_rpyc_lock:
+                futures: List[AsyncResult] = []
                 for conn in self.infer_rpyc_objs:
-                    decode_value_list = obtain(conn.alloc_to_frozen_some_tokens(task))
-                    value_list.append(decode_value_list)
+                    futures.append(rpyc.async_(conn.alloc_to_frozen_some_tokens)(task))
+                asyncio.run(self.wait_all_future_finish(futures))
+                value_list = [obtain(future.value) for future in futures]
+
             assert all(isinstance(e, list) for e in value_list)
 
             task.decode_token_indexes = value_list[0]
             task.move_kv_len = len(value_list[0])
         except BaseException as e:
-            logger.error(str(e))
+            # 移除通信对象
+            self.node_id_to_trans_obj.pop(task.prefill_node_id, None)
+            logger.exception(str(e))
             return None
 
         self.task_queues[device_index].put(task)
@@ -160,8 +165,11 @@ class DecodeKVMoveManager(rpyc.Service):
                     logger.info(f"deocode node transfer kv ok {task.to_decode_log_info()}")
                     # 成功了将
                     with self.infer_rpyc_lock:
+                        futures: List[AsyncResult] = []
                         for conn in self.infer_rpyc_objs:
-                            conn.put_kv_received_to_radix_cache(task.group_request_id)
+                            futures.append(rpyc.async_(conn.put_kv_received_to_radix_cache)(task.group_request_id))
+                        asyncio.run(self.wait_all_future_finish(futures))
+
                     logger.info(f"decode node put kv to radix cache ok, req_id: {task.id()}")
                     self.up_status_in_queue.put(UpKVStatus(group_request_id=task.group_request_id))
                     logger.info("decode node up kv status finished")
@@ -169,8 +177,10 @@ class DecodeKVMoveManager(rpyc.Service):
                     logger.exception(str(e))
                     # 失败了也需要释放锁定的 token
                     with self.infer_rpyc_lock:
+                        futures: List[AsyncResult] = []
                         for conn in self.infer_rpyc_objs:
-                            conn.fail_to_realese_forzen_tokens(task.group_request_id)
+                            futures.append(rpyc.async_(conn.fail_to_realese_forzen_tokens)(task.group_request_id))
+                        asyncio.run(self.wait_all_future_finish(futures))
                     logger.error(f"decode kv move task {task.to_decode_log_info()} has error, remove the trans_obj")
                     self.node_id_to_trans_obj.pop(task.prefill_node_id, None)
         except BaseException as e:

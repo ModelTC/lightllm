@@ -1,9 +1,19 @@
+import os
+
+os.environ["NCCL_DEBUG"] = "INFO"
+os.environ["NCCL_MAX_NCHANNELS"] = "2"
+os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
+os.environ["NCCL_SOCKET_NTHREADS"] = "1"
+
+import torch
 import time
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
+
+torch.backends.cudnn.enabled = False
 
 logger = init_logger(__name__)
 
@@ -27,7 +37,6 @@ def _init_env(
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=20) for mem_queue in mem_queues]
         assert len(mem_managers) == args.tp
         task_out_queue.put("get_mem_managers_ok")
-        import torch
         import torch.distributed as dist
         from datetime import timedelta
 
@@ -51,7 +60,9 @@ def _init_env(
                             else:
                                 move_size = recive_buffer.numel()
                                 new_recive_buffer = mem.kv_move_buffer.view(-1)[0:move_size].view(recive_buffer.shape)
-                                torch.cuda.comm.broadcast(recive_buffer, out=[new_recive_buffer])
+                                from torch.cuda import comm
+
+                                comm.broadcast(recive_buffer, out=[new_recive_buffer])
                                 mem.write_to_layer_buffer(
                                     move_task.decode_token_indexes, new_recive_buffer, layer_index
                                 )

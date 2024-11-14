@@ -1,3 +1,10 @@
+import os
+
+os.environ["NCCL_DEBUG"] = "INFO"
+os.environ["NCCL_MAX_NCHANNELS"] = "2"
+os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
+os.environ["NCCL_SOCKET_NTHREADS"] = "1"
+
 import torch
 import time
 from typing import List, Dict
@@ -5,6 +12,8 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
+
+torch.backends.cudnn.enabled = False
 
 logger = init_logger(__name__)
 
@@ -56,8 +65,10 @@ def _init_env(
                             else:
                                 move_size = move_buffer.numel()
                                 new_move_buffer = cur_mem.kv_move_buffer.view(-1)[0:move_size].view(move_buffer.shape)
-                                torch.cuda.comm.broadcast(move_buffer, out=[new_move_buffer])
-                                dist.send(new_move_buffer, dist=1)
+                                from torch.cuda import comm
+
+                                comm.broadcast(move_buffer, out=[new_move_buffer])
+                                dist.send(new_move_buffer, dst=1)
                     logger.info(f"trans finished: {move_task.to_prefill_log_info()}")
                 torch.cuda.synchronize()
                 logger.info(f"trans cost time: {(time.time() - start)}, {move_task.to_prefill_log_info()}")
