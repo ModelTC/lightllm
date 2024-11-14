@@ -1,6 +1,7 @@
 import torch
 from .base_weight import BaseWeight
 from lightllm.utils.dist_utils import get_world_size, get_rank
+import threading
 
 
 class FusedMoeWeight(BaseWeight):
@@ -13,23 +14,24 @@ class FusedMoeWeight(BaseWeight):
         self.n_routed_experts = n_routed_experts
         self.split_inter_size = split_inter_size
         self.data_type_ = data_type
-        self.experts_up_proj = [None] * self.n_routed_experts
-        self.experts_gate_proj = [None] * self.n_routed_experts
+        self.tp_rank_ = get_rank()
+        self.experts_up_projs = [None] * self.n_routed_experts
+        self.experts_gate_projs = [None] * self.n_routed_experts
         self.w2_list = [None] * self.n_routed_experts
+        self.lock = threading.Lock()
 
     def fuse(self):
         with self.lock:
             if (
-                hasattr(self, "experts_up_proj")
-                and None not in self.experts_up_proj
-                and None not in self.experts_gate_proj
+                hasattr(self, "experts_up_projs")
+                and None not in self.experts_up_projs
+                and None not in self.experts_gate_projs
                 and None not in self.w2_list
             ):
-
                 w1_list = []
                 for i_experts in range(self.n_routed_experts):
                     expert_gate_up_proj = torch.cat(
-                        [self.experts_gate_proj[i_experts], self.experts_up_proj[i_experts]], dim=0
+                        [self.experts_gate_projs[i_experts], self.experts_up_projs[i_experts]], dim=0
                     )
                     expert_gate_up_proj = self._cuda(expert_gate_up_proj)
                     w1_list.append(expert_gate_up_proj)
@@ -41,38 +43,28 @@ class FusedMoeWeight(BaseWeight):
                     len(self.w2_list), inter_shape, hidden_size
                 )
                 delattr(self, "w2_list")
-                delattr(self, "experts_up_proj")
-                delattr(self, "experts_gate_proj")
+                delattr(self, "experts_up_projs")
+                delattr(self, "experts_gate_projs")
 
     def load_hf_weights(self, weights):
         for i_experts in range(self.n_routed_experts):
-            expert_up_proj = None
-            expert_gate_proj = None
-            expert_gate_up_proj = None
-            expert_down_proj = None
-
             w1_weight = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.weight"
             w2_weight = f"{self.weight_prefix}.{i_experts}.{self.w2_weight_name}.weight"
             w3_weight = f"{self.weight_prefix}.{i_experts}.{self.w3_weight_name}.weight"
 
             if w1_weight in weights:
-                expert_up_proj = weights[w1_weight][
+                self.experts_gate_projs[i_experts] = weights[w1_weight][
                     self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1), :
                 ]
-                self.experts_gate_proj[i_experts] = expert_gate_proj
-
             if w3_weight in weights:
-                expert_gate_proj = weights[w3_weight][
+                self.experts_up_projs[i_experts] = weights[w3_weight][
                     self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1), :
                 ]
-                self.experts_up_proj[i_experts] = expert_up_proj
 
             if w2_weight in weights:
-                expert_down_proj = weights[w2_weight][
+                self.w2_list[i_experts] = self._cuda(weights[w2_weight][
                     :, self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1)
-                ]
-                expert_down_proj = self._cuda(expert_down_proj)
-                self.w2_list[i_experts] = expert_down_proj
+                ])
         
         self.fuse()
 
@@ -82,3 +74,6 @@ class FusedMoeWeight(BaseWeight):
             return cpu_tensor.contiguous().to(self.data_type_).cuda()
         else:
             return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
+    
+    def verify_load(self):
+        return self.w1 is not None and self.w2 is not None

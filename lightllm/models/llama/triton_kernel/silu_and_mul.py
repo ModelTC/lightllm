@@ -53,7 +53,7 @@ def _silu_and_mul_kernel(
     )
 
 
-def silu_and_mul_fwd(input, output=None):
+def silu_and_mul_fwd(input, output):
     stride_input_m = input.stride(0)
     stride_input_n = input.stride(1)
     stride_output_m = output.stride(0)
