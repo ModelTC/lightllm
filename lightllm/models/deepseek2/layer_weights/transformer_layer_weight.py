@@ -109,14 +109,14 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.q_a_proj_ = ROWMMWeight(
                 f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight", self.data_type_, self.q_lora_rank, disable_tp=True
             )
-            self.q_b_proj = CustomMMWeight(
+            self.q_b_proj_ = CustomMMWeight(
                 f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
                 self.data_type_,
                 q_split_n_embed_with_rope,
                 wait_fuse=True,
                 custom_fuse=partial(fuse_q_kb, self),
             )
-            rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
+            rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"
         self.q_rope_proj_ = CustomMMWeight(
             rope_weight_name,
             self.data_type_,

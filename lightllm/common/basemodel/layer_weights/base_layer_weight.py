@@ -14,7 +14,7 @@ class BaseLayerWeight:
         load weights
         """
         for attr_name in dir(self):
-            attr = getattr(self, attr_name)
+            attr = getattr(self, attr_name, None)
             if isinstance(attr, BaseWeight):
                 attr.load_hf_weights(weights)
 
@@ -38,5 +38,3 @@ class BaseLayerWeight:
             return cpu_tensor.contiguous().to(self.data_type_).cuda()
         else:
             return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
-
-        return
