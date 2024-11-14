@@ -1,10 +1,3 @@
-import os
-
-os.environ["NCCL_DEBUG"] = "INFO"
-os.environ["NCCL_MAX_NCHANNELS"] = "2"
-os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
-os.environ["NCCL_SOCKET_NTHREADS"] = "1"
-
 import torch
 import time
 import sys
@@ -13,8 +6,6 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
-
-torch.backends.cudnn.enabled = False
 
 logger = init_logger(__name__)
 
@@ -28,6 +19,14 @@ def _init_env(
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
+    import os
+
+    os.environ["NCCL_DEBUG"] = "INFO"
+    os.environ["NCCL_MAX_NCHANNELS"] = "2"
+    os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
+    os.environ["NCCL_SOCKET_NTHREADS"] = "1"
+    torch.backends.cudnn.enabled = False
+
     try:
         # 注册graceful 退出的处理
         from lightllm.utils.graceful_utils import graceful_registry

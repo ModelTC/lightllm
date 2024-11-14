@@ -72,6 +72,7 @@ class RouterManager:
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
+        self.is_pd_run_mode = self.args.run_mode in ["prefill", "decode"]
         return
 
     async def wait_to_model_ready(self):
@@ -442,6 +443,10 @@ class RouterManager:
         return
 
     def _can_decode(self, batch: Batch):
+        # p d 分离模式下，目前只能使用保守调度，保证请求放入进行decode的时候
+        # 显存token肯定是够用的
+        if self.is_pd_run_mode:
+            return True
         return batch.batch_decode_need_tokens + self.get_used_tokens() <= self.max_total_token_num
 
     def _send_to_detokenization_proc(self, batch: Batch, req_ans):
