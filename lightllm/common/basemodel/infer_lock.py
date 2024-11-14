@@ -83,13 +83,13 @@ g_infer_state_lock = G_Infer_Lock()
 
 
 # 下面两个函数需要配对使用
-def acquire_lock_until_ready():
+def acquire_lock_until_ready(nccl_group):
     g_infer_state_lock.obj.set_group_wait_mark()
     while True:
         g_infer_state_lock.obj.infer_lock.acquire()
-        dist.barrier()
+        dist.barrier(nccl_group)
         judge_ans = g_infer_state_lock.obj.judge_mark_in_group_all_same()
-        dist.barrier()
+        dist.barrier(nccl_group)
 
         if judge_ans is not True:
             # 释放锁进行重试

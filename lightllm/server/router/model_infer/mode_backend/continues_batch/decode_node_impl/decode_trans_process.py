@@ -7,6 +7,7 @@ os.environ["NCCL_SOCKET_NTHREADS"] = "1"
 
 import torch
 import time
+import sys
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
@@ -34,7 +35,7 @@ def _init_env(
 
         graceful_registry(inspect.currentframe().f_code.co_name)
         task_out_queue.put("proc_start")
-        mem_managers: List[MemoryManager] = [mem_queue.get(timeout=20) for mem_queue in mem_queues]
+        mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
         assert len(mem_managers) == args.tp
         task_out_queue.put("get_mem_managers_ok")
         import torch.distributed as dist
@@ -76,7 +77,7 @@ def _init_env(
                 raise e
     except BaseException as e:
         logger.exception(str(e))
-        raise e
+        sys.exit(-1)
     return
 
 

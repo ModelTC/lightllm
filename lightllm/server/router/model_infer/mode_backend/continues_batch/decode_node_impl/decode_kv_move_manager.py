@@ -43,9 +43,10 @@ class TransProcessObj:
             manager.args, device_index, nccl_ip, nccl_port, task_in_queue, task_out_queue, manager.mem_queues
         )
         assert task_out_queue.get(timeout=30) == "proc_start"
-        for obj in manager.infer_rpyc_objs:
-            obj.put_mem_manager_to_mem_queue()
-        assert task_out_queue.get(timeout=30) == "get_mem_managers_ok"
+        with manager.infer_rpyc_lock:
+            for obj in manager.infer_rpyc_objs:
+                obj.put_mem_manager_to_mem_queue()
+        assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
         assert task_out_queue.get(timeout=60) == "nccl_ok"
 
         self.prefill_node_id = prefill_node_id

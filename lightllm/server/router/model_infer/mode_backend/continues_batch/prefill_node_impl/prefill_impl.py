@@ -1,6 +1,7 @@
 import threading
 import torch
 import torch.multiprocessing as mp
+import torch.distributed as dist
 from typing import List
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
@@ -25,6 +26,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         self.mem_queue: mp.Queue = mem_queue
 
     def init_custom(self):
+        self.lock_nccl_group = dist.new_group(backend="gloo")
         from .prefill_infer_rpyc import PDPrefillInferRpcServer
 
         t = ThreadedServer(

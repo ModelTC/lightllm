@@ -423,7 +423,8 @@ class InferBatch:
             req.req_status = pause_way
             self.request_ids.remove(request_id)
             if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
-                self._free_a_req_mem(free_token_index, req)
+                # 不支持多输出的情况
+                self._free_a_req_mem(free_token_index, req, is_group_finished=True)
                 req.cur_kv_len = 0
 
         if len(free_token_index) != 0:

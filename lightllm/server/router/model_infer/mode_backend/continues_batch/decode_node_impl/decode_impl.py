@@ -1,7 +1,9 @@
 import torch
 import torch.multiprocessing as mp
+import torch.distributed as dist
 import threading
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
+from typing import List
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
@@ -12,6 +14,7 @@ from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 
 logger = init_logger(__name__)
 
@@ -23,6 +26,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         self.mem_queue: mp.Queue = mem_queue
 
     def init_custom(self):
+        self.lock_nccl_group = dist.new_group(backend="gloo")
         from .decode_infer_rpyc import PDDecodeInferRpcServer
 
         t = ThreadedServer(PDDecodeInferRpcServer(self), port=self.pd_rpyc_port, protocol_config={"allow_pickle": True})
@@ -83,5 +87,17 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 None,
             )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
+        self.decode_req_handle_and_unfrozen_tokens(run_reqs)
         self.cache[batch.batch_id] = batch
         return output_dict
+
+    def decode_req_handle_and_unfrozen_tokens(self, run_reqs: List[InferReq]):
+        # 将 radix cache 中提前锁定的进行释放, 因为前面锁定的时候，
+        # 加了一次引用计数，所以这里如果发现要结束了，提前减一下
+        g_infer_state_lock.acquire()
+        for req in run_reqs:
+            if req.finish_status.is_finished():
+                if req.shared_kv_node is not None:
+                    self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
+        g_infer_state_lock.release()
+        return

@@ -24,8 +24,9 @@ class PDDecodeInferRpcServer(rpyc.Service):
         return
 
     def exposed_alloc_to_frozen_some_tokens(self, move_task: KVMoveTask) -> Optional[int]:
+        logger.info("exposed_alloc_to_frozen_some_tokens start")
         move_task = obtain(move_task)
-        acquire_lock_until_ready()
+        acquire_lock_until_ready(self.backend.lock_nccl_group)
         try:
             key = torch.tensor(move_task.input_tokens, dtype=torch.int64, device="cpu")
             tree_node, kv_len, fused_token_indexes = self.backend.radix_cache.match_prefix(key, update_refs=True)
@@ -35,7 +36,9 @@ class PDDecodeInferRpcServer(rpyc.Service):
             if need_len == 0:
                 alloc_token_indexes = []
             else:
-                alloc_token_indexes = self.backend.model.mem_manager.alloc(need_len).detach().cpu().tolist()
+                alloc_token_indexes = self.backend.model.mem_manager.alloc(need_len)
+                if alloc_token_indexes is not None:
+                    alloc_token_indexes = alloc_token_indexes.detach().cpu().tolist()
 
             if alloc_token_indexes is None:
                 self.backend.radix_cache.dec_node_ref_counter(tree_node)
@@ -46,12 +49,15 @@ class PDDecodeInferRpcServer(rpyc.Service):
 
             g_kv_move_task_cache[move_task.group_request_id] = (move_task, tree_node, fused_token_indexes)
             return move_task.decode_token_indexes
+        except BaseException as e:
+            logger.exception(str(e))
         finally:
             release_acquired_lock()
+            logger.info("exposed_alloc_to_frozen_some_tokens end")
 
     def exposed_put_kv_received_to_radix_cache(self, group_req_id: int):
         group_req_id = obtain(group_req_id)
-        acquire_lock_until_ready()
+        acquire_lock_until_ready(self.backend.lock_nccl_group)
         move_task, tree_node, fused_token_indexes = g_kv_move_task_cache.pop(group_req_id)
         radix_cache = self.backend.radix_cache
         key = torch.tensor(move_task.input_tokens, dtype=torch.int64, device="cpu")
@@ -69,7 +75,7 @@ class PDDecodeInferRpcServer(rpyc.Service):
 
     def exposed_fail_to_realese_forzen_tokens(self, group_req_id: int):
         group_req_id = obtain(group_req_id)
-        acquire_lock_until_ready()
+        acquire_lock_until_ready(self.backend.lock_nccl_group)
         move_task, tree_node, fused_token_indexes = g_kv_move_task_cache.pop(group_req_id)
         value = torch.tensor(move_task.decode_token_indexes, dtype=torch.int64, device="cpu")
         self.backend.model.mem_manager.free(value.cuda())

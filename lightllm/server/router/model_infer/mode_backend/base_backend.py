@@ -237,11 +237,8 @@ class ModeBackend:
                     self.is_multimodal = True
                 else:
                     raise Exception(f"can not support {self.model_type} now")
-        except Exception as e:
-            self.logger.error(f"load model error: {str(e)} {e} {type(e)}")
-            import traceback
-
-            traceback.print_exc()
+        except BaseException as e:
+            self.logger.exception(str(e))
             raise e
 
         set_random_seed(2147483647)

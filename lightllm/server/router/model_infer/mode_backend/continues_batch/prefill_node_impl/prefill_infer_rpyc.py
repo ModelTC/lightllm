@@ -25,7 +25,7 @@ class PDPrefillInferRpcServer(rpyc.Service):
     # pd 分离模式会使用的一些接口，用于做一些全局信息管理
     def exposed_remove_req_refs_from_prompt_cache(self, group_req_id: int):
         group_req_id = obtain(group_req_id)
-        acquire_lock_until_ready()
+        acquire_lock_until_ready(self.backend.lock_nccl_group)
         task, share_node = g_kv_move_task_cache.pop(group_req_id)
         if share_node is not None:
             self.backend.radix_cache.dec_node_ref_counter(share_node)

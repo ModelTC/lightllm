@@ -54,7 +54,7 @@ class TransProcessObj:
         assert task_out_queue.get(timeout=30) == "proc_start"
         for obj in manager.infer_rpyc_objs:
             obj.put_mem_manager_to_mem_queue()
-        assert task_out_queue.get(timeout=30) == "get_mem_managers_ok"
+        assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
         prefill_node_id = manager.args.pd_node_id
         con.root.build_trans_process(prefill_node_id, nccl_ip, nccl_port)  # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
         assert task_out_queue.get(timeout=60) == "nccl_ok"
