@@ -168,6 +168,7 @@ class CustomBMMWeight(CustomMMWeight):
         )
 
     def set_quant_method(self, quant_method):
+        return
         raise NotImplementedError("BMM does not currently support quantification")
 
     def bmm(self, input_tensor, out=None, use_custom_tensor_mananger=True):
