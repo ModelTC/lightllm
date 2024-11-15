@@ -9,9 +9,9 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
 
 
 class CohereTransformerLayerWeight(LlamaTransformerLayerWeight):
-    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[]):
+    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
         self.use_qk_norm = network_config.get("use_qk_norm", False)
-        super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode)
+        super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
         return
 
     def init_norm(self, weights):
