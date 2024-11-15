@@ -14,6 +14,9 @@ class StarcoderTransformerLayerWeight(BloomTransformerLayerWeight):
 
         return
 
+    def init_static_params(self):
+        pass
+
     def _split_qkv_weight(self, weights):
         n_embed = self.network_config_["hidden_size"]
         head_dim = self.network_config_["hidden_size"] // self.network_config_["num_attention_heads"]
