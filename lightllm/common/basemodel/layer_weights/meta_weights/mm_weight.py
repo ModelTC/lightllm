@@ -94,8 +94,8 @@ class COLMMWeight(MMWeight):
             weight = self.pre_load_weights(weights[self.weight_name])
             weight = weight[:, start:end]
         if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type_) / self.world_size_
-            self.bias = bias.cuda(self.tp_rank_)
+            bias = weights[self.bias_name].to(self.data_type)
+            self.bias = bias.cuda(self.tp_rank_) / self.world_size_
         if weight is None:
             return
         if self.wait_fuse:
@@ -107,7 +107,15 @@ class COLMMWeight(MMWeight):
 
 class CustomMMWeight(ROWMMWeight):
     def __init__(
-        self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False, disable_tp=False, custom_load=None, custom_fuse=None
+        self,
+        weight_name,
+        data_type,
+        split_n_embed,
+        bias_name=None,
+        wait_fuse=False,
+        disable_tp=False,
+        custom_load=None,
+        custom_fuse=None,
     ):
         super().__init__(weight_name, data_type, split_n_embed, bias_name, wait_fuse=wait_fuse, disable_tp=disable_tp)
         self.custom_load = custom_load
@@ -135,12 +143,30 @@ class CustomMMWeight(ROWMMWeight):
             self.post_load_weights(weight)
         return
 
+
 class CustomBMMWeight(CustomMMWeight):
     def __init__(
-        self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False, disable_tp=False, custom_load=None, custom_fuse=None
+        self,
+        weight_name,
+        data_type,
+        split_n_embed,
+        bias_name=None,
+        wait_fuse=False,
+        disable_tp=False,
+        custom_load=None,
+        custom_fuse=None,
     ):
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, wait_fuse=wait_fuse, disable_tp=disable_tp, custom_load=custom_load, custom_fuse=custom_fuse)
-    
+        super().__init__(
+            weight_name,
+            data_type,
+            split_n_embed,
+            bias_name,
+            wait_fuse=wait_fuse,
+            disable_tp=disable_tp,
+            custom_load=custom_load,
+            custom_fuse=custom_fuse,
+        )
+
     def set_quant_method(self, quant_method):
         raise NotImplementedError("BMM does not currently support quantification")
 
