@@ -78,6 +78,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.kv_lora_rank = self.network_config_["kv_lora_rank"]
         self.disable_qk_absorb = disable_qk_absorb
         self.disable_vo_absorb = disable_vo_absorb
+        self.fuse_pairs = {}
         if not self.disable_qk_absorb:
             if self.q_lora_rank is None:
                 self.fuse_pairs = {"q_weight_&k_b_proj_": "fuse_qk_weight_"}

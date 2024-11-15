@@ -121,7 +121,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             o_tensor = layer_weight.fuse_vo_weight_.mm(input)
         else:
             input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
-            o_tensor = layer_weight.o_weight_.mm(input.view(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
+            o_tensor = layer_weight.o_weight_.mm(input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
         return o_tensor
 
     def _context_attention_kernel(
