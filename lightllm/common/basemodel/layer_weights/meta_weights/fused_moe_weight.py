@@ -2,6 +2,8 @@ import torch
 from .base_weight import BaseWeight
 from lightllm.utils.dist_utils import get_world_size, get_rank
 import threading
+from vllm.model_executor.layers.fused_moe import FusedMoE
+from vllm.model_executor.layers.fused_moe import fused_experts
 
 
 class FusedMoeWeight(BaseWeight):
@@ -18,8 +20,50 @@ class FusedMoeWeight(BaseWeight):
         self.experts_up_projs = [None] * self.n_routed_experts
         self.experts_gate_projs = [None] * self.n_routed_experts
         self.w2_list = [None] * self.n_routed_experts
+        self.quant_method = None
         self.lock = threading.Lock()
+    
+    def set_quant_method(self, quant_method):
+        self.quant_method = quant_method
 
+    def experts(
+            self,
+            input_tensor,
+            router_logits,
+            top_k,
+            renormalize,
+            use_grouped_topk,
+            topk_group,
+            num_expert_group
+        ):
+        if self.quant_method is not None:
+            self.quant_method.apply(
+                self,
+                input_tensor,
+                router_logits=router_logits,
+                top_k=top_k,
+                renormalize=renormalize,
+                use_grouped_topk=use_grouped_topk,
+                topk_group=topk_group,
+                num_expert_group=num_expert_group,
+            )
+        topk_weights, topk_ids = FusedMoE.select_experts(
+            hidden_states=input_tensor,
+            router_logits=router_logits,
+            use_grouped_topk=use_grouped_topk,
+            top_k=top_k,
+            renormalize=renormalize,
+            topk_group=topk_group,
+            num_expert_group=num_expert_group
+        )
+        fused_experts(hidden_states=input_tensor,
+            w1=self.w1,
+            w2=self.w2,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            inplace=True
+        )
+        
     def fuse(self):
         with self.lock:
             if (

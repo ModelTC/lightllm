@@ -200,29 +200,19 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
 
         router_logits = layer_weight.moe_gate.mm(hidden_states)
-        topk_weights, topk_ids = grouped_topk(
+        layer_weight.experts.experts(
             hidden_states,
-            router_logits,
-            self.num_experts_per_tok,
+            router_logits=router_logits,
+            top_k=self.num_experts_per_tok,
             renormalize=self.norm_topk_prob,
-            num_expert_group=self.n_group,
+            use_grouped_topk=self.n_group,
             topk_group=self.topk_group,
-        )
-        router_logits = None
-
-        final_hidden_states = fused_experts(
-            hidden_states,
-            layer_weight.experts.w1,
-            layer_weight.experts.w2,
-            topk_weights,
-            topk_ids,
-            inplace=True,
-            alloc_tensor_func=self.alloc_tensor,
+            num_expert_group=self.n_group
         )
 
-        final_hidden_states.mul_(self.routed_scaling_factor)
+        hidden_states.mul_(self.routed_scaling_factor)
 
         if self.n_shared_experts is not None:
-            final_hidden_states.add_(shared_output)
+            hidden_states.add_(shared_output)
 
-        return final_hidden_states.view(num_tokens, hidden_dim)
+        return hidden_states.view(num_tokens, hidden_dim)
