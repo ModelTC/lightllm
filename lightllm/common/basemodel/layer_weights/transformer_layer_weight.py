@@ -18,18 +18,8 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.network_config_ = network_config
         self.mode = mode
         self.quant_cfg = quant_cfg
-        n_embed = self.network_config_["hidden_size"]
-        # Dealing with head_dim_!=n_embed // num_attention_heads scenarios, such as mistral 13B
-        head_dim = n_embed // self.network_config_["num_attention_heads"]
-        self.head_dim = self.network_config_.get("head_dim", head_dim)
         self.init_static_params()
-
         self.fuse_pairs = {"k_proj&v_proj": "kv_proj"}
-        self.init_qkv()
-        self.init_o()
-        self.init_ffn()
-        self.init_norm()
-        self.set_quantization()
         return
 
     def load_hf_weights(self, weights):
