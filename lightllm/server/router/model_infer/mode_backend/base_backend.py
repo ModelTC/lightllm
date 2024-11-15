@@ -98,6 +98,8 @@ class ModeBackend:
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
+            "disable_qk_absorb": kvargs.get("disable_qk_absorb", False),
+            "disable_vo_absorb": kvargs.get("disable_vo_absorb", False)
         }
 
         try:

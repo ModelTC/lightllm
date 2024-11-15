@@ -68,7 +68,7 @@ class ROWMMWeight(MMWeight):
         weight = None
         if self.weight_name in weights:
             weight = self.pre_load_weights(weights[self.weight_name])
-            weight = weight[start:end, :]
+            weight = weight[start:end]
         if self.bias_name in weights:
             bias = weights[self.bias_name].to(self.data_type_)[start:end]
             self.bias = bias.cuda(self.tp_rank_)
@@ -82,8 +82,9 @@ class ROWMMWeight(MMWeight):
 
 
 class COLMMWeight(MMWeight):
-    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
+        self.wait_fuse = wait_fuse
 
     def load_hf_weights(self, weights):
         start = self.split_n_embed * self.tp_rank_
@@ -97,6 +98,9 @@ class COLMMWeight(MMWeight):
             self.bias = bias.cuda(self.tp_rank_)
         if weight is None:
             return
+        if self.wait_fuse:
+            self.weight = weight
+            return
         self.post_load_weights(weight)
         return
 
@@ -105,9 +109,7 @@ class CustomMMWeight(ROWMMWeight):
     def __init__(
         self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False, disable_tp=False, custom_load=None, custom_fuse=None
     ):
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, wait_fuse=False, disable_tp=False)
-        self.wait_fuse = wait_fuse
-        self.disable_tp = disable_tp
+        super().__init__(weight_name, data_type, split_n_embed, bias_name, wait_fuse=wait_fuse, disable_tp=disable_tp)
         self.custom_load = custom_load
         self.custom_fuse = custom_fuse
 
@@ -132,3 +134,33 @@ class CustomMMWeight(ROWMMWeight):
                 return
             self.post_load_weights(weight)
         return
+
+class CustomBMMWeight(CustomMMWeight):
+    def __init__(
+        self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False, disable_tp=False, custom_load=None, custom_fuse=None
+    ):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name, wait_fuse=wait_fuse, disable_tp=disable_tp, custom_load=custom_load, custom_fuse=custom_fuse)
+    
+    def set_quant_method(self, quant_method):
+        raise NotImplementedError("BMM does not currently support quantification")
+
+    def bmm(self, input_tensor, out=None, use_custom_tensor_mananger=True):
+        if self.quant_method is not None:
+            return self.quant_method.apply(input_tensor, self.weight, self.bias, out)
+        if out is None:
+            shape = (input_tensor.shape[0], input_tensor.shape[1], self.weight.shape[2])
+            dtype = input_tensor.dtype
+            device = input_tensor.device
+            if use_custom_tensor_mananger:
+                out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            else:
+                out = torch.empty(shape, dtype=dtype, device=device)
+        if self.bias is None:
+            return torch.bmm(input_tensor, self.weight, out=out)
+        return torch.addbmm(self.bias, input_tensor, self.weight, out=out)
+
+    def post_load_weights(self, weight):
+        if self.quant_method is not None:
+            self.weight = self.quant_method.quantize(weight.cuda(self.tp_rank_))
+            return
+        self.weight = weight.cuda(self.tp_rank_)

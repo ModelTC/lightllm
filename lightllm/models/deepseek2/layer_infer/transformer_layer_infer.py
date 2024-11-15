@@ -20,7 +20,7 @@ from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
+    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[], disable_qk_absorb=False, disable_vo_absorb=False):
         self.tp_k_head_num_ = 1
         self.tp_v_head_num_ = 1
         self.qk_nope_head_dim = network_config["qk_nope_head_dim"]
@@ -32,6 +32,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             and layer_num >= network_config["first_k_dense_replace"]
             and layer_num % network_config["moe_layer_freq"] == 0
         )
+        self.disable_qk_absorb = disable_qk_absorb
+        self.disable_vo_absorb = disable_vo_absorb
 
         self.n_shared_experts = network_config["n_shared_experts"]
         self.num_experts_per_tok = network_config["num_experts_per_tok"]
@@ -71,19 +73,28 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         layer_weight: Deepseek2TransformerLayerWeight,
     ) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
-        dtype = input.dtype
-        if self.q_lora_rank is None:
-            q_nope = layer_weight.fuse_qk_weight_.mm(input)
-            q_rope = layer_weight.q_rope_proj_.mm(input)
+        if not self.disable_qk_absorb:
+            if self.q_lora_rank is None:
+                q_nope = layer_weight.fuse_qk_weight_.mm(input)
+                q_rope = layer_weight.q_rope_proj_.mm(input)
+            else:
+                q = layer_weight.q_a_proj_.mm(input)
+                rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
+                q_nope = layer_weight.fuse_qk_weight_.mm(q)
+                q_rope = layer_weight.q_rope_proj_.mm(q)
+            q_nope = q_nope.view(-1, self.tp_q_head_num_, self.kv_lora_rank)
+            q_rope = q_rope.view(-1, self.tp_q_head_num_, self.qk_rope_head_dim)
         else:
-            q = layer_weight.q_a_proj_.mm(input)
-            rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
+            if self.q_lora_rank is None:
+                q = layer_weight.q_weight_.mm(input)
+            else:
+                q = layer_weight.q_a_proj_.mm(input)
+                rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
+                q = layer_weight.q_b_proj_.mm(q)
 
-            q_nope = layer_weight.fuse_qk_weight_.mm(q)
-            q_rope = layer_weight.q_rope_proj_.mm(q)
-
-        q_nope = q_nope.view(-1, self.tp_q_head_num_, self.kv_lora_rank)
-        q_rope = q_rope.view(-1, self.tp_q_head_num_, self.qk_rope_head_dim)
+            q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
+            q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+            q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
 
         layer_weight.kv_a_proj_with_mqa_.mm(input, out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim))
 
@@ -105,8 +116,12 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
-        input = input.view(-1, self.tp_q_head_num_ * self.kv_lora_rank)
-        o_tensor = layer_weight.fuse_vo_weight_.mm(input)
+        if not self.disable_vo_absorb:
+            input = input.view(-1, self.tp_q_head_num_ * self.kv_lora_rank)
+            o_tensor = layer_weight.fuse_vo_weight_.mm(input)
+        else:
+            input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
+            o_tensor = layer_weight.o_weight_.mm(input.view(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
         return o_tensor
 
     def _context_attention_kernel(

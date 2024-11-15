@@ -2,7 +2,7 @@ import torch
 import math
 import numpy as np
 from lightllm.common.basemodel import TransformerLayerWeight
-from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight, NormWeight, CustomMMWeight, FusedMoeWeight
+from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight, NormWeight, CustomMMWeight, FusedMoeWeight, CustomBMMWeight
 from functools import partial
 
 
@@ -23,8 +23,8 @@ def fuse_q_kb(self, A, B):
 
 def fuse_vb_o(self, A, B):
     v_b_proj_ = A.weight
-    o_weight_ = B.weight
-    return self._cuda(torch.matmul(v_b_proj_.to(torch.float64), o_weight_.to(torch.float64)).view(-1, self.network_config_["hidden_size"]).transpose(0, 1))
+    o_weight_ = B.weight.transpose(0, 1).view(self.tp_q_head_num_, self.qk_nope_head_dim, -1).contiguous().to(self.data_type_).cpu()
+    return self._cuda(torch.matmul(v_b_proj_.to(torch.float64), o_weight_.to(torch.float64)).view(-1, self.network_config_["hidden_size"]))
 
 def load_q_rope(self, A, q_weight_):
     q_split_n_embed_with_rope = A.split_n_embed
@@ -42,7 +42,10 @@ def load_kb(self, A, kv_b_proj_):
     k_b_proj_ = kv_b_proj_.view(self.num_attention_heads, self.qk_nope_head_dim * 2, self.kv_lora_rank)[
         :, : self.qk_nope_head_dim, :
     ]
-    return k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
+    k_b_proj_ = k_b_proj_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :]
+    if A.wait_fuse:
+        return k_b_proj_.contiguous().to(self.data_type_).cpu()
+    return self._cuda(k_b_proj_)
 
 def load_vb(self, A, kv_b_proj_):
     kv_b_proj_ = kv_b_proj_
@@ -50,18 +53,16 @@ def load_vb(self, A, kv_b_proj_):
         self.kv_lora_rank,
         self.num_attention_heads,
         self.qk_nope_head_dim * 2,
-    )[:, :, self.qk_nope_head_dim :]
-    return v_b_proj_.transpose(0, 1)[
+    )[:, :, self.qk_nope_head_dim :].transpose(0, 1)
+    v_b_proj_ = v_b_proj_[
         self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :
-    ].contiguous().to(self.data_type_).cpu()
-
-def load_o(self, A, o_weight_):
-    o_weight_ = o_weight_
-    o_weight_ = o_weight_.T.view(self.num_attention_heads, self.qk_nope_head_dim, -1)
-    return o_weight_[self.tp_q_head_num_ * self.tp_rank_ : self.tp_q_head_num_ * (self.tp_rank_ + 1), :, :].contiguous().to(self.data_type_).cpu()
+    ]
+    if A.wait_fuse:
+        return v_b_proj_.contiguous().to(self.data_type_).cpu()
+    return self._cuda(v_b_proj_)
 
 class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
-    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
+    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None, disable_qk_absorb=False, disable_vo_absorb=False):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
         self.is_moe = (
             self.network_config_["n_routed_experts"] is not None
@@ -75,13 +76,17 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.qk_rope_head_dim = self.network_config_["qk_rope_head_dim"]
         self.num_attention_heads = self.network_config_["num_attention_heads"]
         self.kv_lora_rank = self.network_config_["kv_lora_rank"]
-        if self.q_lora_rank is None:
-            self.fuse_pairs = {"q_weight_&k_b_proj_": "fuse_qk_weight_"}
-        else:
-            self.fuse_pairs = {"q_b_proj_&k_b_proj_": "fuse_qk_weight_"}
+        self.disable_qk_absorb = disable_qk_absorb
+        self.disable_vo_absorb = disable_vo_absorb
+        if not self.disable_qk_absorb:
+            if self.q_lora_rank is None:
+                self.fuse_pairs = {"q_weight_&k_b_proj_": "fuse_qk_weight_"}
+            else:
+                self.fuse_pairs = {"q_b_proj_&k_b_proj_": "fuse_qk_weight_"}
+        if not self.disable_vo_absorb:
+            self.fuse_pairs["v_b_proj_&o_weight_"] = "fuse_vo_weight_"
         self.fuse_pairs.update({
             "gate_proj&up_proj": "gate_up_proj",
-            "v_b_proj_&o_weight_": "fuse_vo_weight_"
         })
 
         self.init_qkvo()
@@ -93,6 +98,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         return
 
     def init_qkvo(self):
+        q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
         q_split_n_embed_with_rope = (
             (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
         )
@@ -101,7 +107,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
                 self.data_type_,
                 q_split_n_embed_with_rope,
-                wait_fuse=True,
+                wait_fuse=not self.disable_qk_absorb,
                 custom_fuse=partial(fuse_q_kb, self),
             )
             rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_proj.weight"
@@ -113,7 +119,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
                 self.data_type_,
                 q_split_n_embed_with_rope,
-                wait_fuse=True,
+                wait_fuse=not self.disable_qk_absorb,
                 custom_fuse=partial(fuse_q_kb, self),
             )
             rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"
@@ -129,24 +135,23 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.kv_lora_rank + self.qk_rope_head_dim,
             disable_tp=True,
         )
-        self.k_b_proj_ = CustomMMWeight(
+        self.k_b_proj_ = CustomBMMWeight(
             f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight",
             self.data_type_,
             None,
-            wait_fuse=True,
+            wait_fuse=not self.disable_qk_absorb,
             custom_load=partial(load_kb, self)
         )
-        self.v_b_proj_ = CustomMMWeight(
+        self.v_b_proj_ = CustomBMMWeight(
             f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight",
             self.data_type_,
             None,
-            wait_fuse=True,
+            wait_fuse=not self.disable_vo_absorb,
             custom_load=partial(load_vb, self),
             custom_fuse=partial(fuse_vb_o, self)
         )
-        self.o_weight_ = CustomMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.o_proj.weight", self.data_type_, None, wait_fuse=True,
-            custom_load=partial(load_o, self)
+        self.o_weight_ = COLMMWeight(
+            f"model.layers.{self.layer_num_}.self_attn.o_proj.weight", self.data_type_, q_split_n_embed, wait_fuse=not self.disable_vo_absorb,
         )
 
     def _load_mlp(self, mlp_prefix, split_inter_size):
