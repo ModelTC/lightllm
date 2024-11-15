@@ -2,13 +2,12 @@ import torch
 import math
 import numpy as np
 from lightllm.common.basemodel import TransformerLayerWeight
-from lightllm.common.basemodel.layer_weights.meta_weights import BaseWeight, ROWMMWeight, COLMMWeight, NormWeight
+from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight, NormWeight
 
 
 class LlamaTransformerLayerWeight(TransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
-
         n_embed = self.network_config_["hidden_size"]
         # Dealing with head_dim_!=n_embed // num_attention_heads scenarios, such as mistral 13B
         head_dim = n_embed // self.network_config_["num_attention_heads"]

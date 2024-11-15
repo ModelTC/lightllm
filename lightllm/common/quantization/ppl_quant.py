@@ -32,7 +32,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
         """
         qweight, scale_weight = weights
         if workspace is None:
-            workspace = torch.empty(size=[33554432], dtype=torch.int8, device="cuda")  # 32MB workspace
+            workspace = torch.empty(size=[33554432 * 2], dtype=torch.int8, device="cuda")  # 32MB workspace
             PPLW4A16QuantizationMethod.apply.__defaults__ = (None, None, workspace)
         if out is None:
             shape = (input_tensor.shape[0], qweight.shape[0] * 8)
@@ -44,8 +44,8 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
 
         BATCHSIZE = input_tensor.shape[0]
         if BATCHSIZE >= 768:
-            weight = int4_weight_decode(qweight, scale_weight, self.group_size)
-            torch.mm(input_tensor, weight.transpose(0, 1), out=out)
+            fpweight = int4_weight_decode(qweight, scale_weight, self.group_size)
+            torch.mm(input_tensor, fpweight.transpose(0, 1), out=out)
         else:
             matmul_i4_fp16(input_tensor, qweight, scale_weight, workspace, self.group_size, out)
         if bias is None:
