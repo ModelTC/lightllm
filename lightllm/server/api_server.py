@@ -524,6 +524,18 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
                 The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
     )
+    parser.add_argument(
+        "--disable_qk_absorb",
+        default=False,
+        action="store_true",
+        help="Disable mla qk weight absorption",
+    )
+    parser.add_argument(
+        "--disable_vo_absorb",
+        default=False,
+        action="store_true",
+        help="Disable mla vo weight absorption",
+    )
     return parser
 
 
