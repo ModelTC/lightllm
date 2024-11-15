@@ -48,17 +48,30 @@ def generate_alibi(n_head, dtype=torch.float16):
 
 
 class BloomTransformerLayerWeight(TransformerLayerWeight):
-    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg=None):
+    def __init__(
+        self, layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg=None, layer_prefix="h"
+    ):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
 
-        self.layer_name = f"h.{self.layer_num_}"
+        self.layer_name = f"{layer_prefix}.{self.layer_num_}"
 
+        self._init_name()
         self._init_qkv()
         self._init_o()
         self._init_ffn()
         self._init_norm()
         self.set_quantization()
         return
+
+    def _init_name(self):
+        self._q_name = f"{self.layer_name}.self_attention.q_proj"
+        self._k_name = f"{self.layer_name}.self_attention.k_proj"
+        self._v_name = f"{self.layer_name}.self_attention.v_proj"
+        self.o_name = f"{self.layer_name}.self_attention.dense"
+        self.up_proj_name = f"{self.layer_name}.mlp.dense_h_to_4h"
+        self.down_proj_name = f"{self.layer_name}.mlp.dense_4h_to_h"
+        self.att_norm_name = f"{self.layer_name}.input_layernorm"
+        self.ffn_norm_name = f"{self.layer_name}.post_attention_layernorm"
 
     def _split_qkv_weight(self, weights):
         n_embed = self.network_config_["n_embed"]
@@ -99,9 +112,6 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
     def _init_qkv(self):
         n_embed = self.network_config_["n_embed"]
         split_n_embed = n_embed // self.world_size_
-        self._q_name = f"{self.layer_name}.self_attention.q_proj"
-        self._k_name = f"{self.layer_name}.self_attention.k_proj"
-        self._v_name = f"{self.layer_name}.self_attention.v_proj"
         self.q_proj = ROWMMWeight(
             f"{self._q_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self._q_name}.bias"
         )
@@ -115,7 +125,6 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
     def _init_o(self):
         n_embed = self.network_config_["n_embed"]
         split_n_embed = n_embed // self.world_size_
-        self.o_name = f"{self.layer_name}.self_attention.dense"
         self.o_proj = COLMMWeight(
             f"{self.o_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self.o_name}.bias"
         )
@@ -123,21 +132,17 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
     def _init_ffn(self):
         n_embed = self.network_config_["n_embed"] * 4
         split_n_embed = n_embed // self.world_size_
-        up_proj_name = f"{self.layer_name}.mlp.dense_h_to_4h"
-        down_proj_name = f"{self.layer_name}.mlp.dense_4h_to_h"
         self.up_proj = ROWMMWeight(
-            f"{up_proj_name}.weight", self.data_type_, split_n_embed, bias_name=f"{up_proj_name}.bias"
+            f"{self.up_proj_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self.up_proj_name}.bias"
         )
         self.down_proj = COLMMWeight(
-            f"{down_proj_name}.weight", self.data_type_, split_n_embed, bias_name=f"{down_proj_name}.bias"
+            f"{self.down_proj_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self.down_proj_name}.bias"
         )
 
     def _init_norm(self):
-        att_norm_name = f"{self.layer_name}.input_layernorm"
-        ffn_norm_name = f"{self.layer_name}.post_attention_layernorm"
         self.att_norm_weight_ = NormWeight(
-            f"{att_norm_name}.weight", self.data_type_, bias_name=f"{att_norm_name}.bias"
+            f"{self.att_norm_name}.weight", self.data_type_, bias_name=f"{self.att_norm_name}.bias"
         )
         self.ffn_norm_weight_ = NormWeight(
-            f"{ffn_norm_name}.weight", self.data_type_, bias_name=f"{ffn_norm_name}.bias"
+            f"{self.ffn_norm_name}.weight", self.data_type_, bias_name=f"{self.ffn_norm_name}.bias"
         )
