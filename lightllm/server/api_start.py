@@ -138,6 +138,10 @@ def normal_or_p_d_start(g_objs):
     args.pd_p_allowed_port_min = 20000
     args.pd_p_allowed_port_max = 30000
 
+    # p d 分离模式下，decode节点的调度间隙是0
+    if args.run_mode == "decode":
+        args.router_max_wait_tokens = 0
+
     logger.info(f"all start args:{args}")
 
     if args.enable_multimodal:
