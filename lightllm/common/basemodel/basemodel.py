@@ -462,6 +462,7 @@ class TpPartBaseModel:
             logger.info("begin check max_len infer")
             dummy_input_ids = torch.ones(self.batch_max_tokens, dtype=torch.int32, device="cuda")
             b_req_idx = self.req_manager.alloc(1).int()
+            mem_indexes = self.mem_manager.alloc(len(dummy_input_ids))
             b_seq_len = torch.ones(1, dtype=torch.int32, device="cuda")
             b_seq_len[:] = self.batch_max_tokens
             b_ready_cache_len = torch.zeros(1, dtype=torch.int32, device="cuda")
@@ -472,6 +473,7 @@ class TpPartBaseModel:
                 total_token_num,
                 self.batch_max_tokens,
                 dummy_input_ids,
+                mem_indexes,
                 b_req_idx,
                 b_start_loc,
                 b_seq_len,
