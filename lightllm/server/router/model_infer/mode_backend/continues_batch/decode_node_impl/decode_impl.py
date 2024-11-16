@@ -14,7 +14,8 @@ from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
-from lightllm.common.basemodel.infer_lock import g_infer_state_lock
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock, g_router_lock
+from .decode_task_cache import g_success_kv_move_task_cache
 
 logger = init_logger(__name__)
 
@@ -33,20 +34,52 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         threading.Thread(target=lambda: t.start(), daemon=True).start()
         return
 
-    # def add_batch(self, batch_id, reqs):
-    #     ans = super().add_batch(batch_id, reqs)
-    #     batch: InferBatch = self.cache[batch_id]
-    #     for req_id in batch.request_ids:
-    #         upkv_status = UpKVStatus(group_request_id=req_id)
-    #         self.upkv_manager.put_status_task(upkv_status)
-    #     return ans
-
     @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
-        # ans = self.forward(batch_id, is_prefill=True)
-        # decode 节点的 prefill 操作实际上就是啥也不操作，主要靠init batch的时候进行相关的
-        # kv 的设置， 后续可以在这里做一些验证类型的操作。
-        return {}
+        """
+        检查请求的 kv len 将可能有问题的请求立即结束掉
+        """
+        output_dict = {}
+        batch: InferBatch = self.cache.pop(batch_id)
+
+        g_infer_state_lock.acquire()
+        remove_count = 0
+        estimated_peak_token_count = 0
+        for request_id in batch.request_ids:
+            if request_id in g_success_kv_move_task_cache:
+                task, share_node, _ = g_success_kv_move_task_cache.pop(request_id)
+                self.radix_cache.dec_node_ref_counter(share_node)
+                req_all_len = len(task.input_tokens) + task.decode_node.max_new_tokens
+                remove_count += req_all_len
+                estimated_peak_token_count += req_all_len
+            else:
+                # 对于不合法的请求，直接模拟将其finished掉
+                req_obj: InferReq = requests_mapping[request_id]
+                req_obj.finish_status = FinishStatus.FINISHED_STOP
+                metadata = {
+                    "id": 0,
+                    "logprob": 0.0,
+                }
+                output_dict[req_obj.r_id] = (
+                    req_obj.req_status,
+                    req_obj.cur_kv_len,
+                    req_obj.get_output_len(),
+                    [(0, metadata)],
+                    req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
+                    None,
+                )
+                logger.error(
+                    f"req_id: {req_obj.group_req_id} forced to finished, it not in g_success_kv_move_task_cache"
+                )
+
+        if self.tp_rank == 0:
+            with g_router_lock.obj:
+                self.shared_token_load.add_frozened_token_count(-remove_count)
+                self.shared_token_load.add_estimated_peak_token_count(estimated_peak_token_count)
+        g_infer_state_lock.release()
+
+        self.cache[batch.batch_id] = batch
+        return output_dict
 
     @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
@@ -87,17 +120,5 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 None,
             )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
 
-        self.decode_req_handle_and_unfrozen_tokens(run_reqs)
         self.cache[batch.batch_id] = batch
         return output_dict
-
-    def decode_req_handle_and_unfrozen_tokens(self, run_reqs: List[InferReq]):
-        # 将 radix cache 中提前锁定的进行释放, 因为前面锁定的时候，
-        # 加了一次引用计数，所以这里如果发现要结束了，提前减一下
-        g_infer_state_lock.acquire()
-        for req in run_reqs:
-            if req.finish_status.is_finished():
-                if req.shared_kv_node is not None:
-                    self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
-        g_infer_state_lock.release()
-        return

@@ -24,6 +24,7 @@ from fastapi import Request
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.utils.statics_utils import MovingAverage
+from lightllm.utils.net_utils import get_hostname_ip
 
 logger = init_logger(__name__)
 
@@ -399,16 +400,20 @@ class HttpServerManager:
         if self.pd_mode not in [NodeRole.P, NodeRole.D]:
             return
 
+        self.host_ip = get_hostname_ip()
+        if self.host_ip is None:
+            self.host_ip = self.args.host
+
         while True:
             try:
                 uri = f"ws://{self.args.pd_master_ip}:{self.args.pd_master_port}/register_and_keep_alive"
                 async with websockets.connect(uri) as websocket:
                     args_dict = vars(self.args)
+                    args_dict["host"] = self.host_ip
                     # 发送注册信息
                     regist_json = {
                         "node_id": self.args.pd_node_id,
-                        "client_ip_port": f"{self.args.host}:{self.args.port}",
-                        "rdma_ip_port": "xxxxxxxxxxxxxx",
+                        "client_ip_port": f"{self.host_ip}:{self.args.port}",
                         "mode": self.pd_mode.value,
                         "start_args": args_dict,
                     }

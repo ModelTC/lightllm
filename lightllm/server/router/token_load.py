@@ -29,6 +29,12 @@ class TokenLoad:
     # 记录系统调度器估计的峰值token使用量
     def set_estimated_peak_token_count(self, obj: int, index: int = 0):
         self.shared_token_infos.arr[index, 0] = obj
+        self.last_dynamic_max_load_update_time = time.time()
+        return
+
+    def add_estimated_peak_token_count(self, value: int, index: int = 0):
+        self.shared_token_infos.arr[index, 0] += value
+        self.last_dynamic_max_load_update_time = time.time()
         return
 
     def get_estimated_peak_token_count(self, index: int = 0) -> int:
@@ -42,6 +48,10 @@ class TokenLoad:
 
     def get_frozened_token_count(self, index: int = 0) -> int:
         return self.shared_token_infos.arr[index, 1]
+
+    def add_frozened_token_count(self, value: int, index: int = 0):
+        self.shared_token_infos.arr[index, 1] += value
+        return
 
     # current_load 当前使用token量，估计的负载
     def set_current_load(self, value, index: int = 0):
@@ -70,8 +80,8 @@ class TokenLoad:
         return self.shared_token_load.arr[index, 2]
 
     def need_update_dynamic_max_load(self, index: int = 0):
-        # 5s 需要进行一次更新
-        if time.time() - self.last_dynamic_max_load_update_time >= 5.0:
+        # 3s 需要进行一次更新
+        if time.time() - self.last_dynamic_max_load_update_time >= 3.0:
             return True
         else:
             return False

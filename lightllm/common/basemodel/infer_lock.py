@@ -10,6 +10,7 @@ import threading
 from lightllm.server.router.dynamic_prompt.shared_arr import SharedArray
 import torch.distributed as dist
 import time
+import torch.multiprocessing as mp
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -105,3 +106,23 @@ def acquire_lock_until_ready(nccl_group):
 
 def release_acquired_lock():
     g_infer_state_lock.obj.infer_lock.release()
+
+
+@dataclass
+class G_Router_Lock:
+    """
+    保护pd分离模式下, 一些数据的操作。
+    """
+
+    obj = None  # 进程锁对象
+
+    def acquire(self):
+        if self.obj is not None:
+            self.obj.acquire()
+
+    def release(self):
+        if self.obj is not None:
+            self.obj.release()
+
+
+g_router_lock = G_Router_Lock()

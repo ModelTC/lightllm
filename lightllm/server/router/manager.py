@@ -9,6 +9,7 @@ import rpyc
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
 import zmq.asyncio
+import torch.multiprocessing as mp
 from typing import Dict, List, Optional
 from ..sampling_params import SamplingParams
 from ..io_struct import Req, NormalReq, SplitFuseReq, TokenHealingReq, Batch
@@ -27,6 +28,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.server.metrics.manager import MetricClient
+from lightllm.common.basemodel.infer_lock import g_router_lock
 
 logger = init_logger(__name__)
 
@@ -73,6 +75,10 @@ class RouterManager:
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
         self.is_pd_run_mode = self.args.run_mode in ["prefill", "decode"]
+        # p d 分离模式下，需要调度锁来同步调度端和推理端的一些数据操作
+        # 主要是为了防止调度失误，造成 OOM 等错误
+        self.router_lock = mp.Lock()
+        g_router_lock.obj = self.router_lock
         return
 
     async def wait_to_model_ready(self):
@@ -92,6 +98,7 @@ class RouterManager:
                 world_size=self.world_size,
                 info_queue=self.info_queues[rank_id],
                 mem_queue=self.mem_queues[rank_id],
+                router_lock=self.router_lock,
             )
             self.model_rpcs.append(rpc_model)
 
@@ -226,9 +233,7 @@ class RouterManager:
                         f"token used ratio: {token_ratio1} not contain prompt cache tree unrefed tokens\n"
                         f"token used ratio: {token_ratio2} contain prompt cache tree unrefed tokens"
                     )
-                    self.shared_token_load.set_current_load(token_ratio1)
-                    self.req_queue.update_token_load(self.running_batch)
-                    pass
+                self.req_queue.update_token_load(self.running_batch, force_update=False)
                 self.stats_tool.print_stats()
                 self.metric_client.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
                 self.metric_client.gauge_set("lightllm_batch_pause_size", len(self.req_queue.pause_req_dict))
@@ -238,11 +243,7 @@ class RouterManager:
                     int(self.shared_token_load.get_dynamic_max_load() * self.max_total_token_num),
                 )
             else:
-                self.shared_token_load.set_estimated_peak_token_count(0)
-                self.shared_token_load.set_dynamic_max_load(
-                    self.shared_token_load.get_frozened_token_count() / self.max_total_token_num
-                )
-                self.shared_token_load.set_current_load(0.0)
+                self.req_queue.update_token_load(self.running_batch, force_update=True)
                 if counter_count % 300 == 0:
                     self.metric_client.gauge_set("lightllm_batch_current_size", 0.0)
                     self.metric_client.gauge_set("lightllm_batch_pause_size", 0.0)

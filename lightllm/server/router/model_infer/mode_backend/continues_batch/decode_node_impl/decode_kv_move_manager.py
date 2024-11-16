@@ -19,6 +19,7 @@ from lightllm.utils.retry_utils import retry
 import numpy as np
 import queue
 from rpyc import AsyncResult
+from ..prefill_node_impl.prefill_kv_move_manager import DecodeBusyError
 
 logger = init_logger(__name__)
 
@@ -96,6 +97,7 @@ class DecodeKVMoveManager(rpyc.Service):
         self.task_queues = [queue.Queue() for _ in range(self.args.tp)]
         for i in range(self.args.tp):
             threading.Thread(target=self.handle_loop, args=(self.task_queues[i],), daemon=True).start()
+        threading.Thread(target=self.timer_loop, daemon=True).start()
         return
 
     async def wait_all_future_finish(self, futures: List[AsyncResult]):
@@ -112,6 +114,7 @@ class DecodeKVMoveManager(rpyc.Service):
         self.node_id_to_trans_obj[prefill_node_id] = tran_obj
         return
 
+    # 返回 None 代表繁忙， 放弃该任务的 kv 传送
     def exposed_request_data_transfer(self, task: KVMoveTask) -> Optional[int]:
         task = obtain(task)
         logger.info(f"exposed_request_data_transfer in {task.to_decode_log_info()}")
@@ -127,15 +130,22 @@ class DecodeKVMoveManager(rpyc.Service):
                 asyncio.run(self.wait_all_future_finish(futures))
                 value_list = [obtain(future.value) for future in futures]
 
-            assert all(isinstance(e, list) for e in value_list)
+            # 代表服务很繁忙，申请不到资源，需要拒绝
+            if value_list[0] is None:
+                raise DecodeBusyError("token is full, busy")
 
             task.decode_token_indexes = value_list[0]
             task.move_kv_len = len(value_list[0])
+        except DecodeBusyError as e:
+            logger.error(str(e))
+            return None
+
         except BaseException as e:
             # 移除通信对象
             self.node_id_to_trans_obj.pop(task.prefill_node_id, None)
+            trans_obj = None
             logger.exception(str(e))
-            return None
+            raise e
 
         self.task_queues[device_index].put(task)
         return task.move_kv_len
@@ -184,9 +194,19 @@ class DecodeKVMoveManager(rpyc.Service):
                         asyncio.run(self.wait_all_future_finish(futures))
                     logger.error(f"decode kv move task {task.to_decode_log_info()} has error, remove the trans_obj")
                     self.node_id_to_trans_obj.pop(task.prefill_node_id, None)
+                    trans_obj = None
         except BaseException as e:
             logger.exception(str(e))
             raise e
+
+    def timer_loop(self):
+        while True:
+            with self.infer_rpyc_lock:
+                futures: List[AsyncResult] = []
+                for conn in self.infer_rpyc_objs:
+                    futures.append(rpyc.async_(conn.unfrozen_time_out_reqs_tokens)())
+                asyncio.run(self.wait_all_future_finish(futures))
+            time.sleep(3.5)
 
 
 def _init_env(args, info_queues: List[mp.Queue], mem_queues: List[mp.Queue], event: mp.Event):

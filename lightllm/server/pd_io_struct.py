@@ -21,7 +21,6 @@ class NodeRole(enum.Enum):
 class PD_Client_Obj:
     node_id: str
     client_ip_port: str
-    rdma_ip_port: str
     mode: str  # 只能是 prefill 或者 decode 节点
     start_args: object  # 节点的启动参数信息，用于做匹配性的校验，防止运行过程中出现问题。
 
@@ -59,6 +58,7 @@ class DecodeNodeInfo:
     node_id: str
     ip: str
     rpyc_port: str
+    max_new_tokens: int
 
 
 @dataclass

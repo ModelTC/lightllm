@@ -168,6 +168,7 @@ class HttpServerManagerForPDMaster:
             "node_id": d_start_args["pd_node_id"],
             "ip": d_start_args["host"],
             "rpyc_port": d_start_args["pd_decode_rpyc_port"],
+            "max_new_tokens": sampling_params.max_new_tokens - 1,
         }
 
         try:

@@ -200,6 +200,7 @@ class TpPartBaseModel:
         total_token_num,
         max_len_in_batch,
         input_ids: torch.Tensor,
+        mem_indexes: torch.Tensor,
         b_req_idx: torch.Tensor,
         b_start_loc: torch.Tensor,
         b_seq_len: torch.Tensor,
@@ -213,6 +214,7 @@ class TpPartBaseModel:
                 total_token_num,
                 max_len_in_batch,
                 input_ids,
+                mem_indexes,
                 b_req_idx,
                 b_start_loc,
                 b_seq_len,
@@ -225,6 +227,7 @@ class TpPartBaseModel:
                 total_token_num,
                 max_len_in_batch,
                 input_ids,
+                mem_indexes,
                 b_req_idx,
                 b_start_loc,
                 b_seq_len,
@@ -237,6 +240,7 @@ class TpPartBaseModel:
         total_token_num,
         max_len_in_batch,
         input_ids,
+        mem_indexes,
         b_req_idx,
         b_start_loc,
         b_seq_len,
@@ -264,24 +268,13 @@ class TpPartBaseModel:
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager
 
-        g_infer_state_lock.acquire()
-        alloc_mem = self.mem_manager.alloc_contiguous(input_ids.shape[0])
-        if alloc_mem is not None:
-            infer_state.mem_is_contiguous = True
-            infer_state.mem_index = alloc_mem[0]
-            infer_state.mem_start = alloc_mem[1]
-            infer_state.mem_end = alloc_mem[2]
-
-        else:
-            infer_state.mem_is_contiguous = False
-            alloc_mem = self.mem_manager.alloc(input_ids.shape[0])
-            infer_state.mem_index = alloc_mem
-            infer_state.kv_buffer = torch.empty(
-                (input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
-            )
-        g_infer_state_lock.release()
+        infer_state.mem_is_contiguous = False
+        infer_state.mem_index = mem_indexes
+        infer_state.kv_buffer = torch.empty(
+            (input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+            dtype=self.data_type,
+            device="cuda",
+        )
 
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
@@ -302,6 +295,7 @@ class TpPartBaseModel:
         total_token_num,
         max_len_in_batch,
         input_ids,
+        mem_indexes,
         b_req_idx,
         b_start_loc,
         b_seq_len,
@@ -324,25 +318,14 @@ class TpPartBaseModel:
 
         # 在使用 cuda graph 特性的时候，必须保证每次推理的流程一致
         # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
-        g_infer_state_lock.acquire()
-        alloc_mem = None if self.graph is not None else self.mem_manager.alloc_contiguous(batch_size)
-        if alloc_mem is not None:
-            infer_state.mem_is_contiguous = True
-            infer_state.mem_index = alloc_mem[0]
-            infer_state.mem_start = alloc_mem[1]
-            infer_state.mem_end = alloc_mem[2]
-            copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
-        else:
-            infer_state.mem_is_contiguous = False
-            alloc_mem = self.mem_manager.alloc(batch_size)
-            infer_state.mem_index = alloc_mem
-            infer_state.kv_buffer = torch.empty(
-                (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
-            )
-            copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
-        g_infer_state_lock.release()
+        infer_state.mem_is_contiguous = False
+        infer_state.mem_index = mem_indexes
+        infer_state.kv_buffer = torch.empty(
+            (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+            dtype=self.data_type,
+            device="cuda",
+        )
+        copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
         if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
@@ -359,6 +342,7 @@ class TpPartBaseModel:
     def splitfuse_forward(
         self,
         input_ids,
+        mem_indexes,
         decode_req_num,
         decode_total_token_num,
         decode_b_req_idx: torch.Tensor,
@@ -396,23 +380,13 @@ class TpPartBaseModel:
         infer_state.req_manager = self.req_manager
 
         alloc_size = len(input_ids)
-        g_infer_state_lock.acquire()
-        alloc_mem = self.mem_manager.alloc_contiguous(alloc_size)
-        if alloc_mem is not None:
-            infer_state.mem_is_contiguous = True
-            infer_state.mem_index = alloc_mem[0]
-            infer_state.mem_start = alloc_mem[1]
-            infer_state.mem_end = alloc_mem[2]
-        else:
-            infer_state.mem_is_contiguous = False
-            alloc_mem = self.mem_manager.alloc(alloc_size)
-            infer_state.mem_index = alloc_mem
-            infer_state.kv_buffer = torch.empty(
-                (alloc_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
-            )
-        g_infer_state_lock.release()
+        infer_state.mem_is_contiguous = False
+        infer_state.mem_index = mem_indexes
+        infer_state.kv_buffer = torch.empty(
+            (alloc_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+            dtype=self.data_type,
+            device="cuda",
+        )
 
         # decode 部分
         if decode_req_num != 0:

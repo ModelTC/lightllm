@@ -12,7 +12,7 @@ from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
 from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..post_process import sample
-from lightllm.common.basemodel.infer_lock import g_infer_state_lock
+from lightllm.common.basemodel.infer_lock import g_router_lock, g_infer_state_lock
 from rpyc.utils.server import ThreadedServer
 from .prefill_task_cache import g_kv_move_task_cache
 
@@ -101,6 +101,11 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                     req.shared_kv_node = None
                 req.cur_kv_len = 0
                 if req.sampling_param.move_kv_to_decode_node is not None:
+                    if self.tp_rank == 0:
+                        g_router_lock.acquire()
+                        self.shared_token_load.add_frozened_token_count(len(key))
+                        g_router_lock.release()
+
                     share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
                     assert len(key) == len(value)
                     # 将下面的请求放入到任务队列中, 注意要使用raidx cache 返回的value

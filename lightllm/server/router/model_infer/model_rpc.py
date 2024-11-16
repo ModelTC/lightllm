@@ -243,12 +243,17 @@ class ModelRpcClient:
             return ans
 
 
-def _init_env(args, port, info_queue, mem_queue):
+def _init_env(args, port, info_queue, mem_queue, router_lock):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
 
     graceful_registry(inspect.currentframe().f_code.co_name)
+
+    # 将调度锁注册到全局的共享变量中
+    from lightllm.common.basemodel.infer_lock import g_router_lock
+
+    g_router_lock.obj = router_lock
 
     from rpyc.utils.server import ThreadedServer
 
@@ -257,12 +262,12 @@ def _init_env(args, port, info_queue, mem_queue):
     return
 
 
-async def start_model_process(args, port, world_size, info_queue: mp.Queue, mem_queue: mp.Queue):
+async def start_model_process(args, port, world_size, info_queue: mp.Queue, mem_queue: mp.Queue, router_lock: mp.Queue):
     # 单卡时不使用 rpc
     if world_size == 1:
         return ModelRpcClient(ModelRpcServer(args, info_queue, mem_queue), world_size)
 
-    proc = mp.Process(target=_init_env, args=(args, port, info_queue, mem_queue))
+    proc = mp.Process(target=_init_env, args=(args, port, info_queue, mem_queue, router_lock))
     proc.start()
     await asyncio.sleep(2)
     repeat_count = 0

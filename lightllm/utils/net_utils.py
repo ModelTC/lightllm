@@ -1,4 +1,8 @@
 import socket
+import subprocess
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 def alloc_can_use_network_port(num=3, used_nccl_ports=None, from_port_num=10000):
@@ -31,3 +35,14 @@ def find_available_port(start_port, end_port):
             if result != 0:
                 return port
     return None
+
+
+def get_hostname_ip():
+    try:
+        result = subprocess.run(["hostname", "-i"], capture_output=True, text=True, check=True)
+        result = result.stdout.strip()
+        logger.info(f"get hostname ip {result}")
+        return result
+    except subprocess.CalledProcessError as e:
+        logger.exception(f"Error executing command: {e}")
+        return None

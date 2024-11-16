@@ -17,8 +17,14 @@ from lightllm.utils.net_utils import find_available_port
 from lightllm.utils.retry_utils import retry
 from rpyc.utils.classic import obtain
 from rpyc import AsyncResult
+from lightllm.utils.net_utils import get_hostname_ip
 
 logger = init_logger(__name__)
+
+
+class DecodeBusyError(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
 
 
 @dataclass
@@ -38,7 +44,7 @@ class TransProcessObj:
         con = rpyc.connect(
             host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True
         )
-        nccl_ip = manager.args.host
+        nccl_ip = manager.host_ip
         nccl_port = find_available_port(manager.args.pd_p_allowed_port_min, manager.args.pd_p_allowed_port_max)
         if nccl_port is None:
             raise Exception("no pd nccl port can be used")
@@ -94,6 +100,9 @@ class PrefillKVMoveManager:
             con = retry(max_attempts=20, wait_time=2)(rpyc.connect)("localhost", port, config={"allow_pickle": True})
             self.infer_rpyc_objs.append(con.root)
             logger.info(f"rpyc connect to infer rpyc port: {port} ok")
+        self.host_ip = get_hostname_ip()
+        if self.host_ip is None:
+            self.host_ip = args.host
         return
 
     def get_next_device_index(self):
@@ -127,8 +136,10 @@ class PrefillKVMoveManager:
                     trans_move_task.prefill_token_indexes = None
                     # 申请发送，并收到发送长度 move_kv_len.
                     move_kv_len = obtain(trans_obj.rpyc_conn.root.request_data_transfer(trans_move_task))
+                    # 代表对方已经很繁忙了，放弃这次发送，改为用
                     if move_kv_len is None:
-                        raise Exception("request_data_transfer not ok")
+                        raise DecodeBusyError(f"decode_node_id {trans_obj.decode_node_id} is busy")
+
                     move_task.move_kv_len = move_kv_len
                     logger.info(f"prefill node request_data_transfer ok, {move_task.to_prefill_log_info()}")
                     # 开始传输直到完成
@@ -136,10 +147,14 @@ class PrefillKVMoveManager:
                     assert trans_obj.task_out_queue.get(timeout=30) == "ok"
                     logger.info(f"prefill node transfer data ok, req_id: {move_task.id()}")
 
+                except DecodeBusyError as e:
+                    logger.error(str(e))
+
                 except BaseException as e:
                     logger.exception(str(e))
                     logger.error(f"kv move task {move_task.to_prefill_log_info()} has error, remove the trans_obj")
                     self.node_id_to_trans_obj.pop(move_task.decode_node.node_id, None)
+                    trans_obj = None
 
                 finally:
                     # 解除对prefill token的占用状态。
