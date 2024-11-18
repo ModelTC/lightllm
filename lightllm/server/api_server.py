@@ -113,7 +113,7 @@ async def healthcheck(request: Request):
 
     from lightllm.utils.health_check import health_check
 
-    if await health_check(g_objs.httpserver_manager, request):
+    if await health_check(g_objs.args, g_objs.httpserver_manager, request):
         return JSONResponse({"message": "Ok"}, status_code=200)
     else:
         return JSONResponse({"message": "Error"}, status_code=404)
