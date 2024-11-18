@@ -429,14 +429,12 @@ class HttpServerManager:
                             logger.info(f"Sent heartbeat: {heartbeat_message}")
                         log_count += 1
                         await asyncio.sleep(3)
-                        logger.info(f"mean first cost: {self.first_time_costs.average()} ms")
+                        if log_count % 5 == 0:
+                            logger.info(f"mean first cost: {self.first_time_costs.average()} ms")
 
             except Exception as e:
                 logger.error("connetion to pd_master has error")
-                import random
-
-                if random.randint(0, 10) <= 1:
-                    logger.exception(str(e))
+                logger.exception(str(e))
                 await asyncio.sleep(10)
                 logger.info("reconnection to pd_master")
 

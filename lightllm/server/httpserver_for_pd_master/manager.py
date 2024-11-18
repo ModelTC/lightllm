@@ -306,7 +306,7 @@ class HttpServerManagerForPDMaster:
     async def handle_loop(self):
         while True:
             # 可以做一个定时任务
-            await asyncio.sleep(10)
+            await asyncio.sleep(20)
             logger.info(f"mean first cost: {self.first_time_costs.average()} ms")
             logger.info(f"create_session_costs: {self.create_session_costs.average()} ms")
         return
