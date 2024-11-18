@@ -26,7 +26,7 @@ def _init_env(
 ):
     import os
 
-    os.environ["NCCL_DEBUG"] = "INFO"
+    # os.environ["NCCL_DEBUG"] = "INFO"
     os.environ["NCCL_MAX_NCHANNELS"] = "2"
     os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
     os.environ["NCCL_SOCKET_NTHREADS"] = "1"
