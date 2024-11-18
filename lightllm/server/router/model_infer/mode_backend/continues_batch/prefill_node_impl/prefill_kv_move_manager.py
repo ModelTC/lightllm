@@ -2,6 +2,7 @@ import asyncio
 import rpyc
 import sys
 import os
+import gc
 import signal
 import copy
 import numpy as np
@@ -84,8 +85,8 @@ class TransProcessObj:
     def __del__(self):
         # 强制关闭连接和杀掉传输进程
         if self.process is not None:
-            os.kill(self.process.pid, signal.SIGKILL)
             logger.warning(f"prefill trans process {self.process.pid} is killed")
+            os.kill(self.process.pid, signal.SIGKILL)
         pass
 
 
@@ -114,10 +115,27 @@ class PrefillKVMoveManager:
 
     def get_trans_obj(self, task: KVMoveTask):
         if task.decode_node.node_id not in self.node_id_to_trans_obj:
+            # 先遍历删除老的不能用的连接
+            self.remove_dead_trans_obj()
             trans_obj = TransProcessObj()
             trans_obj.create(task.decode_node.node_id, task.decode_node.ip, task.decode_node.rpyc_port, self)
             self.node_id_to_trans_obj[task.decode_node.node_id] = trans_obj
         return self.node_id_to_trans_obj[task.decode_node.node_id]
+
+    def remove_dead_trans_obj(self):
+        del_node_ids = []
+        for node_id, t_obj in self.node_id_to_trans_obj.items():
+            try:
+                t_obj.rpyc_conn.root.check_alive()
+            except BaseException as e:
+                logger.error(f"check error {str(e)}")
+                del_node_ids.append(node_id)
+        for node_id in del_node_ids:
+            self.node_id_to_trans_obj.pop(node_id)
+
+        if len(del_node_ids) != 0:
+            gc.collect()
+        return
 
     def handle_loop(self):
         try:
@@ -154,9 +172,10 @@ class PrefillKVMoveManager:
                     logger.exception(str(e))
                     logger.error(f"kv move task {move_task.to_prefill_log_info()} has error, remove the trans_obj")
                     self.node_id_to_trans_obj.pop(move_task.decode_node.node_id, None)
-                    trans_obj = None
 
                 finally:
+                    # 去引用否则进程无法杀掉
+                    trans_obj = None
                     # 解除对prefill token的占用状态。
                     futures: List[AsyncResult] = []
                     for infer_rpyc in self.infer_rpyc_objs:

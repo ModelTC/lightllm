@@ -23,6 +23,8 @@ from ..prefill_node_impl.prefill_kv_move_manager import DecodeBusyError
 
 logger = init_logger(__name__)
 
+thread_local_data = threading.local()
+
 
 @dataclass
 class TransProcessObj:
@@ -68,8 +70,8 @@ class TransProcessObj:
     def __del__(self):
         # 强制关闭连接和杀掉传输进程
         if self.process is not None:
-            os.kill(self.process.pid, signal.SIGKILL)
             logger.warning(f"trans kv process {self.process.pid} is killed")
+            os.kill(self.process.pid, signal.SIGKILL)
         pass
 
 
@@ -104,8 +106,24 @@ class DecodeKVMoveManager(rpyc.Service):
         await asyncio.gather(*[asyncio.to_thread(future.wait) for future in futures])
         return
 
+    def on_connect(self, conn):
+        thread_local_data.prefill_node_id = None
+        pass
+
+    def on_disconnect(self, conn):
+        if thread_local_data.prefill_node_id is not None:
+            self.node_id_to_trans_obj.pop(thread_local_data.prefill_node_id, None)
+            logger.info(f"prefill node id {thread_local_data.prefill_node_id} disconnect")
+        pass
+
+    def exposed_check_alive(self):
+        # 用于 prefill node check 通信连接的状态。
+        return
+
     def exposed_build_trans_process(self, prefill_node_id, nccl_ip, nccl_port):
         prefill_node_id, nccl_ip, nccl_port = list(map(obtain, [prefill_node_id, nccl_ip, nccl_port]))
+        thread_local_data.prefill_node_id = prefill_node_id
+
         logger.info(f"build trans infos {prefill_node_id} {nccl_ip} {nccl_port}")
         if prefill_node_id in self.node_id_to_trans_obj:
             self.node_id_to_trans_obj.pop(prefill_node_id, None)
@@ -194,6 +212,8 @@ class DecodeKVMoveManager(rpyc.Service):
                         asyncio.run(self.wait_all_future_finish(futures))
                     logger.error(f"decode kv move task {task.to_decode_log_info()} has error, remove the trans_obj")
                     self.node_id_to_trans_obj.pop(task.prefill_node_id, None)
+                finally:
+                    # 去除引用否则进程无法自动退出
                     trans_obj = None
         except BaseException as e:
             logger.exception(str(e))
