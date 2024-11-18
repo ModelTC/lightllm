@@ -207,7 +207,7 @@ class HttpServerManagerForPDMaster:
                 await asyncio.wait_for(event.wait(), timeout=60)
             except asyncio.TimeoutError:
                 logger.warning(f"group_request_id: {group_request_id} time out err")
-                return
+                raise Exception("server is busy")
                 # raise Exception(f"group_request_id: {group_request_id} time out err, maybe kv move get questions")
 
             sampling_params.move_kv_to_decode_node = None
