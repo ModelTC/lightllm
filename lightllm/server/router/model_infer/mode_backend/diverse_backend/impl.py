@@ -40,8 +40,9 @@ class DiversehBackend(ModeBackend):
             req = requests_mapping[r_id]
             group_req_id = req.group_req_id
             best_of = req.sampling_param.best_of
-            if group_req_id not in group_mapping:
-                group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
+            # dealing with paused
+            del group_mapping[group_req_id]
+            group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
             group_mapping[group_req_id].add_req(r_id)
 
     def forward(self, batch_id, is_prefill):
