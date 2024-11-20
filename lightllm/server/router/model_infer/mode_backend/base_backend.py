@@ -30,7 +30,6 @@ from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.models.minicpm.model import MiniCPMTpPartModel
 from lightllm.models.llava.model import LlavaTpPartModel
 from lightllm.models.qwen_vl.model import QWenVLTpPartModel
-from lightllm.models.internlm_xcomposer.model import InternlmComposerTpPartModel
 from lightllm.models.gemma_2b.model import Gemma_2bTpPartModel
 from lightllm.models.phi3.model import Phi3TpPartModel
 from lightllm.models.deepseek2.model import Deepseek2TpPartModel
@@ -99,7 +98,7 @@ class ModeBackend:
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
             "disable_qk_absorb": kvargs.get("disable_qk_absorb", False),
-            "disable_vo_absorb": kvargs.get("disable_vo_absorb", False)
+            "disable_vo_absorb": kvargs.get("disable_vo_absorb", False),
         }
 
         try:
@@ -152,9 +151,6 @@ class ModeBackend:
                 self.model = MiniCPMTpPartModel(model_kvargs)
             elif self.model_type == "llava":
                 self.model = LlavaTpPartModel(model_kvargs)
-                self.is_multimodal = True
-            elif self.model_type == "internlmxcomposer2":
-                self.model = InternlmComposerTpPartModel(model_kvargs)
                 self.is_multimodal = True
             elif self.model_type == "qwen2":
                 self.model = Qwen2TpPartModel(model_kvargs)

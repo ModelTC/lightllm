@@ -1,80 +1,33 @@
 from lightllm.common.basemodel.layer_weights.meta_weights import NormWeight, ROWMMWeight, COLMMWeight
-from lightllm.common.basemodel import TransformerLayerWeight
+from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 
 
-class Starcoder2TransformerLayerWeight(TransformerLayerWeight):
+class Starcoder2TransformerLayerWeight(LlamaTransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
-        n_embed = self.network_config_["hidden_size"]
-        # Dealing with head_dim_!=n_embed // num_attention_heads scenarios, such as mistral 13B
-        head_dim = n_embed // self.network_config_["num_attention_heads"]
-        self.head_dim = self.network_config_.get("head_dim", head_dim)
-        assert network_config["num_attention_heads"] % self.world_size_ == 0
+        return
 
-        self.init_qkv()
-        self.init_o()
-        self.init_ffn()
-        self.init_norm()
-        self.set_quantization()
+    def _init_config(self):
+        self.network_config_["intermediate_size"] = self.network_config_["hidden_size"] * 4
+        super()._init_config()
 
-    def init_norm(self):
-        self.att_norm_weight_ = NormWeight(
-            f"model.layers.{self.layer_num_}.input_layernorm.weight",
-            self.data_type_,
-            bias_name=f"model.layers.{self.layer_num_}.input_layernorm.bias",
-        )
-        self.ffn_norm_weight_ = NormWeight(
-            f"model.layers.{self.layer_num_}.post_attention_layernorm.weight",
-            self.data_type_,
-            bias_name=f"model.layers.{self.layer_num_}.post_attention_layernorm.bias",
-        )
+    def _init_weight_names(self):
+        super()._init_weight_names()
+        self._q_bias_name = f"{self.layer_name}.self_attn.q_proj.bias"
+        self._k_bias_name = f"{self.layer_name}.self_attn.k_proj.bias"
+        self._v_bias_name = f"{self.layer_name}.self_attn.v_proj.bias"
+        self._o_bias_name = f"{self.layer_name}.self_attn.o_proj.bias"
 
-    def init_qkv(self):
-        q_split_n_embed = self.head_dim * self.network_config_["num_attention_heads"] // self.world_size_
-        kv_split_n_embed = self.head_dim * self.network_config_["num_key_value_heads"] // self.world_size_
-        self.q_proj = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
-            self.data_type_,
-            q_split_n_embed,
-            bias_name=f"model.layers.{self.layer_num_}.self_attn.q_proj.bias",
-        )
-        self.k_proj = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.k_proj.weight",
-            self.data_type_,
-            kv_split_n_embed,
-            wait_fuse=True,
-            bias_name=f"model.layers.{self.layer_num_}.self_attn.k_proj.bias",
-        )
-        self.v_proj = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.v_proj.weight",
-            self.data_type_,
-            kv_split_n_embed,
-            wait_fuse=True,
-            bias_name=f"model.layers.{self.layer_num_}.self_attn.v_proj.bias",
-        )
+        self._up_weight_name = f"{self.layer_name}.mlp.c_fc.weight"
+        self._up_bias_name = f"{self.layer_name}.mlp.c_fc.bias"
+        self._down_weight_name = f"{self.layer_name}.mlp.c_proj.weight"
+        self._down_bias_name = f"{self.layer_name}.mlp.c_proj.bias"
 
-    def init_o(self):
-        o_split_n_embed = self.head_dim * self.network_config_["num_attention_heads"] // self.world_size_
-        self.o_proj = COLMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
-            self.data_type_,
-            o_split_n_embed,
-            bias_name=f"model.layers.{self.layer_num_}.self_attn.o_proj.bias",
+    def _init_ffn(self):
+        split_inter_size = self.n_inter // self.world_size_
+        self.up_proj = ROWMMWeight(
+            self._up_weight_name, self.data_type_, split_inter_size, bias_name=self._up_bias_name, wait_fuse=True
         )
-
-    def init_ffn(self):
-        n_embed = self.network_config_["hidden_size"]
-        intermediate_size = n_embed * 4
-        split_inter_size = intermediate_size // self.world_size_
-        self.ffn_1_weight_ = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.mlp.c_fc.weight",
-            self.data_type_,
-            split_inter_size,
-            bias_name=f"model.layers.{self.layer_num_}.mlp.c_fc.bias",
-        )
-        self.ffn_2_weight_ = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.mlp.c_proj.weight",
-            self.data_type_,
-            split_inter_size,
-            bias_name=f"model.layers.{self.layer_num_}.mlp.c_proj.bias",
+        self.down_proj = COLMMWeight(
+            self._down_weight_name, self.data_type_, split_inter_size, bias_name=self._down_bias_name
         )

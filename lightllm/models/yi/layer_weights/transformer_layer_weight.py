@@ -11,6 +11,7 @@ class YiTransformerLayerWeight(LlamaTransformerLayerWeight):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
         return
 
-    def init_norm(self):
-        self.att_norm_weight_ = NormWeight(f"model.layers.{self.layer_num_}.ln1.weight", self.data_type_)
-        self.ffn_norm_weight_ = NormWeight(f"model.layers.{self.layer_num_}.ln2.weight", self.data_type_)
+    def _init_weight_names(self):
+        super()._init_weight_names()
+        self.att_norm_weight_name = f"{self.layer_name}.ln1.weight"
+        self.ffn_norm_weight_name = f"{self.layer_name}.ln2.weight"

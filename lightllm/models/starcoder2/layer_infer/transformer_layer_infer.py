@@ -48,11 +48,11 @@ class Starcoder2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _ffn(
         self, input, infer_state: MistralInferStateInfo, layer_weight: Starcoder2TransformerLayerWeight
     ) -> torch.Tensor:
-        ffn1_out = layer_weight.ffn_1_weight_.mm(input.view(-1, self.embed_dim_))
+        ffn1_out = layer_weight.up_proj.mm(input.view(-1, self.embed_dim_))
         input = None
         gelu_out = torch.nn.functional.gelu(ffn1_out, approximate="tanh")
         ffn1_out = None
-        ffn2_out = layer_weight.ffn_2_weight_.mm(gelu_out)
+        ffn2_out = layer_weight.down_proj.mm(gelu_out)
         gelu_out = None
         return ffn2_out
 

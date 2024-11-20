@@ -1,8 +1,8 @@
 import torch
 import math
 import numpy as np
-from lightllm.common.basemodel import TransformerLayerWeight
-from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight, NormWeight
+from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
+from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight
 
 
 def generate_alibi(n_head, dtype=torch.float16):
@@ -47,56 +47,58 @@ def generate_alibi(n_head, dtype=torch.float16):
     return head_alibi
 
 
-class BloomTransformerLayerWeight(TransformerLayerWeight):
-    def __init__(
-        self, layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg=None, layer_prefix="h"
-    ):
-        super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
-
-        self.layer_name = f"{layer_prefix}.{self.layer_num_}"
-
-        self._init_name()
-        self._init_qkv()
-        self._init_o()
-        self._init_ffn()
-        self._init_norm()
-        self.set_quantization()
+class BloomTransformerLayerWeight(LlamaTransformerLayerWeight):
+    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg=None):
+        super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg, layer_prefix="h")
+        self.init_static_params()
         return
 
-    def _init_name(self):
-        self._q_name = f"{self.layer_name}.self_attention.q_proj"
-        self._k_name = f"{self.layer_name}.self_attention.k_proj"
-        self._v_name = f"{self.layer_name}.self_attention.v_proj"
-        self.o_name = f"{self.layer_name}.self_attention.dense"
-        self.up_proj_name = f"{self.layer_name}.mlp.dense_h_to_4h"
-        self.down_proj_name = f"{self.layer_name}.mlp.dense_4h_to_h"
-        self.att_norm_name = f"{self.layer_name}.input_layernorm"
-        self.ffn_norm_name = f"{self.layer_name}.post_attention_layernorm"
+    def _init_config(self):
+        self.n_embed = self.network_config_["n_embed"]
+        self.n_head = self.network_config_["num_attention_heads"]
+        self.n_inter = self.network_config_["n_embed"] * 4
+        self.n_kv_head = self.network_config_["num_attention_heads"]
+        self.head_dim = self.network_config_.get("head_dim", self.n_embed // self.n_head)
 
-    def _split_qkv_weight(self, weights):
-        n_embed = self.network_config_["n_embed"]
-        head_num = self.network_config_["num_attention_heads"]
+    def _init_weight_names(self):
+        self._q_weight_name = f"{self.layer_name}.self_attention.q_proj.weight"
+        self._q_bias_name = f"{self.layer_name}.self_attention.q_proj.bias"
+        self._k_weight_name = f"{self.layer_name}.self_attention.k_proj.weight"
+        self._k_bias_name = f"{self.layer_name}.self_attention.k_proj.bias"
+        self._v_weight_name = f"{self.layer_name}.self_attention.v_proj.weight"
+        self._v_bias_name = f"{self.layer_name}.self_attention.v_proj.bias"
+        self._o_weight_name = f"{self.layer_name}.self_attention.o_proj.weight"
+        self._o_bias_name = f"{self.layer_name}.self_attention.o_proj.bias"
 
-        if f"{self.layer_name}.self_attention.query_key_value.weight" in weights:
-            att_qkv_dense_weight = weights[f"{self.layer_name}.self_attention.query_key_value.weight"].reshape(
-                head_num, 3, -1, n_embed
-            )
-            weights[f"{self._q_name}.weight"] = att_qkv_dense_weight[:, 0, :, :].reshape(-1, n_embed)
-            weights[f"{self._k_name}.weight"] = att_qkv_dense_weight[:, 1, :, :].reshape(-1, n_embed)
-            weights[f"{self._v_name}.weight"] = att_qkv_dense_weight[:, 2, :, :].reshape(-1, n_embed)
-            del weights[f"{self.layer_name}.self_attention.query_key_value.weight"]
+        self._up_weight_name = f"{self.layer_name}.mlp.dense_h_to_4h.weight"
+        self._up_bias_name = f"{self.layer_name}.mlp.dense_h_to_4h.bias"
+        self._down_weight_name = f"{self.layer_name}.mlp.dense_4h_to_h.weight"
+        self._down_bias_name = f"{self.layer_name}.mlp.dense_4h_to_h.bias"
 
-        if f"{self.layer_name}.self_attention.query_key_value.bias" in weights:
-            att_qkv_dense_bias = weights[f"h.{self.layer_num_}.self_attention.query_key_value.bias"].reshape(
-                head_num, 3, -1
-            )
-            weights[f"{self._q_name}.bias"] = att_qkv_dense_bias[:, 0, :].reshape(-1)
-            weights[f"{self._k_name}.bias"] = att_qkv_dense_bias[:, 1, :].reshape(-1)
-            weights[f"{self._v_name}.bias"] = att_qkv_dense_bias[:, 2, :].reshape(-1)
-            del weights[f"h.{self.layer_num_}.self_attention.query_key_value.bias"]
+        self.att_norm_weight_name = f"{self.layer_name}.input_layernorm.weight"
+        self.att_norm_bias_name = f"{self.layer_name}.input_layernorm.bias"
+        self.ffn_norm_weight_name = f"{self.layer_name}.post_attention_layernorm.weight"
+        self.ffn_norm_bias_name = f"{self.layer_name}.post_attention_layernorm.bias"
+
+    def _preprocess_weight(self, weights):
+        qkv_weight_name = f"{self.layer_name}.self_attention.query_key_value.weight"
+        if qkv_weight_name in weights:
+            att_qkv_dense_weight = weights[qkv_weight_name].reshape(self.n_head, 3, -1, self.n_embed)
+            weights[self._q_weight_name] = att_qkv_dense_weight[:, 0, :, :].reshape(-1, self.n_embed)
+            weights[self._k_weight_name] = att_qkv_dense_weight[:, 1, :, :].reshape(-1, self.n_embed)
+            weights[self._v_weight_name] = att_qkv_dense_weight[:, 2, :, :].reshape(-1, self.n_embed)
+            del weights[qkv_weight_name]
+
+        qkv_bias_name = f"{self.layer_name}.self_attention.query_key_value.bias"
+        if qkv_bias_name in weights:
+            att_qkv_dense_bias = weights[qkv_bias_name].reshape(self.n_head, 3, -1)
+            weights[self._q_bias_name] = att_qkv_dense_bias[:, 0, :].reshape(-1)
+            weights[self._k_bias_name] = att_qkv_dense_bias[:, 1, :].reshape(-1)
+            weights[self._v_bias_name] = att_qkv_dense_bias[:, 2, :].reshape(-1)
+            del weights[qkv_bias_name]
 
     def load_hf_weights(self, weights):
-        self._split_qkv_weight(weights)
+        self._preprocess_weight(weights)
         super().load_hf_weights(weights)
         return
 
@@ -109,40 +111,11 @@ class BloomTransformerLayerWeight(TransformerLayerWeight):
         self.tp_alibi = tmp_alibi[self.tp_rank_ * tp_head_num : (self.tp_rank_ + 1) * tp_head_num].contiguous().cuda()
         return
 
-    def _init_qkv(self):
-        n_embed = self.network_config_["n_embed"]
-        split_n_embed = n_embed // self.world_size_
-        self.q_proj = ROWMMWeight(
-            f"{self._q_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self._q_name}.bias"
-        )
-        self.k_proj = ROWMMWeight(
-            f"{self._k_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self._k_name}.bias", wait_fuse=True
-        )
-        self.v_proj = ROWMMWeight(
-            f"{self._v_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self._v_name}.bias", wait_fuse=True
-        )
-
-    def _init_o(self):
-        n_embed = self.network_config_["n_embed"]
-        split_n_embed = n_embed // self.world_size_
-        self.o_proj = COLMMWeight(
-            f"{self.o_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self.o_name}.bias"
-        )
-
     def _init_ffn(self):
-        n_embed = self.network_config_["n_embed"] * 4
-        split_n_embed = n_embed // self.world_size_
+        split_inter_size = self.n_inter // self.world_size_
         self.up_proj = ROWMMWeight(
-            f"{self.up_proj_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self.up_proj_name}.bias"
+            self._up_weight_name, self.data_type_, split_inter_size, bias_name=self._up_bias_name, wait_fuse=True
         )
         self.down_proj = COLMMWeight(
-            f"{self.down_proj_name}.weight", self.data_type_, split_n_embed, bias_name=f"{self.down_proj_name}.bias"
-        )
-
-    def _init_norm(self):
-        self.att_norm_weight_ = NormWeight(
-            f"{self.att_norm_name}.weight", self.data_type_, bias_name=f"{self.att_norm_name}.bias"
-        )
-        self.ffn_norm_weight_ = NormWeight(
-            f"{self.ffn_norm_name}.weight", self.data_type_, bias_name=f"{self.ffn_norm_name}.bias"
+            self._down_weight_name, self.data_type_, split_inter_size, bias_name=self._down_bias_name
         )
