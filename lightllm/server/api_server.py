@@ -27,29 +27,22 @@ import rpyc
 from .build_prompt import build_prompt
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-import argparse
-import json
+import ujson as json
 from http import HTTPStatus
 import uuid
 import multiprocessing as mp
-from typing import AsyncGenerator
-
-from fastapi import BackgroundTasks, FastAPI, Request
+from typing import AsyncGenerator, Union
+from typing import Callable
+from lightllm.server import TokenLoad
+from fastapi import BackgroundTasks, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 import uvicorn
+from .api_cli import make_argument_parser
 from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from .httpserver.manager import HttpServerManager
-from .detokenization.manager import start_detokenization_process
-from .router.manager import start_router_process
-from .embed_cache.manager import start_cache_manager
-from .metrics.manager import start_metric_manager
-from .visualserver.manager import start_visual_process
-from .req_id_generator import ReqIDGenerator
-from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
-from .api_lightllm import lightllm_generate, lightllm_generate_stream, lightllm_get_score
-from lightllm.utils.net_utils import alloc_can_use_network_port
-from lightllm.utils.start_utils import start_submodule_processes
+from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
+from .api_lightllm import lightllm_get_score, lightllm_pd_generate_stream
 
 from .api_models import (
     ChatCompletionRequest,
@@ -63,34 +56,33 @@ from .api_models import (
 )
 
 from lightllm.utils.log_utils import init_logger
-from prometheus_client import generate_latest
 from lightllm.server.metrics.manager import MetricClient
+from dataclasses import dataclass
 
 logger = init_logger(__name__)
 
-TIMEOUT_KEEP_ALIVE = 5  # seconds.
 
-g_id_gen = ReqIDGenerator()
+@dataclass
+class G_Objs:
+    app: FastAPI = None
+    server: uvicorn.Server = None
+    metric_client: MetricClient = None
+    args: object = None
+    g_generate_func: Callable = None
+    g_generate_stream_func: Callable = None
+    httpserver_manager: Union[HttpServerManager, HttpServerManagerForPDMaster] = None
+    shared_token_load: TokenLoad = None
+
+
+g_objs = G_Objs()
+
 app = FastAPI()
-server = uvicorn.Server(uvicorn.Config(app))
-
-isFirst = True
-metric_client = None
-global args
-args = None
-
-
-def first_set_handle_loop():
-    global isFirst
-    if isFirst:
-        loop = asyncio.get_event_loop()
-        loop.create_task(httpserver_manager.handle_loop())
-        isFirst = False
-    return
+g_objs.app = app
+g_objs.server = uvicorn.Server(uvicorn.Config(app))
 
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
-    metric_client.counter_inc("lightllm_request_failure")
+    g_objs.metric_client.counter_inc("lightllm_request_failure")
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
@@ -109,21 +101,19 @@ def readiness():
 @app.get("/get_model_name")
 @app.post("/get_model_name")
 def get_model_name():
-    global args
-    return {"model_name": args.model_name}
+    return {"model_name": g_objs.args.model_name}
 
 
 @app.get("/healthz", summary="Check server health")
 @app.get("/health", summary="Check server health")
 @app.head("/health", summary="Check server health")
 async def healthcheck(request: Request):
-    first_set_handle_loop()
     if os.environ.get("DEBUG_HEALTHCHECK_RETURN_FAIL") == "true":
         return JSONResponse({"message": "Error"}, status_code=404)
 
     from lightllm.utils.health_check import health_check
 
-    if await health_check(httpserver_manager, g_id_gen, request):
+    if await health_check(g_objs.args, g_objs.httpserver_manager, request):
         return JSONResponse({"message": "Ok"}, status_code=200)
     else:
         return JSONResponse({"message": "Error"}, status_code=404)
@@ -134,11 +124,11 @@ async def token_load(request: Request):
     return JSONResponse(
         {
             # 当前使用token量，估计的负载
-            "current_load": float(shared_token_load.get_current_load()),
+            "current_load": float(g_objs.shared_token_load.get_current_load()),
             # 朴素估计的负载，简单将当前请求的输入和输出长度想加得到,目前已未使用，其值与dynamic_max_load一样。
-            "logical_max_load": float(shared_token_load.get_logical_max_load()),
+            "logical_max_load": float(g_objs.shared_token_load.get_logical_max_load()),
             # 动态估计的最大负载，考虑请求中途退出的情况的负载
-            "dynamic_max_load": float(shared_token_load.get_dynamic_max_load()),
+            "dynamic_max_load": float(g_objs.shared_token_load.get_dynamic_max_load()),
         },
         status_code=200,
     )
@@ -146,9 +136,8 @@ async def token_load(request: Request):
 
 @app.post("/generate")
 async def generate(request: Request) -> Response:
-    first_set_handle_loop()
     try:
-        return await g_generate_func(request, g_id_gen, httpserver_manager)
+        return await g_objs.g_generate_func(request, g_objs.httpserver_manager)
     except Exception as e:
         logger.error("An error occurred: %s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
@@ -156,9 +145,17 @@ async def generate(request: Request) -> Response:
 
 @app.post("/generate_stream")
 async def generate_stream(request: Request) -> Response:
-    first_set_handle_loop()
     try:
-        return await g_generate_stream_func(request, g_id_gen, httpserver_manager)
+        return await g_objs.g_generate_stream_func(request, g_objs.httpserver_manager)
+    except Exception as e:
+        logger.error("An error occurred: %s", str(e), exc_info=True)
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
+
+
+@app.post("/pd_generate_stream")
+async def pd_generate_stream(request: Request) -> Response:
+    try:
+        return await lightllm_pd_generate_stream(request, g_objs.httpserver_manager)
     except Exception as e:
         logger.error("An error occurred: %s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
@@ -166,9 +163,8 @@ async def generate_stream(request: Request) -> Response:
 
 @app.post("/get_score")
 async def get_score(request: Request) -> Response:
-    first_set_handle_loop()
     try:
-        return await lightllm_get_score(request, g_id_gen, httpserver_manager)
+        return await lightllm_get_score(request, g_objs.httpserver_manager)
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
 
@@ -185,7 +181,6 @@ async def compat_generate(request: Request) -> Response:
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
-    first_set_handle_loop()
 
     if request.logit_bias is not None:
         return create_error_response(
@@ -213,11 +208,9 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     )
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
-    multimodal_params.verify_and_preload()
 
-    group_request_id = g_id_gen.generate_id()
-    results_generator = httpserver_manager.generate(
-        prompt, sampling_params, group_request_id, multimodal_params, request=raw_request
+    results_generator = g_objs.httpserver_manager.generate(
+        prompt, sampling_params, multimodal_params, request=raw_request
     )
 
     # Non-streaming case
@@ -228,6 +221,9 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         prompt_tokens_dict = {}
         completion_tokens = 0
         async for sub_req_id, request_output, metadata, finish_status in results_generator:
+            from .req_id_generator import convert_sub_id_to_group_id
+
+            group_request_id = convert_sub_id_to_group_id(sub_req_id)
             count_output_tokens_dict[sub_req_id] += 1
             final_output_dict[sub_req_id].append(request_output)
             if finish_status.is_finished():
@@ -260,7 +256,11 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
     # Streaming case
     async def stream_results() -> AsyncGenerator[bytes, None]:
         finish_reason = None
+        from .req_id_generator import convert_sub_id_to_group_id
+
         async for sub_req_id, request_output, metadata, finish_status in results_generator:
+            group_request_id = convert_sub_id_to_group_id(sub_req_id)
+
             delta_message = DeltaMessage(role="assistant", content=request_output)
             if finish_status.is_finished():
                 finish_reason = finish_status.get_finish_reason()
@@ -275,12 +275,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
             )
             yield ("data: " + stream_resp.json(ensure_ascii=False) + "\n\n").encode("utf-8")
 
-    async def abort_request() -> None:
-        await httpserver_manager.abort(group_request_id)
-
     background_tasks = BackgroundTasks()
-    # Abort the request if the client disconnects.
-    background_tasks.add_task(abort_request)
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
 
 
@@ -290,17 +285,69 @@ async def tokens(request: Request):
     try:
         request_dict = await request.json()
         prompt = request_dict.pop("text")
-        return JSONResponse({"ntokens": httpserver_manager.tokens(prompt)}, status_code=200)
+        return JSONResponse({"ntokens": g_objs.httpserver_manager.tokens(prompt)}, status_code=200)
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, f"error: {str(e)}")
 
 
 @app.get("/metrics")
 async def metrics() -> Response:
-    data = await metric_client.generate_latest()
+    data = await g_objs.metric_client.generate_latest()
     response = Response(data)
     response.mimetype = "text/plain"
     return response
+
+
+@app.websocket("/register_and_keep_alive")
+async def register_and_keep_alive(websocket: WebSocket):
+    await websocket.accept()
+    client_ip, client_port = websocket.client
+    logger.info(f"Client connected from IP: {client_ip}, Port: {client_port}")
+    regist_json = json.loads(await websocket.receive_text())
+    logger.info(f"recieved regist_json {regist_json}")
+    await g_objs.httpserver_manager.register_pd(regist_json)
+
+    try:
+        while True:
+            try:
+                # 等待接收消息，设置超时为10秒
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+                json_data = json.loads(data)
+                if json_data.get("type") != "heartbeat":
+                    logger.warning(f"recive error messesage {json_data}")
+                    break
+
+            except asyncio.TimeoutError:
+                logger.error(f"client {regist_json} heartbeat timeout")
+                break
+
+    except (WebSocketDisconnect, Exception, RuntimeError) as e:
+        logger.error(f"client {regist_json} has error {str(e)}")
+        logger.exception(str(e))
+    finally:
+        logger.error(f"client {regist_json} removed")
+        await g_objs.httpserver_manager.remove_pd(regist_json)
+    return
+
+
+@app.websocket("/kv_move_status")
+async def kv_move_status(websocket: WebSocket):
+    await websocket.accept()
+    client_ip, client_port = websocket.client
+    logger.info(f"kv_move_status Client connected from IP: {client_ip}, Port: {client_port}")
+    try:
+        while True:
+            # 等待接收消息，设置超时为10秒
+            data = await websocket.receive_text()
+            json_data = json.loads(data)
+            from .pd_io_struct import UpKVStatus
+
+            upkv_status = UpKVStatus(**json_data)
+            await g_objs.httpserver_manager.update_req_status(upkv_status)
+    except (WebSocketDisconnect, Exception, RuntimeError) as e:
+        logger.error(f"kv_move_status client {(client_ip, client_port)} has error {str(e)}")
+        logger.exception(str(e))
+    return
 
 
 @app.on_event("shutdown")
@@ -318,409 +365,27 @@ async def shutdown():
     for child in children:
         os.kill(child.pid, signal.SIGKILL)
 
-    server.should_exit = True
+    g_objs.server.should_exit = True
     return
 
 
-def make_argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
-
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        default="default_model_name",
-        help="just help to distinguish internal model name, use 'host:port/get_model_name' to get",
-    )
-
-    parser.add_argument(
-        "--model_dir",
-        type=str,
-        default=None,
-        help="the model weight dir path, the app will load config, weights and tokenizer from this dir",
-    )
-    parser.add_argument(
-        "--tokenizer_mode",
-        type=str,
-        default="slow",
-        help="""tokenizer load mode, can be slow, fast or auto, slow mode load fast but run slow,
-          slow mode is good for debug and test, fast mode get best performance, auto mode will
-          try to use fast mode, if failed will use slow mode""",
-    )
-    parser.add_argument(
-        "--load_way",
-        type=str,
-        default="HF",
-        help="""the way of loading model weights, the default is HF(Huggingface format), llama also supports
-          DS(Deepspeed)""",
-    )
-    parser.add_argument(
-        "--max_total_token_num",
-        type=int,
-        default=None,
-        help="the total token nums the gpu and model can support, equals = max_batch * (input_len + output_len)",
-    )
-    parser.add_argument(
-        "--mem_fraction",
-        type=float,
-        default=0.9,
-        help="""Memory usage ratio, default is 0.9, you can specify a smaller value if OOM occurs at runtime.
-        If max_total_token_num is not specified, it will be calculated automatically based on this value.""",
-    )
-    parser.add_argument(
-        "--batch_max_tokens",
-        type=int,
-        default=None,
-        help="max tokens num for new cat batch, it control prefill batch size to Preventing OOM",
-    )
-    parser.add_argument(
-        "--eos_id", nargs="+", type=int, default=None, help="eos stop token id, if None, will load from config.json"
-    )
-    parser.add_argument(
-        "--running_max_req_size", type=int, default=1000, help="the max size for forward requests in the same time"
-    )
-    parser.add_argument("--tp", type=int, default=1, help="model tp parral size, the default is 1")
-    parser.add_argument("--max_req_input_len", type=int, default=2048, help="the max value for req input tokens num")
-    parser.add_argument(
-        "--max_req_total_len", type=int, default=2048 + 1024, help="the max value for req_input_len + req_output_len"
-    )
-    parser.add_argument(
-        "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
-    )
-    parser.add_argument(
-        "--mode",
-        type=str,
-        default=[],
-        nargs="+",
-        help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
-                        | triton_gqa_attention | triton_gqa_flashdecoding
-                        | triton_w4a16 | triton_w8a16 | triton_w8a8 | lmdeploy_w4a16
-                        | ppl_w4a16 | ppl_w8a8 | ppl_w8a8_mixdown],
-                        triton_flashdecoding mode is for long context, current support llama llama2 qwen;
-                        triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
-                        triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
-                        ppl_int8kv mode use int8 to store kv cache, and use ppl fast kernel;
-                        ppl_fp16 mode use ppl fast fp16 decode attention kernel;
-                        triton_int8weight and triton_int4weight and lmdeploy_int4weight or ppl_int4weight mode
-                        use int8 and int4 to store weights;
-                        you need to read source code to make sure the supported detail mode for all models""",
-    )
-    parser.add_argument(
-        "--quant_type",
-        type=str,
-        default=None,
-        help="""Quantization method: ppl_w4a16 | ppl_w6a16
-                        | ao-int4wo | ao-int8wo | ao-fp8w8a16 | ao-fp6w6a16
-                        | vllm-w8a8 | vllm-fp8w8a8""",
-    )
-    parser.add_argument(
-        "--quant_cfg",
-        type=str,
-        default=None,
-        help="""Path of quantization config. It can be used for mixed quantization.
-            Examples can be found in lightllm/common/quantization/configs.""",
-    )
-    parser.add_argument(
-        "--trust_remote_code",
-        action="store_true",
-        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
-    )
-    parser.add_argument("--disable_log_stats", action="store_true", help="disable logging throughput stats.")
-    parser.add_argument("--log_stats_interval", type=int, default=10, help="log stats interval in second.")
-
-    parser.add_argument("--router_token_ratio", type=float, default=0.0, help="token ratio to control router dispatch")
-    parser.add_argument(
-        "--router_max_new_token_len", type=int, default=1024, help="the request max new token len for router"
-    )
-
-    parser.add_argument(
-        "--router_max_wait_tokens",
-        type=int,
-        default=10,
-        help="schedule new requests after every router_max_wait_tokens decode steps.",
-    )
-
-    parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
-
-    parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
-
-    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
-    parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
-    parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
-    parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
-    parser.add_argument("--simple_constraint_mode", action="store_true", help="output constraint mode")
-
-    parser.add_argument(
-        "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
-    )
-    parser.add_argument(
-        "--cache_capacity", type=int, default=200, help="cache server capacity for multimodal resources"
-    )
-    parser.add_argument(
-        "--cache_reserved_ratio", type=float, default=0.5, help="cache server reserved capacity ratio after clear"
-    )
-    parser.add_argument(
-        "--data_type",
-        type=str,
-        choices=["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"],
-        default=None,
-        help="the data type of the model weight",
-    )
-    parser.add_argument("--return_all_prompt_logprobs", action="store_true", help="return all prompt tokens logprobs")
-
-    parser.add_argument("--use_reward_model", action="store_true", help="use reward model")
-
-    parser.add_argument(
-        "--long_truncation_mode",
-        type=str,
-        choices=[None, "head", "center"],
-        default=None,
-        help="""use to select the handle way when input token len > max_req_input_len.
-                        None : raise Exception
-                        head : remove some head tokens to make input token len <= max_req_input_len
-                        center : remove some tokens in center loc to make input token len <= max_req_input_len""",
-    )
-    parser.add_argument("--use_tgi_api", action="store_true", help="use tgi input and ouput format")
-    parser.add_argument(
-        "--health_monitor", action="store_true", help="check the health of service and restart when error"
-    )
-    parser.add_argument("--metric_gateway", type=str, default=None, help="address for collecting monitoring metrics")
-    parser.add_argument("--job_name", type=str, default="lightllm", help="job name for monitor")
-    parser.add_argument(
-        "--grouping_key", action="append", default=[], help="grouping_key for the monitor in the form key=value"
-    )
-    parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
-    parser.add_argument(
-        "--visual_infer_batch_size", type=int, default=4, help="number of images to process in each inference batch"
-    )
-    parser.add_argument(
-        "--visual_gpu_ids", nargs="+", type=int, default=[0], help="List of GPU IDs to use, e.g., 0 1 2"
-    )
-    parser.add_argument("--visual_tp", type=int, default=1, help="number of tensort parallel instances for ViT")
-    parser.add_argument("--visual_dp", type=int, default=1, help="number of data parallel instances for ViT")
-    parser.add_argument(
-        "--visual_nccl_ports",
-        nargs="+",
-        type=int,
-        default=[29500],
-        help="List of NCCL ports to build a distributed environment for Vit, e.g., 29500 29501 29502",
-    )
-    parser.add_argument(
-        "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
-    )
-    parser.add_argument("--disable_cudagraph", action="store_true", help="Disable the cudagraph of the decoding stage")
-    parser.add_argument(
-        "--graph_max_batch_size",
-        type=int,
-        default=16,
-        help="""Maximum batch size that can be captured by the cuda graph for decodign stage.
-                The default value is 8. It will turn into eagar mode if encounters a larger value.""",
-    )
-    parser.add_argument(
-        "--graph_max_len_in_batch",
-        type=int,
-        default=8192,
-        help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
-                The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
-    )
-    parser.add_argument(
-        "--disable_qk_absorb",
-        default=False,
-        action="store_true",
-        help="Disable mla qk weight absorption",
-    )
-    parser.add_argument(
-        "--disable_vo_absorb",
-        default=False,
-        action="store_true",
-        help="Disable mla vo weight absorption",
-    )
-    return parser
-
-
-def main():
-    parser = make_argument_parser()
-    global args
-    args = parser.parse_args()
-
-    global g_generate_func
-    global g_generate_stream_func
-    if args.use_tgi_api:
-        g_generate_func = tgi_generate_impl
-        g_generate_stream_func = tgi_generate_stream_impl
-    else:
-        g_generate_func = lightllm_generate
-        g_generate_stream_func = lightllm_generate_stream
-
-    logger.info(f"use tgi api: {args.use_tgi_api}")
-
-    assert args.max_req_input_len < args.max_req_total_len
-    assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
-    assert (
-        args.mem_fraction > 0 and args.mem_fraction < 1
-    ), f"Invalid mem_fraction {args.mem_fraction}, The expected value is between 0 and 1."
-
-    # splitfuse_mode 和 cuda_graph 不能同时开启
-    if args.splitfuse_mode:
-        assert args.disable_cudagraph
-
-    # 这些模式不能同时设置。
-    assert [
-        args.splitfuse_mode,
-        args.beam_mode,
-        args.diverse_mode,
-        args.token_healing_mode,
-        args.use_reward_model,
-        args.return_all_prompt_logprobs,
-    ].count(True) <= 1
-    # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
-    if args.use_dynamic_prompt_cache:
-        assert args.beam_mode is False
-        assert args.token_healing_mode is False
-
-    # 部分模式还不能支持与高级动态调度算法协同，to do.
-    if args.beam_mode or args.diverse_mode:
-        assert args.router_token_ratio == 0.0
-
-    # 检查GPU数量是否足够
-    total_required_gpus = args.visual_dp * args.visual_tp
-    if len(args.visual_gpu_ids) < total_required_gpus:
-        raise ValueError(
-            f"Not enough GPUs specified. You need at least {total_required_gpus}, but got {len(args.visual_gpu_ids)}."
-        )
-    else:
-        args.visual_gpu_ids = args.visual_gpu_ids[:total_required_gpus]
-
-    # 检查visual_nccl_port数量是否足够
-    if len(args.visual_nccl_ports) < args.visual_dp:
-        raise ValueError(
-            f"Not enough visual_nccl_ports specified. You need at least {args.visual_dp}, "
-            f"but got ({len(args.visual_nccl_ports)})."
-        )
-    else:
-        args.visual_nccl_ports = args.visual_nccl_ports[: args.visual_dp]
-
-    if not args.splitfuse_mode:
-        # 普通模式下
-        if args.batch_max_tokens is None:
-            args.batch_max_tokens = args.max_req_total_len
-        else:
-            assert args.batch_max_tokens >= args.max_req_total_len, "batch_max_tokens must >= max_req_total_len"
-    else:
-        # splitfuse 模式下
-        # assert args.batch_max_tokens is not None, "need to set by yourself"
-        if args.batch_max_tokens is None:
-            args.batch_max_tokens = min(args.max_req_total_len, 16 * args.splitfuse_block_size)
-
-        assert (
-            args.batch_max_tokens > args.splitfuse_block_size
-        ), "splitfuse_mode, batch_max_tokens must >= splitfuse_block_size"
-
-    # help to manage data stored on Ceph
-    if "s3://" in args.model_dir:
-        from lightllm.utils.petrel_helper import s3_model_prepare
-
-        s3_model_prepare(args.model_dir)
-
-    # 如果args.eos_id 是 None, 从 config.json 中读取 eos_token_id 相关的信息，赋值给 args
-    if args.eos_id is None:
-        from lightllm.utils.config_utils import get_eos_token_ids
-
-        args.eos_id = get_eos_token_ids(args.model_dir)
-
-    if args.data_type is None:
-        from lightllm.utils.config_utils import get_dtype
-
-        args.data_type = get_dtype(args.model_dir)
-        assert args.data_type in ["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"]
-
-    logger.info(f"all start args:{args}")
-
-    already_uesd_ports = args.visual_nccl_ports + [args.nccl_port]
-    can_use_ports = alloc_can_use_network_port(
-        num=6 + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
-    )
-    router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
-    model_rpc_ports = can_use_ports[6 : 6 + args.tp]
-    can_use_ports = can_use_ports[6 + args.tp :]
-
-    visual_model_tp_ports = []
-    for _ in range(args.visual_dp):
-        tp_ports_for_dp = can_use_ports[0 : args.visual_tp]
-        can_use_ports = can_use_ports[args.visual_tp :]
-        visual_model_tp_ports.append(tp_ports_for_dp)
-
-    if args.enable_multimodal:
-        start_submodule_processes(
-            start_funcs=[
-                start_cache_manager,
-            ],
-            start_args=[(cache_port, args)],
-        )
-        start_submodule_processes(
-            start_funcs=[
-                start_visual_process,
-            ],
-            start_args=[
-                (args, router_port, visual_port, cache_port, visual_model_tp_ports),
-            ],
-        )
-
-    start_submodule_processes(
-        start_funcs=[
-            start_metric_manager,
-        ],
-        start_args=[(metric_port, args)],
-    )
-    global metric_client
-    metric_client = MetricClient(metric_port)
-
-    global httpserver_manager
-    httpserver_manager = HttpServerManager(
-        args,
-        router_port=router_port,
-        cache_port=cache_port,
-        visual_port=visual_port,
-        httpserver_port=httpserver_port,
-        enable_multimodal=args.enable_multimodal,
-        metric_port=metric_port,
-    )
-
-    start_submodule_processes(
-        start_funcs=[start_router_process, start_detokenization_process],
-        start_args=[
-            (args, router_port, detokenization_port, model_rpc_ports, metric_port),
-            (args, detokenization_port, httpserver_port),
-        ],
-    )
-    if "s3://" in args.model_dir:
-        from lightllm.utils.petrel_helper import s3_model_clear
-
-        s3_model_clear(args.model_dir)
-
-    if args.health_monitor:
-        from lightllm.server.health_monitor.manager import start_health_check_process
-
-        start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
-
-    # 共享变量，用于获取router端调度分析得到的机器负载信息
-    from lightllm.server import TokenLoad
-
-    global shared_token_load
-    shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load")
-
-    server.install_signal_handlers()
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level="debug",
-        timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
-        loop="uvloop",
-    )
+@app.on_event("startup")
+async def startup_event():
+    logger.info("server start up")
+    loop = asyncio.get_event_loop()
+    loop.create_task(g_objs.httpserver_manager.handle_loop())
+    logger.info("server start up ok")
+    return
 
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn"),  # this code will not be ok for settings to fork to subprocess
-    main()
+    parser = make_argument_parser()
+    args = parser.parse_args()
+    g_objs.args = args
+    from .api_start import normal_or_p_d_start, pd_master_start
+
+    if args.run_mode == "pd_master":
+        pd_master_start(g_objs)
+    else:
+        normal_or_p_d_start(g_objs)
