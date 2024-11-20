@@ -16,16 +16,11 @@ from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.models.starcoder.model import StarcoderTpPartModel
 from lightllm.models.starcoder2.model import Starcoder2TpPartModel
 from lightllm.models.qwen.model import QWenTpPartModel
-from lightllm.models.baichuan7b.model import Baichuan7bTpPartModel
-from lightllm.models.baichuan13b.model import Baichuan13bTpPartModel
-from lightllm.models.baichuan2_7b.model import Baichuan2_7bTpPartModel
-from lightllm.models.baichuan2_13b.model import Baichuan2_13bTpPartModel
 from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.stablelm.model import StablelmTpPartModel
 from lightllm.models.internlm2.model import Internlm2TpPartModel
 from lightllm.models.internlm2_reward.model import Internlm2RewardTpPartModel
-from lightllm.models.yi.model import YiTpPartModel
 from lightllm.models.mistral.model import MistralTpPartModel
 from lightllm.models.minicpm.model import MiniCPMTpPartModel
 from lightllm.models.llava.model import LlavaTpPartModel
@@ -131,19 +126,6 @@ class ModeBackend:
                     self.is_multimodal = True
                 else:
                     self.model = QWenTpPartModel(model_kvargs)
-            elif self.model_type == "baichuan":
-                if model_cfg["hidden_size"] == 4096:
-                    if model_cfg["architectures"][0] == "BaichuanForCausalLM":
-                        self.model = Baichuan2_7bTpPartModel(model_kvargs)
-                    else:
-                        self.model = Baichuan7bTpPartModel(model_kvargs)
-                elif model_cfg["hidden_size"] == 5120:
-                    if model_cfg["architectures"][0] == "BaichuanForCausalLM":
-                        self.model = Baichuan2_13bTpPartModel(model_kvargs)
-                    else:
-                        self.model = Baichuan13bTpPartModel(model_kvargs)
-                else:
-                    raise Exception("can not support baichuan format")
             elif self.model_type == "gpt_bigcode":
                 self.model = StarcoderTpPartModel(model_kvargs)
             elif self.model_type == "starcoder2":
@@ -157,8 +139,6 @@ class ModeBackend:
                     self.model = Internlm2RewardTpPartModel(model_kvargs)
                 else:
                     self.model = Internlm2TpPartModel(model_kvargs)
-            elif self.model_type == "Yi":
-                self.model = YiTpPartModel(model_kvargs)
             elif self.model_type == "mistral":
                 self.model = MistralTpPartModel(model_kvargs)
             elif self.model_type == "stablelm":
