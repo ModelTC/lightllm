@@ -29,6 +29,7 @@ class Internlm2TransformerLayerWeight(LlamaTransformerLayerWeight):
     def _init_weight_names(self):
         super()._init_weight_names()
         self._o_weight_name = f"{self.layer_name}.attention.wo.weight"
+        self._o_weight_name = f"{self.layer_name}.attention.wo.bias"
         self._gate_weight_name = f"{self.layer_name}.feed_forward.w1.weight"
         self._up_weight_name = f"{self.layer_name}.feed_forward.w3.weight"
         self._down_weight_name = f"{self.layer_name}.feed_forward.w2.weight"

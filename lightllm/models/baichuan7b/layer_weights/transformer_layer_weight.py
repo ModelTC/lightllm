@@ -12,11 +12,7 @@ class BaiChuan7bTransformerLayerWeight(LlamaTransformerLayerWeight):
 
     def _init_config(self):
         self.network_config_["num_key_value_heads"] = self.network_config_["num_attention_heads"]
-        self.n_embed = self.network_config_["hidden_size"]
-        self.n_head = self.network_config_["num_attention_heads"]
-        self.n_inter = self.network_config_["intermediate_size"]
-        self.n_kv_head = self.network_config_["num_key_value_heads"]
-        self.head_dim = self.network_config_.get("head_dim", self.n_embed // self.n_head)
+        super()._init_config()
 
     def load_hf_weights(self, weights):
         qkv_weight_name = f"{self.layer_name}.self_attn.W_pack.weight"
