@@ -7,10 +7,13 @@ from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, CO
 class MiniCPMTransformerLayerWeight(LlamaTransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
+        return
+
+    def _parse_config(self):
+        super()._parse_config()
         num_hidden_layers = self.network_config_["num_hidden_layers"]
         scale_depth = self.network_config_.get("scale_depth", math.sqrt(num_hidden_layers))
         self.layer_scale = scale_depth / math.sqrt(num_hidden_layers)
-        return
 
     def load_hf_weights(self, weights):
         if self._o_weight_name in weights:

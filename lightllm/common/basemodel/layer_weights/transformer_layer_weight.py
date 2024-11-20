@@ -2,7 +2,7 @@ from functools import partial
 
 # from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
-from .meta_weights import MMWeight,FusedMoeWeight
+from .meta_weights import BaseWeight, MultiMMWeight, MMWeight, FusedMoeWeight
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -18,43 +18,37 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.network_config_ = network_config
         self.mode = mode
         self.quant_cfg = quant_cfg
-        self.init_static_params()
-        self.fuse_pairs = {"k_proj&v_proj": "kv_proj"}
+        self._parse_config()
+        self._init_weight_names()
+        self._init_weight()
+        self.set_quantization()
         return
 
-    def load_hf_weights(self, weights):
-        super().load_hf_weights(weights)
-        self.fuse_weights()
+    def _parse_config(self):
+        pass
 
-    def fuse_weights(self):
-        for pair_name, fuse_name in self.fuse_pairs.items():
-            attr1_name, attr2_name = pair_name.split("&")
-            with self.lock:
-                if hasattr(self, fuse_name):
-                    continue
-                attr1 = getattr(self, attr1_name)
-                attr2 = getattr(self, attr2_name)
-                if attr1.verify_load() and attr2.verify_load():
-                    attr1.fuse(attr2)
-                    setattr(self, fuse_name, attr1)
-                    delattr(self, attr2_name)
+    def _init_weight_names(self):
+        pass
+
+    def _init_weight(self):
+        pass
+
+    def load_hf_weights(self, weights):
+        """
+        load weights
+        """
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name, None)
+            if isinstance(attr, MultiMMWeight):
+                with self.lock:
+                    attr.load_hf_weights(weights)
+            elif isinstance(attr, BaseWeight):
+                attr.load_hf_weights(weights)
 
     def set_quantization(self):
         if self.quant_cfg.quant_type is None:
             return
         mix_quant_list = self.quant_cfg.get_mixed_list(self.layer_num_)
-        # fused layers must have the same quant_method
-        for pair_name, fuse_name in self.fuse_pairs.items():
-            attr1_name, attr2_name = pair_name.split("&")
-            if attr1_name not in mix_quant_list and attr2_name not in mix_quant_list:
-                continue
-            attr1_quant_type = self.quant_cfg.get_quant_type(self.layer_num_, attr1_name)
-            attr2_quant_type = self.quant_cfg.get_quant_type(self.layer_num_, attr2_name)
-            assert (
-                attr1_quant_type == attr2_quant_type
-            ), f"""{attr1_name} and {attr2_name} expects the the same quant type,
-            but gets {attr1_quant_type} and {attr2_quant_type}."""
-
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
             if isinstance(attr, MMWeight) or isinstance(attr, FusedMoeWeight):

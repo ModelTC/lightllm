@@ -46,7 +46,7 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
     def _get_qkv(
         self, input, cache_kv, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight
     ) -> torch.Tensor:
-        q = layer_weight.q_proj.mm(input)
+        q = layer_weight.q_proj.mm(input.view(-1, self.embed_dim_))
         cache_kv = layer_weight.kv_proj.mm(
             input, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_)
         ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
@@ -94,13 +94,11 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
         return o_tensor
 
     def _get_o(self, input, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight) -> torch.Tensor:
-        input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
-        o_tensor = layer_weight.o_proj.mm(input)
+        o_tensor = layer_weight.o_proj.mm(input.view(-1, self.tp_o_head_num_ * self.head_dim_))
         return o_tensor
 
     def _ffn(self, input, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight) -> torch.Tensor:
-        input = input.view(-1, self.embed_dim_)
-        ffn1_out = layer_weight.up_proj.mm(input)
+        ffn1_out = layer_weight.gate_up_proj.mm(input.view(-1, self.embed_dim_))
         input = None
         gelu_out = torch.nn.functional.gelu(ffn1_out, approximate="tanh")
         ffn1_out = None

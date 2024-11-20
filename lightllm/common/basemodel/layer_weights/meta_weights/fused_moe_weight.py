@@ -7,7 +7,9 @@ from vllm.model_executor.layers.fused_moe import fused_experts
 
 
 class FusedMoeWeight(BaseWeight):
-    def __init__(self, gate_proj_name, down_proj_name, up_proj_name, weight_prefix, n_routed_experts, split_inter_size, data_type):
+    def __init__(
+        self, gate_proj_name, down_proj_name, up_proj_name, weight_prefix, n_routed_experts, split_inter_size, data_type
+    ):
         super().__init__()
         self.w1_weight_name = gate_proj_name
         self.w2_weight_name = down_proj_name
@@ -22,22 +24,13 @@ class FusedMoeWeight(BaseWeight):
         self.w2_list = [None] * self.n_routed_experts
         self.quant_method = None
         self.lock = threading.Lock()
-    
+
     def set_quant_method(self, quant_method):
         self.quant_method = quant_method
         if self.quant_method is not None:
             self.quant_method.is_moe = True
 
-    def experts(
-            self,
-            input_tensor,
-            router_logits,
-            top_k,
-            renormalize,
-            use_grouped_topk,
-            topk_group,
-            num_expert_group
-        ):
+    def experts(self, input_tensor, router_logits, top_k, renormalize, use_grouped_topk, topk_group, num_expert_group):
         topk_weights, topk_ids = FusedMoE.select_experts(
             hidden_states=input_tensor,
             router_logits=router_logits,
@@ -45,30 +38,33 @@ class FusedMoeWeight(BaseWeight):
             top_k=top_k,
             renormalize=renormalize,
             topk_group=topk_group,
-            num_expert_group=num_expert_group
+            num_expert_group=num_expert_group,
         )
         if self.quant_method is not None:
-            fused_experts(input_tensor,
-                         w1=self.w1[0],
-                         w2=self.w2[0],
-                         topk_weights=topk_weights,
-                         topk_ids=topk_ids,
-                         inplace=False,
-                         use_fp8_w8a8=True,
-                         use_int8_w8a16=False,
-                         w1_scale=self.w1[1],
-                         w2_scale=self.w2[1],
-                         a1_scale=None,
-                         a2_scale=None)
+            fused_experts(
+                input_tensor,
+                w1=self.w1[0],
+                w2=self.w2[0],
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                inplace=False,
+                use_fp8_w8a8=True,
+                use_int8_w8a16=False,
+                w1_scale=self.w1[1],
+                w2_scale=self.w2[1],
+                a1_scale=None,
+                a2_scale=None,
+            )
             return
-        fused_experts(hidden_states=input_tensor,
+        fused_experts(
+            hidden_states=input_tensor,
             w1=self.w1,
             w2=self.w2,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            inplace=True
+            inplace=True,
         )
-        
+
     def fuse(self):
         with self.lock:
             if (
@@ -120,15 +116,14 @@ class FusedMoeWeight(BaseWeight):
                 self.w2_list[i_experts] = weights[w2_weight][
                     :, self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1)
                 ]
-        
+
         self.fuse()
 
-            
     def _cuda(self, cpu_tensor):
         if self.tp_rank_ is None:
             return cpu_tensor.contiguous().to(self.data_type_).cuda()
         else:
             return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
-    
+
     def verify_load(self):
         return self.w1 is not None and self.w2 is not None

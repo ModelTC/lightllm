@@ -9,6 +9,7 @@ from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import
     context_attention_fwd,
     context_attention_fwd_no_prompt_cache,
 )
+
 from lightllm.models.deepseek2.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
 from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
@@ -20,7 +21,9 @@ from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[], disable_qk_absorb=False, disable_vo_absorb=False):
+    def __init__(
+        self, layer_num, tp_rank, world_size, network_config, mode=[], disable_qk_absorb=False, disable_vo_absorb=False
+    ):
         self.tp_k_head_num_ = 1
         self.tp_v_head_num_ = 1
         self.qk_nope_head_dim = network_config["qk_nope_head_dim"]
@@ -207,7 +210,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             renormalize=self.norm_topk_prob,
             use_grouped_topk=self.n_group,
             topk_group=self.topk_group,
-            num_expert_group=self.n_group
+            num_expert_group=self.n_group,
         )
 
         hidden_states.mul_(self.routed_scaling_factor)
