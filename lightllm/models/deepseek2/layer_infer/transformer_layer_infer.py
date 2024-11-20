@@ -9,6 +9,7 @@ from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import
     context_attention_fwd,
     context_attention_fwd_no_prompt_cache,
 )
+
 from lightllm.models.deepseek2.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
 from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
@@ -20,7 +21,9 @@ from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[], disable_qk_absorb=False, disable_vo_absorb=False):
+    def __init__(
+        self, layer_num, tp_rank, world_size, network_config, mode=[], disable_qk_absorb=False, disable_vo_absorb=False
+    ):
         self.tp_k_head_num_ = 1
         self.tp_v_head_num_ = 1
         self.qk_nope_head_dim = network_config["qk_nope_head_dim"]
@@ -200,29 +203,19 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
 
         router_logits = layer_weight.moe_gate.mm(hidden_states)
-        topk_weights, topk_ids = grouped_topk(
+        layer_weight.experts.experts(
             hidden_states,
-            router_logits,
-            self.num_experts_per_tok,
+            router_logits=router_logits,
+            top_k=self.num_experts_per_tok,
             renormalize=self.norm_topk_prob,
-            num_expert_group=self.n_group,
+            use_grouped_topk=self.n_group,
             topk_group=self.topk_group,
-        )
-        router_logits = None
-
-        final_hidden_states = fused_experts(
-            hidden_states,
-            layer_weight.experts.w1,
-            layer_weight.experts.w2,
-            topk_weights,
-            topk_ids,
-            inplace=True,
-            alloc_tensor_func=self.alloc_tensor,
+            num_expert_group=self.n_group,
         )
 
-        final_hidden_states.mul_(self.routed_scaling_factor)
+        hidden_states.mul_(self.routed_scaling_factor)
 
         if self.n_shared_experts is not None:
-            final_hidden_states.add_(shared_output)
+            hidden_states.add_(shared_output)
 
-        return final_hidden_states.view(num_tokens, hidden_dim)
+        return hidden_states.view(num_tokens, hidden_dim)

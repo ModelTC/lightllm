@@ -57,10 +57,25 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
 class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
+        self.is_moe = False
 
     def quantize(self, weight: torch.Tensor):
+        if self.is_moe:
+            return self.quantize_moe(weight)
         qweight, weight_scale = ops.scaled_fp8_quant(weight.cuda(), scale=None, use_per_token_if_dynamic=True)
         return qweight.transpose(0, 1), weight_scale
+
+    def quantize_moe(self, weight):
+        num_experts = weight.shape[0]
+        qweights = []
+        weight_scales = []
+        qweights = torch.empty_like(weight, dtype=torch.float8_e4m3fn).cuda()
+        for i in range(num_experts):
+            qweight, weight_scale = ops.scaled_fp8_quant(weight[0].cuda(), scale=None, use_per_token_if_dynamic=False)
+            qweights[i] = qweight
+            weight_scales.append(weight_scale)
+        weight_scale = torch.cat(weight_scales, dim=0).reshape(-1)
+        return qweights, weight_scale
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
         x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
