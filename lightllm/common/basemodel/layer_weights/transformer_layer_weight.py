@@ -2,7 +2,7 @@ from functools import partial
 
 # from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
-from .meta_weights import MMWeight, ROWMMWeight, FusedMoeWeight
+from .meta_weights import BaseWeight, MultiMMWeight, MMWeight, FusedMoeWeight
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -33,6 +33,18 @@ class TransformerLayerWeight(BaseLayerWeight):
 
     def _init_weight(self):
         pass
+
+    def load_hf_weights(self, weights):
+        """
+        load weights
+        """
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name, None)
+            if isinstance(attr, MultiMMWeight):
+                with self.lock:
+                    attr.load_hf_weights(weights)
+            elif isinstance(attr, BaseWeight):
+                attr.load_hf_weights(weights)
 
     def set_quantization(self):
         if self.quant_cfg.quant_type is None:
