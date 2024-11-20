@@ -96,6 +96,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         else:
             self.init_ffn()
         self.init_norm()
+        self.set_quantization()
         return
 
     def init_qkvo(self):
