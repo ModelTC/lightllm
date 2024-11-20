@@ -3,23 +3,23 @@ from .base_weight import BaseWeightTpl
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
-class MMWeight(BaseWeightTpl):
-    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
-        super().__init__(weight_name, data_type, bias_name)
-        self.quant_method = None
+class MMWeightTpl(BaseWeightTpl):
+    def __init__(self, data_type, split_n_embed):
+        super().__init__()
+        self.data_type_ = data_type
         self.split_n_embed = split_n_embed
+        self.quant_method = None
+        self.weight = None
+        self.bias = None
 
     def set_quant_method(self, quant_method):
         self.quant_method = quant_method
 
-    def pre_load_weights(self, weight):
-        return weight.to(self.data_type_)
-
-    def post_load_weights(self, weight):
+    def post_load_weights(self):
         if self.quant_method is not None:
-            self.weight = self.quant_method.quantize(weight.cuda(self.tp_rank_))
+            self.weight = self.quant_method.quantize(self.weight.cuda(self.tp_rank_))
             return
-        self.weight = weight.transpose(0, 1).cuda(self.tp_rank_)
+        self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
 
     def mm(self, input_tensor, out=None, use_custom_tensor_mananger=True):
         if self.quant_method is not None:
@@ -37,71 +37,106 @@ class MMWeight(BaseWeightTpl):
         return torch.addmm(self.bias, input_tensor, self.weight, out=out)
 
 
+class MMWeight(MMWeightTpl):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
+        super().__init__(data_type, split_n_embed)
+        self.weight_name = weight_name
+        self.bias_name = bias_name
+
+    def verify_load(self):
+        load_ok = True
+        # Verify weight. The weight must be not None.
+        load_ok = load_ok and self.weight is not None
+        # Verify bias. If bias_name is set, it must be not None.
+        if self.bias_name is not None:
+            load_ok = load_ok and self.bias is not None
+        return load_ok
+
+
 class ROWMMWeight(MMWeight):
-    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False, disable_tp=False):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
-        self.wait_fuse = wait_fuse
-        self.disable_tp = disable_tp
-
-    def fuse(self, B, op="cat"):
-        if op == "cat":
-            weight = torch.cat([self.weight, B.weight], dim=0)
-            if self.bias is not None:
-                self.bias = torch.cat([self.bias, B.bias], dim=0)
-        elif op == "absorb":
-            Aweight = self.weight.to(torch.float64)
-            Bweight = B.weight.to(torch.float64)
-            weight = torch.matmul(Aweight, Bweight).to(self.data_type_)
-        else:
-            pass
-        self.post_load_weights(weight)
-        return self
-
-    def load_hf_weights(self, weights):
-        if self.disable_tp:
-            rank_id = 0
-        else:
-            rank_id = self.tp_rank_
-        start = self.split_n_embed * rank_id
-        end = self.split_n_embed * (rank_id + 1)
-
-        weight = None
-        if self.weight_name in weights:
-            weight = self.pre_load_weights(weights[self.weight_name])
-            weight = weight[start:end]
-        if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type_)[start:end]
-            self.bias = bias.cuda(self.tp_rank_)
-        if weight is None:
-            return
-        if self.wait_fuse:
-            self.weight = weight
-            return
-        self.post_load_weights(weight)
-        return
-
-
-class COLMMWeight(MMWeight):
-    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None, wait_fuse=False):
-        super().__init__(weight_name, data_type, split_n_embed, bias_name)
-        self.wait_fuse = wait_fuse
 
     def load_hf_weights(self, weights):
         start = self.split_n_embed * self.tp_rank_
         end = self.split_n_embed * (self.tp_rank_ + 1)
         weight = None
         if self.weight_name in weights:
-            weight = self.pre_load_weights(weights[self.weight_name])
-            weight = weight[:, start:end]
+            weight = weights[self.weight_name].to(self.data_type_)
+            self.weight = weight[start:end]
+        if self.bias_name in weights:
+            bias = weights[self.bias_name].to(self.data_type_)[start:end]
+            self.bias = bias.cuda(self.tp_rank_)
+        if weight is None:
+            return
+        self.post_load_weights()
+        return
+
+
+class COLMMWeight(MMWeight):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name)
+
+    def load_hf_weights(self, weights):
+        start = self.split_n_embed * self.tp_rank_
+        end = self.split_n_embed * (self.tp_rank_ + 1)
+        weight = None
+        if self.weight_name in weights:
+            weight = weights[self.weight_name].to(self.data_type_)
+            self.weight = weight[:, start:end]
         if self.bias_name in weights:
             bias = weights[self.bias_name].to(self.data_type)
             self.bias = bias.cuda(self.tp_rank_) / self.world_size_
         if weight is None:
             return
-        if self.wait_fuse:
-            self.weight = weight
-            return
-        self.post_load_weights(weight)
+        self.post_load_weights()
+        return
+
+
+class MultiMMWeight(MMWeightTpl):
+    def __init__(self, weight_names, data_type, split_n_embed, bias_names=None):
+        super().__init__(data_type, split_n_embed)
+        self.weight_names = weight_names
+        self.bias_names = bias_names
+        self.weights = [None] * len(self.weight_names)
+        self.biases = [None] * len(self.bias_names)
+        self.has_bias = all(b is not None for b in self.bias_names)
+
+    def verify_load(self):
+        load_ok = True
+        # Verify weight. The weight must be not None.
+        load_ok = load_ok and self.weight is not None
+        # Verify bias. If bias_name is set, it must be not None.
+        if self.has_bias:
+            load_ok = load_ok and self.bias is not None
+        return load_ok
+
+
+class MultiROWMMWeight(MultiMMWeight):
+    def __init__(self, weight_names, data_type, split_n_embed, bias_names=None):
+        super().__init__(weight_names, data_type, split_n_embed, bias_names)
+
+    def fuse(self):
+        if self.weight is None and all(w is not None for w in self.weights):
+            self.weight = torch.cat(self.weights, dim=0)
+            self.post_load_weights()
+        if self.has_bias:
+            if self.bias is None and all(b is not None for b in self.biases):
+                self.bias = torch.cat(self.bias, dim=0).cuda(self.tp_rank_)
+        return self
+
+    def load_hf_weights(self, weights):
+        start = self.split_n_embed * self.tp_rank_
+        end = self.split_n_embed * (self.tp_rank_ + 1)
+        weight = None
+        for i in range(len(self.weight_names)):
+            if self.weight_names[i] in weights:
+                weight = weights[self.weight_names[i]].to(self.data_type_)
+                self.weights[i] = weight[start:end]
+            if self.has_bias and self.bias_names[i] in weights:
+                bias = weights[self.bias_names[i]].to(self.data_type_)
+                self.biases[i] = bias[start:end]
+        self.fuse()
         return
 
 
