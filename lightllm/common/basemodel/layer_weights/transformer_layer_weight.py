@@ -2,7 +2,7 @@ from functools import partial
 
 # from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
-from .meta_weights import MMWeight, FusedMoeWeight
+from .meta_weights import MMWeight, ROWMMWeight, FusedMoeWeight
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -20,6 +20,7 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.quant_cfg = quant_cfg
         self.init_static_params()
         self.fuse_pairs = {"k_proj&v_proj": "kv_proj"}
+        self.kv_proj: ROWMMWeight = None
         return
 
     def load_hf_weights(self, weights):
@@ -30,7 +31,7 @@ class TransformerLayerWeight(BaseLayerWeight):
         for pair_name, fuse_name in self.fuse_pairs.items():
             attr1_name, attr2_name = pair_name.split("&")
             with self.lock:
-                if hasattr(self, fuse_name):
+                if getattr(self, fuse_name, None) is not None:
                     continue
                 attr1 = getattr(self, attr1_name)
                 attr2 = getattr(self, attr2_name)

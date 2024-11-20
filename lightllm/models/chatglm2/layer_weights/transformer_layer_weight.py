@@ -24,17 +24,17 @@ class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
         qkv_weight_name = f"{self.layer_name}.self_attention.query_key_value.weight"
         if qkv_weight_name in weights:
             qkv_weight_ = weights[qkv_weight_name]
-            weights[self._q_weight_name] = qkv_weight_[:, : self.n_embed]
-            weights[self._k_weight_name] = qkv_weight_[:, self.n_embed : self.n_embed + n_kv_embed]
-            weights[self._v_weight_name] = qkv_weight_[:, self.n_embed + n_kv_embed : self.n_embed + 2 * n_kv_embed]
+            weights[self._q_weight_name] = qkv_weight_[: self.n_embed, :]
+            weights[self._k_weight_name] = qkv_weight_[self.n_embed : self.n_embed + n_kv_embed, :]
+            weights[self._v_weight_name] = qkv_weight_[self.n_embed + n_kv_embed : self.n_embed + 2 * n_kv_embed, :]
             del weights[qkv_weight_name]
 
         qkv_bias_name = f"{self.layer_name}.self_attention.query_key_value.bias"
         if qkv_bias_name in weights:
             qkv_bias_ = weights[qkv_bias_name]
             weights[self._q_bias_name] = qkv_bias_[: self.n_embed]
-            weights[self._k_bias_name] = qkv_bias_[:, self.n_embed : self.n_embed + n_kv_embed]
-            weights[self._v_bias_name] = qkv_bias_[:, self.n_embed + n_kv_embed : self.n_embed + 2 * n_kv_embed]
+            weights[self._k_bias_name] = qkv_bias_[self.n_embed : self.n_embed + n_kv_embed]
+            weights[self._v_bias_name] = qkv_bias_[self.n_embed + n_kv_embed : self.n_embed + 2 * n_kv_embed]
             del weights[qkv_bias_name]
 
     def _init_config(self):

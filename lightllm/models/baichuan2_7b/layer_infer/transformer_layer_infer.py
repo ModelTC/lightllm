@@ -15,7 +15,6 @@ class Baichuan2_7bTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _get_qkv(
         self, input, cache_kv: torch.Tensor, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-
         q = layer_weight.q_proj.mm(input.view(-1, self.embed_dim_)).view(-1, self.tp_q_head_num_, self.head_dim_)
         cache_kv = layer_weight.kv_proj.mm(
             input, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_)

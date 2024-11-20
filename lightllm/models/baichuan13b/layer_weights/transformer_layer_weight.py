@@ -13,8 +13,3 @@ class BaiChuan13bTransformerLayerWeight(BaiChuan7bTransformerLayerWeight):
 
     def init_static_params(self):
         return BloomTransformerLayerWeight.init_static_params(self)
-
-    def verify_load(self):
-        super().verify_load()
-        assert self.tp_alibi is not None, "load error"
-        return

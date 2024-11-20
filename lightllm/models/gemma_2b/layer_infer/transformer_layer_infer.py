@@ -25,7 +25,7 @@ class Gemma_2bTransformerLayerInfer(LlamaTransformerLayerInfer):
     def _ffn(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Gemma_2bTransformerLayerWeight
     ) -> torch.Tensor:
-        up_gate_out = layer_weight.gate_up_proj.mm(input)
+        up_gate_out = layer_weight.gate_up_proj.mm(input.view(-1, self.embed_dim_))
         ffn1_out = self.alloc_tensor((input.size(0), up_gate_out.size(1) // 2), input.dtype)
         gelu_and_mul_fwd(up_gate_out, ffn1_out)
         input = None

@@ -86,6 +86,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             self._down_weight_name, self.data_type_, split_inter_size, bias_name=self._down_bias_name
         )
         self.fuse_pairs.update({"gate_proj&up_proj": "gate_up_proj"})
+        self.gate_up_proj: ROWMMWeight = None
 
     def _init_norm(self):
         self.att_norm_weight_ = NormWeight(
