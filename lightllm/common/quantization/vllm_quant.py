@@ -64,10 +64,9 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
             return self.quantize_moe(weight)
         qweight, weight_scale = ops.scaled_fp8_quant(weight.cuda(), scale=None, use_per_token_if_dynamic=True)
         return qweight.transpose(0, 1), weight_scale
-    
+
     def quantize_moe(self, weight):
         num_experts = weight.shape[0]
-        out_dim = weight.shape[1]
         qweights = []
         weight_scales = []
         qweights = torch.empty_like(weight, dtype=torch.float8_e4m3fn).cuda()

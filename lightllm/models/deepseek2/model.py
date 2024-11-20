@@ -66,7 +66,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
                 mode=self.mode,
                 quant_cfg=self.quant_cfg,
                 disable_qk_absorb=self.disable_qk_absorb,
-                disable_vo_absorb=self.disable_vo_absorb
+                disable_vo_absorb=self.disable_vo_absorb,
             )
             for i in range(self.config["n_layer"])
         ]
@@ -80,7 +80,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.pre_post_weight.verify_load()
         [weight.verify_load() for weight in self.trans_layers_weight]
         return
-    
+
     def _init_infer_layer(self):
         self.pre_infer = self.pre_layer_infer_class(
             tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode
@@ -90,7 +90,13 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         )
         self.layers_infer = [
             self.transformer_layer_infer_class(
-                i, tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode, disable_qk_absorb=self.disable_qk_absorb, disable_vo_absorb=self.disable_vo_absorb
+                i,
+                tp_rank=self.tp_rank_,
+                world_size=self.world_size_,
+                network_config=self.config,
+                mode=self.mode,
+                disable_qk_absorb=self.disable_qk_absorb,
+                disable_vo_absorb=self.disable_vo_absorb,
             )
             for i in range(self.config["n_layer"])
         ]
