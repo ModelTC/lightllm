@@ -7,14 +7,7 @@ class StablelmTransformerLayerWeight(Qwen2TransformerLayerWeight):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
         return
 
-    def init_norm(self):
-        self.att_norm_weight_ = NormWeight(
-            f"model.layers.{self.layer_num_}.input_layernorm.weight",
-            self.data_type_,
-            bias_name=f"model.layers.{self.layer_num_}.input_layernorm.bias",
-        )
-        self.ffn_norm_weight_ = NormWeight(
-            f"model.layers.{self.layer_num_}.post_attention_layernorm.weight",
-            self.data_type_,
-            bias_name=f"model.layers.{self.layer_num_}.post_attention_layernorm.bias",
-        )
+    def _init_weight_names(self):
+        super()._init_weight_names()
+        self.att_norm_bias_name = f"{self.layer_name}.input_layernorm.bias"
+        self.ffn_norm_bias_name = f"{self.layer_name}.post_attention_layernorm.bias"

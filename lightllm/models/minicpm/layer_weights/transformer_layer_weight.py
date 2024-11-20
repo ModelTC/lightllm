@@ -13,8 +13,8 @@ class MiniCPMTransformerLayerWeight(LlamaTransformerLayerWeight):
         return
 
     def load_hf_weights(self, weights):
-        if f"model.layers.{self.layer_num_}.self_attn.o_proj.weight" in weights:
-            weights[f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"] *= self.layer_scale
-        if f"model.layers.{self.layer_num_}.mlp.down_proj.weight" in weights:
-            weights[f"model.layers.{self.layer_num_}.mlp.down_proj.weight"] *= self.layer_scale
+        if self._o_weight_name in weights:
+            weights[self._o_weight_name] *= self.layer_scale
+        if self._down_weight_name in weights:
+            weights[self._down_weight_name] *= self.layer_scale
         super().load_hf_weights(weights)
