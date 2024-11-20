@@ -52,6 +52,7 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
+from lightllm.utils.profiler import LocalProfiler
 
 
 class ModeBackend:
@@ -87,6 +88,15 @@ class ModeBackend:
         # p d 分离模式，decode节点才会使用的参数
         self.pd_rpyc_port = kvargs.get("pd_rpyc_port", None)
         max_total_token_num = kvargs["max_total_token_num"]
+
+        self.profiler = None
+        if kvargs.get("profiler") is not None:
+            # when world_size == 1, model and router are in the same process, so use same profiler object
+            assert world_size == 1
+            self.profiler = kvargs.get("profiler")
+        elif self.args.profiler:
+            # when world_size > 1
+            self.profiler = LocalProfiler(mode=self.args.profiler, name=f"lightllm-model_backend-{self.tp_rank}")
 
         dist.init_process_group(
             "nccl", init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}', rank=self.tp_rank, world_size=world_size
@@ -336,3 +346,12 @@ class ModeBackend:
         del batch
         g_infer_state_lock.release()
         return
+
+    def profiler_ops(self, msg):
+        assert self.profiler
+        if msg == "start":
+            self.profiler.start()
+        elif msg == "stop":
+            self.profiler.stop()
+        else:
+            assert False, "invalid profiler ops"
