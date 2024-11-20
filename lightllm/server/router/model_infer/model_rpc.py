@@ -133,6 +133,11 @@ class ModelRpcServer(rpyc.Service):
     def exposed_get_max_total_token_num(self):
         return self.backend.get_max_total_token_num()
 
+    def exposed_profiler_ops(self, msg):
+        if self.world_size != 1:
+            msg = obtain(msg)
+        return self.backend.profiler_ops(msg)
+
 
 class ModelRpcClient:
     def __init__(self, model_rpc, world_size, rpc_server_process=None):
@@ -161,6 +166,7 @@ class ModelRpcClient:
             self._filter_batch = async_wrap(self.model.filter_batch)
             self._merge_batch = async_wrap(self.model.merge_batch)
             self._remove_batch = async_wrap(self.model.remove_batch)
+            self._profiler_ops = async_wrap(self.model.profiler_ops)
             self._get_max_total_token_num = async_wrap(self.model.get_max_total_token_num)
         else:
             self._init_model = self.model.exposed_init_model
@@ -171,6 +177,7 @@ class ModelRpcClient:
             self._filter_batch = self.model.exposed_filter_batch
             self._merge_batch = self.model.exposed_merge_batch
             self._remove_batch = self.model.exposed_remove_batch
+            self._profiler_ops = self.model.exposed_profiler_ops
             self._get_max_total_token_num = self.model.exposed_get_max_total_token_num
         return
 
@@ -241,6 +248,14 @@ class ModelRpcClient:
             return await ans
         else:
             return ans
+
+    async def profiler_ops(self, msg):
+        ans = self._profiler_ops(msg)
+        if self.use_rpc:
+            await ans
+            return
+        else:
+            return
 
 
 def _init_env(args, port, info_queue, mem_queue, router_lock):

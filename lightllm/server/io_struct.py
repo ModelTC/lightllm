@@ -344,3 +344,8 @@ class BatchStrOut:
 class AbortReq:
     def __init__(self, group_req_id):
         self.group_req_id = group_req_id
+
+
+class ProfilerReq:
+    def __init__(self, msg):
+        self.msg = msg

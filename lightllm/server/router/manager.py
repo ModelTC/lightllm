@@ -20,11 +20,12 @@ from rpyc.utils.classic import obtain
 from lightllm.utils.infer_utils import calculate_time
 from .dynamic_prompt.shared_arr import SharedInt
 from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
-from ..io_struct import BatchTokenIdOut, AbortReq, ReqRunStatus, FinishStatus, ReqDetokenizationState
+from ..io_struct import BatchTokenIdOut, AbortReq, ProfilerReq, ReqRunStatus, FinishStatus, ReqDetokenizationState
 from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
 from ..tokenizer import get_tokenizer
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.profiler import LocalProfiler
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.server.metrics.manager import MetricClient
@@ -79,6 +80,8 @@ class RouterManager:
         # 主要是为了防止调度失误，造成 OOM 等错误
         self.router_lock = mp.Lock()
         g_router_lock.obj = self.router_lock
+
+        self.profiler = LocalProfiler(mode=args.profiler, name="lightllm-router") if args.profiler else None
         return
 
     async def wait_to_model_ready(self):
@@ -132,6 +135,7 @@ class RouterManager:
                 "mem_fraction": self.args.mem_fraction,
                 "batch_max_tokens": self.args.batch_max_tokens,
                 "pd_rpyc_port": self.args.pd_tp_infer_rpyc_ports[rank_id],  # 非 pd 模式可以不设置
+                "profiler": self.profiler if self.world_size == 1 else None,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -335,8 +339,12 @@ class RouterManager:
         await self._init_batch(batch)
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
+            if self.profiler:
+                mark_range = self.profiler.mark_range_start(f"prefill len={batch.input_tokens()}")
             rets = [self.model_rpcs[tp_rank].prefill_batch(batch.batch_id) for tp_rank in range(self.world_size)]
             ans = await asyncio.gather(*rets)
+            if self.profiler:
+                self.profiler.mark_range_end(mark_range)
             if self.world_size != 1:
                 req_to_out_status = obtain(ans[0])
             else:
@@ -355,12 +363,16 @@ class RouterManager:
     async def _decode_batch(self, batch: Batch):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
+        if self.profiler:
+            mark_range = self.profiler.mark_range_start(f"decode bs={len(batch.reqs)}")
         rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.world_size)]
         ans = await asyncio.gather(*rets)
         if self.world_size != 1:
             req_to_out_status = obtain(ans[0])
         else:
             req_to_out_status = ans[0]
+        if self.profiler:
+            self.profiler.mark_range_end(mark_range)
 
         self._update_out_status_to_batch(batch, req_to_out_status)
         unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
@@ -486,8 +498,23 @@ class RouterManager:
                 group_req_id = abort_req.group_req_id
                 await self.abort(group_req_id)
                 self.send_to_detokenization.send_pyobj(abort_req)
+            elif isinstance(recv_req, ProfilerReq):
+                await self.profiler_ops(recv_req.msg)
             else:
                 assert False, f"Error Req Inf {recv_req}"
+
+    async def profiler_ops(self, msg):
+        # assert self.profiler
+        if self.world_size != 1:
+            rets = [self.model_rpcs[tp_rank].profiler_ops(msg) for tp_rank in range(self.world_size)]
+            await asyncio.gather(*rets)
+
+        if msg == "start":
+            self.profiler.start()
+        elif msg == "stop":
+            self.profiler.stop()
+        else:
+            assert False, "invalid profiler ops"
 
     def clean_up(self):
         for model_rpc in self.model_rpcs:

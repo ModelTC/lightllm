@@ -219,4 +219,19 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
                 The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
     )
+    parser.add_argument(
+        "--profiler",
+        type=str,
+        choices=["torch_profile", "nvtx"],
+        default=None,
+        help="""Enable profiler support.
+                This will expose '/profiler_start' and '/profiler_stop' API,
+                below profiling features will only been enabled in this range.
+                Options:
+                'torch_profile' will setup torch.profiler.profile(), traces file will been saved to './trace',
+                or set by 'LIGHTLLM_TRACE_DIR' env;
+                'nvtx' will add NVTX marks for external profiler like NVIDIA Nsight System
+                (you should setup it by youself).
+                A NVTX named 'LIGHTLLM_PROFILE' will been added within the profiling range.""",
+    )
     return parser

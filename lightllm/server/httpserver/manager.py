@@ -13,7 +13,7 @@ import ujson as json
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
 from ..tokenizer import get_tokenizer
-from ..io_struct import BatchStrOut, AbortReq, FinishStatus
+from ..io_struct import BatchStrOut, AbortReq, ProfilerReq, FinishStatus
 from ..pd_io_struct import NodeRole
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..req_id_generator import convert_sub_id_to_group_id
@@ -437,6 +437,10 @@ class HttpServerManager:
                 logger.exception(str(e))
                 await asyncio.sleep(10)
                 logger.info("reconnection to pd_master")
+
+    def profiler_msg(self, msg):
+        abort_req = ProfilerReq(msg)
+        self.send_to_router.send_pyobj(abort_req)
 
 
 class ReqStatus:
