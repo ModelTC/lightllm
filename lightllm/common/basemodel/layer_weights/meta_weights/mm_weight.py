@@ -15,12 +15,6 @@ class MMWeightTpl(BaseWeightTpl):
     def set_quant_method(self, quant_method):
         self.quant_method = quant_method
 
-    def post_load_weights(self):
-        if self.quant_method is not None:
-            self.weight = self.quant_method.quantize(self.weight.cuda(self.tp_rank_))
-            return
-        self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
-
     def mm(self, input_tensor, out=None, use_custom_tensor_mananger=True):
         if self.quant_method is not None:
             return self.quant_method.apply(input_tensor, self.weight, self.bias, out)
@@ -35,6 +29,12 @@ class MMWeightTpl(BaseWeightTpl):
         if self.bias is None:
             return torch.mm(input_tensor, self.weight, out=out)
         return torch.addmm(self.bias, input_tensor, self.weight, out=out)
+
+    def _post_load_weights(self):
+        if self.quant_method is not None:
+            self.weight = self.quant_method.quantize(self.weight.cuda(self.tp_rank_))
+            return
+        self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
 
 
 class MMWeight(MMWeightTpl):
@@ -69,7 +69,7 @@ class ROWMMWeight(MMWeight):
             self.bias = bias.cuda(self.tp_rank_)
         if weight is None:
             return
-        self.post_load_weights()
+        self._post_load_weights()
         return
 
 
@@ -89,7 +89,7 @@ class COLMMWeight(MMWeight):
             self.bias = bias.cuda(self.tp_rank_) / self.world_size_
         if weight is None:
             return
-        self.post_load_weights()
+        self._post_load_weights()
         return
 
 
@@ -116,10 +116,10 @@ class MultiROWMMWeight(MultiMMWeight):
     def __init__(self, weight_names, data_type, split_n_embed, bias_names=None):
         super().__init__(weight_names, data_type, split_n_embed, bias_names)
 
-    def fuse(self):
+    def _fuse(self):
         if self.weight is None and all(w is not None for w in self.weights):
             self.weight = torch.cat(self.weights, dim=0)
-            self.post_load_weights()
+            self._post_load_weights()
         if self.has_bias:
             if self.bias is None and all(b is not None for b in self.biases):
                 self.bias = torch.cat(self.bias, dim=0).cuda(self.tp_rank_)
@@ -136,7 +136,7 @@ class MultiROWMMWeight(MultiMMWeight):
             if self.has_bias and self.bias_names[i] in weights:
                 bias = weights[self.bias_names[i]].to(self.data_type_)
                 self.biases[i] = bias[start:end]
-        self.fuse()
+        self._fuse()
         return
 
 

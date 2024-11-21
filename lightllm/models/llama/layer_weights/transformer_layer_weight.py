@@ -25,7 +25,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._init_ffn()
         self._init_norm()
 
-    def _init_config(self):
+    def _parse_config(self):
         self.n_embed = self.network_config_["hidden_size"]
         self.n_head = self.network_config_["num_attention_heads"]
         self.n_inter = self.network_config_["intermediate_size"]

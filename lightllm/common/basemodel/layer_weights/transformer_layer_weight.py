@@ -18,14 +18,13 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.network_config_ = network_config
         self.mode = mode
         self.quant_cfg = quant_cfg
-        self.init_static_params()
-        self._init_config()
+        self._parse_config()
         self._init_weight_names()
         self._init_weight()
         self.set_quantization()
         return
 
-    def _init_config(self):
+    def _parse_config(self):
         pass
 
     def _init_weight_names(self):
