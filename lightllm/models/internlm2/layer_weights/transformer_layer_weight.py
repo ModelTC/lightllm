@@ -33,5 +33,5 @@ class Internlm2TransformerLayerWeight(LlamaTransformerLayerWeight):
         self._gate_weight_name = f"model.layers.{self.layer_num_}.feed_forward.w1.weight"
         self._up_weight_name = f"model.layers.{self.layer_num_}.feed_forward.w3.weight"
         self._down_weight_name = f"model.layers.{self.layer_num_}.feed_forward.w2.weight"
-        self.att_norm_weight_name = f"model.layers.{self.layer_num_}.attention_norm.weight"
-        self.ffn_norm_weight_name = f"model.layers.{self.layer_num_}.ffn_norm.weight"
+        self._att_norm_weight_name = f"model.layers.{self.layer_num_}.attention_norm.weight"
+        self._ffn_norm_weight_name = f"model.layers.{self.layer_num_}.ffn_norm.weight"

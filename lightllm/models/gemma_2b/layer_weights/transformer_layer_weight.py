@@ -22,5 +22,5 @@ class Gemma_2bTransformerLayerWeight(LlamaTransformerLayerWeight):
         )
 
     def _init_norm(self):
-        self.att_norm_weight_ = GEMMANormWeight(self.att_norm_weight_name, self.data_type_)
-        self.ffn_norm_weight_ = GEMMANormWeight(self.ffn_norm_weight_name, self.data_type_)
+        self.att_norm_weight_ = GEMMANormWeight(self._att_norm_weight_name, self.data_type_)
+        self.ffn_norm_weight_ = GEMMANormWeight(self._ffn_norm_weight_name, self.data_type_)

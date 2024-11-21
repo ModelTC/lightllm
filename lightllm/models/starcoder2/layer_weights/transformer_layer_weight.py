@@ -23,8 +23,8 @@ class Starcoder2TransformerLayerWeight(LlamaTransformerLayerWeight):
         self._down_weight_name = f"model.layers.{self.layer_num_}.mlp.c_proj.weight"
         self._down_bias_name = f"model.layers.{self.layer_num_}.mlp.c_proj.bias"
 
-        self.att_norm_bias_name = f"model.layers.{self.layer_num_}.input_layernorm.bias"
-        self.ffn_norm_bias_name = f"model.layers.{self.layer_num_}.post_attention_layernorm.bias"
+        self._att_norm_bias_name = f"model.layers.{self.layer_num_}.input_layernorm.bias"
+        self._ffn_norm_bias_name = f"model.layers.{self.layer_num_}.post_attention_layernorm.bias"
 
     def _init_ffn(self):
         split_inter_size = self.n_inter // self.world_size_

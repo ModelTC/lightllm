@@ -98,7 +98,7 @@ class BloomTransformerLayerInfer(TransformerLayerInferTpl):
         return o_tensor
 
     def _ffn(self, input, infer_state: InferStateInfo, layer_weight: BloomTransformerLayerWeight) -> torch.Tensor:
-        ffn1_out = layer_weight.up_proj.mm(input.view(-1, self.embed_dim_))
+        ffn1_out = layer_weight.gate_up_proj.mm(input.view(-1, self.embed_dim_))
         input = None
         gelu_out = torch.nn.functional.gelu(ffn1_out, approximate="tanh")
         ffn1_out = None

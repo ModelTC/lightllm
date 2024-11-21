@@ -45,5 +45,5 @@ class QwenTransformerLayerWeight(LlamaTransformerLayerWeight):
         self._gate_weight_name = f"transformer.h.{self.layer_num_}.mlp.w2.weight"
         self._up_weight_name = f"transformer.h.{self.layer_num_}.mlp.w1.weight"
         self._down_weight_name = f"transformer.h.{self.layer_num_}.mlp.c_proj.weight"
-        self.att_norm_weight_name = f"transformer.h.{self.layer_num_}.ln_1.weight"
-        self.ffn_norm_weight_name = f"transformer.h.{self.layer_num_}.ln_2.weight"
+        self._att_norm_weight_name = f"transformer.h.{self.layer_num_}.ln_1.weight"
+        self._ffn_norm_weight_name = f"transformer.h.{self.layer_num_}.ln_2.weight"

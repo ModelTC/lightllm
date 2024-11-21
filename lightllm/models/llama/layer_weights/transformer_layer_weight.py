@@ -49,10 +49,10 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._down_weight_name = f"model.layers.{self.layer_num_}.mlp.down_proj.weight"
         self._down_bias_name = None
 
-        self.att_norm_weight_name = f"model.layers.{self.layer_num_}.input_layernorm.weight"
-        self.att_norm_bias_name = None
-        self.ffn_norm_weight_name = f"model.layers.{self.layer_num_}.post_attention_layernorm.weight"
-        self.ffn_norm_bias_name = None
+        self._att_norm_weight_name = f"model.layers.{self.layer_num_}.input_layernorm.weight"
+        self._att_norm_bias_name = None
+        self._ffn_norm_weight_name = f"model.layers.{self.layer_num_}.post_attention_layernorm.weight"
+        self._ffn_norm_bias_name = None
 
     def _init_qkv(self):
         q_split_n_embed = self.head_dim * self.n_head // self.world_size_
@@ -83,8 +83,8 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
 
     def _init_norm(self):
         self.att_norm_weight_ = NormWeight(
-            self.att_norm_weight_name, self.data_type_, bias_name=self.att_norm_bias_name
+            self._att_norm_weight_name, self.data_type_, bias_name=self._att_norm_bias_name
         )
         self.ffn_norm_weight_ = NormWeight(
-            self.ffn_norm_weight_name, self.data_type_, bias_name=self.ffn_norm_bias_name
+            self._ffn_norm_weight_name, self.data_type_, bias_name=self._ffn_norm_bias_name
         )
