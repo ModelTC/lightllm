@@ -1,17 +1,27 @@
 import socket
 import subprocess
+import ipaddress
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
 
 def alloc_can_use_network_port(num=3, used_nccl_ports=None, from_port_num=10000):
+    if not hasattr(alloc_can_use_network_port, "used_nccl_ports"):
+        alloc_can_use_network_port.used_ports = set() 
+    
+    if used_nccl_ports is None:
+        used_nccl_ports = alloc_can_use_network_port.used_ports
+    else:
+        used_nccl_ports = set(used_nccl_ports).union(alloc_can_use_network_port.used_ports)
+
     port_list = []
     for port in range(from_port_num, 65536):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(("localhost", port))
-            if result != 0 and port not in used_nccl_ports:
+            if result != 0 and port not in alloc_can_use_network_port.used_ports:
                 port_list.append(port)
+                alloc_can_use_network_port.used_ports.add(port)
 
             if len(port_list) == num:
                 return port_list
@@ -46,3 +56,11 @@ def get_hostname_ip():
     except subprocess.CalledProcessError as e:
         logger.exception(f"Error executing command: {e}")
         return None
+
+
+def is_valid_ipv6_address(address: str) -> bool:
+    try:
+        ipaddress.IPv6Address(address)
+        return True
+    except ValueError:
+        return False
