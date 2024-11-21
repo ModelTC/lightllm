@@ -7,9 +7,7 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
     ROWMMWeight,
     COLMMWeight,
     NormWeight,
-    CustomMMWeight,
     FusedMoeWeight,
-    CustomBMMWeight,
 )
 
 logger = init_logger(__name__)

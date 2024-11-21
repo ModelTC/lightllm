@@ -7,8 +7,9 @@ from .mm_weight import (
     COLMMWeight,
     MultiROWMMWeight,
     MultiROWMMWeightNoTP,
-    CustomMMWeight,
-    CustomBMMWeight,
+    MultiCOLMMWeight,
+    ROWBMMWeight,
+    COLBMMWeight,
 )
 from .norm_weight import NormWeight, GEMMANormWeight, TpNormWeight
 from .fused_moe_weight import FusedMoeWeight
