@@ -32,7 +32,7 @@ class GEMMANormWeight(NormWeight):
 
     def load_hf_weights(self, weights):
         if self.weight_name in weights:
-            self.weight = weights[self.weight_name].to(self.data_type_).cuda(self.tp_rank_) + 1
+            self.weight = (weights[self.weight_name].to(self.data_type_) + 1).cuda(self.tp_rank_)
 
 
 class TpNormWeight(NormWeight):
