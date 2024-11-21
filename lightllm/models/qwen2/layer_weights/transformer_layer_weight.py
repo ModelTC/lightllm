@@ -11,6 +11,6 @@ class Qwen2TransformerLayerWeight(LlamaTransformerLayerWeight):
 
     def _init_weight_names(self):
         super()._init_weight_names()
-        self._q_bias_name = f"{self.layer_name}.self_attn.q_proj.bias"
-        self._k_bias_name = f"{self.layer_name}.self_attn.k_proj.bias"
-        self._v_bias_name = f"{self.layer_name}.self_attn.v_proj.bias"
+        self._q_bias_name = f"model.layers.{self.layer_num_}.self_attn.q_proj.bias"
+        self._k_bias_name = f"model.layers.{self.layer_num_}.self_attn.k_proj.bias"
+        self._v_bias_name = f"model.layers.{self.layer_num_}.self_attn.v_proj.bias"
