@@ -7,12 +7,10 @@ from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, CO
 
 class QwenTransformerLayerWeight(LlamaTransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
-        super().__init__(
-            layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg, layer_prefix="transformer.h"
-        )
+        super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
 
     def load_hf_weights(self, weights):
-        qkv_weight_name = f"{self.layer_name}.attn.c_attn.weight"
+        qkv_weight_name = f"transformer.h.{self.layer_num_}.attn.c_attn.weight"
         if qkv_weight_name in weights:
             qkv_weight_ = weights[qkv_weight_name]
             split_size = qkv_weight_.shape[0] // 3
@@ -22,7 +20,7 @@ class QwenTransformerLayerWeight(LlamaTransformerLayerWeight):
             weights[self._v_weight_name] = v_weight_
             del weights[qkv_weight_name]
 
-        qkv_bias_name = f"{self.layer_name}.attn.c_attn.bias"
+        qkv_bias_name = f"transformer.h.{self.layer_num_}.attn.c_attn.bias"
         if qkv_bias_name in weights:
             qkv_bias = weights[qkv_bias_name]
             split_size = qkv_bias.shape[0] // 3
@@ -36,9 +34,16 @@ class QwenTransformerLayerWeight(LlamaTransformerLayerWeight):
 
     def _init_weight_names(self):
         super()._init_weight_names()
-        self._o_weight_name = f"{self.layer_name}.attn.c_proj.weight"
-        self._gate_weight_name = f"{self.layer_name}.mlp.w2.weight"
-        self._up_weight_name = f"{self.layer_name}.mlp.w1.weight"
-        self._down_weight_name = f"{self.layer_name}.mlp.c_proj.weight"
-        self.att_norm_weight_name = f"{self.layer_name}.ln_1.weight"
-        self.ffn_norm_weight_name = f"{self.layer_name}.ln_2.weight"
+        self._q_weight_name = f"transformer.h.{self.layer_num_}.attn.q_proj.weight"
+        self._q_bias_name = f"transformer.h.{self.layer_num_}.attn.q_proj.bias"
+        self._k_weight_name = f"transformer.h.{self.layer_num_}.attn.k_proj.weight"
+        self._k_bias_name = f"transformer.h.{self.layer_num_}.attn.k_proj.bias"
+        self._v_weight_name = f"transformer.h.{self.layer_num_}.attn.v_proj.weight"
+        self._v_bias_name = f"transformer.h.{self.layer_num_}.attn.v_proj.bias"
+
+        self._o_weight_name = f"transformer.h.{self.layer_num_}.attn.c_proj.weight"
+        self._gate_weight_name = f"transformer.h.{self.layer_num_}.mlp.w2.weight"
+        self._up_weight_name = f"transformer.h.{self.layer_num_}.mlp.w1.weight"
+        self._down_weight_name = f"transformer.h.{self.layer_num_}.mlp.c_proj.weight"
+        self.att_norm_weight_name = f"transformer.h.{self.layer_num_}.ln_1.weight"
+        self.ffn_norm_weight_name = f"transformer.h.{self.layer_num_}.ln_2.weight"
