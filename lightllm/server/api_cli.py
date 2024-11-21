@@ -234,16 +234,4 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Path of quantization config. It can be used for mixed quantization.
             Examples can be found in lightllm/common/quantization/configs.""",
     )
-    parser.add_argument(
-        "--disable_qk_absorb",
-        default=False,
-        action="store_true",
-        help="Disable mla qk weight absorption",
-    )
-    parser.add_argument(
-        "--disable_vo_absorb",
-        default=False,
-        action="store_true",
-        help="Disable mla vo weight absorption",
-    )
     return parser

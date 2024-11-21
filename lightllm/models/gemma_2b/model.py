@@ -5,6 +5,7 @@ from lightllm.models.gemma_2b.layer_infer.transformer_layer_infer import Gemma_2
 from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.model import LlamaTpPartModel
+from lightllm.common.mem_utils import select_mem_manager_class
 
 
 class Gemma_2bTpPartModel(LlamaTpPartModel):
@@ -32,4 +33,15 @@ class Gemma_2bTpPartModel(LlamaTpPartModel):
         assert self.load_way in ["HF"], "gemma only supports HF format to load Now!"
         # assert self.config["num_key_value_heads"] % self.world_size_ == 0
         assert self.config["num_attention_heads"] % self.world_size_ == 0
+        return
+
+    def _init_mem_manager(self):
+        self.mem_manager = select_mem_manager_class(self.mode)(
+            self.max_total_token_num,
+            dtype=self.data_type,
+            head_num=self.config["num_key_value_heads"],
+            head_dim=self.config["hidden_size"] // self.config["num_attention_heads"],
+            layer_num=self.config["num_hidden_layers"],
+            mem_fraction=self.mem_fraction,
+        )
         return

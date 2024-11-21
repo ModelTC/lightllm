@@ -133,8 +133,6 @@ class RouterManager:
                 "batch_max_tokens": self.args.batch_max_tokens,
                 "quant_type": self.args.quant_type,
                 "quant_cfg": self.args.quant_cfg,
-                "disable_qk_absorb": self.args.disable_qk_absorb,
-                "disable_vo_absorb": self.args.disable_vo_absorb,
                 "pd_rpyc_port": self.args.pd_tp_infer_rpyc_ports[rank_id],  # 非 pd 模式可以不设置
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))

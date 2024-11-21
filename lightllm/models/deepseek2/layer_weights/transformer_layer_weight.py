@@ -96,21 +96,25 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         disable_qk_absorb=False,
         disable_vo_absorb=False,
     ):
+        self.disable_qk_absorb = disable_qk_absorb
+        self.disable_vo_absorb = disable_vo_absorb
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
+        return
+
+    def _parse_config(self):
+        super()._parse_config()
         self.is_moe = (
             self.network_config_["n_routed_experts"] is not None
             and self.layer_num_ >= self.network_config_["first_k_dense_replace"]
             and self.layer_num_ % self.network_config_["moe_layer_freq"] == 0
         )
-        self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
+        self.tp_q_head_num_ = self.network_config_["num_attention_heads"] // self.world_size_
         self.n_routed_experts = self.network_config_["n_routed_experts"]
         self.q_lora_rank = self.network_config_["q_lora_rank"]
         self.qk_nope_head_dim = self.network_config_["qk_nope_head_dim"]
         self.qk_rope_head_dim = self.network_config_["qk_rope_head_dim"]
         self.num_attention_heads = self.network_config_["num_attention_heads"]
         self.kv_lora_rank = self.network_config_["kv_lora_rank"]
-        self.disable_qk_absorb = disable_qk_absorb
-        self.disable_vo_absorb = disable_vo_absorb
         self.fuse_pairs = {}
         if not self.disable_qk_absorb:
             if self.q_lora_rank is None:
@@ -125,16 +129,15 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             }
         )
 
-        self.init_qkvo()
+    def _init_weight(self):
+        self._init_qkvo()
         if self.is_moe:
-            self.init_moe()
+            self._init_moe()
         else:
-            self.init_ffn()
-        self.init_norm()
-        self.set_quantization()
-        return
+            self._init_ffn()
+        self._init_norm()
 
-    def init_qkvo(self):
+    def _init_qkvo(self):
         q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
         q_split_n_embed_with_rope = (
             (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
@@ -201,7 +204,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.up_proj = ROWMMWeight(f"{mlp_prefix}.up_proj.weight", self.data_type_, split_inter_size, wait_fuse=True)
         self.down_proj = COLMMWeight(f"{mlp_prefix}.down_proj.weight", self.data_type_, split_inter_size)
 
-    def init_moe(self):
+    def _init_moe(self):
         moe_intermediate_size = self.network_config_["moe_intermediate_size"]
         self.moe_gate = ROWMMWeight(
             f"model.layers.{self.layer_num_}.mlp.gate.weight", self.data_type_, moe_intermediate_size, disable_tp=True
@@ -220,12 +223,12 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
         )
 
-    def init_ffn(self):
+    def _init_ffn(self):
         inter_size = self.network_config_["intermediate_size"]
         split_inter_size = inter_size // self.world_size_
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp", split_inter_size)
 
-    def init_norm(self):
+    def _init_norm(self):
         self.att_norm_weight_ = NormWeight(f"model.layers.{self.layer_num_}.input_layernorm.weight", self.data_type_)
         self.ffn_norm_weight_ = NormWeight(
             f"model.layers.{self.layer_num_}.post_attention_layernorm.weight", self.data_type_

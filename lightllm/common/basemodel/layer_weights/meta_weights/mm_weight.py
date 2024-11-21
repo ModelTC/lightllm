@@ -7,7 +7,8 @@ class MMWeightTpl(BaseWeightTpl):
     def __init__(self, data_type, split_n_embed):
         super().__init__()
         self.data_type_ = data_type
-        self.split_n_embed = split_n_embed
+        self.start = split_n_embed * self.tp_rank_
+        self.end = split_n_embed * (self.tp_rank_ + 1)
         self.quant_method = None
         self.weight = None
         self.bias = None
@@ -58,14 +59,12 @@ class ROWMMWeight(MMWeight):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
 
     def load_hf_weights(self, weights):
-        start = self.split_n_embed * self.tp_rank_
-        end = self.split_n_embed * (self.tp_rank_ + 1)
         weight = None
         if self.weight_name in weights:
             weight = weights[self.weight_name].to(self.data_type_)
-            self.weight = weight[start:end]
+            self.weight = weight[self.start : self.end]
         if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type_)[start:end]
+            bias = weights[self.bias_name].to(self.data_type_)[self.start : self.end]
             self.bias = bias.cuda(self.tp_rank_)
         if weight is None:
             return
@@ -73,17 +72,22 @@ class ROWMMWeight(MMWeight):
         return
 
 
+class ROWMMWeightNoTP(MMWeight):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name)
+        self.start = 0
+        self.end = split_n_embed
+
+
 class COLMMWeight(MMWeight):
     def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
 
     def load_hf_weights(self, weights):
-        start = self.split_n_embed * self.tp_rank_
-        end = self.split_n_embed * (self.tp_rank_ + 1)
         weight = None
         if self.weight_name in weights:
             weight = weights[self.weight_name].to(self.data_type_)
-            self.weight = weight[:, start:end]
+            self.weight = weight[:, self.start : self.end]
         if self.bias_name in weights:
             bias = weights[self.bias_name].to(self.data_type_)
             self.bias = (bias / self.world_size_).cuda(self.tp_rank_)
@@ -126,18 +130,23 @@ class MultiROWMMWeight(MultiMMWeight):
         return self
 
     def load_hf_weights(self, weights):
-        start = self.split_n_embed * self.tp_rank_
-        end = self.split_n_embed * (self.tp_rank_ + 1)
         weight = None
         for i in range(len(self.weight_names)):
             if self.weight_names[i] in weights:
                 weight = weights[self.weight_names[i]].to(self.data_type_)
-                self.weights[i] = weight[start:end]
+                self.weights[i] = weight[self.start : self.end]
             if self.has_bias and self.bias_names[i] in weights:
                 bias = weights[self.bias_names[i]].to(self.data_type_)
-                self.biases[i] = bias[start:end]
+                self.biases[i] = bias[self.start : self.end]
         self._fuse()
         return
+
+
+class MultiROWMMWeightNoTP(MultiROWMMWeight):
+    def __init__(self, weight_names, data_type, split_n_embed, bias_names=None):
+        super().__init__(weight_names, data_type, split_n_embed, bias_names)
+        self.start = 0
+        self.end = split_n_embed
 
 
 class CustomMMWeight(ROWMMWeight):

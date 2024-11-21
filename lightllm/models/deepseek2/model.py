@@ -22,6 +22,8 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
+        self.disable_qk_absorb = int(os.getenv("DISABLE_QK_ABSORB", 0))
+        self.disable_vo_absorb = int(os.getenv("DISABLE_VO_ABSORB", 0))
         return
 
     def _init_some_value(self):

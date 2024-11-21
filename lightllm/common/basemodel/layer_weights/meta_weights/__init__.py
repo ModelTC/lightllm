@@ -3,8 +3,10 @@ from .mm_weight import (
     MMWeight,
     MultiMMWeight,
     ROWMMWeight,
+    ROWMMWeightNoTP,
     COLMMWeight,
     MultiROWMMWeight,
+    MultiROWMMWeightNoTP,
     CustomMMWeight,
     CustomBMMWeight,
 )
