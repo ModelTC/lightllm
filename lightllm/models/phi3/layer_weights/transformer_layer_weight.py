@@ -11,7 +11,7 @@ class Phi3TransformerLayerWeight(LlamaTransformerLayerWeight):
         return
 
     def load_hf_weights(self, weights):
-        qkv_weight_name = f"{self.layer_name}.self_attn.qkv_proj.weight"
+        qkv_weight_name = f"model.layers.{self.layer_num_}.self_attn.qkv_proj.weight"
         if qkv_weight_name in weights:
             qkv_weight_ = weights[qkv_weight_name]
             n_embed = self.network_config_["hidden_size"]
@@ -26,7 +26,7 @@ class Phi3TransformerLayerWeight(LlamaTransformerLayerWeight):
             weights[self._v_weight_name] = v_weight_
             del weights[qkv_weight_name]
 
-        gate_up_weight_name = f"{self.layer_name}.mlp.gate_up_proj.weight"
+        gate_up_weight_name = f"model.layers.{self.layer_num_}.mlp.gate_up_proj.weight"
         if gate_up_weight_name in weights:
             inter_size = self.network_config_["intermediate_size"]
             gate_up_proj = weights[gate_up_weight_name]
