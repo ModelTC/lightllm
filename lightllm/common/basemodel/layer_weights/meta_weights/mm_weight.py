@@ -85,7 +85,7 @@ class COLMMWeight(MMWeight):
             weight = weights[self.weight_name].to(self.data_type_)
             self.weight = weight[:, start:end]
         if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type)
+            bias = weights[self.bias_name].to(self.data_type_)
             self.bias = bias.cuda(self.tp_rank_) / self.world_size_
         if weight is None:
             return
@@ -122,7 +122,7 @@ class MultiROWMMWeight(MultiMMWeight):
             self._post_load_weights()
         if self.has_bias:
             if self.bias is None and all(b is not None for b in self.biases):
-                self.bias = torch.cat(self.bias, dim=0).cuda(self.tp_rank_)
+                self.bias = torch.cat(self.biases, dim=0).cuda(self.tp_rank_)
         return self
 
     def load_hf_weights(self, weights):
