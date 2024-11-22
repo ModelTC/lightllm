@@ -21,8 +21,8 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     transformer_layer_infer_class = Deepseek2TransformerLayerInfer
 
     def __init__(self, kvargs):
-        self.disable_qk_absorb = int(os.getenv("DISABLE_QK_ABSORB", 0))
-        self.disable_vo_absorb = int(os.getenv("DISABLE_VO_ABSORB", 0))
+        self.disable_qk_absorb = os.getenv("DISABLE_QK_ABSORB", "False").upper() in ["ON", "TRUE", "1"]
+        self.disable_vo_absorb = os.getenv("DISABLE_VO_ABSORB", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(kvargs)
         return
 
