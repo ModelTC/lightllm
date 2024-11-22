@@ -63,4 +63,5 @@ def load_hf_weights(data_type, weight_dir, pre_post_layer=None, transformer_laye
     worker = int(os.environ.get("LOADWORKER", 1))
     with Pool(worker) as p:
         _ = p.map(partial_func, candidate_files)
+
     return

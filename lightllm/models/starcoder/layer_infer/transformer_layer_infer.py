@@ -6,7 +6,6 @@ from functools import partial
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.models.starcoder.infer_struct import StarcoderInferStateInfo
 from lightllm.models.bloom.layer_infer.transformer_layer_infer import BloomTransformerLayerInfer
-from lightllm.models.starcoder.layer_weights.transformer_layer_weight import StarcoderTransformerLayerWeight
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 
 
