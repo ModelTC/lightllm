@@ -1,6 +1,5 @@
 import torch
 import torch.functional as F
-import torch.distributed as dist
 import numpy as np
 
 from lightllm.utils.infer_utils import mark_cost_time

@@ -1,7 +1,6 @@
 import time
 import torch
 import torch.functional as F
-import torch.distributed as dist
 import numpy as np
 
 from lightllm.common.basemodel import TransformerLayerInferTpl

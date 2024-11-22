@@ -1,5 +1,5 @@
 import torch
-import torch.distributed as dist
+from lightllm.distributed import tensor_model_parallel_all_reduce
 
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
@@ -76,5 +76,5 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
             self.vob_end_id_,
         )
         if self.world_size_ > 1:
-            dist.all_reduce(out, op=dist.ReduceOp.SUM, async_op=False)
+            out = tensor_model_parallel_all_reduce(out)
         return out

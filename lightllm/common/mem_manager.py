@@ -5,6 +5,10 @@ from typing import List
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.utils.profile_max_tokens import get_available_gpu_memory, get_total_gpu_memory
+from lightllm.distributed import (
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+)
 
 logger = init_logger(__name__)
 
@@ -48,10 +52,9 @@ class MemoryManager:
     def profile_size(self, mem_fraction):
         if self.size is not None:
             return
-        import torch.distributed as dist
 
-        tp_rank = dist.get_rank()
-        world_size = dist.get_world_size()
+        tp_rank = get_tensor_model_parallel_rank()
+        world_size = get_tensor_model_parallel_world_size()
         total_memory = get_total_gpu_memory()
         available_memory = get_available_gpu_memory(tp_rank, world_size) - total_memory * (1 - mem_fraction)
         cell_size = self.get_cell_size()

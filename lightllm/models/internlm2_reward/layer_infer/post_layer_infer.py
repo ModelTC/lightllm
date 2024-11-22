@@ -1,5 +1,4 @@
 import torch
-import torch.distributed as dist
 import numpy as np
 
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo

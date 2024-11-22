@@ -1,7 +1,6 @@
 from typing import Tuple
 import torch
 import torch.functional as F
-import torch.distributed as dist
 import numpy as np
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv

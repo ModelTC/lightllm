@@ -2,7 +2,7 @@ from typing import Tuple
 
 import numpy as np
 import torch
-import torch.distributed as dist
+from lightllm.distributed import tensor_model_parallel_all_reduce
 import torch.functional as F
 import triton
 from functools import partial
@@ -181,7 +181,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -190,7 +190,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
@@ -204,7 +204,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -213,7 +213,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
@@ -231,7 +231,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -240,7 +240,7 @@ class LlamaTransformerLayerInferActivationWeightQuantPpl(TransformerLayerInferAc
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
@@ -516,7 +516,7 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -526,7 +526,7 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
@@ -541,7 +541,7 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -551,7 +551,7 @@ class LlamaTransformerLayerInferActivationWeightQuantTriton(TransformerLayerInfe
         ffn_out = self._ffn(input1, token_scale, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 

@@ -1,6 +1,5 @@
 import torch
 import torch.functional as F
-import torch.distributed as dist
 import numpy as np
 from functools import partial
 
@@ -16,7 +15,7 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.partial_rotary_factor = self.network_config_.get("partial_rotary_factor", 1)
         return
-    
+
     def _bind_norm(self):
         self._att_norm = partial(StablelmTransformerLayerInfer._att_norm, self)
         self._ffn_norm = partial(StablelmTransformerLayerInfer._ffn_norm, self)
@@ -54,7 +53,9 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
         )
         return o_tensor
 
-    def _att_norm(self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight) -> torch.Tensor:
+    def _att_norm(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
+    ) -> torch.Tensor:
         return layernorm_forward(
             input.view(-1, self.embed_dim_),
             weight=layer_weight.att_norm_weight_,
@@ -62,7 +63,9 @@ class StablelmTransformerLayerInfer(InternlmTransformerLayerInfer):
             eps=self.eps_,
         )
 
-    def _ffn_norm(self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight) -> torch.Tensor:
+    def _ffn_norm(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: StablelmTransformerLayerWeight
+    ) -> torch.Tensor:
         return layernorm_forward(
             input.view(-1, self.embed_dim_),
             weight=layer_weight.ffn_norm_weight_,

@@ -1,6 +1,6 @@
 import torch
 import torch.functional as F
-import torch.distributed as dist
+from lightllm.distributed import tensor_model_parallel_all_reduce
 import numpy as np
 
 from lightllm.models.starcoder.layer_weights.pre_and_post_layer_weight import PreAndPostLayerWeight
@@ -31,7 +31,7 @@ class StarcoderPreLayerInfer(PreLayerInfer):
         )
         embedding(input_ids, layer_weight.wte_weight_, self.vob_start_id_, self.vob_end_id_, input_embdings)
         if self.world_size_ > 1:
-            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
+            input_embdings = tensor_model_parallel_all_reduce(input_embdings)
 
         position_embeds = self.alloc_tensor(
             (infer_state.position_ids.shape[0], layer_weight.wpe_weight_.shape[1]), dtype=layer_weight.data_type_
@@ -49,7 +49,7 @@ class StarcoderPreLayerInfer(PreLayerInfer):
         )
         embedding(input_ids, layer_weight.wte_weight_, self.vob_start_id_, self.vob_end_id_, input_embdings)
         if self.world_size_ > 1:
-            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
+            input_embdings = tensor_model_parallel_all_reduce(input_embdings)
 
         position_embeds = self.alloc_tensor(
             (infer_state.position_ids.shape[0], layer_weight.wpe_weight_.shape[1]), dtype=layer_weight.data_type_

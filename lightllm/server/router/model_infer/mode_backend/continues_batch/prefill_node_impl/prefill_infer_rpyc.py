@@ -1,5 +1,5 @@
 import torch
-import torch.distributed as dist
+from lightllm.distributed import get_tensor_model_parallel_rank
 import rpyc
 from typing import Dict, List, Tuple
 from rpyc.utils.classic import obtain
@@ -18,7 +18,7 @@ class PDPrefillInferRpcServer(rpyc.Service):
         return
 
     def on_connect(self, conn):
-        self.rank_id = dist.get_rank()
+        self.rank_id = get_tensor_model_parallel_rank()
         torch.cuda.set_device(f"cuda:{self.rank_id}")
         return
 

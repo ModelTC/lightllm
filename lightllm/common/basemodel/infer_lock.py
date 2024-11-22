@@ -12,6 +12,10 @@ import torch.distributed as dist
 import time
 import torch.multiprocessing as mp
 from lightllm.utils.log_utils import init_logger
+from lightllm.distributed import (
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+)
 
 logger = init_logger(__name__)
 
@@ -22,8 +26,8 @@ class InferStateLock:
         # 默认开 128 tp 的空间, 现在应该没什么卡能开这么大的tp 吧
         self.lock_tp_infos = SharedArray(f"{name}_lock_tp_infos", shape=(129,), dtype=np.int64)
         self.lock_tp_infos.arr[:] = 0
-        self.rank_id = dist.get_rank()
-        self.world_size = dist.get_world_size()
+        self.rank_id = get_tensor_model_parallel_rank()
+        self.world_size = get_tensor_model_parallel_world_size()
 
     def add_cur_mark(self):
         self.lock_tp_infos.arr[self.rank_id] += 1

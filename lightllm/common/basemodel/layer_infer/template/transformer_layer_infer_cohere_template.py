@@ -2,7 +2,7 @@ from functools import partial
 from typing import Tuple
 
 import torch
-import torch.distributed as dist
+from lightllm.distributed import tensor_model_parallel_all_reduce
 
 from lightllm.common.basemodel.layer_infer.template.transformer_layer_infer_template import TransformerLayerInferTpl
 from lightllm.utils.infer_utils import mark_cost_time
@@ -88,14 +88,14 @@ class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         infer_state._attn_out = o
         return
 
     def _context_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         ffn_out = self._ffn(input_embdings, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         infer_state._ffn_out = ffn_out
         return
 
@@ -107,14 +107,14 @@ class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         infer_state._attn_out = o
         return
 
     def _token_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         ffn_out = self._ffn(input_embdings, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         infer_state._ffn_out = ffn_out
         return
 
@@ -126,14 +126,14 @@ class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         infer_state._attn_out = o
         return
 
     def _splitfuse_ffn(self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight):
         ffn_out = self._ffn(input_embdings, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         infer_state._ffn_out = ffn_out
         return
 

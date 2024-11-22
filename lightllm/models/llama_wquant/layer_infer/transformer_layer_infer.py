@@ -2,7 +2,6 @@ from typing import Tuple
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.functional as F
 import triton
 from functools import partial
@@ -188,7 +187,7 @@ class LlamaTransformerLayerInferWquant(TransformerLayerInferWeightQuantTpl):
         else:
             out.add_(bias)
             return out
-        
+
     def _wquant_matmul_fast_llm_int6weight_only_quant(
         self, input, quant_weight_params, infer_state: LlamaInferStateInfo, out=None, bias=None, has_act=False
     ):

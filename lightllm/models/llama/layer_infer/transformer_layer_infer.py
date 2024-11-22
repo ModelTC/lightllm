@@ -1,6 +1,5 @@
 import torch
 import torch.functional as F
-import torch.distributed as dist
 import numpy as np
 from typing import Tuple
 from functools import partial

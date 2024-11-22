@@ -16,12 +16,16 @@ from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrain
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
+from lightllm.distributed import (
+    get_tp_group,
+    init_distributed_environment,
+    initialize_model_parallel,
+)
 
 
 class VisualModelRpcServer(rpyc.Service):
     def exposed_init_model(self, kvargs):
         import torch
-        import torch.distributed as dist
 
         self.vit_dp = kvargs["vit_dp"]
         self.vit_tp = kvargs["vit_tp"]
@@ -36,12 +40,15 @@ class VisualModelRpcServer(rpyc.Service):
 
         torch.cuda.set_device(visual_gpu_ids[self.vit_rank_id])
         if self.vit_tp != 1:
-            dist.init_process_group(
+            init_distributed_environment(
                 backend="nccl",
-                init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
-                rank=self.tp_rank_id,
                 world_size=self.vit_tp,
+                rank=self.tp_rank_id,
+                distributed_init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
             )
+            initialize_model_parallel(tensor_model_parallel_size=self.vit_tp)
+            self.tp_group = get_tp_group()
+
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
 
         if self.vit_tp != 1:

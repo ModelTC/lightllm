@@ -2,7 +2,6 @@ from typing import Tuple
 
 import torch
 import torch.functional as F
-import torch.distributed as dist
 import numpy as np
 from functools import partial
 

@@ -1,9 +1,9 @@
 import torch
-import torch.distributed as dist
 
 import time
-
+from lightllm.distributed import get_tensor_model_parallel_rank
 from lightllm.utils.log_utils import init_logger
+
 logger = init_logger(__name__)
 
 is_show_cost_time = False
@@ -12,7 +12,7 @@ is_show_cost_time = False
 def mark_cost_time(func_name):
     def inner_func(func):
         def time_func(*args, **kwargs):
-            if dist.get_rank() in [0, 1] and is_show_cost_time:
+            if get_tensor_model_parallel_rank() in [0, 1] and is_show_cost_time:
                 torch.cuda.synchronize()
                 start_time = time.time()
                 ans = func(*args, **kwargs)

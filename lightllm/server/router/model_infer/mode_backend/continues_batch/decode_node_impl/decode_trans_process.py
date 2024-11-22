@@ -6,6 +6,11 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
+from lightllm.distributed import (
+    get_world_group,
+    init_distributed_environment,
+    initialize_model_parallel,
+)
 
 logger = init_logger(__name__)
 
@@ -37,12 +42,16 @@ def _init_env(
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
         assert len(mem_managers) == args.tp
         task_out_queue.put("get_mem_managers_ok")
-        import torch.distributed as dist
         from datetime import timedelta
 
-        dist.init_process_group(
-            "nccl", init_method=f"tcp://{nccl_ip}:{nccl_port}", rank=1, world_size=2, timeout=timedelta(seconds=60)
+        init_distributed_environment(
+            backend="nccl",
+            rank=1,
+            world_size=2,
+            distributed_init_method=f"tcp://{nccl_ip}:{nccl_port}",
+            timeout=timedelta(seconds=60),
         )
+        world_group = get_world_group()
         task_out_queue.put("nccl_ok")
         while True:
             move_task: KVMoveTask = task_in_queue.get()
@@ -54,7 +63,7 @@ def _init_env(
                     logger.info(f"trans start: {move_task.to_decode_log_info()}")
                     for i, mem in enumerate(mem_managers):
                         for layer_index in range(mem.layer_num):
-                            dist.recv(recive_buffer, src=0)
+                            world_group.recv(recive_buffer, src=0)
                             if i == device_index:
                                 mem.write_to_layer_buffer(move_task.decode_token_indexes, recive_buffer, layer_index)
                             else:
