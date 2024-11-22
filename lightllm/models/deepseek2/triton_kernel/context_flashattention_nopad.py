@@ -173,7 +173,7 @@ def context_attention_fwd(
     assert q_rope_dim in {16, 32, 64, 128, 256}
 
     if q_nope_dim >= 512:
-        BLOCK = 64 if not TESLA else 32
+        BLOCK = 32
     else:
         BLOCK = 128 if not TESLA else 64
 
@@ -369,7 +369,7 @@ def context_attention_fwd_no_prompt_cache(
     assert q_rope_dim in {16, 32, 64, 128, 256}
 
     if q_nope_dim >= 512:
-        BLOCK = 64 if not TESLA else 32
+        BLOCK = 32
     else:
         BLOCK = 128 if not TESLA else 64
 
