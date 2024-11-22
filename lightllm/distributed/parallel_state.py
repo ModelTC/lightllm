@@ -229,13 +229,14 @@ class GroupCoordinator:
                 device=self.device,
             )
 
+        self.ca_comm = None
         # self.ca_comm: Optional[CustomAllreduce] = None
         # if use_custom_allreduce and self.world_size > 1:
-        # Initialize a custom fast all-reduce implementation.
-        # self.ca_comm = CustomAllreduce(
-        # group=self.cpu_group,
-        # device=self.device,
-        # )
+        #     Initialize a custom fast all-reduce implementation.
+        #     self.ca_comm = CustomAllreduce(
+        #         group=self.cpu_group,
+        #         device=self.device,
+        #     )
 
         # from vllm.distributed.device_communicators.tpu_communicator import (
         #     TpuCommunicator)
