@@ -6,10 +6,6 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask
-from lightllm.distributed import (
-    get_world_group,
-    init_distributed_environment,
-)
 
 logger = init_logger(__name__)
 
@@ -46,16 +42,12 @@ def _init_env(
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
         assert len(mem_managers) == args.tp
         task_out_queue.put("get_mem_managers_ok")
+        import torch.distributed as dist
         from datetime import timedelta
 
-        init_distributed_environment(
-            backend="nccl",
-            rank=0,
-            world_size=2,
-            distributed_init_method=f"tcp://{nccl_ip}:{nccl_port}",
-            timeout=timedelta(seconds=60),
+        dist.init_process_group(
+            "nccl", init_method=f"tcp://{nccl_ip}:{nccl_port}", rank=0, world_size=2, timeout=timedelta(seconds=60)
         )
-        world_group = get_world_group()
         task_out_queue.put("nccl_ok")
         while True:
             move_task: KVMoveTask = task_in_queue.get()
@@ -69,14 +61,14 @@ def _init_env(
                         for layer_index in range(mem.layer_num):
                             move_buffer = mem.read_from_layer_buffer(token_indexes, layer_index)
                             if i == device_index:
-                                world_group.send(move_buffer, dst=1)
+                                dist.send(move_buffer, dst=1)
                             else:
                                 move_size = move_buffer.numel()
                                 new_move_buffer = cur_mem.kv_move_buffer.view(-1)[0:move_size].view(move_buffer.shape)
                                 from torch.cuda import comm
 
                                 comm.broadcast(move_buffer, out=[new_move_buffer])
-                                world_group.send(new_move_buffer, dst=1)
+                                dist.send(new_move_buffer, dst=1)
                     logger.info(f"trans finished: {move_task.to_prefill_log_info()}")
                 torch.cuda.synchronize()
                 logger.info(f"trans cost time: {(time.time() - start)}, {move_task.to_prefill_log_info()}")
