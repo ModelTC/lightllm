@@ -106,7 +106,6 @@ class TpPartBaseModel:
         return
 
     def _init_quant(self):
-        self.enable_torchao = self.quant_type is not None and "ao" in self.quant_type
         self.quant_cfg = Quantcfg(self.config["n_layer"], self.quant_type, self.quant_cfg_path)
         logger.info(f"Initial quantization. " f"The default quantization method is {self.quant_cfg.quant_type}")
 

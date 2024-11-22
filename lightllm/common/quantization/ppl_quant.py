@@ -55,8 +55,8 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
             return out
 
 
-@QUANTMETHODS.register("ppl-w6a16")
-class PPLW6A16QuantizationMethod(QuantizationMethod):
+@QUANTMETHODS.register("flashllm-w6a16")
+class FLASHLLMW6A16QuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()
 
