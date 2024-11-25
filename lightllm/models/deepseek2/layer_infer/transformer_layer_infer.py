@@ -60,13 +60,13 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def _bind_attention(self):
         self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel, self)
-        if "triton_gqa_flashdecoding" in self.mode:
+        if "triton_flashdecoding" in self.mode:
             self._token_attention_kernel = partial(
-                Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
+                Deepseek2TransformerLayerInfer._token_decode_attention_flashdecoding, self
             )
         else:
             self._token_attention_kernel = partial(
-                Deepseek2TransformerLayerInfer._token_decode_attention_flashdecoding, self
+                Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
             )
         self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
         if self.is_moe:
