@@ -8,8 +8,8 @@ logger = init_logger(__name__)
 
 def alloc_can_use_network_port(num=3, used_nccl_ports=None, from_port_num=10000):
     if not hasattr(alloc_can_use_network_port, "used_nccl_ports"):
-        alloc_can_use_network_port.used_ports = set() 
-    
+        alloc_can_use_network_port.used_ports = set()
+
     if used_nccl_ports is None:
         used_nccl_ports = alloc_can_use_network_port.used_ports
     else:
