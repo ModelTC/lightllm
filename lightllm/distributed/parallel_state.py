@@ -56,6 +56,8 @@ from torch.distributed import Backend, ProcessGroup
 from lightllm.utils.log_utils import init_logger
 
 original_all_reduce = torch.distributed.all_reduce
+original_get_world_size = torch.distributed.get_world_size
+original_get_rank = torch.distributed.get_rank
 
 
 @dataclass
@@ -1018,14 +1020,18 @@ def patch_tensor_parallel_group(tp_group: GroupCoordinator):
         _TP = old_tp_group
 
 
-def get_tensor_model_parallel_world_size():
+def get_tensor_model_parallel_world_size(group=None):
     """Return world size for the tensor model parallel group."""
-    return get_tp_group().world_size
+    if group is None:
+        return get_tp_group().world_size
+    return original_get_world_size(group)
 
 
-def get_tensor_model_parallel_rank():
+def get_tensor_model_parallel_rank(group=None):
     """Return my rank for the tensor model parallel group."""
-    return get_tp_group().rank_in_group
+    if group is None:
+        return get_tp_group().rank_in_group
+    return original_get_rank(group)
 
 
 def destroy_model_parallel():
