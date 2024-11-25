@@ -10,7 +10,6 @@ from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import
     context_attention_fwd_no_prompt_cache,
 )
 
-from lightllm.models.deepseek2.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
 from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
 from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts, grouped_topk
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
@@ -60,14 +59,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def _bind_attention(self):
         self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel, self)
-        if "triton_flashdecoding" in self.mode:
-            self._token_attention_kernel = partial(
-                Deepseek2TransformerLayerInfer._token_decode_attention_flashdecoding, self
-            )
-        else:
-            self._token_attention_kernel = partial(
-                Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
-            )
+        self._token_attention_kernel = partial(
+            Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
+        )
         self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
         if self.is_moe:
             self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
@@ -170,24 +164,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         q_nope = None
         q_rope = None
         return o_tensor
-
-    def _token_decode_attention_flashdecoding(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
-        q_nope, q_rope = q
-        kv = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank]
-        kv_rope = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank :]
-        return token_decode_attention_flash_decoding(
-            q_nope,
-            q_rope,
-            kv,
-            kv_rope,
-            infer_state,
-            self.tp_q_head_num_,
-            self.kv_lora_rank,
-            self.qk_rope_head_dim,
-            self.qk_nope_head_dim,
-            self.softmax_scale,
-            alloc_tensor_func=self.alloc_tensor,
-        )
 
     def _token_gqa_decode_attention_flashdecoding(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
         q_nope, q_rope = q
