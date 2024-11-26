@@ -33,7 +33,7 @@ from zmq import IPV6  # type: ignore
 from zmq import SUB, SUBSCRIBE, XPUB, XPUB_VERBOSE, Context  # type: ignore
 
 from lightllm.utils.log_utils import init_logger
-from lightllm.utils.net_utils import get_hostname_ip, alloc_can_use_network_port, is_valid_ipv6_address
+from lightllm.utils.net_utils import get_hostname_ip, alloc_can_use_port, is_valid_ipv6_address
 
 LIGHTLLM_RINGBUFFER_WARNING_INTERVAL = os.getenv("LIGHTLLM_RINGBUFFER_WARNING_INTERVAL", 60)
 
@@ -202,7 +202,7 @@ class MessageQueue:
             # message. otherwise, we will only receive the first subscription
             # see http://api.zeromq.org/3-3:zmq-setsockopt for more details
             self.local_socket.setsockopt(XPUB_VERBOSE, True)
-            local_subscribe_port = alloc_can_use_network_port(num=1)[0]
+            local_subscribe_port = alloc_can_use_port(20000, 20010)[0]
             socket_addr = f"tcp://127.0.0.1:{local_subscribe_port}"
             logger.debug("Binding to %s", socket_addr)
             self.local_socket.bind(socket_addr)
@@ -220,7 +220,7 @@ class MessageQueue:
             # create a publish-subscribe socket to communicate large data
             self.remote_socket = context.socket(XPUB)
             self.remote_socket.setsockopt(XPUB_VERBOSE, True)
-            remote_subscribe_port = alloc_can_use_network_port(num=1)[0]
+            remote_subscribe_port = alloc_can_use_port(20010, 20020)[0]
             if is_valid_ipv6_address(connect_ip):
                 self.remote_socket.setsockopt(IPV6, 1)
             socket_addr = f"tcp://*:{remote_subscribe_port}"
