@@ -233,7 +233,7 @@ class GroupCoordinator:
                 device=self.device,
             )
 
-        # self.ca_comm: Optional[CustomAllreduce] = None
+        self.ca_comm = None
         # if use_custom_allreduce and self.world_size > 1:
         # Initialize a custom fast all-reduce implementation.
         # self.ca_comm = CustomAllreduce(
