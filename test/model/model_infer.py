@@ -105,7 +105,7 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
             b_seq_len,
             is_prefill=False,
         )
-        prob_out = torch.softmax(logics.contiguous(), dim=-1)
+        prob_out = torch.softmax(logics, dim=-1)
         predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
         predict_ids = predict_ids.detach().cpu().numpy()
 
