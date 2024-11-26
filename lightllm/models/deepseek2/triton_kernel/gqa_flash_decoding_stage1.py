@@ -36,19 +36,18 @@ def _fwd_kernel_flash_decode_stage1(
     stride_mid_o_eb,
     stride_mid_o_eh,
     stride_mid_o_es,
-    gqa_group_size,
     Q_HEAD_NUM: tl.constexpr,
     BLOCK_SEQ: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_ROPE_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
-    cur_kv_head = tl.program_id(1)
-    seq_start_block = tl.program_id(2)
+    seq_start_block = tl.program_id(0)
+    cur_q_head = tl.program_id(1)
+    cur_batch = tl.program_id(2)
 
     cur_q_head_offs = tl.arange(0, Q_HEAD_NUM)
-    cur_q_head_range = cur_kv_head * gqa_group_size + cur_q_head_offs
+    cur_q_head_range = cur_q_head * Q_HEAD_NUM + cur_q_head_offs
 
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
@@ -59,7 +58,8 @@ def _fwd_kernel_flash_decode_stage1(
 
     off_q = cur_batch * stride_q_bs + cur_q_head_range[:, None] * stride_q_h + offs_d[None, :]
     off_rope_q = cur_batch * stride_q_rope_bs + cur_q_head_range[:, None] * stride_q_rope_h + offs_rope_d[None, :]
-
+    q = tl.load(Q_nope + off_q)
+    q_rope = tl.load(Q_rope + off_rope_q)
     block_n_size = (
         tl.where(
             cur_batch_end_index - cur_batch_start_index <= 0,
@@ -70,16 +70,9 @@ def _fwd_kernel_flash_decode_stage1(
     )
 
     offs_n = cur_batch_start_index + tl.arange(0, BLOCK_N)
-
-    q = tl.load(Q_nope + off_q, mask=cur_q_head_range[:, None] < (cur_kv_head + 1) * gqa_group_size, other=0.0)
-    q_rope = tl.load(
-        Q_rope + off_rope_q, mask=cur_q_head_range[:, None] < (cur_kv_head + 1) * gqa_group_size, other=0.0
-    )
-
     sum_exp = tl.zeros([Q_HEAD_NUM], dtype=tl.float32)
     max_logic = tl.zeros([Q_HEAD_NUM], dtype=tl.float32) - float("inf")
     acc = tl.zeros([Q_HEAD_NUM, BLOCK_DMODEL], dtype=tl.float32)
-
     for start_n in range(0, block_n_size, 1):
         offs_n_new = start_n * BLOCK_N + offs_n
         kv_loc = tl.load(
@@ -87,10 +80,10 @@ def _fwd_kernel_flash_decode_stage1(
             mask=offs_n_new < cur_batch_end_index,
             other=0,
         )
-        off_kv = kv_loc[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_d[:, None]
+        off_kv = kv_loc[None, :] * stride_kv_bs + offs_d[:, None]
         kv = tl.load(KV_nope + off_kv, mask=offs_n_new[None, :] < cur_batch_end_index, other=0.0)
         att_value = tl.dot(q, kv)
-        off_rope_kv = kv_loc[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h + offs_rope_d[:, None]
+        off_rope_kv = kv_loc[None, :] * stride_kv_rope_bs + offs_rope_d[:, None]
         rope_kv = tl.load(KV_rope + off_rope_kv, mask=offs_n_new[None, :] < cur_batch_end_index, other=0.0)
         att_value += tl.dot(q_rope, rope_kv)
 
@@ -120,12 +113,10 @@ def _fwd_kernel_flash_decode_stage1(
         tl.store(
             Mid_O + off_mid_o,
             acc / sum_exp[:, None],
-            mask=cur_q_head_range[:, None] < (cur_kv_head + 1) * gqa_group_size,
         )
         tl.store(
             Mid_O_LogExpSum + off_mid_o_logexpsum,
             max_logic + tl.log(sum_exp),
-            mask=cur_q_head_range < (cur_kv_head + 1) * gqa_group_size,
         )
     return
 
@@ -147,6 +138,7 @@ def flash_decode_stage1(
 ):
     BLOCK_SEQ = block_seq
     BLOCK_N = 16
+    BLOCK_Q_HEAD = 16
     assert BLOCK_SEQ % BLOCK_N == 0
     # shape constraints
     q_nope_dim = q_nope.shape[-1]
@@ -158,9 +150,9 @@ def flash_decode_stage1(
     assert q_rope_dim in {16, 32, 64, 128, 256}
 
     sm_scale = softmax_scale  # 计算scale系数
-    batch, kv_head_num = B_req_idx.shape[0], kv_nope.shape[1]
-    grid = (batch, kv_head_num, triton.cdiv(max_len_in_batch, BLOCK_SEQ))
-    gqa_group_size = q_nope.shape[1] // kv_nope.shape[1]
+    batch, q_head_num = B_req_idx.shape[0], q_nope.shape[1]
+    assert q_head_num % BLOCK_Q_HEAD == 0
+    grid = (triton.cdiv(max_len_in_batch, BLOCK_SEQ), q_head_num // BLOCK_Q_HEAD, batch)
 
     _fwd_kernel_flash_decode_stage1[grid](
         q_nope,
@@ -194,13 +186,12 @@ def flash_decode_stage1(
         mid_out_logsumexp.stride(0),
         mid_out_logsumexp.stride(1),
         mid_out_logsumexp.stride(2),
-        gqa_group_size,
-        Q_HEAD_NUM=max(16, triton.next_power_of_2(gqa_group_size)),
+        Q_HEAD_NUM=q_head_num,
         BLOCK_SEQ=BLOCK_SEQ,
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
         BLOCK_N=BLOCK_N,
-        num_warps=2,
+        num_warps=4,
         num_stages=2,
     )
     return
