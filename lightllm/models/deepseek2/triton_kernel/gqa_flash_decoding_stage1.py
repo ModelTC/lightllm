@@ -186,7 +186,7 @@ def flash_decode_stage1(
         mid_out_logsumexp.stride(0),
         mid_out_logsumexp.stride(1),
         mid_out_logsumexp.stride(2),
-        Q_HEAD_NUM=q_head_num,
+        Q_HEAD_NUM=BLOCK_Q_HEAD,
         BLOCK_SEQ=BLOCK_SEQ,
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
