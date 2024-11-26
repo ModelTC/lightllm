@@ -22,8 +22,8 @@ def _fwd_kernel_flash_decode_stage2(
     BLOCK_SEQ: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
-    cur_head = tl.program_id(1)
+    cur_head = tl.program_id(0)
+    cur_batch = tl.program_id(1)
 
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
@@ -57,7 +57,7 @@ def flash_decode_stage2(mid_out, mid_out_logexpsum, B_Seqlen, Out, block_seq):
     Lk = mid_out.shape[-1]
     assert Lk in {16, 32, 64, 128, 256, 512}
     batch, head_num = mid_out.shape[0], mid_out.shape[1]
-    grid = (batch, head_num)
+    grid = (head_num, batch)
 
     _fwd_kernel_flash_decode_stage2[grid](
         B_Seqlen,
