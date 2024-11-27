@@ -53,8 +53,12 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
 
     disable_cudagraph = model_kvargs.get("disable_cudagraph", False)
     torch.cuda.set_device(rank_id)
-    LIGHTLLM_DISTRIBUTED_ENABLE = os.getenv("LIGHTLLM_DISTRIBUTED_ENABLE", not disable_cudagraph)
-    if LIGHTLLM_DISTRIBUTED_ENABLE:
+    LIGHTLLM_PYNCCL_ENABLE = os.getenv("LIGHTLLM_PYNCCL_ENABLE", str(not disable_cudagraph)).upper() in [
+        "ON",
+        "TRUE",
+        "1",
+    ]
+    if LIGHTLLM_PYNCCL_ENABLE:
         init_distributed_environment(
             backend="nccl", world_size=world_size, rank=rank_id, distributed_init_method="tcp://127.0.0.1:28765"
         )
