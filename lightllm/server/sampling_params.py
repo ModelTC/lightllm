@@ -149,7 +149,7 @@ class SamplingParams:
         if not (self.move_kv_to_decode_node is None or isinstance(self.move_kv_to_decode_node, dict)):
             raise ValueError(f"move_kv_to_decode_node must be None or dict, but get {self.move_kv_to_decode_node}")
 
-        if not (self.suggested_dp_index is None or isinstance(self.move_kv_to_decode_node, int)):
+        if not (self.suggested_dp_index is None or isinstance(self.suggested_dp_index, int)):
             raise ValueError(f"suggested_dp_index must be None or int, but get {self.suggested_dp_index}")
 
         self._verify_stop_sentences()
