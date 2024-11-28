@@ -178,13 +178,13 @@ class PrefillKVMoveManager:
                     # 去引用否则进程无法杀掉
                     trans_obj = None
                     # 解除对prefill token的占用状态。
-                    self.remove_req_refs_from_prompt_cache(move_task)
+                    self._remove_req_refs_from_prompt_cache(move_task)
 
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
             raise e
 
-    def remove_req_refs_from_prompt_cache(self, move_task: KVMoveTask):
+    def _remove_req_refs_from_prompt_cache(self, move_task: KVMoveTask):
         futures: List[AsyncResult] = []
         if self.dp_size == 1:
             infer_rpycs = self.infer_rpyc_objs
