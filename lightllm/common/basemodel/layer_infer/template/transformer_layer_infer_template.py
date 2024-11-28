@@ -6,6 +6,15 @@ from ...splitfuse_infer_struct import SplitFuseInferStateInfo
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from typing import Tuple
+from vllm.distributed import (
+    get_tp_group,
+    init_distributed_environment,
+    initialize_model_parallel,
+    get_tensor_model_parallel_world_size,
+    get_tensor_model_parallel_rank,
+    tensor_model_parallel_all_reduce,
+    set_custom_all_reduce,
+)
 
 
 class TransformerLayerInferTpl(TransformerLayerInfer):
@@ -80,7 +89,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -89,7 +98,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
@@ -103,7 +112,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            o = tensor_model_parallel_all_reduce(o)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -112,7 +121,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            ffn_out = tensor_model_parallel_all_reduce(ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 

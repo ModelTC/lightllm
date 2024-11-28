@@ -39,15 +39,41 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
-from lightllm.distributed import (
+
+# from lightllm.distributed import (
+#     get_tp_group,
+#     init_distributed_environment,
+#     initialize_model_parallel,
+#     get_tensor_model_parallel_world_size,
+#     get_tensor_model_parallel_rank,
+#     all_reduce,
+# )
+from vllm.distributed import (
     get_tp_group,
     init_distributed_environment,
     initialize_model_parallel,
     get_tensor_model_parallel_world_size,
     get_tensor_model_parallel_rank,
-    all_reduce,
+    tensor_model_parallel_all_reduce,
+    set_custom_all_reduce,
 )
 import torch.distributed as dist
+
+
+def monkey_patch_vllm_p2p_access_check(gpu_id: int):
+    """
+    Monkey patch the slow p2p access check in vllm.
+    NOTE: We assume the p2p access is always allowed, which can be wrong for some setups.
+    """
+
+    import vllm.distributed.device_communicators.custom_all_reduce_utils as tgt
+
+    setattr(tgt, "gpu_p2p_access_check", lambda *arg, **kwargs: True)
+
+    # Suppress the warnings from this delete function when using sglang.bench_one_batch
+    from vllm.distributed.device_communicators.custom_all_reduce import CustomAllreduce
+
+    setattr(CustomAllreduce, "__del__", lambda *args, **kwargs: None)
 
 
 class ModeBackend:
@@ -91,7 +117,10 @@ class ModeBackend:
             "1",
         ]
         if LIGHTLLM_PYNCCL_ENABLE:
+            torch.get_device_module("cuda").set_device(self.tp_rank)
+            monkey_patch_vllm_p2p_access_check(self.tp_rank)
             # Multiple nodes are not currently supported, so local_rank == rank
+            set_custom_all_reduce(True)
             init_distributed_environment(
                 backend="nccl",
                 world_size=self.world_size,
@@ -101,9 +130,9 @@ class ModeBackend:
             initialize_model_parallel(tensor_model_parallel_size=self.world_size)
             self.tp_group = get_tp_group()
 
-            dist.all_reduce = all_reduce
-            dist.get_rank = get_tensor_model_parallel_rank
-            dist.get_world_size = get_tensor_model_parallel_world_size
+            # dist.all_reduce = all_reduce
+            # dist.get_rank = get_tensor_model_parallel_rank
+            # dist.get_world_size = get_tensor_model_parallel_world_size
         else:
             dist.init_process_group(
                 "nccl",

@@ -19,7 +19,7 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
             if tie_word_embeddings:
                 self.lm_head_weight_ = self.wte_weight_
         if "lm_head.weight" in weights:
-            self.lm_head_weight_ = self._cuda(weights["lm_head.weight"][split_start:split_end, :])
+            self.lm_head_weight_ = self._cuda(weights["lm_head.weight"][split_start:split_end, :].transpose(0, 1))
         if "model.norm.weight" in weights:
             self.final_norm_weight_ = self._cuda(weights["model.norm.weight"])
 

@@ -11,6 +11,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.common.basemodel import PostLayerInferTpl
 from lightllm.utils.infer_utils import mark_cost_time
+from vllm.distributed import tensor_model_parallel_all_gather
 
 
 class LlamaPostLayerInfer(PostLayerInferTpl):
@@ -82,29 +83,25 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         input_embdings_dtype = input_embdings.dtype
         input_embdings = None
         last_input = self._norm(last_input, infer_state, layer_weight)
-        last_input = last_input.permute(1, 0).view(-1, token_num)
+        # last_input = last_input.permute(1, 0).view(-1, token_num)
         logic_batch = self.alloc_tensor(
-            (layer_weight.lm_head_weight_.shape[0], last_input.shape[1]), dtype=last_input.dtype
+            (last_input.shape[0], layer_weight.lm_head_weight_.shape[1]), dtype=last_input.dtype
         )
-        torch.mm(layer_weight.lm_head_weight_, last_input, out=logic_batch)
+        torch.mm(last_input, layer_weight.lm_head_weight_, out=logic_batch)
 
         last_input = None
         if self.world_size_ == 1:
             gather_data = logic_batch
         else:
             gather_data = self.alloc_tensor((self.vocab_size_, token_num), dtype=input_embdings_dtype)
-            split_indexes = np.linspace(0, self.vocab_size_, self.world_size_ + 1, dtype=np.int64)
-            dist.all_gather(
-                [gather_data[split_indexes[i] : split_indexes[i + 1], :] for i in range(self.world_size_)],
-                logic_batch,
-                group=None,
-                async_op=False,
-            )
-        logic_batch = None
-        ans_logics = self.alloc_tensor((token_num, self.vocab_size_), dtype=torch.float32, is_graph_out=True)
-        ans_logics[:, :] = gather_data.permute(1, 0)
-        gather_data = None
-        return ans_logics
+            # split_indexes = np.linspace(0, self.vocab_size_, self.world_size_ + 1, dtype=np.int64)
+            gather_data = tensor_model_parallel_all_gather(logic_batch)
+        return gather_data
+        # logic_batch = None
+        # ans_logics = self.alloc_tensor((token_num, self.vocab_size_), dtype=torch.float32, is_graph_out=True)
+        # ans_logics[:, :] = gather_data#.reshape(-1, token_num).permute(1, 0)
+        # gather_data = None
+        # return ans_logics
 
     def splitfuse_forward(self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight: BaseLayerWeight):
         return self.token_forward(input_embdings, infer_state, layer_weight)
