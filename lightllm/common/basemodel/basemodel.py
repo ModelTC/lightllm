@@ -334,6 +334,11 @@ class TpPartBaseModel:
         # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
         infer_state.mem_is_contiguous = False
         infer_state.mem_index = mem_indexes
+        infer_state.kv_buffer = torch.empty(
+            (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+            dtype=self.data_type,
+            device="cuda",
+        )
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)

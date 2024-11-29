@@ -35,12 +35,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
                 infer_state.mem_start : infer_state.mem_end, :, :
             ]
         else:
-            dtype = infer_state.mem_manager.kv_buffer.dtype
-            cache_kv = self.alloc_tensor(
-                [infer_state.batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_],
-                dtype=dtype,
-                device="cuda",
-            )
+            cache_kv = infer_state.kv_buffer
         return cache_kv
 
     def _get_qkv(
