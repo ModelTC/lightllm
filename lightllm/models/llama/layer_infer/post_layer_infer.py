@@ -96,12 +96,11 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
             gather_data = self.alloc_tensor((self.vocab_size_, token_num), dtype=input_embdings_dtype)
             # split_indexes = np.linspace(0, self.vocab_size_, self.world_size_ + 1, dtype=np.int64)
             gather_data = tensor_model_parallel_all_gather(logic_batch)
-        return gather_data
-        # logic_batch = None
-        # ans_logics = self.alloc_tensor((token_num, self.vocab_size_), dtype=torch.float32, is_graph_out=True)
-        # ans_logics[:, :] = gather_data#.reshape(-1, token_num).permute(1, 0)
-        # gather_data = None
-        # return ans_logics
+        logic_batch = None
+        ans_logics = self.alloc_tensor((token_num, self.vocab_size_), dtype=torch.float32, is_graph_out=True)
+        ans_logics[:, :] = gather_data  # .reshape(-1, token_num).permute(1, 0)
+        gather_data = None
+        return ans_logics
 
     def splitfuse_forward(self, input_embdings, infer_state: SplitFuseInferStateInfo, layer_weight: BaseLayerWeight):
         return self.token_forward(input_embdings, infer_state, layer_weight)

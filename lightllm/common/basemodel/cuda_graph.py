@@ -35,8 +35,11 @@ class CudaGraph:
             decode_func(input_ids, infer_state)
             torch.cuda.synchronize()
             self.tp_group.barrier()
-        with torch.cuda.graph(graph_obj, pool=self.mempool, stream=self.stream):
-            predict_logics = decode_func(input_ids, infer_state)
+        graph_capture_context_manager = graph_capture()
+        with graph_capture_context_manager as graph_capture_context:
+            self.stream = graph_capture_context.stream if graph_capture_context is not None else None
+            with torch.cuda.graph(graph_obj, pool=self.mempool, stream=self.stream):
+                predict_logics = decode_func(input_ids, infer_state)
         torch.cuda.synchronize()
         self.tp_group.barrier()
         self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
@@ -90,20 +93,18 @@ class CudaGraph:
             total_token_num += batch_size
             b_seq_len += 1
             mem_indexes = model.mem_manager.alloc(len(predict_ids))
-            graph_capture_context_manager = graph_capture()
-            with graph_capture_context_manager as graph_capture_context:
-                self.stream = graph_capture_context.stream if graph_capture_context is not None else None
-                logics = model.forward(
-                    batch_size,
-                    total_token_num,
-                    prefill_input_len + 1,
-                    torch.from_numpy(predict_ids).cuda().reshape(-1),
-                    mem_indexes,
-                    b_req_idx,
-                    b_start_loc,
-                    b_seq_len,
-                    is_prefill=False,
-                )
+
+            logics = model.forward(
+                batch_size,
+                total_token_num,
+                prefill_input_len + 1,
+                torch.from_numpy(predict_ids).cuda().reshape(-1),
+                mem_indexes,
+                b_req_idx,
+                b_start_loc,
+                b_seq_len,
+                is_prefill=False,
+            )
             mem_indexes = None
             model.mem_manager.free_all()
             model.req_manager.free_all()

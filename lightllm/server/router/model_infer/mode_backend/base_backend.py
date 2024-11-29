@@ -130,7 +130,7 @@ class ModeBackend:
             initialize_model_parallel(tensor_model_parallel_size=self.world_size)
             self.tp_group = get_tp_group()
 
-            # dist.all_reduce = all_reduce
+            dist.all_reduce = tensor_model_parallel_all_reduce
             # dist.get_rank = get_tensor_model_parallel_rank
             # dist.get_world_size = get_tensor_model_parallel_world_size
         else:
