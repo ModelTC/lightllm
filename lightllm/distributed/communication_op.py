@@ -30,8 +30,6 @@ from contextlib import nullcontext, contextmanager
 
 try:
     HAS_VLLM = True
-    # import vllm.distributed.device_communicators.custom_all_reduce_utils as tgt
-    # setattr(tgt, "gpu_p2p_access_check", lambda *arg, **kwargs: True)
     from .custom_all_reduce import CustomAllreduce
 except:
     HAS_VLLM = False

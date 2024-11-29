@@ -39,9 +39,7 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
-from lightllm.distributed import (
-    set_custom_reduce,
-)
+
 import torch.distributed as dist
 
 
@@ -87,6 +85,9 @@ class ModeBackend:
             rank=self.tp_rank,
             world_size=self.world_size,
         )
+        
+        from lightllm.distributed import set_custom_reduce
+
         set_custom_reduce()
 
         # 为 p d 分离模式添加的全局锁管理，用于做一些同步操作。 一定需要在
