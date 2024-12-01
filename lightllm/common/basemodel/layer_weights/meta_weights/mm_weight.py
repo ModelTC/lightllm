@@ -30,7 +30,6 @@ class MMWeightTpl(BaseWeightTpl):
         return torch.addmm(self.bias, input_tensor, self.weight, out=out)
 
     def _post_load_weights(self):
-        print(self.quant_method)
         if self.quant_method is not None:
             self.weight = self.quant_method.quantize(self.weight.cuda(self.tp_rank_))
             return
