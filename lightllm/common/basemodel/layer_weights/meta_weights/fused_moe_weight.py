@@ -30,7 +30,7 @@ class FusedMoeWeight(BaseWeight):
         self.experts_up_projs = [None] * self.n_routed_experts
         self.experts_gate_projs = [None] * self.n_routed_experts
         self.expert_gate_up_proj_etp = None
-        self.expert_down_proj_etp  = None
+        self.expert_down_proj_etp = None
         self.w2_list = [None] * self.n_routed_experts
         self.quant_method = None
         self.lock = threading.Lock()
@@ -39,7 +39,7 @@ class FusedMoeWeight(BaseWeight):
         if isinstance(quant_method, vLLMFP8w8a8QuantizationMethod):
             self.quant_method = quant_method
             if self.quant_method is not None:
-                self.quant_method.is_moe = True     
+                self.quant_method.is_moe = True
 
     def experts(self, input_tensor, router_logits, top_k, renormalize, use_grouped_topk, topk_group, num_expert_group):
 
@@ -99,65 +99,64 @@ class FusedMoeWeight(BaseWeight):
                 delattr(self, "experts_up_projs")
                 delattr(self, "experts_gate_projs")
 
-
     def _load_hf_weights_etp(self, weights):
         world_size_ = get_world_size()
         assert self.n_routed_experts % world_size_ == 0
         n_expert_ep = self.n_routed_experts // world_size_
 
-        #tp to ep here 
+        # tp to ep here
         expert_gate_up_proj_last = None
         expert_down_proj_last = None
-        
+
         for i_experts_ep in range(n_expert_ep):
             expert_up_proj = None
             expert_gate_proj = None
             expert_gate_up_proj = None
             expert_down_proj = None
-            i_experts = i_experts_ep + n_expert_ep*self.tp_rank_
+            i_experts = i_experts_ep + n_expert_ep * self.tp_rank_
 
             if f"{self.weight_prefix}.{i_experts}.up_proj.weight" in weights:
                 expert_up_proj = weights[f"{self.weight_prefix}.{i_experts}.up_proj.weight"]
-                
-                #self.experts_up_proj[i_experts] = expert_up_proj
+
+                # self.experts_up_proj[i_experts] = expert_up_proj
 
             if f"{self.weight_prefix}.{i_experts}.gate_proj.weight" in weights:
                 expert_gate_proj = weights[f"{self.weight_prefix}.{i_experts}.gate_proj.weight"]
-                #self.experts_gate_proj[i_experts] = expert_gate_proj
+                # self.experts_gate_proj[i_experts] = expert_gate_proj
 
             if expert_gate_proj is not None and expert_up_proj is not None:
                 expert_gate_up_proj = torch.cat([expert_gate_proj, expert_up_proj], dim=0)
-                self.experts_gate_projs[i_experts_ep] = expert_gate_up_proj #self._cuda(expert_gate_up_proj)
+                self.experts_gate_projs[i_experts_ep] = expert_gate_up_proj  # self._cuda(expert_gate_up_proj)
                 expert_gate_up_proj_last = expert_gate_up_proj
-                
+
             if f"{self.weight_prefix}.{i_experts}.down_proj.weight" in weights:
                 expert_down_proj = weights[f"{self.weight_prefix}.{i_experts}.down_proj.weight"]
-                self.experts_up_projs[i_experts_ep] = expert_down_proj #self._cuda(expert_down_proj)
+                self.experts_up_projs[i_experts_ep] = expert_down_proj  # self._cuda(expert_down_proj)
                 expert_down_proj_last = expert_down_proj
 
             with self.lock:
                 if expert_gate_up_proj_last is not None:
-                    #package, if there is broken experts
+                    # package, if there is broken experts
 
-                    if self.expert_gate_up_proj_etp  is None:
-                        self.expert_gate_up_proj_etp = torch.zeros( (n_expert_ep,) + expert_gate_up_proj_last.shape,
-                            dtype=expert_gate_up_proj_last.dtype).cuda(self.tp_rank_)
-                    
+                    if self.expert_gate_up_proj_etp is None:
+                        self.expert_gate_up_proj_etp = torch.zeros(
+                            (n_expert_ep,) + expert_gate_up_proj_last.shape, dtype=expert_gate_up_proj_last.dtype
+                        ).cuda(self.tp_rank_)
+
                     for i_experts_ep in range(n_expert_ep):
                         if self.experts_gate_projs[i_experts_ep] is not None:
-                            self.expert_gate_up_proj_etp[i_experts_ep,:] = self.experts_gate_projs[i_experts_ep]
-
+                            self.expert_gate_up_proj_etp[i_experts_ep, :] = self.experts_gate_projs[i_experts_ep]
 
                 if expert_down_proj_last is not None:
-                    #package, if there is broken experts
-                    if self.expert_down_proj_etp  is None:
-                        self.expert_down_proj_etp = torch.zeros( (n_expert_ep,) + expert_down_proj_last.shape,
-                            dtype=expert_down_proj_last.dtype).cuda(self.tp_rank_)
-        
+                    # package, if there is broken experts
+                    if self.expert_down_proj_etp is None:
+                        self.expert_down_proj_etp = torch.zeros(
+                            (n_expert_ep,) + expert_down_proj_last.shape, dtype=expert_down_proj_last.dtype
+                        ).cuda(self.tp_rank_)
+
                     for i_experts_ep in range(n_expert_ep):
                         if self.experts_up_projs[i_experts_ep] is not None:
-                            self.expert_down_proj_etp[i_experts_ep,:] = self.experts_up_projs[i_experts_ep]
-
+                            self.expert_down_proj_etp[i_experts_ep, :] = self.experts_up_projs[i_experts_ep]
 
     def load_hf_weights(self, weights):
         if os.environ.get("ETP_MODE_ENABLED") == "true":

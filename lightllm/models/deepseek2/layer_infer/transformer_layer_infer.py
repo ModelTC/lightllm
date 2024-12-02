@@ -403,42 +403,42 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
         world_size_ = self.world_size_
-        num_local_experts = self.n_shared_experts // world_size_
-        local_expert_offset = self.tp_rank_ * num_local_experts
+        # num_local_experts = self.n_shared_experts // world_size_
+        # local_expert_offset = self.tp_rank_ * num_local_experts
         num_experts_per_token = self.num_experts_per_tok
         num_experts = self.n_routed_experts
-        num_expert_groups = self.n_group
-        num_groups_per_token = self.topk_group
+        # num_expert_groups = self.n_group
+        # num_groups_per_token = self.topk_group
         gating_scaling_factor = self.routed_scaling_factor
-        gating_normalize_prob = self.norm_topk_prob
+        # gating_normalize_prob = self.norm_topk_prob
         rank_self = self.tp_rank_
 
         hidden_states = input.view(-1, self.embed_dim_)
         num_tokens, hidden_dim = hidden_states.shape
 
-        final_hidden_states = torch.empty(num_tokens,hidden_dim,device=hidden_states.device,
-            dtype = hidden_states.dtype )  
+        final_hidden_states = torch.empty(
+            num_tokens, hidden_dim, device=hidden_states.device, dtype=hidden_states.dtype
+        )
 
-        #router_logits_len = hidden_states.shape[0]*layer_weight.moe_gate.shape[1]        
+        # router_logits_len = hidden_states.shape[0]*layer_weight.moe_gate.shape[1]
         router_logits = layer_weight.moe_gate.mm(hidden_states)
 
-        #now some parameter is not supported yet 
-        #assert gating_normalize_prob is False
-        #assert num_expert_groups<=1
+        # now some parameter is not supported yet
+        # assert gating_normalize_prob is False
+        # assert num_expert_groups<=1
 
-
-      
         import lightllm_moe_etp_kernel
+
         lightllm_moe_etp_kernel.moe_fused_all(
             router_logits.contiguous(),
             hidden_states.contiguous(),
-            layer_weight.gate_up_proj.weight.contiguous(), #transpose
-            layer_weight.down_proj.weight.contiguous(),    #transpose
+            layer_weight.gate_up_proj.weight.contiguous(),  # transpose
+            layer_weight.down_proj.weight.contiguous(),  # transpose
             layer_weight.experts.expert_gate_up_proj_etp.contiguous(),
-            layer_weight.experts.expert_down_proj_etp.contiguous(), 
-            infer_state.mem_manager.work_buffer.contiguous(), 
+            layer_weight.experts.expert_down_proj_etp.contiguous(),
+            infer_state.mem_manager.work_buffer.contiguous(),
             infer_state.mem_manager.work_buffer.nelement(),
-            final_hidden_states.contiguous(), 
+            final_hidden_states.contiguous(),
             rank_self,
             gating_scaling_factor,
             num_experts,
@@ -447,12 +447,11 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             world_size_,
             True,
             hidden_dim,
-            layer_weight.gate_up_proj.weight.size(1)//2,
-            layer_weight.experts.expert_gate_up_proj_etp.size(1)//2,
-            self.n_shared_experts is not None
+            layer_weight.gate_up_proj.weight.size(1) // 2,
+            layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
+            self.n_shared_experts is not None,
         )
 
         router_logits = None
 
         return final_hidden_states.view(num_tokens, hidden_dim)
-    
