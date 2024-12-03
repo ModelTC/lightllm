@@ -185,14 +185,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             num_local_heads //= self.world_size_
             num_local_kv_heads //= self.world_size_
         # ACC
-        q_nope_up_ = self.alloc_tensor([q_nope.shape[1], q_nope.shape[0], self.kv_lora_rank], dtype=q_nope.dtype)
-        q_nope_up_ = torch.bmm(  # TODO: 转换成einsum 或者 cublas
-            q_nope.transpose(0, 1),  # (h, b*s, qk_n)
-            layer_weight.k_b_proj_.weight,  # (h, qk_n, kv_lora)
-            out=q_nope_up_.view(q_nope.shape[1], q_nope.shape[0], self.kv_lora_rank),
-        ).transpose(
-            0, 1
-        )  # (b*s, h, kv_lora)
+        q_nope = layer_weight.k_b_proj_.weight.bmm(
+            q_nope.transpose(0, 1),
+        ).transpose(0, 1)
         if self.enable_opt_decoding_mha:
             import lightllm_ppl_mla
 
@@ -213,19 +208,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             output_parallel = o_tensor
         else:
             output_parallel = self._token_gqa_decode_attention_flashdecoding_origin(
-                (q_nope_up_, q_rope), infer_state, layer_weight
+                (q_nope, q_rope), infer_state, layer_weight
             )
-        o_tensor = self.alloc_tensor(
-            [output_parallel.shape[1], output_parallel.shape[0], self.qk_nope_head_dim], dtype=q_rope.dtype
-        )
-        o_tensor = torch.bmm(  # TODO: 转换成einsum 或者 cublas
-            output_parallel.transpose(0, 1),  # (h, b*s, kv_lora)
-            layer_weight.v_b_proj_.weight,  # (h, kv_lora, vo_d)
-            out=o_tensor,
-        ).transpose(
-            0, 1
-        )  # (b*s, h, vo_d)
-        return o_tensor
+        vo = layer_weight.v_b_proj_.bmm(output_parallel.transpose(0, 1)).transpose(0, 1)
+        return vo
 
     def _context_attention_kernel(
         self, q, kv, infer_state: LlamaInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, out=None
