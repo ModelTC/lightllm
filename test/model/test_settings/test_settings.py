@@ -24,7 +24,6 @@ model_to_class_and_path = {
     "llama-65b": (LlamaTpPartModel, os.path.join(base_dir, "")),
     "llama2-70b": (LlamaTpPartModel, os.path.join(base_dir, "")),
     "chatglm2-6b": (ChatGlm2TpPartModel, os.path.join(base_dir, "")),
-    "llama3-8b": (LlamaTpPartModel, "/data/models/Meta-Llama-3-8B-Instruct"),
 }
 
 
