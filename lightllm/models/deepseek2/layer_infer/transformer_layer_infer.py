@@ -230,14 +230,15 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, q: Tuple[torch.Tensor, torch.Tensor], k, v, infer_state: LlamaInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
         q_nope, q_rope = q
+        k_nope, k_rope = k
         nope_head_dim = q_nope.shape[-1]
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
         if infer_state.use_dynamic_prompt_cache:
             context_attention_fwd_with_v(
                 q_nope,
                 q_rope,
-                k[0],
-                k[1],
+                k_nope,
+                k_rope,
                 v,
                 o_tensor.view(-1, self.tp_q_head_num_, nope_head_dim),
                 infer_state.b_req_idx,
@@ -252,8 +253,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             context_attention_fwd_no_prompt_cache_with_v(
                 q_nope,
                 q_rope,
-                k[0],
-                k[1],
+                k_nope,
+                k_rope,
                 v,
                 o_tensor.view(-1, self.tp_q_head_num_, nope_head_dim),
                 infer_state.b_start_loc,
