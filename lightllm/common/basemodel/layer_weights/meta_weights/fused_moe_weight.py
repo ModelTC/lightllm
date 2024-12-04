@@ -5,11 +5,15 @@ import threading
 from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
 
 try:
-    HAS_VLLM = True
+    HAS_MOE = True
     from vllm.model_executor.layers.fused_moe import FusedMoE
     from vllm.model_executor.layers.fused_moe import fused_experts
-except:
-    HAS_VLLM = False
+except ImportError:
+    try:
+        from lightllm.models.deepseek2.layer_infer.layer import FusedMoE
+        from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts
+    except ImportError:
+        HAS_MOE = False
 
 
 class FusedMoeWeight(BaseWeight):
@@ -17,7 +21,7 @@ class FusedMoeWeight(BaseWeight):
         self, gate_proj_name, down_proj_name, up_proj_name, weight_prefix, n_routed_experts, split_inter_size, data_type
     ):
         super().__init__()
-        assert HAS_VLLM, "vllm is not installed, you can't use FusedMoeWeight"
+        assert HAS_MOE, "vllm or lightllm_kernel is not installed, you can't use FusedMoeWeight"
         self.w1_weight_name = gate_proj_name
         self.w2_weight_name = down_proj_name
         self.w3_weight_name = up_proj_name
