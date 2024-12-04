@@ -496,12 +496,12 @@ def inplace_fused_experts_fake(
     pass
 
 
-direct_register_custom_op(
-    op_name="inplace_fused_experts",
-    op_func=inplace_fused_experts,
-    mutates_args=["hidden_states"],
-    fake_impl=inplace_fused_experts_fake,
-)
+# direct_register_custom_op(
+#     op_name="inplace_fused_experts",
+#     op_func=inplace_fused_experts,
+#     mutates_args=["hidden_states"],
+#     fake_impl=inplace_fused_experts_fake,
+# )
 
 
 def outplace_fused_experts(
@@ -552,12 +552,12 @@ def outplace_fused_experts_fake(
     return torch.empty_like(hidden_states)
 
 
-direct_register_custom_op(
-    op_name="outplace_fused_experts",
-    op_func=outplace_fused_experts,
-    mutates_args=[],
-    fake_impl=outplace_fused_experts_fake,
-)
+# direct_register_custom_op(
+#     op_name="outplace_fused_experts",
+#     op_func=outplace_fused_experts,
+#     mutates_args=[],
+#     fake_impl=outplace_fused_experts_fake,
+# )
 
 
 def fused_experts(
@@ -576,7 +576,7 @@ def fused_experts(
     alloc_tensor_func=torch.empty,
 ):
     if inplace:
-        torch.ops.vllm.inplace_fused_experts(
+        inplace_fused_experts(
             hidden_states,
             w1,
             w2,
@@ -592,7 +592,7 @@ def fused_experts(
         )
         return hidden_states
     else:
-        return torch.ops.vllm.outplace_fused_experts(
+        return outplace_fused_experts(
             hidden_states,
             w1,
             w2,
@@ -695,7 +695,7 @@ def fused_experts_impl(
         # 主要是其申请的tensor大小没有与batch size的线性关系，导致与缓存tensor管理
         # 框架存在了一些不兼容的情况
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-            curr_topk_ids, config["BLOCK_SIZE_M"], E, alloc_tensor_func=torch.empty
+            curr_topk_ids, config["BLOCK_SIZE_M"], E, alloc_tensor_func
         )
 
         invoke_fused_moe_kernel(

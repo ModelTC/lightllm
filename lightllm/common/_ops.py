@@ -979,7 +979,7 @@ def selective_scan_fwd(
 
 # moe
 def moe_sum(input: torch.Tensor, output: torch.Tensor):
-    torch.ops._moe_C.moe_sum(input, output)
+    torch.ops.vllm_moe.moe_sum(input, output)
 
 
 def moe_align_block_size(
@@ -990,7 +990,7 @@ def moe_align_block_size(
     experts_ids: torch.Tensor,
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
-    torch.ops._moe_C.moe_align_block_size(
+    torch.ops.vllm_moe.moe_align_block_size(
         topk_ids, num_experts, block_size, sorted_token_ids, experts_ids, num_tokens_post_pad
     )
 
@@ -998,12 +998,12 @@ def moe_align_block_size(
 def topk_softmax(
     topk_weights: torch.Tensor, topk_ids: torch.Tensor, token_expert_indicies: torch.Tensor, gating_output: float
 ) -> None:
-    torch.ops._moe_C.topk_softmax(topk_weights, topk_ids, token_expert_indicies, gating_output)
+    torch.ops.vllm_moe.topk_softmax(topk_weights, topk_ids, token_expert_indicies, gating_output)
 
 
-if supports_moe_ops and hasattr(torch.ops._moe_C, "marlin_gemm_moe"):
+if supports_moe_ops and hasattr(torch.ops.vllm_moe, "marlin_gemm_moe"):
 
-    @register_fake("_moe_C::marlin_gemm_moe")
+    @register_fake("vllm_moe::marlin_gemm_moe")
     def marlin_gemm_moe_fake(
         a: torch.Tensor,
         b_q_weights: torch.Tensor,

@@ -8,11 +8,11 @@ try:
     HAS_MOE = True
     from vllm.model_executor.layers.fused_moe import FusedMoE
     from vllm.model_executor.layers.fused_moe import fused_experts
-except ImportError:
+except:
     try:
         from lightllm.models.deepseek2.layer_infer.layer import FusedMoE
         from lightllm.models.deepseek2.layer_infer.fused_moe import fused_experts
-    except ImportError:
+    except:
         HAS_MOE = False
 
 
