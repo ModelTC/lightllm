@@ -61,7 +61,7 @@ def with_nvml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
 
 @with_nvml_context
-def is_full_nvlink(cls, physical_device_ids: List[int]) -> bool:
+def is_full_nvlink(physical_device_ids: List[int]) -> bool:
     """
     query if the set of gpus are fully connected by nvlink (1 hop)
     """
