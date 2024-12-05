@@ -81,4 +81,3 @@ prometheus_client==0.20.0
 outlines==0.0.46
 cchardet==2.1.7
 ujson==5.10.0
-nvidia-ml-py>=12.560.30

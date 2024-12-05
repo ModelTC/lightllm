@@ -24,8 +24,8 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from lightllm.common import _custom_ops as ops
-from lightllm.distributed.cuda_wrapper import CudaRTLibrary
+from lightllm.common.vllm_kernel import _custom_ops as ops
+from lightllm.common.cuda_wrapper import CudaRTLibrary
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.vllm_utils import is_full_nvlink
 
@@ -104,7 +104,7 @@ class CustomAllreduce:
         tensor = torch.tensor([physical_device_id], dtype=torch.int, device="cpu")
         gather_list = [torch.tensor([0], dtype=torch.int, device="cpu") for _ in range(world_size)]
         dist.all_gather(gather_list, tensor, group=self.group)
-        physical_device_ids = [t.item() for t in gather_list]
+        # physical_device_ids = [t.item() for t in gather_list]
 
         # test nvlink first, this will filter out most of the cases
         # where custom allreduce is not supported
@@ -112,7 +112,7 @@ class CustomAllreduce:
         # from vllmplatforms.cuda import CudaPlatform
 
         # cuda_platform: CudaPlatform = current_platform
-        full_nvlink = is_full_nvlink(physical_device_ids)
+        full_nvlink = is_full_nvlink()
         if world_size > 2 and not full_nvlink:
             logger.warning(
                 "Custom allreduce is disabled because it's not supported on"

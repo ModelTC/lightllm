@@ -18,7 +18,6 @@
 # limitations under the License.
 
 from functools import wraps
-import pynvml
 from torch.library import Library
 from typing import (
     Any,
@@ -40,6 +39,7 @@ from typing import (
 )
 from typing_extensions import ParamSpec
 from lightllm.utils.log_utils import init_logger
+import subprocess
 
 vllm_lib = Library("vllm", "FRAGMENT")  # noqa
 logger = init_logger(__name__)
@@ -48,37 +48,15 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
-def with_nvml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
-    @wraps(fn)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        pynvml.nvmlInit()
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            pynvml.nvmlShutdown()
-
-    return wrapper
-
-
-@with_nvml_context
-def is_full_nvlink(physical_device_ids: List[int]) -> bool:
-    """
-    query if the set of gpus are fully connected by nvlink (1 hop)
-    """
-    handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids]
-    for i, handle in enumerate(handles):
-        for j, peer_handle in enumerate(handles):
-            if i < j:
-                try:
-                    p2p_status = pynvml.nvmlDeviceGetP2PStatus(handle, peer_handle, pynvml.NVML_P2P_CAPS_INDEX_NVLINK)
-                    if p2p_status != pynvml.NVML_P2P_STATUS_OK:
-                        return False
-                except pynvml.NVMLError:
-                    logger.exception(
-                        "NVLink detection failed. This is normal if your" " machine has no NVLink equipped."
-                    )
-                    return False
-    return True
+def is_full_nvlink() -> bool:
+    try:
+        output = subprocess.check_output("nvidia-smi topo --matrix", shell=True).decode()
+        if "NVLink" in output:
+            return True
+        else:
+            return False
+    except Exception:
+        return True
 
 
 def direct_register_custom_op(

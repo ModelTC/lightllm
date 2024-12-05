@@ -27,7 +27,7 @@ import torch
 import triton
 import triton.language as tl
 from lightllm.utils.log_utils import init_logger
-from lightllm.common import _custom_ops as ops
+from lightllm.common.vllm_kernel import _custom_ops as ops
 from lightllm.utils.vllm_utils import direct_register_custom_op
 
 logger = init_logger(__name__)

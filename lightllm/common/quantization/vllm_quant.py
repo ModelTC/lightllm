@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 try:
     HAS_VLLM = True
-    from lightllm.common import _custom_ops as ops
+    from lightllm.common.vllm_kernel import _custom_ops as ops
 except:
     HAS_VLLM = False
 
