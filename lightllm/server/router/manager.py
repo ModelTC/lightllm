@@ -291,6 +291,7 @@ class RouterManager:
             new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
             self.has_wait_tokens = 0
             if new_mini_batch is not None:
+                self.has_wait_tokens = self.max_wait_tokens
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
                 await self._prefill_batch(new_mini_batch)
                 if not new_mini_batch.is_clear():
