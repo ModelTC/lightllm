@@ -49,7 +49,7 @@ class CustomAllreduce:
     _SUPPORTED_WORLD_SIZES = [2, 4, 6, 8]
 
     # max_size: max supported allreduce size
-    def __init__(self, group: ProcessGroup, device_group: ProcessGroup, device: Union[int, str, torch.device], max_size=8192 * 1024) -> None:
+    def __init__(self, group: ProcessGroup, device: Union[int, str, torch.device], max_size=8192 * 1024) -> None:
         """
         Args:
             group: the process group to work on. If None, it will use the
@@ -69,7 +69,6 @@ class CustomAllreduce:
             return
 
         self.group = group
-        self.device_group = device_group
         assert dist.get_backend(group) != dist.Backend.NCCL, "CustomAllreduce should be attached to a non-NCCL group."
 
         rank = dist.get_rank(group=self.group)
