@@ -283,7 +283,7 @@ class RouterManager:
                 self.running_batch = new_batch
                 await self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
-                self.has_wait_tokens = 0
+                self.has_wait_tokens = self.max_wait_tokens
             return
 
         # 有运行请求，但是已经到了可以调度新的请求合并推理的时机

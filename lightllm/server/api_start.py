@@ -31,7 +31,10 @@ def normal_or_p_d_start(g_objs):
 
     # 确保单机上多实列不冲突
     if args.zmq_mode == "ipc:///tmp/":
-        args.zmq_mode == f"{args.zmq_mode}{str(args.nccl_port)}_"
+        zmq_mode = f"{args.zmq_mode}_{str(args.nccl_port)}_"
+        args.zmq_mode = None  # args 的参数不能直接设置，只能先设置None，再设置才能成功
+        args.zmq_mode = zmq_mode
+        logger.info(f"zmq mode head: {args.zmq_mode}")
 
     if args.use_tgi_api:
         g_objs.g_generate_func = tgi_generate_impl
