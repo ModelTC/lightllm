@@ -125,7 +125,10 @@ def normal_or_p_d_start(g_objs):
         args.data_type = get_dtype(args.model_dir)
         assert args.data_type in ["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"]
 
-    already_uesd_ports = args.visual_nccl_ports + [args.nccl_port, args.port, args.pd_decode_rpyc_port]
+    already_uesd_ports = args.visual_nccl_ports + [args.nccl_port, args.port]
+    if args.run_mode == "decode":
+        already_uesd_ports = args.visual_nccl_ports + [args.nccl_port, args.port, args.pd_decode_rpyc_port]
+
     # 提前锁定端口，防止在单个机器上启动多个实列的时候，要到模型启动的时候才能
     # 捕获到端口设置冲突的问题
     ports_locker = PortLocker(already_uesd_ports)
