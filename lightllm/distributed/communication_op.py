@@ -49,18 +49,6 @@ def lightllm_capture_graph():
     pass
 
 
-def _all_reduce(input_, op=ReduceOp.SUM, group=None, async_op=False):
-    if op != ReduceOp.SUM or async_op:
-        original_all_reduce(input_, op, group, async_op)
-    else:
-        if vllm_reduce is not None:
-            can_use = vllm_reduce.should_custom_ar(input_)
-            if can_use:
-                input_.data = vllm_reduce.custom_all_reduce(input_)
-                return
-        original_all_reduce(input_, op, group, async_op)
-
-
 def set_custom_reduce():
     global vllm_reduce
     global device_group
@@ -77,4 +65,14 @@ def set_custom_reduce():
         cpu_group = torch.distributed.new_group(ranks, backend="gloo")
         vllm_reduce = CustomAllreduce(cpu_group, torch.cuda.current_device())
         logger.info("Enable VLLM ALLReduce.")
-    dist.all_reduce = partial(_all_reduce, group=device_group)
+
+    def _all_reduce_closure(input_, op=ReduceOp.SUM, group=device_group, async_op=False):
+        if op != ReduceOp.SUM or async_op:
+            original_all_reduce(input_, op, group, async_op)
+        else:
+            if vllm_reduce is not None and vllm_reduce.should_custom_ar(input_):
+                input_.data = vllm_reduce.custom_all_reduce(input_)
+            else:
+                original_all_reduce(input_, op, group, async_op)
+
+    dist.all_reduce = _all_reduce_closure
