@@ -9,7 +9,7 @@ class SplitFuseInferStateInfo:
     推理时用的信息结构体
     """
 
-    inner_decode_infer_state_class = InferStateInfo
+    inner_infer_state_class = InferStateInfo
 
     def __init__(self):
         self.use_dynamic_prompt_cache = False
@@ -49,7 +49,7 @@ class SplitFuseInferStateInfo:
         return
 
     def create_inner_decode_infer_status(self):
-        infer_status = self.inner_decode_infer_state_class()
+        infer_status = self.inner_infer_state_class()
         infer_status.batch_size = self.decode_req_num
         infer_status.total_token_num = self.decode_total_token_num
         infer_status.b_req_idx = self.decode_b_req_idx
@@ -65,7 +65,7 @@ class SplitFuseInferStateInfo:
         return infer_status
 
     def create_inner_prefill_infer_status(self):
-        infer_status = self.inner_decode_infer_state_class()
+        infer_status = self.inner_infer_state_class()
         infer_status.batch_size = self.prefill_req_num
         infer_status.use_dynamic_prompt_cache = True
         infer_status.b_req_idx = self.prefill_b_req_idx
