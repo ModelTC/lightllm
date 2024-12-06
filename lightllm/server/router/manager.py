@@ -66,10 +66,10 @@ class RouterManager:
 
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
-        self.recv_from_httpserver.bind(f"tcp://127.0.0.1:{router_port}")
+        self.recv_from_httpserver.bind(f"{args.zmq_mode}127.0.0.1:{router_port}")
 
         self.send_to_detokenization = context.socket(zmq.PUSH)
-        self.send_to_detokenization.connect(f"tcp://127.0.0.1:{detokenization_port}")
+        self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
 
         self.is_splitfuse_mode = args.splitfuse_mode
