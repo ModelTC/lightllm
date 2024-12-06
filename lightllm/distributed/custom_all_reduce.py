@@ -31,9 +31,9 @@ from lightllm.utils.log_utils import init_logger
 from vllm.platforms import current_platform
 from vllm.utils import cuda_device_count_stateless
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
+
 ops.meta_size()
 custom_ar = True
-
 
 logger = init_logger(__name__)
 
@@ -67,7 +67,6 @@ class CustomAllreduce:
             # disable because of missing custom allreduce library
             # e.g. in a non-cuda environment
             return
-
         self.group = group
         assert dist.get_backend(group) != dist.Backend.NCCL, "CustomAllreduce should be attached to a non-NCCL group."
 

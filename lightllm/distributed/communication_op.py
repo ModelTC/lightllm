@@ -38,6 +38,7 @@ except:
 vllm_reduce = None
 logger = init_logger(__name__)
 
+
 @contextmanager
 def lightllm_capture_graph():
     if vllm_reduce is not None:
@@ -46,6 +47,7 @@ def lightllm_capture_graph():
     else:
         yield
     pass
+
 
 def _all_reduce(input_, op=ReduceOp.SUM, group=None, async_op=False):
     if op != ReduceOp.SUM or async_op:
@@ -57,6 +59,7 @@ def _all_reduce(input_, op=ReduceOp.SUM, group=None, async_op=False):
                 input_.data = vllm_reduce.custom_all_reduce(input_)
                 return
         original_all_reduce(input_, op, group, async_op)
+
 
 def set_custom_reduce():
     global vllm_reduce
