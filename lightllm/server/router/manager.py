@@ -66,10 +66,10 @@ class RouterManager:
 
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
-        self.recv_from_httpserver.bind(f"tcp://127.0.0.1:{router_port}")
+        self.recv_from_httpserver.bind(f"{args.zmq_mode}127.0.0.1:{router_port}")
 
         self.send_to_detokenization = context.socket(zmq.PUSH)
-        self.send_to_detokenization.connect(f"tcp://127.0.0.1:{detokenization_port}")
+        self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
 
         self.is_splitfuse_mode = args.splitfuse_mode
@@ -283,7 +283,7 @@ class RouterManager:
                 self.running_batch = new_batch
                 await self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
-                self.has_wait_tokens = 0
+                self.has_wait_tokens = self.max_wait_tokens
             return
 
         # 有运行请求，但是已经到了可以调度新的请求合并推理的时机
@@ -291,6 +291,7 @@ class RouterManager:
             new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
             self.has_wait_tokens = 0
             if new_mini_batch is not None:
+                self.has_wait_tokens = self.max_wait_tokens
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
                 await self._prefill_batch(new_mini_batch)
                 if not new_mini_batch.is_clear():
@@ -426,6 +427,9 @@ class RouterManager:
 
     def _update_out_status_to_batch(self, batch: Batch, req_to_out_status):
         new_batch_decode_need_tokens = [0 for _ in range(self.dp_size)]  # 只有在 splitfuse 模式下有意义
+
+        start_time = 0
+        # extral_info 字段如果推理后端输入时间标记, 则用来评估序列化所占用的时间, 主要用于调试时使用
         for req_id, (
             req_status,
             cur_kv_len,
@@ -434,6 +438,8 @@ class RouterManager:
             finish_status_value,
             extral_info,
         ) in req_to_out_status.items():
+            if extral_info is not None:
+                start_time = max(start_time, extral_info)
             req: Req = batch.id_to_reqs[req_id]
             req.req_status = req_status
             req.cur_kv_len = cur_kv_len
@@ -446,6 +452,9 @@ class RouterManager:
             new_batch_decode_need_tokens[req_dp_index] += req.get_decode_need_tokens()
 
         batch.batch_decode_need_tokens = new_batch_decode_need_tokens
+        rpyc_cost_time = (time.time() - start_time) * 1000
+        if 8 <= rpyc_cost_time <= 1000:
+            logger.warning(f"rpyc use too much time {rpyc_cost_time} ms, batch_size {len(req_to_out_status)}")
         return
 
     def _can_decode(self, batch: Batch):

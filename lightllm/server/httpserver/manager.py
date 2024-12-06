@@ -45,16 +45,16 @@ class HttpServerManager:
         self.args = args
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
-        self.send_to_router.connect(f"tcp://127.0.0.1:{router_port}")
+        self.send_to_router.connect(f"{args.zmq_mode}127.0.0.1:{router_port}")
 
         self.enable_multimodal = enable_multimodal
         if self.enable_multimodal:
             self.cache_client = rpyc.connect("localhost", cache_port)
             self.send_to_visual = context.socket(zmq.PUSH)
-            self.send_to_visual.connect(f"tcp://127.0.0.1:{visual_port}")
+            self.send_to_visual.connect(f"{args.zmq_mode}127.0.0.1:{visual_port}")
 
         self.recv_from_detokenization = context.socket(zmq.PULL)
-        self.recv_from_detokenization.bind(f"tcp://127.0.0.1:{httpserver_port}")
+        self.recv_from_detokenization.bind(f"{args.zmq_mode}127.0.0.1:{httpserver_port}")
 
         self.tokenizer = get_tokenizer(args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code)
 
@@ -67,6 +67,7 @@ class HttpServerManager:
         assert self.pd_mode in [NodeRole.P, NodeRole.D, NodeRole.NORMAL]
         self.id_gen = ReqIDGenerator()
         self.first_time_costs = MovingAverage()
+        self.per_token_costs = MovingAverage()
         # 有的模型的vocab size 读取tokenizer和config.json中不一致
         self.vocab_size = max(get_vocab_size(args.model_dir), self.tokenizer.vocab_size)
 
@@ -340,6 +341,7 @@ class HttpServerManager:
                             pass
                         total_cost_time_ms = (time.time() - start_time) * 1000
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
+                        self.per_token_costs.add(mean_per_token_cost_time_ms)
                         x_request_id = request.headers.get("X-Request-Id", "")
                         x_session_id = request.headers.get("X-Session-Id", "")
                         prompt_cache_len = metadata.pop("prompt_cache_len", 0)
@@ -441,6 +443,7 @@ class HttpServerManager:
                         await asyncio.sleep(3)
                         if log_count % 5 == 0:
                             logger.info(f"mean first cost: {self.first_time_costs.average()} ms")
+                            logger.info(f"mean per token cost: {self.per_token_costs.average()} ms")
 
             except Exception as e:
                 logger.error("connetion to pd_master has error")
