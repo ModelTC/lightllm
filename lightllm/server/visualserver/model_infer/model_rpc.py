@@ -11,6 +11,7 @@ from rpyc.utils.classic import obtain
 from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
 from lightllm.models.llava.llava_visual import LlavaVisionModel
 from lightllm.models.internvl.internvl_visual import InternVLVisionModel
+from lightllm.models.vit.model_vit import VisionTransformer
 from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrainedModel
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
@@ -32,15 +33,15 @@ class VisualModelRpcServer(rpyc.Service):
         visual_nccl_port = kvargs["visual_nccl_port"]
         self.vit_rank_id = kvargs["vit_rank_id"]
         self.cache_client = rpyc.connect("localhost", self.cache_port)
+        self.data_type = kvargs["data_type"]
 
         torch.cuda.set_device(visual_gpu_ids[self.vit_rank_id])
-        if self.vit_tp != 1:
-            dist.init_process_group(
-                backend="nccl",
-                init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
-                rank=self.tp_rank_id,
-                world_size=self.vit_tp,
-            )
+        dist.init_process_group(
+            backend="nccl",
+            init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
+            rank=self.tp_rank_id,
+            world_size=self.vit_tp,
+        )
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
 
         if self.vit_tp != 1:
@@ -55,6 +56,15 @@ class VisualModelRpcServer(rpyc.Service):
                 self.model = LlavaVisionModel()
             elif self.model_type == "internvl_chat":
                 self.model = InternVLVisionModel()
+                kvargs = {
+                    "tp_rank": self.tp_rank_id,
+                    "gpu_id": visual_gpu_ids[self.vit_rank_id],
+                    "world_size": self.vit_tp,
+                    "weight_dir": weight_dir,
+                    "data_type": self.data_type,
+                }
+                print(kvargs)
+                self.model = VisionTransformer(kvargs)
             else:
                 raise Exception(f"can not support {self.model_type} now")
 
