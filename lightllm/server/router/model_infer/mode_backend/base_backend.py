@@ -86,8 +86,9 @@ class ModeBackend:
             world_size=self.world_size,
         )
         # warmup nccl communicator
-        a = torch.zeros([1]).to(f"cuda:{self.tp_rank}")
-        dist.all_reduce(a)
+        _a = torch.zeros([1]).to(f"cuda:{self.tp_rank}")
+        dist.all_reduce(_a)
+        del _a
 
         from lightllm.distributed import set_custom_reduce
 
