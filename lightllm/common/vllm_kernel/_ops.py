@@ -198,46 +198,6 @@ def paged_attention_v2(
     )
 
 
-def paged_attention_rocm(
-    out: torch.Tensor,
-    exp_sum: torch.Tensor,
-    max_logits: torch.Tensor,
-    tmp_out: torch.Tensor,
-    query: torch.Tensor,
-    key_cache: torch.Tensor,
-    value_cache: torch.Tensor,
-    num_kv_heads: int,
-    scale: float,
-    block_tables: torch.Tensor,
-    seq_lens: torch.Tensor,
-    block_size: int,
-    max_seq_len: int,
-    alibi_slopes: Optional[torch.Tensor],
-    kv_cache_dtype: str,
-    k_scale: float,
-    v_scale: float,
-) -> None:
-    torch.ops._rocm_C.paged_attention(
-        out,
-        exp_sum,
-        max_logits,
-        tmp_out,
-        query,
-        key_cache,
-        value_cache,
-        num_kv_heads,
-        scale,
-        block_tables,
-        seq_lens,
-        block_size,
-        max_seq_len,
-        alibi_slopes,
-        kv_cache_dtype,
-        k_scale,
-        v_scale,
-    )
-
-
 # pos encoding ops
 def rotary_embedding(
     positions: torch.Tensor,
@@ -1039,7 +999,7 @@ def reshape_and_cache(
     k_scale: float,
     v_scale: float,
 ) -> None:
-    torch.ops._C_cache_ops.reshape_and_cache(
+    torch.ops.vllm_total_cache_ops.reshape_and_cache(
         key, value, key_cache, value_cache, slot_mapping, kv_cache_dtype, k_scale, v_scale
     )
 
@@ -1054,59 +1014,59 @@ def reshape_and_cache_flash(
     k_scale: float,
     v_scale: float,
 ) -> None:
-    torch.ops._C_cache_ops.reshape_and_cache_flash(
+    torch.ops.vllm_total_cache_ops.reshape_and_cache_flash(
         key, value, key_cache, value_cache, slot_mapping, kv_cache_dtype, k_scale, v_scale
     )
 
 
 def copy_blocks(key_caches: List[torch.Tensor], value_caches: List[torch.Tensor], block_mapping: torch.Tensor) -> None:
-    torch.ops._C_cache_ops.copy_blocks(key_caches, value_caches, block_mapping)
+    torch.ops.vllm_total_cache_ops.copy_blocks(key_caches, value_caches, block_mapping)
 
 
 def swap_blocks(src: torch.Tensor, dst: torch.Tensor, block_mapping: torch.Tensor) -> None:
-    torch.ops._C_cache_ops.swap_blocks(src, dst, block_mapping)
+    torch.ops.vllm_total_cache_ops.swap_blocks(src, dst, block_mapping)
 
 
 def convert_fp8(output: torch.Tensor, input: torch.Tensor, scale: float = 1.0, kv_dtype: str = "fp8") -> None:
-    torch.ops._C_cache_ops.convert_fp8(output, input, scale, kv_dtype)
+    torch.ops.vllm_total_cache_ops.convert_fp8(output, input, scale, kv_dtype)
 
 
 def get_device_attribute(attribute: int, device: int) -> int:
-    return torch.ops._C_cuda_utils.get_device_attribute(attribute, device)
+    return torch.ops.vllm_total_cuda_utils.get_device_attribute(attribute, device)
 
 
 def get_max_shared_memory_per_block_device_attribute(device: int) -> int:
     # ruff: noqa: E501
-    return torch.ops._C_cuda_utils.get_max_shared_memory_per_block_device_attribute(device)
+    return torch.ops.vllm_total_cuda_utils.get_max_shared_memory_per_block_device_attribute(device)
 
 
 # custom ar
 def init_custom_ar(ipc_tensors: List[torch.Tensor], rank_data: torch.Tensor, rank: int, full_nvlink: bool) -> int:
-    return torch.ops._C_custom_ar.init_custom_ar(ipc_tensors, rank_data, rank, full_nvlink)
+    return torch.ops.vllm_total_custom_ar.init_custom_ar(ipc_tensors, rank_data, rank, full_nvlink)
 
 
 def all_reduce(fa: int, inp: torch.Tensor, out: torch.Tensor, reg_buffer: int, reg_buffer_sz_bytes: int) -> None:
-    torch.ops._C_custom_ar.all_reduce(fa, inp, out, reg_buffer, reg_buffer_sz_bytes)
+    torch.ops.vllm_total_custom_ar.all_reduce(fa, inp, out, reg_buffer, reg_buffer_sz_bytes)
 
 
 def dispose(fa: int) -> None:
-    torch.ops._C_custom_ar.dispose(fa)
+    torch.ops.vllm_total_custom_ar.dispose(fa)
 
 
 def meta_size() -> int:
-    return torch.ops._C_custom_ar.meta_size()
+    return torch.ops.vllm_total_custom_ar.meta_size()
 
 
 def register_buffer(fa: int, ipc_tensors: List[int]) -> None:
-    return torch.ops._C_custom_ar.register_buffer(fa, ipc_tensors)
+    return torch.ops.vllm_total_custom_ar.register_buffer(fa, ipc_tensors)
 
 
 def get_graph_buffer_ipc_meta(fa: int) -> Tuple[List[int], List[int]]:
-    return torch.ops._C_custom_ar.get_graph_buffer_ipc_meta(fa)
+    return torch.ops.vllm_total_custom_ar.get_graph_buffer_ipc_meta(fa)
 
 
 def register_graph_buffers(fa: int, handles: List[List[int]], offsets: List[List[int]]) -> None:
-    torch.ops._C_custom_ar.register_graph_buffers(fa, handles, offsets)
+    torch.ops.vllm_total_custom_ar.register_graph_buffers(fa, handles, offsets)
 
 
 # temporary fix for https://github.com/vllm-project/vllm/issues/5456
