@@ -104,12 +104,6 @@ class CustomAllreduce:
         dist.all_gather(gather_list, tensor, group=self.group)
         # physical_device_ids = [t.item() for t in gather_list]
 
-        # test nvlink first, this will filter out most of the cases
-        # where custom allreduce is not supported
-        # this checks hardware and driver support for NVLink
-        # from vllmplatforms.cuda import CudaPlatform
-
-        # cuda_platform: CudaPlatform = current_platform
         full_nvlink = is_full_nvlink()
         if world_size > 2 and not full_nvlink:
             logger.warning(
