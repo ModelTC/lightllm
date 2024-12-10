@@ -45,6 +45,9 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
             qweight, weight_scale, input_scale = weights
         elif len(weights) == 2:
             qweight, weight_scale = weights
+        else:
+            raise ValueError("vllm-quant Weights must be a tuple of length 2 or 3.")
+
         x_q, x_scale, x_zp = ops.scaled_int8_quant(input_tensor, scale=input_scale, azp=None, symmetric=True)
         m = input_tensor.shape[0]
         n = qweight.shape[1]
