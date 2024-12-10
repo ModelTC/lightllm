@@ -37,7 +37,7 @@ from lightllm.server import TokenLoad
 from fastapi import BackgroundTasks, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 import uvicorn
-from .api_cli import make_argument_parser
+from .api_cli import make_argument_parser, push_env
 from .sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from .httpserver.manager import HttpServerManager
@@ -390,6 +390,7 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn"),  # this code will not be ok for settings to fork to subprocess
     parser = make_argument_parser()
     args = parser.parse_args()
+    push_env(args)
     g_objs.args = args
     from .api_start import normal_or_p_d_start, pd_master_start
 
