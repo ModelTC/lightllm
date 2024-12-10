@@ -31,9 +31,9 @@ class MMWeightTpl(BaseWeightTpl):
 
     def _post_load_weights(self):
         if self.quant_method is not None:
-            self.weight = self.quant_method.quantize(self.weight.cuda(self.tp_rank_))
+            self.weight = self.quant_method.quantize(self.weight.cuda(self.device_id_))
             return
-        self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
+        self.weight = self.weight.transpose(0, 1).cuda(self.device_id_)
 
 
 class MMWeight(MMWeightTpl):
@@ -65,7 +65,7 @@ class ROWMMWeight(MMWeight):
             self.weight = weight[self.start : self.end]
         if self.bias_name in weights:
             bias = weights[self.bias_name].to(self.data_type_)[self.start : self.end]
-            self.bias = bias.cuda(self.tp_rank_)
+            self.bias = bias.cuda(self.device_id_)
         if weight is None:
             return
         self._post_load_weights()
@@ -90,7 +90,7 @@ class COLMMWeight(MMWeight):
             self.weight = weight[:, self.start : self.end]
         if self.bias_name in weights:
             bias = weights[self.bias_name]
-            self.bias = (bias / self.world_size_).to(self.data_type_).cuda(self.tp_rank_)
+            self.bias = (bias / self.world_size_).to(self.data_type_).cuda(self.device_id_)
         if weight is None:
             return
         self._post_load_weights()
@@ -133,7 +133,7 @@ class MultiROWMMWeight(MultiMMWeight):
             self._post_load_weights()
         if self.has_bias:
             if self.bias is None and all(b is not None for b in self.biases):
-                self.bias = torch.cat(self.biases, dim=0).cuda(self.tp_rank_)
+                self.bias = torch.cat(self.biases, dim=0).cuda(self.device_id_)
         return self
 
     def load_hf_weights(self, weights):
@@ -200,7 +200,7 @@ class BMMWeightTpl(BaseWeightTpl):
         return torch.addbmm(self.bias, input_tensor, self.weight, out=out)
 
     def _post_load_weights(self):
-        self.weight = self.weight.cuda(self.tp_rank_)
+        self.weight = self.weight.cuda(self.device_id_)
 
 
 class BMMWeight(BMMWeightTpl):
@@ -247,4 +247,4 @@ class COLBMMWeight(BMMWeight):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
 
     def _post_load_weights(self):
-        self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
+        self.weight = self.weight.transpose(0, 1).cuda(self.device_id_)

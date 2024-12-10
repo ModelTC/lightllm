@@ -1,3 +1,4 @@
+import os
 import torch
 from .base_weight import BaseWeight
 from lightllm.utils.dist_utils import get_world_size, get_rank
@@ -21,6 +22,7 @@ class FusedMoeWeight(BaseWeight):
         self.split_inter_size = split_inter_size
         self.data_type_ = data_type
         self.tp_rank_ = get_rank()
+        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID", self.tp_rank_))
         self.experts_up_projs = [None] * self.n_routed_experts
         self.experts_gate_projs = [None] * self.n_routed_experts
         self.w2_list = [None] * self.n_routed_experts
@@ -113,10 +115,10 @@ class FusedMoeWeight(BaseWeight):
         self._fuse()
 
     def _cuda(self, cpu_tensor):
-        if self.tp_rank_ is None:
+        if self.device_id_ is None:
             return cpu_tensor.contiguous().to(self.data_type_).cuda()
         else:
-            return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
+            return cpu_tensor.contiguous().to(self.data_type_).cuda(self.device_id_)
 
     def verify_load(self):
         return self.w1 is not None and self.w2 is not None
