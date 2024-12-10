@@ -55,8 +55,9 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         return
 
     def _init_weights(self):
+        tp_split = True if self.expert_parallel_mode == "etp" else False
         self.pre_post_weight = self.pre_and_post_weight_class(
-            self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+            self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode, tp_split=tp_split
         )
         self.trans_layers_weight = [
             self.transformer_weight_class(
@@ -69,6 +70,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
                 quant_cfg=self.quant_cfg,
                 disable_qk_absorb=self.disable_qk_absorb,
                 disable_vo_absorb=self.disable_vo_absorb,
+                expert_parallel_mode=self.expert_parallel_mode,
             )
             for i in range(self.config["n_layer"])
         ]
@@ -84,11 +86,12 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         return
 
     def _init_infer_layer(self):
+        tp_split = True if self.expert_parallel_mode == "etp" else False
         self.pre_infer = self.pre_layer_infer_class(
-            tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode
+            tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode, tp_split=tp_split
         )
         self.post_infer = self.post_layer_infer_class(
-            tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode
+            tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode, tp_split=tp_split
         )
         self.layers_infer = [
             self.transformer_layer_infer_class(
@@ -99,6 +102,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
                 mode=self.mode,
                 disable_qk_absorb=self.disable_qk_absorb,
                 disable_vo_absorb=self.disable_vo_absorb,
+                expert_parallel_mode=self.expert_parallel_mode,
             )
             for i in range(self.config["n_layer"])
         ]

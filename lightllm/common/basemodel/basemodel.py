@@ -65,6 +65,7 @@ class TpPartBaseModel:
         self.quant_type = kvargs.get("quant_type", None)
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
+        self.expert_parallel_mode = kvargs.get("expert_parallel_mode", "etp")
 
         self._init_datatype()
         self._init_config()
