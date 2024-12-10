@@ -1,10 +1,4 @@
-import os
 import argparse
-
-
-def push_env(args):
-    if args.static_quant:
-        os.environ["STATIC_QUANT"] = "1"
 
 
 def make_argument_parser() -> argparse.ArgumentParser:

@@ -17,6 +17,9 @@ from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
 
 logger = init_logger(__name__)
 
+def set_env(args):
+    if args.static_quant:
+        os.environ["STATIC_QUANT"] = "1"
 
 def normal_or_p_d_start(g_objs):
     from .api_server import G_Objs
@@ -44,6 +47,8 @@ def normal_or_p_d_start(g_objs):
         g_objs.g_generate_stream_func = lightllm_generate_stream
 
     logger.info(f"use tgi api: {args.use_tgi_api}")
+
+    set_env(args)
 
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
     assert (
