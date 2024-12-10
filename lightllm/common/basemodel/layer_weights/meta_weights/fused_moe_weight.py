@@ -15,7 +15,7 @@ except:
 
 class FusedMoeWeight(BaseWeight):
     def __init__(
-        self, gate_proj_name, down_proj_name, up_proj_name, weight_prefix, n_routed_experts, split_inter_size, data_type
+        self, gate_proj_name, down_proj_name, up_proj_name, weight_prefix, n_routed_experts, split_inter_size, data_type, expert_parallel_mode="etp"
     ):
         super().__init__()
         assert HAS_VLLM, "vllm is not installed, you can't use FusedMoeWeight"
@@ -33,6 +33,7 @@ class FusedMoeWeight(BaseWeight):
         self.expert_down_proj_etp = None
         self.w2_list = [None] * self.n_routed_experts
         self.quant_method = None
+        self.expert_parallel_mode = expert_parallel_mode
         self.lock = threading.Lock()
 
     def set_quant_method(self, quant_method):
@@ -159,7 +160,7 @@ class FusedMoeWeight(BaseWeight):
                             self.expert_down_proj_etp[i_experts_ep, :] = self.experts_up_projs[i_experts_ep]
 
     def load_hf_weights(self, weights):
-        if os.environ.get("ETP_MODE_ENABLED") == "true":
+        if self.expert_parallel_mode == "etp" or self.expert_parallel_mode == "edp":
             self._load_hf_weights_etp(weights)
         else:
             for i_experts in range(self.n_routed_experts):
@@ -190,7 +191,7 @@ class FusedMoeWeight(BaseWeight):
             return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
 
     def verify_load(self):
-        if os.environ.get("ETP_MODE_ENABLED") == "true":
+        if self.expert_parallel_mode == "etp" or self.expert_parallel_mode == "edp":
             return True
         else:
             return self.w1 is not None and self.w2 is not None
