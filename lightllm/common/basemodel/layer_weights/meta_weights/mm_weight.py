@@ -28,7 +28,9 @@ class MMWeightTpl(BaseWeightTpl):
 
     def mm(self, input_tensor, out=None, use_custom_tensor_mananger=True):
         if self.quant_method is not None:
-            return self.quant_method.apply(input_tensor, self.weight, self.bias, out)
+            return self.quant_method.apply(
+                input_tensor, self.weight, self.bias, out, use_custom_tensor_mananger=use_custom_tensor_mananger
+            )
         if out is None:
             shape = (input_tensor.shape[0], self.weight.shape[1])
             dtype = input_tensor.dtype

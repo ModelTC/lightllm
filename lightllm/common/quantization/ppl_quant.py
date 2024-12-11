@@ -25,7 +25,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
         qweight_new, q_scale = int4_weight_encode(weight, self.group_size)
         return qweight_new, q_scale
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
+    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
         """
         input_tensor is activation:             (M, K) float16
         weights: [qweight, scale_weight]
@@ -40,7 +40,10 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
             shape = (input_tensor.shape[0], qweight.shape[0] * 8)
             dtype = input_tensor.dtype
             device = input_tensor.device
-            out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            if use_custom_tensor_mananger:
+                out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            else:
+                out = torch.empty(shape, dtype, device=device)
         from lightllm_ppl_int4_kernel import matmul_i4_fp16
         from lightllm_ppl_int4_kernel import int4_weight_decode
 
@@ -75,7 +78,7 @@ class FLASHLLMW6A16QuantizationMethod(QuantizationMethod):
         fp6_weight = weight_quant_to_fp6(quant_half, fp6_weight, True)
         return fp6_weight.cuda(self.device_id_), scale.half().contiguous().cuda(self.device_id_)
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
+    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
         """ """
         from flash_llm_fp6_llm import linear_forward_cuda
 

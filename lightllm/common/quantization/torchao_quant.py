@@ -42,7 +42,7 @@ class AOBaseQuantizationMethod(QuantizationMethod):
         quantize_(dummy_linear, self.quant_func)
         return dummy_linear.weight
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
+    def apply(self, input_tensor, weights, bias=None, out=None, use_custom_tensor_mananger=True):
         return F.linear(input_tensor, weights, bias)
 
 
