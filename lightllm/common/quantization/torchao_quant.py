@@ -1,3 +1,4 @@
+import os
 import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
@@ -32,11 +33,12 @@ class AOBaseQuantizationMethod(QuantizationMethod):
         assert HAS_TORCH_AO, "torchao is not installed, you can't use quant api of it"
         assert TORCH_VERSION_AT_LEAST_2_4, "torchao requires torch >=2.4"
         self.quant_func = None
+        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID"))
 
     def quantize(self, weight: torch.Tensor):
         """ """
         dummy_linear = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
-        dummy_linear.weight = torch.nn.Parameter(weight.cuda())
+        dummy_linear.weight = torch.nn.Parameter(weight.cuda(self.device_id_))
         quantize_(dummy_linear, self.quant_func)
         return dummy_linear.weight
 

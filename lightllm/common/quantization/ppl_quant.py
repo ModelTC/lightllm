@@ -1,3 +1,4 @@
+import os
 import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
@@ -9,6 +10,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
     def __init__(self, group_size=128):
         super().__init__()
         self.group_size = group_size
+        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID"))
 
     def quantize(self, weight: torch.Tensor):
         """
@@ -17,7 +19,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
             qweight: [K, N//8] int32 (packed int4*8) new pack_order
             q_scale: [K//group_size, N] int32
         """
-        weight = weight.to(dtype=torch.float16).cuda()
+        weight = weight.to(dtype=torch.float16).cuda(self.device_id_)
         from lightllm_ppl_int4_kernel import int4_weight_encode
 
         qweight_new, q_scale = int4_weight_encode(weight, self.group_size)
@@ -71,7 +73,7 @@ class FLASHLLMW6A16QuantizationMethod(QuantizationMethod):
         from flash_llm_fp6_llm import weight_quant_to_fp6
 
         fp6_weight = weight_quant_to_fp6(quant_half, fp6_weight, True)
-        return fp6_weight.cuda(), scale.half().contiguous().cuda()
+        return fp6_weight.cuda(self.device_id_), scale.half().contiguous().cuda(self.device_id_)
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
         """ """

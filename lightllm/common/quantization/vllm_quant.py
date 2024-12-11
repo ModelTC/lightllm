@@ -1,3 +1,4 @@
+import os
 import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
@@ -15,6 +16,7 @@ class vLLMBaseQuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()
         assert HAS_VLLM, "vllm is not installed, you can't use quant api of it"
+        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID"))
 
     def quantize(self, weight: torch.Tensor):
         """ """
@@ -32,12 +34,12 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
 
     def quantize(self, weight: torch.Tensor):
         if hasattr(weight, "scale"):
-            return weight.data.transpose(0, 1).cuda(), weight.scale.cuda()
+            return weight.data.transpose(0, 1).cuda(self.device_id_), weight.scale.cuda(self.device_id_)
         weight = weight.float()
         scale = weight.abs().max(dim=-1)[0] / 127
         weight = weight.transpose(0, 1) / scale.reshape(1, -1)
         weight = torch.round(weight.clamp(min=-128, max=127)).to(dtype=torch.int8)
-        return weight.cuda(), scale.cuda()
+        return weight.cuda(self.device_id_), scale.cuda(self.device_id_)
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
         x_q, x_scale, x_zp = ops.scaled_int8_quant(input_tensor, scale=None, azp=None, symmetric=True)
@@ -61,7 +63,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         if self.is_moe:
             return self.quantize_moe(weight)
         qweight, weight_scale = ops.scaled_fp8_quant(
-            weight.contiguous().cuda(), scale=None, use_per_token_if_dynamic=True
+            weight.contiguous().cuda(self.device_id_), scale=None, use_per_token_if_dynamic=True
         )
         return qweight.transpose(0, 1), weight_scale
 
@@ -69,10 +71,10 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         num_experts = weight.shape[0]
         qweights = []
         weight_scales = []
-        qweights = torch.empty_like(weight, dtype=torch.float8_e4m3fn).cuda()
+        qweights = torch.empty_like(weight, dtype=torch.float8_e4m3fn).cuda(self.device_id_)
         for i in range(num_experts):
             qweight, weight_scale = ops.scaled_fp8_quant(
-                weight[i].contiguous().cuda(), scale=None, use_per_token_if_dynamic=False
+                weight[i].contiguous().cuda(self.device_id_), scale=None, use_per_token_if_dynamic=False
             )
             qweights[i] = qweight
             weight_scales.append(weight_scale)

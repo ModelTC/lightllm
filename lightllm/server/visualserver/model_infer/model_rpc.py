@@ -59,6 +59,8 @@ class VisualModelRpcServer(rpyc.Service):
                     "world_size": self.vit_tp,
                     "weight_dir": weight_dir,
                     "data_type": self.data_type,
+                    "quant_type": kvargs["quant_type"],
+                    "quant_cfg": kvargs["quant_cfg"],
                 }
                 self.model = VisionTransformer(kvargs)
             else:
