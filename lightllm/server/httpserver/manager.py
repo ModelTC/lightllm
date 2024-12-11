@@ -430,6 +430,11 @@ class HttpServerManager:
             try:
                 uri = f"ws://{self.args.pd_master_ip}:{self.args.pd_master_port}/pd_register"
                 async with websockets.connect(uri, max_queue=(2048 * 1024, 2048 * 1023)) as websocket:
+                    import socket
+
+                    sock = websocket.transport.get_extra_info("socket")
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
                     args_dict = vars(self.args)
                     args_dict["host"] = self.host_ip
                     # 发送注册信息
