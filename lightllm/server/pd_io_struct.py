@@ -2,6 +2,8 @@ import enum
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
+from fastapi import WebSocket
+
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -16,6 +18,15 @@ class NodeRole(enum.Enum):
     def is_P_or_NORMAL(self):
         return (self == NodeRole.P) or (self == NodeRole.NORMAL)
 
+    def is_P_or_D(self):
+        return (self == NodeRole.P) or (self == NodeRole.D)
+
+
+class ObjType(enum.Enum):
+    ABORT = 1
+    REQ = 2
+    TOKEN_PACKS = 3
+
 
 @dataclass
 class PD_Client_Obj:
@@ -23,6 +34,7 @@ class PD_Client_Obj:
     client_ip_port: str
     mode: str  # 只能是 prefill 或者 decode 节点
     start_args: object  # 节点的启动参数信息，用于做匹配性的校验，防止运行过程中出现问题。
+    websocket: WebSocket = None  # 用于通信的 websocket 连接对象
 
     def __post_init__(self):
         if self.mode not in ["prefill", "decode"]:
