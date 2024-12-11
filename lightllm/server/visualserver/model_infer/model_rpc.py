@@ -60,7 +60,6 @@ class VisualModelRpcServer(rpyc.Service):
                     "weight_dir": weight_dir,
                     "data_type": self.data_type,
                 }
-                print(kvargs)
                 self.model = VisionTransformer(kvargs)
             else:
                 raise Exception(f"can not support {self.model_type} now")

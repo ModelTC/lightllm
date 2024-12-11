@@ -8,7 +8,7 @@ from lightllm.models.vit.layer_weights.pre_and_post_layer_weight import ViTPreAn
 from lightllm.models.vit.layer_weights.transformer_layer_weight import ViTTransformerLayerWeight
 from lightllm.models.vit.layer_weights.hf_load_utils import load_hf_weights
 from lightllm.utils.log_utils import init_logger
-from lightllm.models.internvl.img_process import load_image
+from lightllm.models.vit import get_load_image_func
 import torchvision.transforms as T
 from lightllm.server.embed_cache.utils import read_shm, get_shm_name_data
 from PIL import Image
@@ -42,6 +42,7 @@ class VisionTransformer:
         self.data_type = kvargs.get("data_type", "float16")
         self.quant_type = kvargs.get("quant_type", None)
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
+        self.load_image_func = get_load_image_func(self.weight_dir_)
 
         self._init_datatype()
         self._init_config()
@@ -148,7 +149,7 @@ class VisionTransformer:
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))
                 image_data = Image.open(BytesIO(image_data))
-                t = load_image(image_data)
+                t = self.load_image_func(image_data)
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(url), url))
