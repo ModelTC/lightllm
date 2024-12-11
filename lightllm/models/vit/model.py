@@ -163,6 +163,7 @@ class VisionTransformer:
 
         imgs = torch.cat(img_tensors, dim=0)
         pixel_values = imgs.cuda().to(dtype=self.data_type)
+        print(pixel_values.shape, pixel_values.dtype)
         all_img_embeds = self.forward(pixel_values)
         return all_img_embeds, uuids, valid_ids
 

@@ -63,6 +63,7 @@ class VisualModelRpcServer(rpyc.Service):
                     "quant_cfg": kvargs["quant_cfg"],
                 }
                 self.model = VisionTransformer(kvargs)
+                # self.model = InternVLVisionModel()
             else:
                 raise Exception(f"can not support {self.model_type} now")
 

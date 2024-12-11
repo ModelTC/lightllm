@@ -163,5 +163,6 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
             ls2 = weights[f"vision_model.encoder.layers.{self.layer_num_}.ls2"]
             self.ls2 = self._cuda(ls2)
             self.use_ls = True
+            print(self.ls1)
 
         return super().load_hf_weights(weights)
