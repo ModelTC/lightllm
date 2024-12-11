@@ -46,7 +46,8 @@ class ViTTransformerLayerInfer:
         input_dtype = input.dtype
         input = input.to(torch.float32)
         tp_variance = input.pow(2).sum(-1, keepdim=True)
-        # dist.all_reduce(tp_variance, op=dist.ReduceOp.SUM, async_op=False)
+        if self.world_size_ > 1:
+            dist.all_reduce(tp_variance, op=dist.ReduceOp.SUM, async_op=False)
         variance = tp_variance / self.embed_dim_
         input = input * torch.rsqrt(variance + self.eps_)
         out = weight * input.to(input_dtype)
@@ -79,8 +80,8 @@ class ViTTransformerLayerInfer:
             )
 
     def _qk_norm(self, q, k, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
-        q_norm = self.norm(q, layer_weight.q_norm_weight_.weight)
-        k_norm = self.norm(k, layer_weight.k_norm_weight_.weight)
+        q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
+        k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
         return q_norm, k_norm
 
     def _get_qkv(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
@@ -89,9 +90,6 @@ class ViTTransformerLayerInfer:
         qkv = layer_weight.qkv_proj.mm(input.view(-1, self.embed_dim_), use_custom_tensor_mananger=False)
         qkv = qkv.view(batch_size, seq_len, 3, -1, self.head_dim_)
         q, k, v = qkv.unbind(2)
-        q = q.contiguous()
-        k = k.contiguous()
-        v = v.contiguous()
         return q, k, v
 
     def _context_attention_kernel(self, q, k, v) -> torch.Tensor:

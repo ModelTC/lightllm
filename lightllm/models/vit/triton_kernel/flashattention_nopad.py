@@ -22,6 +22,14 @@ if triton.__version__ >= "2.1.0":
         q_stride_s,
         q_stride_h,
         q_stride_d,
+        k_stride_b,
+        k_stride_s,
+        k_stride_h,
+        k_stride_d,
+        v_stride_b,
+        v_stride_s,
+        v_stride_h,
+        v_stride_d,
         o_stride_b,
         o_stride_s,
         o_stride_h,
@@ -30,9 +38,9 @@ if triton.__version__ >= "2.1.0":
         BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
     ):
-        cur_batch = tl.program_id(0)
+        cur_batch = tl.program_id(2)
         cur_head = tl.program_id(1)
-        start_m = tl.program_id(2)
+        start_m = tl.program_id(0)
 
         # initialize offsets
         offs_n = tl.arange(0, BLOCK_N)
@@ -49,9 +57,9 @@ if triton.__version__ >= "2.1.0":
             start_n = tl.multiple_of(start_n, BLOCK_N)
             # -- compute qk ----
             off_k = (
-                cur_batch * q_stride_b
-                + (start_n + offs_n[None, :]) * q_stride_s
-                + cur_head * q_stride_h
+                cur_batch * k_stride_b
+                + (start_n + offs_n[None, :]) * k_stride_s
+                + cur_head * k_stride_h
                 + offs_d[:, None]
             )
             k = tl.load(K + off_k, mask=(start_n + offs_n[None, :]) < seq_len, other=0.0)
@@ -71,9 +79,9 @@ if triton.__version__ >= "2.1.0":
 
             # update acc
             off_v = (
-                cur_batch * q_stride_b
-                + (start_n + offs_n[:, None]) * q_stride_s
-                + cur_head * q_stride_h
+                cur_batch * v_stride_b
+                + (start_n + offs_n[:, None]) * v_stride_s
+                + cur_head * v_stride_h
                 + offs_d[None, :]
             )
             v = tl.load(V + off_v, mask=(start_n + offs_n[:, None]) < seq_len, other=0.0)
@@ -104,8 +112,8 @@ if triton.__version__ >= "2.1.0":
         batch_size, seq_len, head_num, head_dim = q.shape
 
         sm_scale = 1.0 / (head_dim ** 0.5)  # 计算scale系数
-        grid = (batch_size, head_num, triton.cdiv(seq_len, BLOCK))  # batch, head,
-        # grid = (triton.cdiv(seq_len, BLOCK), batch_size, head_num)  # batch, head,
+        # grid = (batch_size, head_num, triton.cdiv(seq_len, BLOCK))  # batch, head,
+        grid = (triton.cdiv(seq_len, BLOCK), head_num, batch_size)  # batch, head,
         num_warps = 4
         _fwd_kernel[grid](
             q,
@@ -118,6 +126,14 @@ if triton.__version__ >= "2.1.0":
             q.stride(1),
             q.stride(2),
             q.stride(3),
+            k.stride(0),
+            k.stride(1),
+            k.stride(2),
+            k.stride(3),
+            v.stride(0),
+            v.stride(1),
+            v.stride(2),
+            v.stride(3),
             o.stride(0),
             o.stride(1),
             o.stride(2),
@@ -157,7 +173,6 @@ def test():
     k = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
     v = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
     o = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
-
     torch_out = torch_att(q, k, v)
     import time
 
@@ -174,6 +189,3 @@ def test():
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
-
-
-# test()
