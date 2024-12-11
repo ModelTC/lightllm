@@ -34,7 +34,6 @@ class VisionTransformer:
 
     def __init__(self, kvargs):
         self.tp_rank_ = kvargs["tp_rank"]
-        self.gpu_id_ = kvargs["gpu_id"]
         self.world_size_ = kvargs["world_size"]
         self.weight_dir_ = kvargs["weight_dir"]
         self.load_way = kvargs.get("load_way", "HF")
@@ -55,7 +54,6 @@ class VisionTransformer:
     def _init_config(self):
         with open(os.path.join(self.weight_dir_, "config.json"), "r") as json_file:
             self.config = json.load(json_file)
-            # self.select_layer = self.config["vision_config"]["vit_select_layer"]
             self.select_layer = self.config["select_layer"]
             self.config["vision_config"]["llm_hidden_size"] = self.config["llm_config"]["hidden_size"]
             self.config["vision_config"]["downsample_ratio"] = self.config["downsample_ratio"]
@@ -78,13 +76,12 @@ class VisionTransformer:
 
     def _init_weights(self):
         self.pre_post_weight = self.pre_and_post_weight_class(
-            self.tp_rank_, self.gpu_id_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+            self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
         )
         self.trans_layers_weight = [
             self.transformer_weight_class(
                 i,
                 self.tp_rank_,
-                self.gpu_id_,
                 self.world_size_,
                 self.data_type,
                 network_config=self.config,
@@ -133,7 +130,6 @@ class VisionTransformer:
         else:
             raise ValueError(f"Unsupport datatype {self.data_type}!")
 
-    # @torch.no_grad()
     def forward(self, pixel_values):
         input_embs = self.pre_infer.forward(pixel_values, self.pre_post_weight)
         for i in range(self.layers_num + self.select_layer + 1):

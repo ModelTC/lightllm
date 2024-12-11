@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -5,13 +6,13 @@ from lightllm.common.basemodel import PreAndPostLayerWeight
 
 
 class ViTPreAndPostLayerWeight(PreAndPostLayerWeight):
-    def __init__(self, tp_rank, gpud_id, world_size, data_type, network_config, mode):
+    def __init__(self, tp_rank, world_size, data_type, network_config, mode):
         super().__init__(tp_rank, world_size, data_type, network_config, mode)
         self.embed_dim = self.network_config_["hidden_size"]
         self.image_size = self.network_config_["image_size"]
         self.patch_size = self.network_config_["patch_size"]
         self.llm_hidden_size = self.network_config_["llm_hidden_size"]
-        self.gpu_id_ = gpud_id
+        self.gpu_id_ = int(os.getenv("CURRENT_DEVICE_ID", tp_rank))
         return
 
     def _cuda(self, cpu_tensor):

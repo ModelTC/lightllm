@@ -37,13 +37,17 @@ class ViTTransformerLayerInfer:
         return weight * input.to(input_dtype)
 
     def tp_norm(self, input, weight):
+        input_shape = input.shape
+        input = input.view(-1, self.tp_padding_head_num * self.head_dim_)
         input_dtype = input.dtype
         input = input.to(torch.float32)
         tp_variance = input.pow(2).sum(-1, keepdim=True)
         dist.all_reduce(tp_variance, op=dist.ReduceOp.SUM, async_op=False)
         variance = tp_variance / self.embed_dim_
         input = input * torch.rsqrt(variance + self.eps_)
-        return weight * input.to(input_dtype)
+        out = weight * input.to(input_dtype)
+        out = out.reshape(input_shape)
+        return out
 
     def _att_norm(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
         if layer_weight.norm_type == "rms_norm":
@@ -78,7 +82,7 @@ class ViTTransformerLayerInfer:
     def _get_qkv(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
         batch_size = input.shape[0]
         seq_len = input.shape[1]
-        qkv = layer_weight.qkv_proj.mm(input.view(-1, self.embed_dim_))
+        qkv = layer_weight.qkv_proj.mm(input.view(-1, self.embed_dim_), use_custom_tensor_mananger=False)
         qkv = qkv.view(batch_size, seq_len, 3, -1, self.head_dim_)
         q, k, v = qkv.unbind(2)
         return q, k, v
@@ -93,15 +97,21 @@ class ViTTransformerLayerInfer:
     def _get_o(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
         batch_size = input.shape[0]
         seq_len = input.shape[1]
-        o_tensor = layer_weight.o_proj.mm(input.view(-1, self.tp_padding_head_num * self.head_dim_))
+        o_tensor = layer_weight.o_proj.mm(
+            input.view(-1, self.tp_padding_head_num * self.head_dim_), use_custom_tensor_mananger=False
+        )
+        if layer_weight.use_ls:
+            o_tensor *= layer_weight.ls1
         return o_tensor.reshape((batch_size, seq_len, -1))
 
     def _ffn(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
-        fc1 = layer_weight.ffn_1_proj_.mm(input.view(-1, self.embed_dim_))
+        fc1 = layer_weight.ffn_1_proj_.mm(input.view(-1, self.embed_dim_), use_custom_tensor_mananger=False)
         ffn1_out = torch.nn.functional.gelu(fc1)
         input_shape = input.shape
         input = None
-        ffn2_out = layer_weight.ffn_2_proj_.mm(ffn1_out)
+        ffn2_out = layer_weight.ffn_2_proj_.mm(ffn1_out, use_custom_tensor_mananger=False)
+        if layer_weight.use_ls:
+            ffn2_out *= layer_weight.ls2
         ffn1_out = None
         return ffn2_out.reshape(input_shape)
 

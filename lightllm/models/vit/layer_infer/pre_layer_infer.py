@@ -5,14 +5,16 @@ import torch.distributed as dist
 import numpy as np
 
 from lightllm.models.vit.layer_weights.pre_and_post_layer_weight import ViTPreAndPostLayerWeight
-from lightllm.common.basemodel import PreLayerInferTpl
 
 
-class ViTPreLayerInfer(PreLayerInferTpl):
+class ViTPreLayerInfer:
     """ """
 
     def __init__(self, tp_rank, world_size, network_config, mode):
-        super().__init__(tp_rank, world_size, network_config, mode)
+        self.tp_rank_ = tp_rank
+        self.world_size_ = world_size
+        self.network_config_ = network_config
+        self.mode = mode
         return
 
     def forward(self, pixel_values, layer_weight: ViTPreAndPostLayerWeight):

@@ -11,7 +11,7 @@ from rpyc.utils.classic import obtain
 from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
 from lightllm.models.llava.llava_visual import LlavaVisionModel
 from lightllm.models.internvl.internvl_visual import InternVLVisionModel
-from lightllm.models.vit.model_vit import VisionTransformer
+from lightllm.models.vit.model import VisionTransformer
 from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrainedModel
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
@@ -43,9 +43,8 @@ class VisualModelRpcServer(rpyc.Service):
             world_size=self.vit_tp,
         )
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
+        os.environ["CURRENT_DEVICE_ID"] = str(visual_gpu_ids[self.vit_rank_id])
 
-        if self.vit_tp != 1:
-            raise ValueError(f"ERROR: Not support vit_tp value: {self.vit_tp}")
         try:
             self.model_type = model_cfg["model_type"]
             if self.model_type == "qwen":
@@ -55,10 +54,8 @@ class VisualModelRpcServer(rpyc.Service):
             elif self.model_type == "llava":
                 self.model = LlavaVisionModel()
             elif self.model_type == "internvl_chat":
-                self.model = InternVLVisionModel()
                 kvargs = {
                     "tp_rank": self.tp_rank_id,
-                    "gpu_id": visual_gpu_ids[self.vit_rank_id],
                     "world_size": self.vit_tp,
                     "weight_dir": weight_dir,
                     "data_type": self.data_type,
