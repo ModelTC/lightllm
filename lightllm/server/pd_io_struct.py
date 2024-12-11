@@ -88,6 +88,7 @@ class KVMoveTask:
     # 如果是deepseekv2的tp dp 混合模式, 才有真正的意义。
     prefill_dp_index: int
     decode_dp_index: int
+    mark_start_time: float = None
 
     def __post_init__(self):
         if len(self.input_tokens) <= 0:

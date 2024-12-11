@@ -1,4 +1,5 @@
 import asyncio
+import time
 import rpyc
 import sys
 import os
@@ -167,7 +168,10 @@ class PrefillKVMoveManager:
                     # 开始传输直到完成
                     trans_obj.task_in_queue.put(move_task, timeout=10)
                     assert trans_obj.task_out_queue.get(timeout=30) == "ok"
-                    logger.info(f"prefill node transfer data ok, req_id: {move_task.id()}")
+                    total_cost_time = time.time() - move_task.mark_start_time
+                    logger.info(
+                        f"prefill node transfer data ok, req_id: {move_task.id()} cost total time: {total_cost_time} s"
+                    )
 
                 except DecodeBusyError as e:
                     logger.error(str(e))
