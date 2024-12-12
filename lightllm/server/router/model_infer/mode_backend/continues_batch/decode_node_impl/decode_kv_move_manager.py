@@ -121,11 +121,11 @@ class TransProcessObj:
                 # random to check stats
                 if random.randint(0, 20) == 10:
                     self.check_trans_process()
-
+                iter_move_tasks = move_tasks.copy()
                 with self.manager.device_locks[self.device_index]:
-                    for task in move_tasks:
+                    for task in iter_move_tasks:
                         self.task_in_queue.put(task, timeout=10)
-                    for task in move_tasks:
+                    for task in iter_move_tasks:
                         assert self.task_out_queue.get(timeout=60) == "ok"
                         logger.info(f"deocode node transfer kv ok {task.to_decode_log_info()}")
                         # 成功了将 token 放入 prompt cache 中
@@ -367,7 +367,7 @@ class DecodeKVMoveManager(rpyc.Service):
     def timer_loop(self):
         while True:
             self._unfrozen_time_out_reqs_tokens()
-            time.sleep(6)
+            time.sleep(3.5)
 
 
 def _init_env(args, info_queue: mp.Queue, mem_queues: List[mp.Queue], event: mp.Event):

@@ -131,9 +131,9 @@ class TransProcessObj:
 
                 for move_task in move_tasks:
                     logger.info(
-                        f"prefill node get task {move_task.to_prefill_log_info()}"
-                        f"queue time {move_task.get_cost_time()} s"
-                        f"queue leff size {len(self.move_task_queue)}"
+                        f"prefill node get task {move_task.to_prefill_log_info()} "
+                        f"queue time {move_task.get_cost_time()} s "
+                        f"queue leff size {len(self.move_task_queue)} "
                     )
 
                 trans_move_tasks = [copy.copy(move_task) for move_task in move_tasks]
