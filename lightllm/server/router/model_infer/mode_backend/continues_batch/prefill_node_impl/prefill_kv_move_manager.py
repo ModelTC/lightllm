@@ -163,12 +163,12 @@ class TransProcessObj:
 
                     for move_task in handle_list:
                         assert self.task_out_queue.get(timeout=60) == "ok"
-
-                for move_task in handle_list:
-                    logger.info(
-                        f"prefill node transfer data ok, req_id: {move_task.id()}"
-                        f" cost total time: {move_task.get_cost_time()} s"
-                    )
+                        self.manager._remove_req_refs_from_prompt_cache(move_task)
+                        move_tasks.remove(move_task)
+                        logger.info(
+                            f"prefill node transfer data ok, req_id: {move_task.id()}"
+                            f" cost total time: {move_task.get_cost_time()} s"
+                        )
 
                 for move_task in not_handle_list:
                     logger.info(f"prefill node kv move task req_id: {move_task.id()} not send, decode is busy")
@@ -177,7 +177,7 @@ class TransProcessObj:
                 logger.exception(str(e))
                 logger.error(f"tran obj id {self.decode_node_id} has error, remove the trans_obj")
                 self.has_error = True
-                self.manager.node_id_to_trans_obj.pop(self.decode_node_id, None)
+                self.manager.remove_trans_obj(self.decode_node_id)
                 # 将队列中没处理的数据全部清空
                 self.clear_tasks()
 
@@ -189,8 +189,8 @@ class TransProcessObj:
         return
 
     def __del__(self):
-        if len(self.move_task_queue) != 0:
-            self.clear_tasks()
+        self.has_error = True
+        self.clear_tasks()
 
         # 强制关闭连接和杀掉传输进程
         if self.process is not None:
@@ -238,10 +238,18 @@ class PrefillKVMoveManager:
             self.node_id_to_trans_obj[task.decode_node.node_id] = trans_obj
         return self.node_id_to_trans_obj[task.decode_node.node_id]
 
+    def remove_trans_obj(self, decode_node_id):
+        if decode_node_id in self.node_id_to_trans_obj:
+            trans_obj = self.node_id_to_trans_obj.pop(decode_node_id, None)
+            if trans_obj is not None:
+                trans_obj.has_error = True
+        return
+
     def remove_dead_trans_obj(self):
         del_node_ids = []
         for node_id, t_obj in self.node_id_to_trans_obj.items():
             if t_obj.has_error or (not t_obj.thread.is_alive()):
+                t_obj.has_error = True
                 del_node_ids.append(node_id)
 
         for node_id in del_node_ids:
