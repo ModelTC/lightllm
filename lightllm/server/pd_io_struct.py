@@ -1,4 +1,5 @@
 import enum
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
@@ -112,3 +113,9 @@ class KVMoveTask:
 
     def id(self):
         return self.group_request_id
+
+    def get_cost_time(self):
+        if self.mark_start_time is not None:
+            return time.time() - self.mark_start_time
+        else:
+            return 100000000000

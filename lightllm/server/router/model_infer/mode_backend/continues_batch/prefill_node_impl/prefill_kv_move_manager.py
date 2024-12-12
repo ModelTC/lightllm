@@ -150,8 +150,12 @@ class PrefillKVMoveManager:
                     logger.error("receive type is not KVMoveTask")
                     sys.exit(-1)
 
-                logger.info(f"prefill node get task {move_task.to_prefill_log_info()}")
+                logger.info(
+                    f"prefill node get task {move_task.to_prefill_log_info()} queue time {move_task.get_cost_time()} s"
+                    f"queue leff size {self.info_queue.qsize()}"
+                )
                 try:
+                    mark_start = time.time()
                     trans_obj = self.get_trans_obj(move_task)
                     # 申请传输
                     trans_move_task = copy.copy(move_task)
@@ -164,7 +168,13 @@ class PrefillKVMoveManager:
                         raise DecodeBusyError(f"decode_node_id {trans_obj.decode_node_id} is busy")
 
                     move_task.move_kv_len = move_kv_len
-                    logger.info(f"prefill node request_data_transfer ok, {move_task.to_prefill_log_info()}")
+
+                    request_data_transfer_cost_time = time.time() - mark_start
+
+                    logger.info(
+                        f"prefill node request_data_transfer ok, {move_task.to_prefill_log_info()}"
+                        f" cost time: {request_data_transfer_cost_time} s"
+                    )
                     # 开始传输直到完成
                     trans_obj.task_in_queue.put(move_task, timeout=10)
                     assert trans_obj.task_out_queue.get(timeout=30) == "ok"
