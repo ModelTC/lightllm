@@ -78,12 +78,19 @@ class TransProcessObj:
         self.nccl_ip = nccl_ip
         self.device_index = device_index
         self.manager = manager
+
         self.move_task_queue_lock = threading.Lock()
         self.move_task_queue = []
+
+        self.kv_trans_task_queue_lock = threading.Lock()
+        self.kv_trans_task_queue = []
 
         # 启动处理任务的线程
         self.thread = threading.Thread(target=self.handle_loop, daemon=True)
         self.thread.start()
+
+        self.kv_trans_thread = threading.Thread(target=self.kv_trans_handle_loop, daemon=True)
+        self.kv_trans_thread.start()
         return
 
     def check_trans_process(self):
@@ -111,6 +118,24 @@ class TransProcessObj:
                 self.manager.put_to_release_task_queue(move_task)
             self.move_task_queue = []
 
+    def put_to_trans(self, move_task):
+        if self.has_error:
+            raise Exception(f"trans obj {self.decode_node_id} has error, can not put")
+        with self.kv_trans_task_queue_lock:
+            self.kv_trans_task_queue.append(move_task)
+
+    def get_trans_tasks(self):
+        with self.kv_trans_task_queue_lock:
+            move_tasks: List[KVMoveTask] = self.kv_trans_task_queue[0:KV_MOVE_MAX_NUM]
+            self.kv_trans_task_queue = self.kv_trans_task_queue[KV_MOVE_MAX_NUM:]
+        return move_tasks
+
+    def clear_trans_tasks(self):
+        with self.kv_trans_task_queue_lock:
+            for move_task in self.kv_trans_task_queue:
+                self.manager.put_to_release_task_queue(move_task)
+            self.kv_trans_task_queue = []
+
     def handle_loop(self):
         while not self.has_error:
             if len(self.move_task_queue) == 0:
@@ -120,9 +145,6 @@ class TransProcessObj:
             move_tasks: List[KVMoveTask] = self.get_tasks()
             if len(move_tasks) == 0:
                 continue
-
-            handle_list: List[KVMoveTask] = []
-            not_handle_list: List[KVMoveTask] = []
 
             try:
                 # random to check stats
@@ -134,7 +156,7 @@ class TransProcessObj:
                     logger.info(
                         f"prefill node get task {move_task.to_prefill_log_info()} "
                         f"queue time {move_task.get_cost_time()} s "
-                        f"queue leff size {len(self.move_task_queue)} "
+                        f"queue left size {len(self.move_task_queue)} "
                     )
 
                 trans_move_tasks = [copy.copy(move_task) for move_task in move_tasks]
@@ -150,30 +172,13 @@ class TransProcessObj:
                     f" cost time: {request_data_transfer_cost_time} s"
                 )
 
-                for i, move_task in enumerate(move_tasks):
+                for i, move_task in enumerate(move_tasks.copy()):
                     if move_kv_lens[i] is not None:
                         move_task.move_kv_len = move_kv_lens[i]
-                        handle_list.append(move_task)
-                    else:
-                        not_handle_list.append(move_task)
-
-                with self.manager.device_locks[self.device_index]:
-
-                    for move_task in handle_list:
-                        self.task_in_queue.put(move_task, timeout=10)
-
-                    for move_task in handle_list:
-                        assert self.task_out_queue.get(timeout=60) == "ok"
-                        self.manager.put_to_release_task_queue(move_task)
+                        self.put_to_trans(move_task)
                         move_tasks.remove(move_task)
-                        logger.info(
-                            f"prefill node transfer data ok, req_id: {move_task.id()}"
-                            f" cost total time: {move_task.get_cost_time()} s"
-                        )
-
-                for move_task in not_handle_list:
-                    logger.info(f"prefill node kv move task req_id: {move_task.id()} not send, decode is busy")
-
+                    else:
+                        logger.info(f"prefill node kv move task req_id: {move_task.id()} not send, decode is busy")
             except BaseException as e:
                 logger.exception(str(e))
                 logger.error(f"tran obj id {self.decode_node_id} has error, remove the trans_obj")
@@ -186,12 +191,65 @@ class TransProcessObj:
                 for move_task in move_tasks:
                     self.manager.put_to_release_task_queue(move_task)
 
-        logger.error(f"trans thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
+        logger.error(
+            f"request_transfer thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit"
+        )
+        return
+
+    def kv_trans_handle_loop(self):
+        while not self.has_error:
+            if len(self.kv_trans_task_queue) == 0:
+                time.sleep(0.01)
+                continue
+
+            move_tasks: List[KVMoveTask] = self.get_trans_tasks()
+            if len(move_tasks) == 0:
+                continue
+
+            try:
+                # random to check stats
+                if random.randint(0, 20) == 10:
+                    self.check_trans_process()
+
+                for move_task in move_tasks:
+                    logger.info(
+                        f"prefill node get task {move_task.to_prefill_log_info()} to start kv move"
+                        f"queue time {move_task.get_cost_time()} s "
+                        f"queue left size {len(self.kv_trans_task_queue)} "
+                    )
+
+                with self.manager.device_locks[self.device_index]:
+
+                    for move_task in move_tasks:
+                        self.task_in_queue.put(move_task, timeout=10)
+
+                    for move_task in move_tasks.copy():
+                        assert self.task_out_queue.get(timeout=60) == "ok"
+                        self.manager.put_to_release_task_queue(move_task)
+                        move_tasks.remove(move_task)
+                        logger.info(
+                            f"prefill node transfer data ok, req_id: {move_task.id()}"
+                            f" cost total time: {move_task.get_cost_time()} s"
+                        )
+            except BaseException as e:
+                logger.exception(str(e))
+                logger.error(f"tran obj id {self.decode_node_id} has error, remove the trans_obj")
+                self.has_error = True
+                self.manager.remove_trans_obj(self.decode_node_id)
+                # 将队列中没处理的数据全部清空
+                self.clear_trans_tasks()
+
+            finally:
+                for move_task in move_tasks:
+                    self.manager.put_to_release_task_queue(move_task)
+
+        logger.error(f"trans kv thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
         return
 
     def __del__(self):
         self.has_error = True
         self.clear_tasks()
+        self.clear_trans_tasks()
 
         # 强制关闭连接和杀掉传输进程
         if self.process is not None:
@@ -281,7 +339,7 @@ class PrefillKVMoveManager:
     def remove_dead_trans_obj(self):
         del_node_ids = []
         for node_id, t_obj in self.node_id_to_trans_obj.items():
-            if t_obj.has_error or (not t_obj.thread.is_alive()):
+            if t_obj.has_error or (not t_obj.thread.is_alive()) or (not t_obj.kv_trans_thread.is_alive()):
                 t_obj.has_error = True
                 del_node_ids.append(node_id)
 
