@@ -138,12 +138,9 @@ class TransProcessObj:
 
     def handle_loop(self):
         while not self.has_error:
-            if len(self.move_task_queue) == 0:
-                time.sleep(0.01)
-                continue
-
             move_tasks: List[KVMoveTask] = self.get_tasks()
             if len(move_tasks) == 0:
+                time.sleep(0.01)
                 continue
 
             try:
@@ -198,12 +195,10 @@ class TransProcessObj:
 
     def kv_trans_handle_loop(self):
         while not self.has_error:
-            if len(self.kv_trans_task_queue) == 0:
-                time.sleep(0.01)
-                continue
 
             move_tasks: List[KVMoveTask] = self.get_trans_tasks()
             if len(move_tasks) == 0:
+                time.sleep(0.01)
                 continue
 
             try:
@@ -250,6 +245,8 @@ class TransProcessObj:
         self.has_error = True
         self.clear_tasks()
         self.clear_trans_tasks()
+
+        logger.error(f"trans obj deled, decode node id {self.decode_node_id} device_index {self.device_index}")
 
         # 强制关闭连接和杀掉传输进程
         if self.process is not None:
@@ -305,13 +302,7 @@ class PrefillKVMoveManager:
             if len(handle_list) == 0:
                 time.sleep(0.01)
             else:
-                # 将 task 按照 prefill_dp_index 分组
-                dp_dict = collections.defaultdict(list)
-                for task in handle_list:
-                    dp_dict[task.prefill_dp_index].append(task)
-
-                for key, value in dp_dict.items():
-                    self._remove_req_refs_from_prompt_cache(value)
+                self._remove_req_refs_from_prompt_cache(handle_list)
         return
 
     def get_next_device_index(self):
@@ -368,20 +359,27 @@ class PrefillKVMoveManager:
             logger.exception(str(e))
             raise e
 
-    def _remove_req_refs_from_prompt_cache(self, move_tasks: List[KVMoveTask]):
-        """
-        输入参数 move_tasks 中的task的 prefill_dp_index 必须是保证相等
-        """
-        futures: List[AsyncResult] = []
+    def _remove_req_refs_from_prompt_cache(self, tasks: List[KVMoveTask]):
         if self.dp_size == 1:
-            infer_rpycs = self.infer_rpyc_objs
+            with self.infer_rpyc_lock:
+                futures: List[AsyncResult] = []
+                for conn in self.infer_rpyc_objs:
+                    futures.append(
+                        rpyc.async_(conn.remove_req_refs_from_prompt_cache)([task.group_request_id for task in tasks])
+                    )
+                asyncio.run(self.wait_all_future_finish(futures))
         else:
-            infer_rpycs = [self.infer_rpyc_objs[move_tasks[0].prefill_dp_index]]
-        with self.infer_rpyc_lock:
-            req_ids = [task.group_request_id for task in move_tasks]
-            for infer_rpyc in infer_rpycs:
-                futures.append(rpyc.async_(infer_rpyc.remove_req_refs_from_prompt_cache)(req_ids))
-            asyncio.run(self.wait_all_future_finish(futures))
+            with self.infer_rpyc_lock:
+                dp_to_tasks = collections.defaultdict(list)
+                for task in tasks:
+                    dp_to_tasks[task.prefill_dp_index].append(task)
+                futures: List[AsyncResult] = []
+                for prefill_dp_index, _tasks in dp_to_tasks.items():
+                    conn = self.infer_rpyc_objs[prefill_dp_index]
+                    futures.append(
+                        rpyc.async_(conn.remove_req_refs_from_prompt_cache)([task.group_request_id for task in _tasks])
+                    )
+                asyncio.run(self.wait_all_future_finish(futures))
         return
 
     def _put_mem_manager_to_mem_queue(self):
