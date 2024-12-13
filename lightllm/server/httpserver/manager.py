@@ -395,8 +395,10 @@ class HttpServerManager:
         return
 
     async def handle_loop(self):
-        self.forwarding_queue = AsyncQueue()
-        asyncio.create_task(self.pd_handle_loop())
+        
+        if self.pd_mode.is_P_or_D():
+            self.forwarding_queue = AsyncQueue()
+            asyncio.create_task(self.pd_handle_loop())
 
         while True:
             recv_ans: BatchStrOut = await self.recv_from_detokenization.recv_pyobj()
