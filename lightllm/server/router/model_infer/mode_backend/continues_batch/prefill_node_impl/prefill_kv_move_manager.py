@@ -10,6 +10,7 @@ import numpy as np
 import psutil
 import threading
 import random
+import collections
 from dataclasses import dataclass
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
@@ -107,7 +108,7 @@ class TransProcessObj:
     def clear_tasks(self):
         with self.move_task_queue_lock:
             for move_task in self.move_task_queue:
-                self.manager._remove_req_refs_from_prompt_cache(move_task)
+                self.manager.put_to_release_task_queue(move_task)
             self.move_task_queue = []
 
     def handle_loop(self):
@@ -163,7 +164,7 @@ class TransProcessObj:
 
                     for move_task in handle_list:
                         assert self.task_out_queue.get(timeout=60) == "ok"
-                        self.manager._remove_req_refs_from_prompt_cache(move_task)
+                        self.manager.put_to_release_task_queue(move_task)
                         move_tasks.remove(move_task)
                         logger.info(
                             f"prefill node transfer data ok, req_id: {move_task.id()}"
@@ -183,7 +184,7 @@ class TransProcessObj:
 
             finally:
                 for move_task in move_tasks:
-                    self.manager._remove_req_refs_from_prompt_cache(move_task)
+                    self.manager.put_to_release_task_queue(move_task)
 
         logger.error(f"trans thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
         return
@@ -218,9 +219,41 @@ class PrefillKVMoveManager:
         if self.host_ip is None:
             self.host_ip = args.host
 
+        # 释放token的task队列
+        self.release_task_queue_lock = threading.Lock()
+        self.release_task_queue = []
+
         self.infer_rpyc_lock = threading.Lock()
         # 需要每个卡有一个锁来规划每次只能有一个tran obj 操作对应显卡上的传输任务。
         self.device_locks = [threading.Lock() for _ in range(self.args.tp)]
+
+        self.release_tasks_thread = threading.Thread(target=self.handle_release_task_loop, daemon=True)
+        self.release_tasks_thread.start()
+        return
+
+    def put_to_release_task_queue(self, task: KVMoveTask):
+        with self.release_task_queue_lock:
+            self.release_task_queue.append(task)
+
+    def get_released_tasks_from_queue(self):
+        with self.release_task_queue_lock:
+            ans = self.release_task_queue[0:KV_MOVE_MAX_NUM]
+            self.release_task_queue = self.release_task_queue[KV_MOVE_MAX_NUM:]
+        return ans
+
+    def handle_release_task_loop(self):
+        while True:
+            handle_list: List[KVMoveTask] = self.get_released_tasks_from_queue()
+            if len(handle_list) == 0:
+                time.sleep(0.01)
+            else:
+                # 将 task 按照 prefill_dp_index 分组
+                dp_dict = collections.defaultdict(list)
+                for task in handle_list:
+                    dp_dict[task.prefill_dp_index].append(task)
+
+                for key, value in dp_dict.items():
+                    self._remove_req_refs_from_prompt_cache(value)
         return
 
     def get_next_device_index(self):
@@ -269,7 +302,7 @@ class PrefillKVMoveManager:
                     trans_obj.put(move_task)
                 except BaseException as e:
                     logger.exception(str(e))
-                    self._remove_req_refs_from_prompt_cache(move_task)
+                    self.put_to_release_task_queue(move_task)
                 finally:
                     trans_obj = None
 
@@ -277,15 +310,19 @@ class PrefillKVMoveManager:
             logger.exception(str(e))
             raise e
 
-    def _remove_req_refs_from_prompt_cache(self, move_task: KVMoveTask):
+    def _remove_req_refs_from_prompt_cache(self, move_tasks: List[KVMoveTask]):
+        """
+        输入参数 move_tasks 中的task的 prefill_dp_index 必须是保证相等
+        """
         futures: List[AsyncResult] = []
         if self.dp_size == 1:
             infer_rpycs = self.infer_rpyc_objs
         else:
-            infer_rpycs = [self.infer_rpyc_objs[move_task.prefill_dp_index]]
+            infer_rpycs = [self.infer_rpyc_objs[move_tasks[0].prefill_dp_index]]
         with self.infer_rpyc_lock:
+            req_ids = [task.group_request_id for task in move_tasks]
             for infer_rpyc in infer_rpycs:
-                futures.append(rpyc.async_(infer_rpyc.remove_req_refs_from_prompt_cache)(move_task.group_request_id))
+                futures.append(rpyc.async_(infer_rpyc.remove_req_refs_from_prompt_cache)(req_ids))
             asyncio.run(self.wait_all_future_finish(futures))
         return
 
