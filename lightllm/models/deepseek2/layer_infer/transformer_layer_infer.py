@@ -445,7 +445,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             num_experts_per_token,
             num_tokens,
             world_size_,
-            True,
             hidden_dim,
             layer_weight.gate_up_proj.weight.size(1) // 2,
             layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
