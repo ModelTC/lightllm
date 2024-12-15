@@ -46,6 +46,7 @@ class TransProcessObj:
     request_thread: threading.Thread = None
     ready_kv_trans_task_queue: TaskQueue = None
     kv_trans_thread: threading.Thread = None
+    latest_check_time: float = None
 
     def create(
         self, decode_node_id: str, decode_node_ip: str, decode_node_rpyc_port: int, manager: "PrefillKVMoveManager"
@@ -96,6 +97,8 @@ class TransProcessObj:
         self.ready_kv_trans_task_queue = TaskQueue(lambda datas: datas[0:1], self.manager.put_to_release_task_queue)
         self.kv_trans_thread = threading.Thread(target=self.kv_trans_handle_loop, daemon=True)
         self.kv_trans_thread.start()
+
+        self.latest_check_time = time.time()
         return
 
     def _get_request_tasks(self, datas: List[KVMoveTask]):
@@ -126,31 +129,27 @@ class TransProcessObj:
                 raise e
         return
 
-    def random_to_check_status(self):
-        if random.randint(0, 20) == 10:
-            self.check_trans_process()
-            self.check_connect()
+    def timer_check_status(self, raise_exception=True):
+        if time.time() - self.latest_check_time >= 2.0:
+            self.latest_check_time = time.time()
+            self.check_trans_process(raise_exception=raise_exception)
+            self.check_connect(raise_exception=raise_exception)
         return
 
     def request_kv_trans_loop(self):
         func_name = self.request_kv_trans_loop.__name__
 
-        latest_time = time.time()
         while not self.has_error:
             move_tasks: List[KVMoveTask] = self.request_kv_trans_task_queue.get_tasks(
                 log_tag="request_kv_trans_task_queue"
             )
             if len(move_tasks) == 0:
                 # 周期检查通信状态
-                if time.time() - latest_time > 2.0:
-                    self.check_trans_process(raise_exception=False)
-                    self.check_connect(raise_exception=False)
-                    latest_time = time.time()
-
+                self.timer_check_status(raise_exception=False)
                 time.sleep(0.01)
                 continue
             try:
-                self.random_to_check_status()
+                self.timer_check_status(raise_exception=True)
                 for move_task in move_tasks:
                     logger.info(
                         f"{func_name} get task {move_task.to_prefill_log_info()} "
@@ -202,7 +201,7 @@ class TransProcessObj:
                 log_tag="ready_kv_trans_task_queue"
             )
             if len(move_tasks) == 0:
-                self.check_trans_process(raise_exception=False)
+                self.timer_check_status(raise_exception=False)
                 time.sleep(0.01)
                 continue
 
@@ -213,7 +212,7 @@ class TransProcessObj:
             move_tasks = move_tasks[0]
 
             try:
-                self.random_to_check_status()
+                self.timer_check_status(raise_exception=True)
                 for move_task in move_tasks:
                     logger.info(
                         f"{func_name} get task {move_task.to_prefill_log_info()} to start kv move"
