@@ -359,6 +359,7 @@ class PrefillKVMoveManager:
     def get_trans_obj(self, task: KVMoveTask):
         self.remove_dead_trans_obj()
         if task.decode_node.node_id not in self.node_id_to_trans_obj:
+            gc.collect()
             trans_obj = TransProcessObj()
             trans_obj.create(task.decode_node.node_id, task.decode_node.ip, task.decode_node.rpyc_port, self)
             self.node_id_to_trans_obj[task.decode_node.node_id] = trans_obj
