@@ -45,6 +45,7 @@ class TransProcessObj:
     kv_move_thread: threading.Thread = None
     move_finished_queue: TaskQueue = None
     put_to_radix_thread: threading.Thread = None
+    latest_check_time: float = None
 
     def create(self, prefill_node_id: str, nccl_ip: str, nccl_port: int, manager: "DecodeKVMoveManager"):
         from .decode_trans_process import start_decode_trans_process
@@ -81,18 +82,22 @@ class TransProcessObj:
         )
         self.put_to_radix_thread = threading.Thread(target=self.put_to_radix_loop, daemon=True)
         self.put_to_radix_thread.start()
+
+        self.latest_check_time = time.time()
         return
 
-    def check_trans_process(self):
+    def check_trans_process(self, raise_exception=True):
         process = psutil.Process(self.process.pid)
         if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
             self.set_has_error()
-            raise Exception(f"trans process: {self.process.pid} is dead")
+            if raise_exception:
+                raise Exception(f"trans process: {self.process.pid} is dead")
         return
 
-    def random_to_check_status(self):
-        if random.randint(0, 20) == 10:
-            self.check_trans_process()
+    def timer_to_check_status(self, raise_exception=True):
+        if time.time() - self.latest_check_time >= 2.0:
+            self.latest_check_time = time.time()
+            self.check_trans_process(raise_exception=raise_exception)
         return
 
     def kv_move_loop(self):
@@ -112,7 +117,7 @@ class TransProcessObj:
                 logger.info(f"{func_name} get task {task.to_decode_log_info()}")
 
             try:
-                self.random_to_check_status()
+                self.timer_to_check_status(raise_exception=True)
                 with self.manager.kv_trans_lock:
                     with self.manager.device_locks[self.device_index]:
                         self.task_in_queue.put(move_tasks.copy(), timeout=10)
@@ -146,7 +151,7 @@ class TransProcessObj:
 
             try:
                 # random to check stats
-                self.random_to_check_status()
+                self.timer_to_check_status(raise_exception=True)
 
                 self.manager._put_kv_received_to_radix_cache(move_tasks.copy())
                 for task in move_tasks.copy():
