@@ -40,7 +40,6 @@ class TransProcessObj:
     nccl_ip: str = None
     nccl_port: str = None
     device_index: str = None  # 使用的gpu序号
-    move_task_queue: List[KVMoveTask] = None
     manager: "PrefillKVMoveManager" = None
     has_error: bool = False
 
