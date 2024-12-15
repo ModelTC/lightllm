@@ -133,6 +133,8 @@ class TransProcessObj:
             self.latest_check_time = time.time()
             self.check_trans_process(raise_exception=raise_exception)
             self.check_connect(raise_exception=raise_exception)
+            if self.has_error:
+                self.manager.remove_trans_obj(self.decode_node_id)
         return
 
     def request_kv_trans_loop(self):
