@@ -335,7 +335,7 @@ class PrefillKVMoveManager:
                 move_task: KVMoveTask = self.info_queue.get()
                 try:
                     trans_obj = self.get_trans_obj(move_task)
-                    trans_obj.put(move_task)
+                    trans_obj.request_kv_trans_task_queue.put(move_task)
                 except BaseException as e:
                     logger.exception(str(e))
                     self.put_to_release_task_queue(move_task)
