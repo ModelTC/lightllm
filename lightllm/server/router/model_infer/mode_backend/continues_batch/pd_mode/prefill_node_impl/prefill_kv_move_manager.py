@@ -67,7 +67,11 @@ class TransProcessObj:
         manager._put_mem_manager_to_mem_queue()
         assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
         prefill_node_id = manager.args.pd_node_id
-        con.root.build_trans_process(prefill_node_id, nccl_ip, nccl_port)  # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
+        # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
+        max_kv_trans_token_num = obtain(
+            con.root.build_trans_process(prefill_node_id, nccl_ip, nccl_port, self.manager.args.max_total_token_num)
+        )
+        self.max_kv_trans_token_num = max_kv_trans_token_num
         assert task_out_queue.get(timeout=60) == "nccl_ok"
 
         self.decode_node_id = decode_node_id
@@ -81,7 +85,7 @@ class TransProcessObj:
         self.manager = manager
 
         self.request_kv_trans_task_queue = TaskQueue(
-            lambda datas: datas[0:KV_MOVE_MAX_NUM], self.manager.put_to_release_task_queue
+            get_func=self._get_request_tasks, fail_func=self.manager.put_to_release_task_queue
         )
         self.request_thread = threading.Thread(target=self.request_kv_trans_loop, daemon=True)
         self.request_thread.start()
@@ -90,6 +94,17 @@ class TransProcessObj:
         self.kv_trans_thread = threading.Thread(target=self.kv_trans_handle_loop, daemon=True)
         self.kv_trans_thread.start()
         return
+
+    def _get_request_tasks(self, datas: List[KVMoveTask]):
+        ans_list = []
+        token_num = 0
+        for task in datas:
+            if token_num + len(task.prefill_token_indexes) <= self.max_kv_trans_token_num:
+                ans_list.append(task)
+                token_num += len(task.prefill_token_indexes)
+            else:
+                break
+        return ans_list
 
     def check_trans_process(self):
         process = psutil.Process(self.process.pid)
@@ -184,15 +199,16 @@ class TransProcessObj:
                         f"queue time {move_task.get_cost_time()} s "
                     )
 
-                with self.manager.device_locks[self.device_index]:
-                    self.task_in_queue.put(move_tasks, timeout=10)
-                    assert self.task_out_queue.get(timeout=60) == "ok"
-                    self.manager.put_to_release_task_queue(move_tasks)
-                    logger.info(
-                        f"{func_name} transfer data ok, req_id: {move_tasks[0].id()}"
-                        f" cost total time: {move_tasks[0].get_cost_time()} s"
-                    )
-                    move_tasks.clear()
+                with self.manager.kv_trans_lock:
+                    with self.manager.device_locks[self.device_index]:
+                        self.task_in_queue.put(move_tasks, timeout=10)
+                        assert self.task_out_queue.get(timeout=60) == "ok"
+                        self.manager.put_to_release_task_queue(move_tasks)
+                        logger.info(
+                            f"{func_name} transfer data ok, req_id: {move_tasks[0].id()}"
+                            f" cost total time: {move_tasks[0].get_cost_time()} s"
+                        )
+                        move_tasks.clear()
 
             except BaseException as e:
                 logger.exception(str(e))
@@ -246,6 +262,8 @@ class PrefillKVMoveManager:
             self.host_ip = args.host
 
         self.infer_rpyc_lock = threading.Lock()
+
+        self.kv_trans_lock = threading.Lock()
         # 需要每个卡有一个锁来规划每次只能有一个tran obj 操作对应显卡上的传输任务。
         self.device_locks = [threading.Lock() for _ in range(self.args.tp)]
 
