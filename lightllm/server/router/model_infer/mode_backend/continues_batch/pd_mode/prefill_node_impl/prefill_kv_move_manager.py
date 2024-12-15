@@ -226,13 +226,13 @@ class TransProcessObj:
 
     def wait_thread_quit(self):
         if self.request_thread is not None:
-            while self.request_thread.is_alive():
+            if self.request_thread.is_alive():
                 try:
                     self.request_thread.join()
                 except:
                     pass
         if self.kv_trans_thread is not None:
-            while self.kv_trans_thread.is_alive():
+            if self.kv_trans_thread.is_alive():
                 try:
                     self.kv_trans_thread.join()
                 except:

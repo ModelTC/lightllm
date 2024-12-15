@@ -171,13 +171,13 @@ class TransProcessObj:
 
     def wait_thread_quit(self):
         if self.kv_move_thread is not None:
-            while self.kv_move_thread.is_alive():
+            if self.kv_move_thread.is_alive():
                 try:
                     self.kv_move_thread.join()
                 except:
                     pass
         if self.put_to_radix_thread is not None:
-            while self.put_to_radix_thread.is_alive():
+            if self.put_to_radix_thread.is_alive():
                 try:
                     self.put_to_radix_thread.join()
                 except:
