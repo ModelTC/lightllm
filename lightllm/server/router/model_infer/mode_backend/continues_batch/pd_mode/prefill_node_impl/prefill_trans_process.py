@@ -58,7 +58,7 @@ def _init_env(
                     logger.info(f"trans start: {move_tasks[0].to_prefill_log_info()}")
                     cur_mem = mem_managers[device_index]
                     cur_mem.send_to_decode_node(move_tasks, mem_managers, args.dp)
-                    logger.info(f"trans finished: {move_tasks[0].to_prefill_log_info()}")
+                    logger.info(f"trans finished: {move_tasks[0].to_prefill_log_info()} move len: {total_move_kv_len}")
                 torch.cuda.synchronize()
                 logger.info(f"trans cost time: {(time.time() - start)}, {move_tasks[0].to_prefill_log_info()}")
                 task_out_queue.put("ok")
