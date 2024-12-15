@@ -70,6 +70,7 @@ class TransProcessObj:
         self.device_index = device_index
 
         self.manager = manager
+        self.latest_check_time = time.time()
 
         self.ready_to_move_queue = TaskQueue(
             get_func=lambda datas: datas[0:1], fail_func=self.manager.put_to_fail_release_task_queue
@@ -82,8 +83,6 @@ class TransProcessObj:
         )
         self.put_to_radix_thread = threading.Thread(target=self.put_to_radix_loop, daemon=True)
         self.put_to_radix_thread.start()
-
-        self.latest_check_time = time.time()
         return
 
     def check_trans_process(self, raise_exception=True):

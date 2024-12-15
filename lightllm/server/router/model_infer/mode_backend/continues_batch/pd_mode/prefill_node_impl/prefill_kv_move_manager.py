@@ -87,6 +87,7 @@ class TransProcessObj:
         self.nccl_ip = nccl_ip
         self.device_index = device_index
         self.manager = manager
+        self.latest_check_time = time.time()
 
         self.request_kv_trans_task_queue = TaskQueue(
             get_func=self._get_request_tasks, fail_func=self.manager.put_to_release_task_queue
@@ -97,8 +98,6 @@ class TransProcessObj:
         self.ready_kv_trans_task_queue = TaskQueue(lambda datas: datas[0:1], self.manager.put_to_release_task_queue)
         self.kv_trans_thread = threading.Thread(target=self.kv_trans_handle_loop, daemon=True)
         self.kv_trans_thread.start()
-
-        self.latest_check_time = time.time()
         return
 
     def _get_request_tasks(self, datas: List[KVMoveTask]):
