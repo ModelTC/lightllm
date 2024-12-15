@@ -205,8 +205,16 @@ class TransProcessObj:
         logger.error(f"trans kv thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
         return
 
+    def _wait_thread_quit(self):
+        while self.request_thread.is_alive():
+            time.sleep(0.1)
+        while self.kv_trans_thread.is_alive():
+            time.sleep(0.1)
+        return
+
     def __del__(self):
         self.has_error = True
+        self._wait_thread_quit()
         self.request_kv_trans_task_queue.clear_tasks()
         self.ready_kv_trans_task_queue.clear_tasks()
         logger.error(f"trans obj deled, decode node id {self.decode_node_id} device_index {self.device_index}")
