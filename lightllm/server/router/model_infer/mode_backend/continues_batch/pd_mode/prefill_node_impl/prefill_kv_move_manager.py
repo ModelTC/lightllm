@@ -117,21 +117,36 @@ class TransProcessObj:
                 raise Exception(f"trans process: {self.process.pid} is dead")
         return
 
+    def check_connect(self, raise_exception=True):
+        try:
+            self.rpyc_conn.root.check_alive()
+        except BaseException as e:
+            self.set_has_error()
+            if raise_exception:
+                raise e
+        return
+
     def random_to_check_status(self):
         if random.randint(0, 20) == 10:
             self.check_trans_process()
-            self.rpyc_conn.root.check_alive()
+            self.check_connect()
         return
 
     def request_kv_trans_loop(self):
         func_name = self.request_kv_trans_loop.__name__
 
+        latest_time = time.time()
         while not self.has_error:
             move_tasks: List[KVMoveTask] = self.request_kv_trans_task_queue.get_tasks(
                 log_tag="request_kv_trans_task_queue"
             )
             if len(move_tasks) == 0:
-                self.check_trans_process(raise_exception=False)
+                # 周期检查通信状态
+                if time.time() - latest_time > 2.0:
+                    self.check_trans_process(raise_exception=False)
+                    self.check_connect(raise_exception=False)
+                    latest_time = time.time()
+
                 time.sleep(0.01)
                 continue
             try:
