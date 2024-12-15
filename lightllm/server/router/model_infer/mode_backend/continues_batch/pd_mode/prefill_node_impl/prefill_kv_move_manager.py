@@ -221,17 +221,21 @@ class TransProcessObj:
         return
 
     def _wait_thread_quit(self):
-        while self.request_thread.is_alive():
-            time.sleep(0.1)
-        while self.kv_trans_thread.is_alive():
-            time.sleep(0.1)
+        if self.request_thread is not None:
+            while self.request_thread.is_alive():
+                time.sleep(0.1)
+        if self.ready_kv_trans_task_queue is not None:
+            while self.kv_trans_thread.is_alive():
+                time.sleep(0.1)
         return
 
     def __del__(self):
         self.has_error = True
         self._wait_thread_quit()
-        self.request_kv_trans_task_queue.clear_tasks()
-        self.ready_kv_trans_task_queue.clear_tasks()
+        if self.request_kv_trans_task_queue is not None:
+            self.request_kv_trans_task_queue.clear_tasks()
+        if self.ready_kv_trans_task_queue is not None:
+            self.ready_kv_trans_task_queue.clear_tasks()
         logger.error(f"trans obj deled, decode node id {self.decode_node_id} device_index {self.device_index}")
 
         # 强制关闭连接和杀掉传输进程
