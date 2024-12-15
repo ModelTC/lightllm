@@ -41,6 +41,10 @@ class TransProcessObj:
     device_index: int = None
     manager: "DecodeKVMoveManager" = None
     has_error: bool = False
+    ready_to_move_queue: TaskQueue = None
+    kv_move_thread: threading.Thread = None
+    move_finished_queue: TaskQueue = None
+    put_to_radix_thread: threading.Thread = None
 
     def create(self, prefill_node_id: str, nccl_ip: str, nccl_port: int, manager: "DecodeKVMoveManager"):
         from .decode_trans_process import start_decode_trans_process

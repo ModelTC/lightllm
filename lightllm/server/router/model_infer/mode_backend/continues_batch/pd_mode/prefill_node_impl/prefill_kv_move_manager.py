@@ -42,6 +42,10 @@ class TransProcessObj:
     device_index: str = None  # 使用的gpu序号
     manager: "PrefillKVMoveManager" = None
     has_error: bool = False
+    request_kv_trans_task_queue: TaskQueue = None
+    request_thread: threading.Thread = None
+    ready_kv_trans_task_queue: TaskQueue = None
+    kv_trans_thread: threading.Thread = None
 
     def create(
         self, decode_node_id: str, decode_node_ip: str, decode_node_rpyc_port: int, manager: "PrefillKVMoveManager"
@@ -68,7 +72,7 @@ class TransProcessObj:
         prefill_node_id = manager.args.pd_node_id
         # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
         max_kv_trans_token_num = obtain(
-            con.root.build_trans_process(prefill_node_id, nccl_ip, nccl_port, self.manager.args.max_total_token_num)
+            con.root.build_trans_process(prefill_node_id, nccl_ip, nccl_port, manager.args.max_total_token_num)
         )
         self.max_kv_trans_token_num = max_kv_trans_token_num
         assert task_out_queue.get(timeout=60) == "nccl_ok"
