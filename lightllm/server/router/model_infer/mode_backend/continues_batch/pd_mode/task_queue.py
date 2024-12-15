@@ -10,15 +10,22 @@ class TaskQueue:
         self.datas = []
         self.get_func = get_func
         self.fail_func = fail_func
+        self.has_error = False
 
     def size(self):
         return len(self.datas)
 
     def put(self, obj):
+        if self.has_error:
+            raise Exception("has error")
+
         with self.lock:
             self.datas.append(obj)
 
     def put_list(self, objs):
+        if self.has_error:
+            raise Exception("has error")
+
         with self.lock:
             self.datas.extend(objs)
 

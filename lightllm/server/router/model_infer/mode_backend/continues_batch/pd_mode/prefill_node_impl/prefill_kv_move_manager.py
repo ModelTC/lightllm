@@ -108,7 +108,7 @@ class TransProcessObj:
     def check_trans_process(self):
         process = psutil.Process(self.process.pid)
         if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
-            self.has_error = True
+            self.set_has_error()
             raise Exception(f"trans process: {self.process.pid} is dead")
         return
 
@@ -164,7 +164,7 @@ class TransProcessObj:
 
             except BaseException as e:
                 logger.exception(str(e))
-                self.has_error = True
+                self.set_has_error()
                 self.manager.remove_trans_obj(self.decode_node_id)
                 self.request_kv_trans_task_queue.clear_tasks()
 
@@ -200,7 +200,7 @@ class TransProcessObj:
 
                 with self.manager.kv_trans_lock:
                     with self.manager.device_locks[self.device_index]:
-                        self.task_in_queue.put(move_tasks, timeout=10)
+                        self.task_in_queue.put(move_tasks.copy(), timeout=10)
                         assert self.task_out_queue.get(timeout=60) == "ok"
                         self.manager.put_to_release_task_queue(move_tasks)
                         logger.info(
@@ -211,7 +211,7 @@ class TransProcessObj:
 
             except BaseException as e:
                 logger.exception(str(e))
-                self.has_error = True
+                self.set_has_error()
                 self.manager.remove_trans_obj(self.decode_node_id)
                 self.ready_kv_trans_task_queue.clear_tasks()
             finally:
@@ -220,18 +220,39 @@ class TransProcessObj:
         logger.error(f"trans kv thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
         return
 
-    def _wait_thread_quit(self):
+    def wait_thread_quit(self):
         if self.request_thread is not None:
             while self.request_thread.is_alive():
                 time.sleep(0.1)
-        if self.ready_kv_trans_task_queue is not None:
+        if self.kv_trans_thread is not None:
             while self.kv_trans_thread.is_alive():
                 time.sleep(0.1)
         return
 
-    def __del__(self):
+    def has_error_status(self):
+        try:
+            assert self.has_error is False
+            assert self.request_thread.is_alive()
+            assert self.kv_trans_thread.is_alive()
+        except BaseException as e:
+            logger.exception(str(e))
+            self.set_has_error()
+            return True
+
+        return False
+
+    def set_has_error(self):
         self.has_error = True
-        self._wait_thread_quit()
+        try:
+            self.request_kv_trans_task_queue.has_error = True
+            self.ready_kv_trans_task_queue.has_error = True
+        except:
+            pass
+        return
+
+    def __del__(self):
+        self.set_has_error()
+        self.wait_thread_quit()
         if self.request_kv_trans_task_queue is not None:
             self.request_kv_trans_task_queue.clear_tasks()
         if self.ready_kv_trans_task_queue is not None:
@@ -313,15 +334,14 @@ class PrefillKVMoveManager:
         if decode_node_id in self.node_id_to_trans_obj:
             trans_obj = self.node_id_to_trans_obj.pop(decode_node_id, None)
             if trans_obj is not None:
-                trans_obj.has_error = True
+                trans_obj.set_has_error()
                 logger.error(f"remove tran obj id {trans_obj.decode_node_id}")
         return
 
     def remove_dead_trans_obj(self):
         del_node_ids = []
         for node_id, t_obj in self.node_id_to_trans_obj.items():
-            if t_obj.has_error or (not t_obj.request_thread.is_alive()) or (not t_obj.kv_trans_thread.is_alive()):
-                t_obj.has_error = True
+            if t_obj.has_error_status():
                 del_node_ids.append(node_id)
 
         for node_id in del_node_ids:
