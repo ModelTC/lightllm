@@ -109,11 +109,12 @@ class TransProcessObj:
                 break
         return ans_list
 
-    def check_trans_process(self):
+    def check_trans_process(self, raise_exception=True):
         process = psutil.Process(self.process.pid)
         if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
             self.set_has_error()
-            raise Exception(f"trans process: {self.process.pid} is dead")
+            if raise_exception:
+                raise Exception(f"trans process: {self.process.pid} is dead")
         return
 
     def random_to_check_status(self):
@@ -130,6 +131,7 @@ class TransProcessObj:
                 log_tag="request_kv_trans_task_queue"
             )
             if len(move_tasks) == 0:
+                self.check_trans_process(raise_exception=False)
                 time.sleep(0.01)
                 continue
             try:
@@ -185,6 +187,7 @@ class TransProcessObj:
                 log_tag="ready_kv_trans_task_queue"
             )
             if len(move_tasks) == 0:
+                self.check_trans_process(raise_exception=False)
                 time.sleep(0.01)
                 continue
 
