@@ -172,10 +172,16 @@ class TransProcessObj:
     def wait_thread_quit(self):
         if self.kv_move_thread is not None:
             while self.kv_move_thread.is_alive():
-                time.sleep(0.1)
+                try:
+                    self.kv_move_thread.join()
+                except:
+                    pass
         if self.put_to_radix_thread is not None:
             while self.put_to_radix_thread.is_alive():
-                time.sleep(0.1)
+                try:
+                    self.put_to_radix_thread.join()
+                except:
+                    pass
         return
 
     def has_error_status(self):
@@ -200,12 +206,17 @@ class TransProcessObj:
         return
 
     def __del__(self):
-        self.set_has_error()
-        self.wait_thread_quit()
-        if self.ready_to_move_queue is not None:
-            self.ready_to_move_queue.clear_tasks()
-        if self.move_finished_queue is not None:
-            self.move_finished_queue.clear_tasks()
+        logger.error(f"trans obj del start, prefill node id {self.prefill_node_id} device_index {self.device_index}")
+
+        try:
+            self.set_has_error()
+            self.wait_thread_quit()
+            if self.ready_to_move_queue is not None:
+                self.ready_to_move_queue.clear_tasks()
+            if self.move_finished_queue is not None:
+                self.move_finished_queue.clear_tasks()
+        except BaseException as e:
+            logger.exception(str(e))
 
         logger.error(f"trans obj deled, prefill node id {self.prefill_node_id} device_index {self.device_index}")
 
