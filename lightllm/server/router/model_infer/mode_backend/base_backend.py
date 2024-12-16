@@ -77,6 +77,7 @@ class ModeBackend:
         self.pd_rpyc_port = kvargs.get("pd_rpyc_port", None)
         max_total_token_num = kvargs["max_total_token_num"]
 
+        os.environ["CURRENT_DEVICE_ID"] = str(self.tp_rank)
         torch.cuda.set_device(self.tp_rank)
 
         dist.init_process_group(

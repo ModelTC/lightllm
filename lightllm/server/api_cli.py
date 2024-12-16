@@ -197,7 +197,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--push_interval", type=int, default=10, help="interval of pushing monitoring metrics")
     parser.add_argument(
-        "--visual_infer_batch_size", type=int, default=4, help="number of images to process in each inference batch"
+        "--visual_infer_batch_size", type=int, default=1, help="number of images to process in each inference batch"
     )
     parser.add_argument(
         "--visual_gpu_ids", nargs="+", type=int, default=[0], help="List of GPU IDs to use, e.g., 0 1 2"
