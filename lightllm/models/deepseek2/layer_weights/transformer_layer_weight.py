@@ -22,6 +22,7 @@ from functools import partial
 
 import os
 
+
 def fuse_q_kb(self, layer_weight):
     if not (self.weight is None and all(w is not None for w in self.weights)):
         return
@@ -98,7 +99,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             and self.layer_num_ % self.network_config_["moe_layer_freq"] == 0
         )
         self.tp_q_head_num_ = self.network_config_["num_attention_heads"]
-        if self.tp_split_ :
+        if self.tp_split_:
             self.tp_q_head_num_ //= self.world_size_
         self.n_routed_experts = self.network_config_["n_routed_experts"]
         self.q_lora_rank = self.network_config_["q_lora_rank"]
@@ -114,7 +115,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"
 
     def _init_weight(self):
-        if self.tp_split_ :
+        if self.tp_split_:
             self._init_qkvo()
         else:
             self._init_qkvo_dp()
@@ -255,9 +256,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
     def _init_qkvo_dp(self):
         q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
-        q_split_n_embed_with_rope = (
-            (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads
-        )
+        q_split_n_embed_with_rope = (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads
         if self.q_lora_rank is None:
             if not self.disable_qk_absorb:  # acc
                 self.fuse_qk_weight_ = MultiROWMMWeightNoTP(
@@ -269,7 +268,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                     [q_split_n_embed_with_rope, self.tp_q_head_num_],
                 )
                 self.fuse_qk_weight_._fuse = partial(fuse_q_kb, self.fuse_qk_weight_, self)
-            else:   # cc
+            else:  # cc
                 self.q_weight_ = ROWMMWeightNoTP(
                     f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
                     self.data_type_,
@@ -338,9 +337,8 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 q_split_n_embed,
             )
 
-
     def _load_mlp(self, mlp_prefix, split_inter_size):
-        if self.tp_split_ :
+        if self.tp_split_:
             self.gate_up_proj = MultiROWMMWeight(
                 [f"{mlp_prefix}.gate_proj.weight", f"{mlp_prefix}.up_proj.weight"], self.data_type_, split_inter_size
             )
@@ -351,7 +349,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             )
             self.down_proj = COLMMWeightNoTp(f"{mlp_prefix}.down_proj.weight", self.data_type_, split_inter_size)
 
-
     def _init_moe(self):
         moe_intermediate_size = self.network_config_["moe_intermediate_size"]
         self.moe_gate = ROWMMWeightNoTP(
@@ -359,7 +356,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         )
         shared_intermediate_size = moe_intermediate_size * self.network_config_["n_shared_experts"]
 
-        num_shards = self.world_size_ if self.tp_split_  else 1
+        num_shards = self.world_size_ if self.tp_split_ else 1
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp.shared_experts", shared_intermediate_size // num_shards)
 
         self.experts = FusedMoeWeight(
@@ -370,12 +367,11 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             n_routed_experts=self.n_routed_experts,
             split_inter_size=moe_intermediate_size // self.world_size_,
             data_type=self.data_type_,
-            
         )
 
     def _init_ffn(self):
         inter_size = self.network_config_["intermediate_size"]
-        num_shards = self.world_size_ if self.tp_split_  else 1
+        num_shards = self.world_size_ if self.tp_split_ else 1
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp", inter_size // num_shards)
 
     def _init_norm(self):

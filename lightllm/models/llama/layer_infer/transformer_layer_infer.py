@@ -27,6 +27,7 @@ from lightllm.models.llama.triton_kernel.ppl_quant_copy_kv import destindex_copy
 
 import os
 
+
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     """ """
 
@@ -41,7 +42,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             self.tp_q_head_num_ //= world_size
             self.tp_k_head_num_ //= world_size
             self.tp_v_head_num_ //= world_size
-
 
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.head_dim_ = network_config["hidden_size"] // network_config["num_attention_heads"]

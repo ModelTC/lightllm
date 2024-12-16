@@ -23,16 +23,14 @@ class Deepseek2MemoryManager(MemoryManager):
             rank_id = dist.get_rank()
             world_size = dist.get_world_size()
 
-            #lightllm_moe_etp_kernel.enableP2P(world_size, rank_id)
+            # lightllm_moe_etp_kernel.enableP2P(world_size, rank_id)
 
             handle = lightllm_moe_etp_kernel.get_handle(self.work_buffer.contiguous(), rank_id)
             handles = [None] * world_size
             dist.all_gather_object(handles, handle)
             self.handles_work_buffer = handles
 
-            lightllm_moe_etp_kernel.init_system(world_size, rank_id, 
-                self.work_buffer.contiguous(),
-                handles )
+            lightllm_moe_etp_kernel.init_system(world_size, rank_id, self.work_buffer.contiguous(), handles)
 
     def alloc_kv_move_buffer(self, max_req_total_len):
         self.kv_move_buffer = torch.empty(

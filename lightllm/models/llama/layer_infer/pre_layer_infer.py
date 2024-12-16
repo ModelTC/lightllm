@@ -11,6 +11,7 @@ from lightllm.models.llama.triton_kernel.embedding import embedding
 
 import os
 
+
 class LlamaPreLayerInfer(PreLayerInferTpl):
     """ """
 

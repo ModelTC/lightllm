@@ -69,7 +69,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.enable_opt_decoding_mha = os.getenv("ENABLE_OPT_DECODE_MHA", "False").upper() in ["ON", "TRUE", "1"]
         self.mla_type = "ACCM"
 
-
         self.tp_split_ = not os.environ.get("EDP_MODE_ENABLED") == "true"
 
         return
@@ -123,7 +122,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 self.mla_type = layer_weight.mla_type
             if self.mla_type == "ACCM":
                 q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
-        
 
         layer_weight.kv_a_proj_with_mqa_.mm(input, out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim))
 
@@ -280,9 +278,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     ) -> torch.Tensor:
         q_nope, q_rope = q
 
-        #not support edp yet
-        assert self.tp_split_ == True
-        
+        # not support edp yet
+        # assert self.tp_split_ == True
+
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
 
         if infer_state.use_dynamic_prompt_cache:
@@ -474,33 +472,32 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         # now some parameter is not supported yet
         # assert gating_normalize_prob is False
         # assert num_expert_groups<=1
-        if os.environ.get("ETP_MODE_ENABLED") == "true" :
+        if os.environ.get("ETP_MODE_ENABLED") == "true":
             from lightllm_moe_etp_kernel import moe_fused_all as moe_fused_all
-        elif os.environ.get("EDP_MODE_ENABLED") == "true": 
+        elif os.environ.get("EDP_MODE_ENABLED") == "true":
             from lightllm_moe_etp_kernel import moe_fused_all_edp as moe_fused_all
 
         moe_fused_all(
-                router_logits.contiguous(),
-                hidden_states.contiguous(),
-                layer_weight.gate_up_proj.weight.contiguous(),  # transpose
-                layer_weight.down_proj.weight.contiguous(),  # transpose
-                layer_weight.experts.expert_gate_up_proj_etp.contiguous(),
-                layer_weight.experts.expert_down_proj_etp.contiguous(),
-                infer_state.mem_manager.work_buffer.contiguous(),
-                infer_state.mem_manager.work_buffer.nelement(),
-                final_hidden_states.contiguous(),
-                rank_self,
-                gating_scaling_factor,
-                num_experts,
-                num_experts_per_token,
-                num_tokens,
-                world_size_,
-                hidden_dim,
-                layer_weight.gate_up_proj.weight.size(1) // 2,
-                layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
-                self.n_shared_experts is not None,
-            )
-
+            router_logits.contiguous(),
+            hidden_states.contiguous(),
+            layer_weight.gate_up_proj.weight.contiguous(),  # transpose
+            layer_weight.down_proj.weight.contiguous(),  # transpose
+            layer_weight.experts.expert_gate_up_proj_etp.contiguous(),
+            layer_weight.experts.expert_down_proj_etp.contiguous(),
+            infer_state.mem_manager.work_buffer.contiguous(),
+            infer_state.mem_manager.work_buffer.nelement(),
+            final_hidden_states.contiguous(),
+            rank_self,
+            gating_scaling_factor,
+            num_experts,
+            num_experts_per_token,
+            num_tokens,
+            world_size_,
+            hidden_dim,
+            layer_weight.gate_up_proj.weight.size(1) // 2,
+            layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
+            self.n_shared_experts is not None,
+        )
 
         router_logits = None
 

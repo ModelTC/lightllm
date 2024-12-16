@@ -2,7 +2,8 @@ import torch
 import numpy as np
 from lightllm.common.basemodel import PreAndPostLayerWeight
 
-import os 
+import os
+
 
 class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
     def __init__(self, tp_rank, world_size, data_type, network_config, mode):
@@ -12,7 +13,7 @@ class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
 
     def load_hf_weights(self, weights):
         vob_size = self.network_config_["vocab_size"]
-        
+
         if self.tp_split_:
             split_indexes = np.linspace(0, vob_size, self.world_size_ + 1, dtype=np.int64)
             split_start = split_indexes[self.tp_rank_]

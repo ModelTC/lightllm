@@ -326,6 +326,7 @@ class COLMMWeightNoTp(MMWeight):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
         self.start = 0
         self.end = split_n_embed
+
     def load_hf_weights(self, weights):
         weight = None
         if self.weight_name in weights:
@@ -339,9 +340,11 @@ class COLMMWeightNoTp(MMWeight):
         self._post_load_weights()
         return
 
+
 class MultiCOLMMWeightNoTp(MultiROWMMWeightNoTP):
     def __init__(self, weight_names, data_type, split_n_embed, bias_names=[]):
         super().__init__(weight_names, data_type, split_n_embed, bias_names)
+
     def load_hf_weights(self, weights):
         weight = None
         for i in range(len(self.weight_names)):
@@ -354,8 +357,10 @@ class MultiCOLMMWeightNoTp(MultiROWMMWeightNoTP):
         self._fuse()
         return
 
+
 class ROWBMMWeightNoTp(BMMWeight):
     load_hf_weights = ROWMMWeight.load_hf_weights
+
     def __init__(
         self,
         weight_name,
@@ -367,8 +372,10 @@ class ROWBMMWeightNoTp(BMMWeight):
         self.start = 0
         self.end = split_n_embed
 
+
 class COLBMMWeightNoTp(BMMWeight):
     load_hf_weights = COLMMWeightNoTp.load_hf_weights
+
     def __init__(
         self,
         weight_name,
@@ -379,6 +386,6 @@ class COLBMMWeightNoTp(BMMWeight):
         super().__init__(weight_name, data_type, split_n_embed, bias_name)
         self.start = 0
         self.end = split_n_embed
+
     def _post_load_weights(self):
         self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
-        
