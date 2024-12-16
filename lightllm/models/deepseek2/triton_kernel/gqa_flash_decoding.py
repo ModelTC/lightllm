@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.multiprocessing as mp
 from typing import List
@@ -20,7 +21,10 @@ def gqa_token_decode_attention_flash_decoding(
     out=None,
     alloc_tensor_func=torch.empty,
 ):
-    BLOCK_SEQ = 64
+    if hasattr(os, "config"):
+        BLOCK_SEQ = os.config["BLOCK_SEQ"]
+    else:
+        BLOCK_SEQ = 64
     batch_size = infer_state.batch_size
     max_len_in_batch = infer_state.max_len_in_batch
     calcu_shape1 = (batch_size, q_head_num, kv_lora_rank)
@@ -159,8 +163,6 @@ def worker(
 ):
     try:
         for index in range(len(test_configs)):
-            import os
-
             os.config = test_configs[index]
             cost_time = test_decode_attentions(
                 q_nope_shape=q_nope_shape,
