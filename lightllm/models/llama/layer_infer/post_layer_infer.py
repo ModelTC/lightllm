@@ -89,7 +89,7 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         torch.mm(layer_weight.lm_head_weight_, last_input, out=logic_batch)
 
         last_input = None
-        if self.world_size_ == 1:
+        if self.world_size_ == 1 or layer_weight.enable_dp:
             gather_data = logic_batch
         else:
             gather_data = self.alloc_tensor((self.vocab_size_, token_num), dtype=input_embdings_dtype)

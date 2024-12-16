@@ -282,6 +282,7 @@ class Batch:
         # 该参数只会在batch init， prefill， decode 后进行更新，并在剔除请求时减少
         # 在 batch rpc init 之后才会被填充正确的值，初始化为 None
         self.batch_decode_need_tokens = [None for _ in range(dp_size)]
+        self.max_dp_batch_size = len(self.reqs)
         return
 
     def input_tokens(self):
@@ -336,6 +337,7 @@ class Batch:
         for _req in mini_batch.reqs:
             self.reqs.append(_req)
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        self.max_dp_batch_size = max(mini_batch.max_dp_batch_size, self.max_dp_batch_size)
         return
 
     def __repr__(self):

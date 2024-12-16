@@ -357,8 +357,21 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
 
-        hidden_states = input.view(-1, self.embed_dim_)
-        num_tokens, hidden_dim = hidden_states.shape
+        tp_hidden_states = input.view(-1, self.embed_dim_)
+        num_tokens, hidden_dim = tp_hidden_states.shape
+        hidden_states = self.alloc_tensor(
+            [infer_state.total_token_num, hidden_dim], dtype=tp_hidden_states.dtype, device=tp_hidden_states.device
+        )
+        if layer_weight.enable_dp:
+            dist.all_gather(
+                [
+                    hidden_states[infer_state.all_start_idx[i] : infer_state.all_end_idx[i], :]
+                    for i in range(self.world_size_)
+                ],
+                tp_hidden_states,
+                group=None,
+                async_op=False,
+            )
 
         if self.n_shared_experts is not None:
             shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
@@ -379,7 +392,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         if self.n_shared_experts is not None:
             hidden_states.add_(shared_output)
 
-        return hidden_states.view(num_tokens, hidden_dim)
+        hidden_states = hidden_states.view(infer_state.total_token_num, hidden_dim)
+        return hidden_states[infer_state.start_idx : infer_state.end_idx]
 
     def _splitfuse_attention_kernel(
         self, q, infer_state: SplitFuseInferStateInfo, layer_weight, out=None

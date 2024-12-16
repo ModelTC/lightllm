@@ -193,7 +193,6 @@ class RouterManager:
                 req = NormalReq(group_req_id + i, copy.deepcopy(prompt_ids), sampling_params, multimodal_params)
             req.start_time = start_time
             req_group.append(req)
-
         self.req_queue.extend(req_group)
         self.send_to_detokenization.send_pyobj(
             ReqDetokenizationState(

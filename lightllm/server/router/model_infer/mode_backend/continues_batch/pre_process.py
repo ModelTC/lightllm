@@ -39,10 +39,11 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, input_token_len)
         b_ready_cache_len.append(req.cur_kv_len)
         start_loc += input_token_len
-
-    input_ids = np.concatenate(input_ids, dtype=np.int64)
-
-    input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
+    if len(input_ids) != 0:
+        input_ids = np.stack(input_ids, dtype=np.int64).reshape(-1)
+        input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
+    else:
+        input_ids = torch.tensor([], dtype=torch.int64, device="cuda")
     nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device="cuda")
     nopad_b_start_loc = torch.tensor(nopad_b_start_loc, dtype=torch.int32, device="cuda")
     nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device="cuda")

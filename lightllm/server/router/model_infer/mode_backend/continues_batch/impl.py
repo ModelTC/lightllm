@@ -21,10 +21,14 @@ class ContinuesBatchBackend(ModeBackend):
     def decode_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=False)
 
+    def forward_dummy(self, batch_id, is_prefill):
+        pass
+
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
         output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
+        print(batch)
         if is_prefill:
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
         else:

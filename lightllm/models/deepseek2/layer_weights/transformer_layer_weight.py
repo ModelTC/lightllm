@@ -1,3 +1,4 @@
+import os
 import torch
 import math
 import numpy as np
@@ -6,12 +7,17 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
     ROWMMWeight,
     ROWMMWeightNoTP,
     MultiROWMMWeight,
+    MultiROWMMWeightNoTP,
     COLMMWeight,
+    COLMMWeightNoTp,
     MultiCOLMMWeight,
+    MultiCOLMMWeightNoTp,
     NormWeight,
     FusedMoeWeight,
     ROWBMMWeight,
+    ROWBMMWeightNoTp,
     COLBMMWeight,
+    COLBMMWeightNoTp,
 )
 from functools import partial
 
@@ -74,6 +80,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
     ):
         self.disable_qk_absorb = disable_qk_absorb
         self.disable_vo_absorb = disable_vo_absorb
+        self.enable_dp = os.getenv("DEEPSEEK_DP", "0").upper() in ["1", "ON"]
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
         # mla_type = "ACCM", "MIX"
         # MIX是prefilled CC，decoding ACC
@@ -104,7 +111,10 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"
 
     def _init_weight(self):
-        self._init_qkvo()
+        if self.enable_dp:
+            self._init_qkvo()
+        else:
+            self._init_qkvo_dp()
         if self.is_moe:
             self._init_moe()
         else:
@@ -234,6 +244,89 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             )
         if self.disable_vo_absorb:
             self.o_weight_ = COLMMWeight(
+                f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
+                self.data_type_,
+                q_split_n_embed,
+            )
+
+    def _init_qkvo_dp(self):
+        q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
+        q_split_n_embed_with_rope = (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads
+        if self.q_lora_rank is None:
+            if not self.disable_qk_absorb:  # acc
+                self.fuse_qk_weight_ = MultiROWMMWeightNoTP(
+                    [
+                        f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
+                        f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
+                    ],
+                    self.data_type_,
+                    [q_split_n_embed_with_rope, self.tp_q_head_num_],
+                )
+                self.fuse_qk_weight_._fuse = partial(fuse_q_kb, self.fuse_qk_weight_, self)
+            else:  # cc
+                self.q_weight_ = ROWMMWeightNoTP(
+                    f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
+                    self.data_type_,
+                    q_split_n_embed_with_rope,
+                )
+        else:
+            self.q_a_proj_ = ROWMMWeightNoTP(
+                f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight",
+                self.data_type_,
+                self.q_lora_rank,
+            )
+            if not self.disable_qk_absorb:
+                self.fuse_qk_weight_ = MultiROWMMWeightNoTP(
+                    [
+                        f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
+                        f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
+                    ],
+                    self.data_type_,
+                    [q_split_n_embed_with_rope, self.tp_q_head_num_],
+                )
+                self.fuse_qk_weight_._fuse = partial(fuse_q_kb, self.fuse_qk_weight_, self)
+            else:
+                self.q_b_proj_ = ROWMMWeightNoTP(
+                    f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
+                    self.data_type_,
+                    q_split_n_embed_with_rope,
+                )
+
+        self.q_rope_proj_ = ROWMMWeightNoTP(
+            f"model.layers.{self.layer_num_}.self_attn.q_rope_proj.weight",
+            self.data_type_,
+            self.qk_rope_head_dim * self.tp_q_head_num_,
+        )
+
+        self.kv_a_proj_with_mqa_ = ROWMMWeightNoTP(
+            f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight",
+            self.data_type_,
+            self.kv_lora_rank + self.qk_rope_head_dim,
+        )
+        if self.disable_qk_absorb:
+            self.k_b_proj_ = ROWBMMWeightNoTp(
+                f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
+                self.data_type_,
+                split_n_embed=self.tp_q_head_num_,
+            )
+        if not self.disable_vo_absorb:
+            self.fuse_vo_weight_ = MultiCOLMMWeightNoTp(
+                [
+                    f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
+                    f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
+                ],
+                self.data_type_,
+                [self.tp_q_head_num_, q_split_n_embed],
+            )
+            self.fuse_vo_weight_._fuse = partial(fuse_vb_o, self.fuse_vo_weight_, self)
+        else:
+            self.v_b_proj_ = COLBMMWeightNoTp(
+                f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
+                self.data_type_,
+                split_n_embed=self.tp_q_head_num_,
+            )
+        if self.disable_vo_absorb:
+            self.o_weight_ = COLMMWeightNoTp(
                 f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
                 self.data_type_,
                 q_split_n_embed,
