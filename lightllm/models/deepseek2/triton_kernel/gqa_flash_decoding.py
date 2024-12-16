@@ -88,7 +88,11 @@ def test_decode_attentions(
     for _ in range(test_count):
         q_nope = torch.randn(q_nope_shape, device="cuda", dtype=dtype) / 10
         q_rope = torch.randn(q_rope_shape, device="cuda", dtype=dtype) / 10
-        kv_buffer_shape = [test_seq_len + 10, kv_nope_shape[1], kv_nope_shape[2] + kv_rope_shape[2]]
+        kv_buffer_shape = [
+            (test_seq_len + 10) * infer_state.batch_size,
+            kv_nope_shape[1],
+            kv_nope_shape[2] + kv_rope_shape[2],
+        ]
         kv_buffer = torch.randn(kv_buffer_shape, device="cuda", dtype=dtype) / 10
 
         kv_nope = kv_buffer[:, :, 0 : kv_nope_shape[2]]
