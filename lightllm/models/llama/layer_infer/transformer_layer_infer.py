@@ -25,6 +25,7 @@ from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_
 from lightllm.common.basemodel import TransformerLayerInferTpl
 from lightllm.models.llama.triton_kernel.ppl_quant_copy_kv import destindex_copy_dequantize_kv
 
+import os
 
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     """ """
@@ -32,9 +33,16 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def __init__(self, layer_num, tp_rank, world_size, network_config, mode=[]):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.eps_ = network_config["rms_norm_eps"]
-        self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
-        self.tp_k_head_num_ = network_config["num_key_value_heads"] // self.world_size_
-        self.tp_v_head_num_ = network_config["num_key_value_heads"] // self.world_size_
+
+        self.tp_q_head_num_ = network_config["num_attention_heads"]
+        self.tp_k_head_num_ = network_config["num_key_value_heads"]
+        self.tp_v_head_num_ = network_config["num_key_value_heads"]
+        if not os.environ.get("EDP_MODE_ENABLED") == "true":
+            self.tp_q_head_num_ //= world_size
+            self.tp_k_head_num_ //= world_size
+            self.tp_v_head_num_ //= world_size
+
+
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.head_dim_ = network_config["hidden_size"] // network_config["num_attention_heads"]
         self.embed_dim_ = network_config["hidden_size"]

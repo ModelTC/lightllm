@@ -153,7 +153,7 @@ class FusedMoeWeight(BaseWeight):
                             self.expert_down_proj_etp[i_experts_ep, :] = self.experts_up_projs[i_experts_ep]
 
     def load_hf_weights(self, weights):
-        if os.environ.get("ETP_MODE_ENABLED") == "true":
+        if os.environ.get("ETP_MODE_ENABLED") == "true" or os.environ.get("EDP_MODE_ENABLED") == "true":
             self._load_hf_weights_etp(weights)
         else:
             for i_experts in range(self.n_routed_experts):
@@ -184,7 +184,7 @@ class FusedMoeWeight(BaseWeight):
             return cpu_tensor.contiguous().to(self.data_type_).cuda(self.tp_rank_)
 
     def verify_load(self):
-        if os.environ.get("ETP_MODE_ENABLED") == "true":
+        if os.environ.get("ETP_MODE_ENABLED") == "true" or os.environ.get("EDP_MODE_ENABLED") == "true":
             return True
         else:
             return self.w1 is not None and self.w2 is not None

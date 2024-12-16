@@ -14,9 +14,25 @@ class Deepseek2MemoryManager(MemoryManager):
         self.kv_buffer = torch.empty((layer_num, size, head_num, head_dim), dtype=dtype, device="cuda")
         # todo, etp or edp use the same work buffer here
         # also it can be used for any kernels for work buffer witout save info only
-        if os.environ.get("ETP_MODE_ENABLED") == "true":
+        if os.environ.get("ETP_MODE_ENABLED") == "true" or os.environ.get("EDP_MODE_ENABLED") == "true":
             self.work_buffer = torch.empty(1024 * 1024 * 1024, dtype=torch.bfloat16, device="cuda")
             self.work_buffer.share_memory_()
+            import lightllm_moe_etp_kernel
+            import torch.distributed as dist
+
+            rank_id = dist.get_rank()
+            world_size = dist.get_world_size()
+
+            #lightllm_moe_etp_kernel.enableP2P(world_size, rank_id)
+
+            handle = lightllm_moe_etp_kernel.get_handle(self.work_buffer.contiguous(), rank_id)
+            handles = [None] * world_size
+            dist.all_gather_object(handles, handle)
+            self.handles_work_buffer = handles
+
+            lightllm_moe_etp_kernel.init_system(world_size, rank_id, 
+                self.work_buffer.contiguous(),
+                handles )
 
     def alloc_kv_move_buffer(self, max_req_total_len):
         self.kv_move_buffer = torch.empty(

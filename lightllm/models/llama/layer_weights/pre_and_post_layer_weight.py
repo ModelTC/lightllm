@@ -2,17 +2,25 @@ import torch
 import numpy as np
 from lightllm.common.basemodel import PreAndPostLayerWeight
 
+import os 
 
 class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
     def __init__(self, tp_rank, world_size, data_type, network_config, mode):
         super().__init__(tp_rank, world_size, data_type, network_config, mode)
+        self.tp_split_ = not os.environ.get("EDP_MODE_ENABLED") == "true"
         return
 
     def load_hf_weights(self, weights):
         vob_size = self.network_config_["vocab_size"]
-        split_indexes = np.linspace(0, vob_size, self.world_size_ + 1, dtype=np.int64)
-        split_start = split_indexes[self.tp_rank_]
-        split_end = split_indexes[self.tp_rank_ + 1]
+        
+        if self.tp_split_:
+            split_indexes = np.linspace(0, vob_size, self.world_size_ + 1, dtype=np.int64)
+            split_start = split_indexes[self.tp_rank_]
+            split_end = split_indexes[self.tp_rank_ + 1]
+        else:
+            split_start = 0
+            split_end = vob_size
+
         if "model.embed_tokens.weight" in weights:
             self.wte_weight_ = self._cuda(weights["model.embed_tokens.weight"][split_start:split_end, :])
             tie_word_embeddings = self.network_config_.get("tie_word_embeddings", False)
