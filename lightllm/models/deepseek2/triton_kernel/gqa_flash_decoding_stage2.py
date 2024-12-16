@@ -55,10 +55,10 @@ def _fwd_kernel_flash_decode_stage2(
 
 @torch.no_grad()
 def flash_decode_stage2(mid_out, mid_out_logexpsum, B_Seqlen, Out, block_seq):
-    if hasattr(os, "config"):
-        BLOCK_SEQ = os.config["BLOCK_SEQ"]
-        num_warps = os.config["stage2_num_warps"]
-        num_stages = os.config["stage2_num_stages"]
+    if hasattr(os, "tuning_config"):
+        BLOCK_SEQ = os.tuning_config["BLOCK_SEQ"]
+        num_warps = os.tuning_config["stage2_num_warps"]
+        num_stages = os.tuning_config["stage2_num_stages"]
     else:
         BLOCK_SEQ = block_seq
         num_warps = 4

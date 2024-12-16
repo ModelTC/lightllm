@@ -21,8 +21,8 @@ def gqa_token_decode_attention_flash_decoding(
     out=None,
     alloc_tensor_func=torch.empty,
 ):
-    if hasattr(os, "config"):
-        BLOCK_SEQ = os.config["BLOCK_SEQ"]
+    if hasattr(os, "tuning_config"):
+        BLOCK_SEQ = os.tuning_config["BLOCK_SEQ"]
     else:
         BLOCK_SEQ = 64
     batch_size = infer_state.batch_size
@@ -167,7 +167,7 @@ def worker(
 ):
     try:
         for index in range(len(test_configs)):
-            os.config = test_configs[index]
+            os.tuning_config = test_configs[index]
             cost_time = test_decode_attentions(
                 q_nope_shape=q_nope_shape,
                 q_rope_shape=q_rope_shape,
