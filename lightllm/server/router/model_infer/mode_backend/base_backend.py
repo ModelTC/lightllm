@@ -233,7 +233,6 @@ class ModeBackend:
         if self.dp_size != 1:
             cur_dp_index = self.tp_rank
             reqs = [req for req in reqs if req["dp_index"] == cur_dp_index]
-        print("dasdas  ", self.dp_size)
         g_infer_state_lock.acquire()
         batch_data = InferBatch.init_batch(
             batch_id,

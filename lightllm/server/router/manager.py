@@ -318,13 +318,18 @@ class RouterManager:
         return
 
     def merge_rpyc_dict_ans(self, ans: List):
+        ans_: List[Dict] = []
         if self.world_size != 1:
-            ans: List[Dict] = [obtain(e) for e in ans[0 : self.dp_size]]
-
-        if self.dp_size == 1:
-            return ans[0]
+            for d_ans in ans[0 : self.dp_size]:
+                d_ans = obtain(d_ans)
+                if len(d_ans) != 0:
+                    ans_.append(d_ans)
         else:
-            return {k: v for t_ans in ans for k, v in t_ans.items()}
+            ans_ = ans
+        if self.dp_size == 1:
+            return ans_[0]
+        else:
+            return {k: v for t_ans in ans_ for k, v in t_ans.items()}
 
     async def _init_batch(self, batch: Batch):
         reqs = [r.to_rpc_obj() for r in batch.reqs]
@@ -537,6 +542,7 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
 
         etype, evalue, tb = sys.exc_info()
         err_str = "\n".join(traceback.format_exception(etype, evalue, tb))
+        print(err_str)
         pipe_writer.send(err_str)
         router.clean_up()
         raise

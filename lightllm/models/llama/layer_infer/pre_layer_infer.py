@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.distributed as dist
 import numpy as np
@@ -15,8 +16,13 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
 
     def __init__(self, tp_rank, world_size, network_config, mode):
         super().__init__(tp_rank, world_size, network_config, mode)
-        tp_vob_ids = np.linspace(0, network_config["vocab_size"], self.world_size_ + 1, dtype=np.int64)
-        self.vob_start_id_, self.vob_end_id_ = int(tp_vob_ids[self.tp_rank_]), int(tp_vob_ids[self.tp_rank_ + 1])
+        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["1", "ON"]
+        if not self.enable_dp:
+            tp_vob_ids = np.linspace(0, network_config["vocab_size"], self.world_size_ + 1, dtype=np.int64)
+            self.vob_start_id_, self.vob_end_id_ = int(tp_vob_ids[self.tp_rank_]), int(tp_vob_ids[self.tp_rank_ + 1])
+        else:
+            self.vob_start_id_, self.vob_end_id_ = 0, network_config["vocab_size"]
+
         return
 
     def context_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):

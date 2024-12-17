@@ -50,7 +50,6 @@ def normal_or_p_d_start(g_objs):
     logger.info(f"use tgi api: {args.use_tgi_api}")
 
     set_env(args)
-
     assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
     assert (
         args.mem_fraction > 0 and args.mem_fraction < 1
@@ -90,7 +89,6 @@ def normal_or_p_d_start(g_objs):
         )
     else:
         args.visual_gpu_ids = args.visual_gpu_ids[:total_required_gpus]
-
     # 检查visual_nccl_port数量是否足够
     if len(args.visual_nccl_ports) < args.visual_dp:
         raise ValueError(
@@ -142,7 +140,7 @@ def normal_or_p_d_start(g_objs):
     # 捕获到端口设置冲突的问题
     ports_locker = PortLocker(already_uesd_ports)
     ports_locker.lock_port()
-
+    print("Begin ", already_uesd_ports)
     can_use_ports = alloc_can_use_network_port(
         num=6 + args.tp + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
     )

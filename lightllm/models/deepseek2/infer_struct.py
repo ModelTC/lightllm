@@ -9,7 +9,7 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
     def __init__(self):
         super().__init__()
         self.kv_starts = None
-        self.enable_dp = os.getenv("DEEPSEEK_DP", "0").upper() in ["1", "ON"]
+        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         super().init_some_extra_state(model, input_ids)
@@ -22,14 +22,13 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
             world_size = dist.get_world_size()
             local_token_num = input_ids.size(0)
             all_token_num = [torch.zeros(1, dtype=torch.int32).to(input_ids.device) for _ in range(world_size)]
-            print(local_token_num, all_token_num)
             dist.all_gather(all_token_num, torch.tensor([local_token_num], dtype=torch.int32).to(input_ids.device))
             all_token_num = torch.cat(all_token_num, dim=0)  # __~J: (world_size,)
-            self.all_token_num = all_token_num.sum().item()
-            print(self.all_token_num)
-            cumsum_token_num = torch.cumsum(all_token_num, dim=0)
-            self.start_idx = cumsum_token_num[rank] - all_token_num[rank]
-            self.end_idx = cumsum_token_num[rank]
-            self.all_start_idx = cumsum_token_num - all_token_num
-            self.all_end_ix = cumsum_token_num
+            self.all_token_num = all_token_num.sum().cpu().numpy()
+            cumsum_token_num = torch.cumsum(all_token_num, dim=0).cpu().numpy()
+            self.all_start_idx = cumsum_token_num - all_token_num.cpu().numpy()
+            self.all_end_idx = cumsum_token_num
+            self.start_idx = self.all_start_idx[rank]
+            self.end_idx = self.all_end_idx[rank]
+
         return

@@ -350,6 +350,8 @@ class InferBatch:
 
     @torch.no_grad()
     def free_self(self):
+        if len(self.request_ids) == 0:
+            return
         free_req_index = []
         free_token_index = []
         for request_id in self.request_ids:
