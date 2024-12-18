@@ -48,7 +48,6 @@ class CudaGraph:
 
     @torch.no_grad()
     def warmup(self, model):
-        return
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
         for batch_size in range(self.max_batch_size, 0, -1):
             # dummy prefill

@@ -60,7 +60,6 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
 
         if not infer_state.is_splitfuse and infer_state.is_prefill and not infer_state.return_all_prompt_logics:
             batch_size = infer_state.batch_size
-            print("batch_size ", batch_size)
             last_input = self.alloc_tensor((batch_size, self.embed_dim_), dtype=input_embdings.dtype)
             last_index = (
                 torch.cumsum(infer_state.b_seq_len - infer_state.b_ready_cache_len, dim=0, dtype=torch.long) - 1
