@@ -127,7 +127,11 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _ffn_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        out = self.alloc_tensor(input.shape, input.dtype)
+        if not os.environ.get("EDP_MODE_ENABLED") == "true": 
+            out = self.alloc_tensor(input.shape, input.dtype)
+        else:
+            num_ele = input.nelement()
+            out = self.infer_state.mem_manager.work_buffer[ -num_ele: ].view(input.shape)
         rmsnorm_forward(input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_, out=out)
         return out
 

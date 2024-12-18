@@ -466,16 +466,23 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         final_hidden_states = torch.empty(
             num_tokens, hidden_dim, device=hidden_states.device, dtype=hidden_states.dtype
         )
-
-        router_logits = layer_weight.moe_gate.mm(hidden_states)
+      
 
         # now some parameter is not supported yet
         # assert gating_normalize_prob is False
         # assert num_expert_groups<=1
+        is_etp = True
         if os.environ.get("ETP_MODE_ENABLED") == "true":
-            from lightllm_moe_etp_kernel import moe_fused_all as moe_fused_all
+            router_logits = layer_weight.moe_gate.mm(hidden_states)  
         elif os.environ.get("EDP_MODE_ENABLED") == "true":
-            from lightllm_moe_etp_kernel import moe_fused_all_edp as moe_fused_all
+            router_logits = infer_state.mem_manager.work_buffer[ -(num_tokens*num_experts_per_token+hidden_states.nelement()):-hidden_states.nelement()].view( num_tokens ,num_experts_per_token)
+            router_logits = layer_weight.moe_gate.mm(hidden_states,out=router_logits)
+            is_etp = False
+
+        #print(" hid state addr ", infer_state.mem_manager.work_buffer.data_ptr(),
+        #    hidden_states.data_ptr(),
+        #    hidden_states.shape()
+        #    )
 
         moe_fused_all(
             router_logits.contiguous(),
@@ -497,8 +504,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             layer_weight.gate_up_proj.weight.size(1) // 2,
             layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
             self.n_shared_experts is not None,
+            is_etp
         )
 
-        router_logits = None
+        if os.environ.get("ETP_MODE_ENABLED") == "true":
+            router_logits = None
 
         return final_hidden_states.view(num_tokens, hidden_dim)
