@@ -91,7 +91,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                     self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
         else:
             self._ffn = partial(LlamaTransformerLayerInfer._ffn, self)
-            # self._ffn = partial(Deepseek2TransformerLayerInfer._ffn_dp, self)
 
     def _get_qkv(
         self,

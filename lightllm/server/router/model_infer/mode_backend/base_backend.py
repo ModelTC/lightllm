@@ -80,7 +80,7 @@ class ModeBackend:
         if self.dp_size > 1:
             assert self.dp_size == self.world_size, "Currently only self-sustaining dp_size == tp_size"
             os.environ["ENABLE_DP"] = "1"
-            os.environ["DP_HOLDSIZE"] = "10"
+            os.environ["DP_HOLDSIZE"] = "1"
 
         torch.cuda.set_device(self.tp_rank)
 
@@ -238,6 +238,7 @@ class ModeBackend:
         if self.dp_size != 1:
             cur_dp_index = self.tp_rank
             reqs = [req for req in reqs if req["dp_index"] == cur_dp_index]
+
         g_infer_state_lock.acquire()
         batch_data = InferBatch.init_batch(
             batch_id,

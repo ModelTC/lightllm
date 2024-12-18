@@ -368,9 +368,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
     def _init_ffn(self):
         inter_size = self.network_config_["intermediate_size"]
-        # split_inter_size = inter_size // self.world_size_
-        # self._load_mlp(f"model.layers.{self.layer_num_}.mlp", split_inter_size)
-
         num_shards = self.world_size_ if not self.enable_dp else 1
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp", inter_size // num_shards, no_tp=self.enable_dp)
 
