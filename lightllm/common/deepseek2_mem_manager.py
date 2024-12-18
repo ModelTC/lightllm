@@ -15,7 +15,6 @@ class Deepseek2MemoryManager(MemoryManager):
         self.holding_size = int(os.getenv("DP_HOLDSIZE", 0))
         self.mem_state[0 : self.holding_size] = 1
         self.can_use_mem_size -= self.holding_size
-        print(self.holding_size)
 
     def get_cell_size(self):
         return self.head_num * self.head_dim * self.layer_num * torch._utils._element_size(self.dtype)
