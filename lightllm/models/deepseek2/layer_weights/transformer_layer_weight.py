@@ -96,7 +96,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             and self.layer_num_ >= self.network_config_["first_k_dense_replace"]
             and self.layer_num_ % self.network_config_["moe_layer_freq"] == 0
         )
-        self.tp_q_head_num_ = self.network_config_["num_attention_heads"] 
+        self.tp_q_head_num_ = self.network_config_["num_attention_heads"]
         if not self.enable_dp:
             self.tp_q_head_num_ = self.tp_q_head_num_ // self.world_size_
         self.n_routed_experts = self.network_config_["n_routed_experts"]
@@ -368,12 +368,11 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
     def _init_ffn(self):
         inter_size = self.network_config_["intermediate_size"]
-        split_inter_size = inter_size // self.world_size_
+        # split_inter_size = inter_size // self.world_size_
         # self._load_mlp(f"model.layers.{self.layer_num_}.mlp", split_inter_size)
-    
+
         num_shards = self.world_size_ if not self.enable_dp else 1
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp", inter_size // num_shards, no_tp=self.enable_dp)
-
 
     def _init_norm(self):
         self.att_norm_weight_ = NormWeight(f"model.layers.{self.layer_num_}.input_layernorm.weight", self.data_type_)

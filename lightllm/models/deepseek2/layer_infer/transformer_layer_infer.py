@@ -65,7 +65,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         if self.enable_dp:
-            self.tp_q_head_num_ = int(self.tp_q_head_num_ * self.world_size_) 
+            self.tp_q_head_num_ = int(self.tp_q_head_num_ * self.world_size_)
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.num_heads = network_config["num_attention_heads"]
         self.num_kv_heads = network_config["num_key_value_heads"]
@@ -359,7 +359,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
         return
 
-    def _ffn_dp(self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight) -> torch.Tensor:
+    def _ffn_dp(
+        self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
+    ) -> torch.Tensor:
         tp_hidden_states = input.view(-1, self.embed_dim_)
         num_tokens, hidden_dim = tp_hidden_states.shape
         hidden_states = self.alloc_tensor(
