@@ -17,10 +17,13 @@ from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
 
 logger = init_logger(__name__)
 
+
 def set_env(args):
     import os
+
     if args.static_quant:
         os.environ["STATIC_QUANT"] = "1"
+
 
 def normal_or_p_d_start(g_objs):
     from .api_server import G_Objs
@@ -140,7 +143,7 @@ def normal_or_p_d_start(g_objs):
     # 捕获到端口设置冲突的问题
     ports_locker = PortLocker(already_uesd_ports)
     ports_locker.lock_port()
-    print("Begin ", already_uesd_ports)
+
     can_use_ports = alloc_can_use_network_port(
         num=6 + args.tp + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
     )

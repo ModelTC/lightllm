@@ -5,8 +5,8 @@ from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
+from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import sample
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
-from .post_process import sample
 
 
 class DPBackend(ModeBackend):
@@ -38,7 +38,7 @@ class DPBackend(ModeBackend):
             self.cache[batch.batch_id] = batch
             return output_dict
         else:
-            if padding_token_num !=0:
+            if padding_token_num != 0:
                 logits = logits[:-padding_token_num]
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
