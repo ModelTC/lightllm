@@ -42,11 +42,11 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, input_token_len)
         b_ready_cache_len.append(req.cur_kv_len)
         start_loc += input_token_len
-    
+
     # padding one fake req for prefill
     if len(input_ids) == 0:
         input_ids = [[1]]
-        nopad_b_req_idx = [1000]
+        nopad_b_req_idx = [batch.req_manager.HOLD_REQUEST_ID]
         nopad_b_start_loc = [0]
         nopad_b_seq_len = [1]
         b_ready_cache_len = [0]
@@ -121,7 +121,7 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
         padding_batch_size = max_batch_size - batch_size
         for _ in range(padding_batch_size):
             input_ids.append(1)
-            nopad_b_req_idx.append(1000)
+            nopad_b_req_idx.append(batch.req_manager.HOLD_REQUEST_ID)
             nopad_b_start_loc.append(start_loc)
             nopad_b_seq_len.append(2)
             start_loc += 2
@@ -141,7 +141,6 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
         padding_indexs = torch.arange(0, padding_token_num, dtype=torch.int32, device="cuda")
         mem_indexes = torch.cat((mem_indexes, padding_indexs), dim=0)
     g_infer_state_lock.release()
-
 
     kwargs = {
         "batch_size": nopad_b_seq_len.shape[0],

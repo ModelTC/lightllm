@@ -7,10 +7,14 @@ logger = init_logger(__name__)
 
 class ReqManager:
     def __init__(self, max_request_num, max_sequence_length, mem_manager: MemoryManager):
-        self.req_state = torch.zeros((max_request_num,), dtype=torch.bool, device="cuda")
-        self.req_to_token_indexs = torch.zeros((max_request_num, max_sequence_length), dtype=torch.int32, device="cuda")
+        self.req_state = torch.zeros((max_request_num + 1,), dtype=torch.bool, device="cuda")
+        self.req_to_token_indexs = torch.zeros(
+            (max_request_num + 1, max_sequence_length), dtype=torch.int32, device="cuda"
+        )
+        self.req_state[-1] = 1
         self.can_use_req_size = max_request_num
         self.mem_manager = mem_manager
+        self.HOLD_REQUEST_ID = max_request_num
 
     def alloc(self, need_size):
         if need_size > self.can_use_req_size:
@@ -24,7 +28,7 @@ class ReqManager:
     def free(self, free_req_index, free_token_index):
         self.can_use_req_size += len(free_req_index)
         self.req_state[free_req_index] = 0
-        if self.can_use_req_size == len(self.req_state):
+        if self.can_use_req_size + 1 == len(self.req_state):
             logger.debug(f"freed all request size {self.can_use_req_size}")
         self.mem_manager.free(free_token_index)
 
@@ -37,5 +41,5 @@ class ReqManager:
         self.mem_manager.free(free_token_index)
 
     def free_all(self):
-        self.can_use_req_size = len(self.req_state)
-        self.req_state[:] = 0
+        self.can_use_req_size = len(self.req_state) - 1
+        self.req_state[:-1] = 0
