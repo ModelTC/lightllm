@@ -76,7 +76,7 @@ def moe_align(topk_ids: torch.Tensor, out: torch.Tensor):
     assert out.shape[1] == token_num * topk
     assert topk_ids.is_contiguous()
     out.fill_(0)
-    grid = (triton.cdiv(token_num, TOPK_BLOCK_M),)
+    grid = (triton.cdiv(token_num * topk, TOPK_BLOCK_M),)
     moe_align_kernel[grid](
         topk_ids,
         token_num,
