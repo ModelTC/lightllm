@@ -385,11 +385,11 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn"),  # this code will not be ok for settings to fork to subprocess
     parser = make_argument_parser()
     args = parser.parse_args()
-    init_tokenizer(args)  # for openai api
     g_objs.args = args
     from .api_start import normal_or_p_d_start, pd_master_start
 
     if args.run_mode == "pd_master":
         pd_master_start(g_objs)
     else:
+        init_tokenizer(args)  # for openai api
         normal_or_p_d_start(g_objs)
