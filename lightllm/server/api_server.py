@@ -214,6 +214,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         stop_sequences=request.stop,
         n=request.n,
         best_of=request.n,
+        add_special_tokens=False,
     )
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
