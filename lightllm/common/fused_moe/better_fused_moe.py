@@ -1,15 +1,10 @@
 """Fused MoE kernel."""
-import functools
-import json
-import os
-from typing import Any, Callable, Dict, Optional, Tuple
 
+from typing import Any, Callable, Dict, Optional, Tuple
 import torch
 import triton
 import triton.language as tl
 from lightllm.utils.log_utils import init_logger
-from lightllm.common.vllm_kernel import _custom_ops as ops
-from lightllm.utils.vllm_utils import direct_register_custom_op
 
 logger = init_logger(__name__)
 
@@ -143,221 +138,155 @@ def moe_align1(experts_info: torch.Tensor, exports_token_num: torch.Tensor, topk
     )
 
 
-# DEVICE = triton.runtime.driver.active.get_active_torch_device()
+@triton.jit
+def grouped_matmul_kernel(
+    k,  # int
+    n,  # int
+    expert_num,  # int
+    topk_num,  # int
+    token_ptr,  # [token_num, hidden_dim]
+    token_stride_0,
+    token_stride_1,
+    weights_ptr,  # [expert_num, K, N]
+    weight_stride_0,
+    weight_stride_1,
+    weight_stride_2,
+    expert_to_token_num,  # [expert_num]
+    expert_to_token_index,  # [expert_num, token_num * topk_num]
+    expert_to_token_index_stride_0,
+    out_ptr,  # [token_num * topk_num, n]
+    out_stride_0,
+    out_stride_1,
+    # number of virtual SM
+    NUM_SM: tl.constexpr,
+    # tile sizes
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+):
+    tile_idx = tl.program_id(0)
+    last_problem_end = 0
+
+    out_dtype = token_ptr.dtype.element_ty
+    for expert_id in range(expert_num):
+        # get the gemm size of the current problem
+        cur_m = tl.load(expert_to_token_num + expert_id)
+        num_m_tiles = tl.cdiv(cur_m, BLOCK_SIZE_M)
+        num_n_tiles = tl.cdiv(n, BLOCK_SIZE_N)
+        num_tiles = num_m_tiles * num_n_tiles
+        # iterate through the tiles in the current gemm problem
+        while tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
+
+            tile_idx_in_gemm = tile_idx - last_problem_end
+
+            # better super-grouping for L2 Cache Optimizations
+            pid = tile_idx_in_gemm
+            num_pid_m = num_m_tiles
+            num_pid_n = num_n_tiles
+            num_pid_in_group = GROUP_SIZE_M * num_pid_n
+            group_id = pid // num_pid_in_group
+            first_pid_m = group_id * GROUP_SIZE_M
+            group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+            in_group_index = pid % num_pid_in_group
+            back_mark = (in_group_index // group_size_m) % 2
+            back_mark1 = -1 * (2 * back_mark - 1)
+            pid_m = first_pid_m + back_mark * (group_size_m - 1) + back_mark1 * (in_group_index % group_size_m)
+            pid_n = (pid % num_pid_in_group) // group_size_m
+
+            tile_m_idx = pid_m
+            tile_n_idx = pid_n
+
+            # do regular gemm here
+            offs_am = tile_m_idx * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            a_m_index = tl.load(
+                expert_to_token_index + expert_id * expert_to_token_index_stride_0 + offs_am,
+                mask=offs_am < cur_m,
+                other=0,
+            )
+
+            offs_bn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            offs_k = tl.arange(0, BLOCK_SIZE_K)
+
+            a_ptrs = token_ptr + (a_m_index // topk_num)[:, None] * token_stride_0 + offs_k[None, :]
+            b_ptrs = weights_ptr + weight_stride_0 * expert_id + offs_k[:, None] * weight_stride_1 + offs_bn[None, :]
+            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+            for _ in range(0, tl.cdiv(k, BLOCK_SIZE_K)):
+                # hint to Triton compiler to do proper loop pipelining
+                # tl.multiple_of(a_ptrs, [16, 16])
+                tl.multiple_of(b_ptrs, [16, 16])
+                a = tl.load(a_ptrs, mask=(offs_am[:, None] < cur_m) & (offs_k[None, :] < k))
+                b = tl.load(b_ptrs, mask=(offs_bn[None, :] < n) & (offs_k[:, None] < k))
+                accumulator += tl.dot(a, b)
+                a_ptrs += BLOCK_SIZE_K
+                b_ptrs += BLOCK_SIZE_K * weight_stride_1
+                offs_k += BLOCK_SIZE_K
+
+            c = accumulator.to(out_dtype)
+
+            offs_cn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            c_ptrs = out_ptr + a_m_index[:, None] * out_stride_0 + offs_cn[None, :]
+
+            tl.store(c_ptrs, c, mask=(offs_am[:, None] < cur_m) & (offs_cn[None, :] < n))
+            tile_idx += NUM_SM
+
+        last_problem_end = last_problem_end + num_tiles
+    return
 
 
-# @triton.jit
-# def grouped_matmul_kernel(
-#     token_ptr, # [token_num, hidden_dim]
-#     weights_ptrs, # [expert_num]
-#     weights_kn, # [expert_num, 2]
-#     expert_to_token_num, # [expert_num]
-#     expert_to_token_index, # [expert_num, token_num]
-#     expert_num, # int
-#     k, # int
-#     n, # int
-#     out, # [token_num, topk, n]
-#     out_stride_0,
-#     out_stride_1,
-#     out_stride_2,
-#     # number of virtual SM
-#     NUM_SM: tl.constexpr,
-#     # tile sizes
-#     BLOCK_SIZE_M: tl.constexpr,
-#     BLOCK_SIZE_N: tl.constexpr,
-#     BLOCK_SIZE_K: tl.constexpr,
-# ):
-#     tile_idx = tl.program_id(0)
-#     last_problem_end = 0
-#     tl_calcu_type = token_ptr.dtype.element_ty
-#     for expert_id in range(expert_num):
-#         # get the gemm size of the current problem
-#         cur_m = tl.load(expert_to_token_num + expert_id)
-#         num_m_tiles = tl.cdiv(cur_m, BLOCK_SIZE_M)
-#         num_n_tiles = tl.cdiv(n, BLOCK_SIZE_N)
-#         num_tiles = num_m_tiles * num_n_tiles
-#         # iterate through the tiles in the current gemm problem
-#         while (tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles):
-#             b_ptr = tl.load(weights_ptrs + expert_id).to(tl.pointer_type(tl_calcu_type))
-#             tile_idx_in_gemm = tile_idx - last_problem_end
-#             tile_m_idx = tile_idx_in_gemm // num_n_tiles
-#             tile_n_idx = tile_idx_in_gemm % num_n_tiles
+def grouped_matmul(
+    token_inputs: torch.Tensor,
+    expert_to_token_num: torch.Tensor,
+    expert_to_token_index: torch.Tensor,
+    expert_weights: torch.Tensor,
+    topk_num: int,
+    out: torch.Tensor,
+):
+    """
+    token_inputs is tensor shape [token_num, hidden_dim],
+    expert_to_token_num is tensor shape [expert_num],
+    expert_to_token_index is tensor shape [expert_num, token_num * topk_num],
+    expert_weights is tensor shape [expert_num, hidden_dim, out_dim]
+    out is tensor shape [token_num * topk_num, out_dim]
+    """
 
-#             # do regular gemm here
-#             offs_am = tile_m_idx * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-#             offs_bn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-#             offs_k = tl.arange(0, BLOCK_SIZE_K)
+    NUM_SM = 128
+    BLOCK_SIZE_M = 16
+    BLOCK_SIZE_N = 32
+    BLOCK_SIZE_K = 32
+    GROUP_SIZE_M = 1
+    num_stages = 8
+    num_warps = 4
 
-#             a_index =
-#             a_ptrs = a_ptr + offs_am[:, None] * lda + offs_k[None, :]
-#             b_ptrs = b_ptr + offs_k[:, None] * ldb + offs_bn[None, :]
-#             accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-#             for kk in range(0, tl.cdiv(k, BLOCK_SIZE_K)):
-#                 # hint to Triton compiler to do proper loop pipelining
-#                 tl.multiple_of(a_ptrs, [16, 16])
-#                 tl.multiple_of(b_ptrs, [16, 16])
-#                 # assume full tile for now
-#                 a = tl.load(a_ptrs)
-#                 b = tl.load(b_ptrs)
-#                 accumulator += tl.dot(a, b)
-#                 a_ptrs += BLOCK_SIZE_K
-#                 b_ptrs += BLOCK_SIZE_K * ldb
-#             c = accumulator.to(tl.float16)
+    expert_num, k, n = expert_weights.shape
+    assert token_inputs.shape[1] == k
 
-#             offs_cm = tile_m_idx * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-#             offs_cn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-#             c_ptrs = c_ptr + ldc * offs_cm[:, None] + offs_cn[None, :]
+    grid = (NUM_SM,)
 
-#             # assumes full tile for now
-#             tl.store(c_ptrs, c)
-
-#             # go to the next tile by advancing NUM_SM
-#             tile_idx += NUM_SM
-
-#         # get ready to go to the next gemm problem
-#         last_problem_end = last_problem_end + num_tiles
-
-
-# def group_gemm_fn(group_A, group_B):
-#     assert len(group_A) == len(group_B)
-#     group_size = len(group_A)
-
-#     A_addrs = []
-#     B_addrs = []
-#     C_addrs = []
-#     g_sizes = []
-#     g_lds = []
-#     group_C = []
-#     for i in range(group_size):
-#         A = group_A[i]
-#         B = group_B[i]
-#         assert A.shape[1] == B.shape[0]
-#         M, K = A.shape
-#         K, N = B.shape
-#         C = torch.empty((M, N), device=DEVICE, dtype=A.dtype)
-#         group_C.append(C)
-#         A_addrs.append(A.data_ptr())
-#         B_addrs.append(B.data_ptr())
-#         C_addrs.append(C.data_ptr())
-#         g_sizes += [M, N, K]
-#         g_lds += [A.stride(0), B.stride(0), C.stride(0)]
-
-#     # note these are device tensors
-#     d_a_ptrs = torch.tensor(A_addrs, device=DEVICE)
-#     d_b_ptrs = torch.tensor(B_addrs, device=DEVICE)
-#     d_c_ptrs = torch.tensor(C_addrs, device=DEVICE)
-#     d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=DEVICE)
-#     d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=DEVICE)
-#     # we use a fixed number of CTA, and it's auto-tunable
-#     grid = lambda META: (META['NUM_SM'], )
-#     grouped_matmul_kernel[grid](
-#         d_a_ptrs,
-#         d_b_ptrs,
-#         d_c_ptrs,
-#         d_g_sizes,
-#         d_g_lds,
-#         group_size,
-#     )
-
-#     return group_C
-
-
-# group_m = [1024, 512, 256, 128]
-# group_n = [1024, 512, 256, 128]
-# group_k = [1024, 512, 256, 128]
-# group_A = []
-# group_B = []
-# assert len(group_m) == len(group_n)
-# assert len(group_n) == len(group_k)
-# group_size = len(group_m)
-# for i in range(group_size):
-#     M = group_m[i]
-#     N = group_n[i]
-#     K = group_k[i]
-#     A = torch.rand((M, K), device=DEVICE, dtype=torch.float16)
-#     B = torch.rand((K, N), device=DEVICE, dtype=torch.float16)
-#     group_A.append(A)
-#     group_B.append(B)
-
-# tri_out = group_gemm_fn(group_A, group_B)
-# ref_out = [torch.matmul(a, b) for a, b in zip(group_A, group_B)]
-# for i in range(group_size):
-#     assert torch.allclose(ref_out[i], tri_out[i], atol=1e-2, rtol=0)
-
-
-# # only launch the kernel, no tensor preparation here to remove all overhead
-# def triton_perf_fn(a_ptrs, b_ptrs, c_ptrs, sizes, lds, group_size):
-#     grid = lambda META: (META['NUM_SM'], )
-#     grouped_matmul_kernel[grid](
-#         a_ptrs,
-#         b_ptrs,
-#         c_ptrs,
-#         sizes,
-#         lds,
-#         group_size,
-#     )
-
-
-# def torch_perf_fn(group_A, group_B):
-#     for a, b in zip(group_A, group_B):
-#         torch.matmul(a, b)
-
-
-# @triton.testing.perf_report(
-#     triton.testing.Benchmark(
-#         # argument names to use as an x-axis for the plot
-#         x_names=['N'],
-#         x_vals=[2**i for i in range(7, 11)],  # different possible values for `x_name`
-#         line_arg='provider',
-#         # argument name whose value corresponds to a different line in the plot
-#         # possible values for `line_arg``
-#         line_vals=['cublas', 'triton'],
-#         # label name for the lines
-#         line_names=["cuBLAS", "Triton"],
-#         # line styles
-#         styles=[('green', '-'), ('blue', '-')],
-#         ylabel="runtime(ms)",  # label name for the y-axis
-#         plot_name="group-gemm-performance",
-#         # name for the plot. Used also as a file name for saving the plot.
-#         args={},
-#     ))
-
-# def benchmark(N, provider):
-#     group_size = 4
-#     group_A = []
-#     group_B = []
-#     A_addrs = []
-#     B_addrs = []
-#     C_addrs = []
-#     g_sizes = []
-#     g_lds = []
-#     group_C = []
-#     for i in range(group_size):
-#         A = torch.rand((N, N), device=DEVICE, dtype=torch.float16)
-#         B = torch.rand((N, N), device=DEVICE, dtype=torch.float16)
-#         C = torch.empty((N, N), device=DEVICE, dtype=torch.float16)
-#         group_A.append(A)
-#         group_B.append(B)
-#         group_C.append(C)
-#         A_addrs.append(A.data_ptr())
-#         B_addrs.append(B.data_ptr())
-#         C_addrs.append(C.data_ptr())
-#         g_sizes += [N, N, N]
-#         g_lds += [N, N, N]
-
-#     d_a_ptrs = torch.tensor(A_addrs, device=DEVICE)
-#     d_b_ptrs = torch.tensor(B_addrs, device=DEVICE)
-#     d_c_ptrs = torch.tensor(C_addrs, device=DEVICE)
-#     d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=DEVICE)
-#     d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=DEVICE)
-
-#     quantiles = [0.5, 0.2, 0.8]
-#     if provider == 'cublas':
-#         ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
-#     if provider == 'triton':
-#         ms, min_ms, max_ms = triton.testing.do_bench(
-#             lambda: triton_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size), quantiles=quantiles)
-#     return ms, max_ms, min_ms
-
-
-# benchmark.run(show_plots=True, print_data=True)
+    grouped_matmul_kernel[grid](
+        k,
+        n,
+        expert_num,
+        topk_num,
+        token_inputs,
+        token_inputs.stride(0),
+        token_inputs.stride(1),
+        expert_weights,
+        expert_weights.stride(0),
+        expert_weights.stride(1),
+        expert_weights.stride(2),
+        expert_to_token_num,
+        expert_to_token_index,
+        expert_to_token_index.stride(0),
+        out,
+        out.stride(0),
+        out.stride(1),
+        NUM_SM=NUM_SM,
+        BLOCK_SIZE_M=BLOCK_SIZE_M,
+        BLOCK_SIZE_N=BLOCK_SIZE_N,
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        GROUP_SIZE_M=GROUP_SIZE_M,
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+    return
