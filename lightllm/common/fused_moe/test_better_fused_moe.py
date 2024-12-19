@@ -41,15 +41,28 @@ def test_moe_align1():
         dtype=torch.int32,
         device="cuda",
     )
+    topk_weights = torch.tensor([[0.3, 0.7], [0.2, 0.8]], dtype=torch.float32, device="cuda")
     experts_token_num = torch.zeros((4,), dtype=torch.int32, device="cuda")
+    experts_weights = torch.zeros(experts_info.shape, dtype=torch.float32, device="cuda")
 
-    moe_align1(experts_info, experts_token_num, 2)
+    moe_align1(experts_info, topk_weights, experts_weights, experts_token_num, 2)
 
     true_experts_token_num = torch.tensor([1, 2, 1, 0], device="cuda", dtype=torch.int32)
     true_experts_info = torch.tensor(
         [[0, 0, 0, 0], [1, 2, 1, 0], [3, 0, 0, 1], [0, 0, 0, 0]], device="cuda:0", dtype=torch.int32
     )
+    true_experts_weights = torch.tensor(
+        [
+            [0.3000, 0.0000, 0.0000, 0.0000],
+            [0.7000, 0.2000, 0.0000, 0.0000],
+            [0.8000, 0.0000, 0.0000, 0.0000],
+            [0.0000, 0.0000, 0.0000, 0.0000],
+        ],
+        device="cuda",
+        dtype=torch.float32,
+    )
 
+    assert torch.allclose(true_experts_weights, experts_weights)
     assert torch.equal(experts_token_num, true_experts_token_num)
     assert torch.equal(experts_info, true_experts_info)
 
@@ -66,15 +79,41 @@ def test_grouped_matmul():
         dtype=torch.int32,
         device="cuda",
     )
+    experts_to_weights = torch.tensor(
+        [
+            [0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0],
+        ],
+        dtype=torch.float32,
+        device="cuda",
+    )
     expert_weights = torch.randn((2, 1024, 512), dtype=test_dtype, device="cuda") / 10
     topk_num = 1
     out = torch.empty((10, 1024), dtype=test_dtype, device="cuda")
     # warm up
-    grouped_matmul(token_inputs, experts_token_num, experts_to_token_index, expert_weights, topk_num, out)
+    grouped_matmul(
+        token_inputs,
+        experts_token_num,
+        experts_to_token_index,
+        experts_to_weights,
+        expert_weights,
+        topk_num,
+        out,
+        mul_routed_weight=True,
+    )
     torch.cuda.synchronize()
     start = time.time()
     for _ in range(100):
-        grouped_matmul(token_inputs, experts_token_num, experts_to_token_index, expert_weights, topk_num, out)
+        grouped_matmul(
+            token_inputs,
+            experts_token_num,
+            experts_to_token_index,
+            experts_to_weights,
+            expert_weights,
+            topk_num,
+            out,
+            mul_routed_weight=True,
+        )
     torch.cuda.synchronize()
     logger.info(f"grouped_matmul test cost time: {time.time() - start} s")
 
@@ -85,8 +124,8 @@ def test_grouped_matmul():
         ans_list.append(t_ans)
 
     true_out = torch.cat(ans_list, dim=0)
-    logger.info(f"grouped_matmul max delta {torch.max(torch.abs(out - true_out))}")
-    assert torch.allclose(true_out, out, atol=1e-2, rtol=0)
+    logger.info(f"grouped_matmul max delta {torch.max(torch.abs(out - 0.5*true_out))}")
+    assert torch.allclose(0.5 * true_out, out, atol=1e-2, rtol=0)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,29 @@
 """Fused MoE kernel."""
+# Adapted from
+# https://github.com/vllm-project/vllm/blob/v0.6.4.post1/vllm/model_executor/layers/fused_moe/fused_moe.py
+# of the vllm-project/vllm GitHub repository.
+#
+# Copyright 2023 ModelTC Team
+# Copyright 2023 vLLM Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from typing import Any, Callable, Dict, Optional, Tuple
 import torch
 import triton
 import triton.language as tl
+from typing import Any, Callable, Dict, Optional, Tuple
 from lightllm.utils.log_utils import init_logger
+from lightllm.common.vllm_kernel import _custom_ops as ops
 
 logger = init_logger(__name__)
 
@@ -55,6 +74,8 @@ def moe_align(topk_ids: torch.Tensor, out: torch.Tensor):
 
     token_num, topk = topk_ids.shape
     assert out.shape[1] == token_num * topk
+    assert topk_ids.is_contiguous()
+    out.fill_(0)
     grid = (triton.cdiv(token_num, TOPK_BLOCK_M),)
     moe_align_kernel[grid](
         topk_ids,
@@ -72,37 +93,58 @@ def moe_align(topk_ids: torch.Tensor, out: torch.Tensor):
 # one grid handle a expert data
 @triton.jit
 def moe_align1_kernel(
-    experts_info_ptr,
-    experts_stride_m,
-    experts_stride_n,
+    experts_info_ptr,  # [expert_num, token_num * topk_num]
+    experts_info_stride0,
+    experts_info_stride1,
     experts_info_m,
     experts_info_n,
+    topk_weights,  # [token_num * topk_num,]
     expert_token_num_ptr,
+    experts_topk_weight,  # [expert_num, token_num * topk_num]
+    experts_topk_weight_stride0,
+    experts_topk_weight_stride1,
     TOKEN_BLOCK_N: tl.constexpr,
 ):
 
-    pid = tl.program_id(axis=0)
+    expert_id = tl.program_id(axis=0)
     n_range = tl.arange(0, TOKEN_BLOCK_N)
 
-    expert_data = tl.load(experts_info_ptr + pid * experts_stride_m + n_range, mask=n_range < experts_info_n, other=0)
+    topk_weights_data = tl.load(topk_weights + n_range, mask=n_range < experts_info_n, other=0)
+    expert_data = tl.load(
+        experts_info_ptr + expert_id * experts_info_stride0 + n_range, mask=n_range < experts_info_n, other=0
+    )
     cumsum_expert_data = tl.cumsum(expert_data)
 
-    tl.store(expert_token_num_ptr + pid, tl.max(cumsum_expert_data))
+    tl.store(expert_token_num_ptr + expert_id, tl.max(cumsum_expert_data))
     tl.store(
-        experts_info_ptr + pid * experts_stride_m + cumsum_expert_data - 1,
+        experts_info_ptr + expert_id * experts_info_stride0 + cumsum_expert_data - 1,
         n_range,
+        mask=(expert_data == 1) & (n_range < experts_info_n),
+    )
+    tl.store(
+        experts_topk_weight + expert_id * experts_topk_weight_stride0 + cumsum_expert_data - 1,
+        topk_weights_data,
         mask=(expert_data == 1) & (n_range < experts_info_n),
     )
 
 
-def moe_align1(experts_info: torch.Tensor, exports_token_num: torch.Tensor, topk: int):
+def moe_align1(
+    experts_info: torch.Tensor,
+    topk_weights: torch.Tensor,
+    experts_weight_info: torch.Tensor,
+    exports_token_num: torch.Tensor,
+    topk: int,
+):
     """
     experts_info is tensor shape [expert_num, token_num * topk],
+    topk_weights is tensor shape [token_num, topk]
+    experts_weight_info is tensor shape [expert_num, token_num * topk]
     exports_token_num is out tensor, will get expert need handle token num.
 
     experts_info will change inplace.
     demo:
     topids = [[0, 1], [1, 3]]
+    topk_weights = [[0.3, 0.7], [0.2, 0.8]]
     expert_num = 4, token_num = 2, topk = 2
     experts_info = [
         [1, 0, 0, 0],
@@ -117,12 +159,19 @@ def moe_align1(experts_info: torch.Tensor, exports_token_num: torch.Tensor, topk
         [3, x, x, x],
         [x, x, x, x]
     ]
+    experts_weight_info = [
+        [0.3,  x, x, x],
+        [0.7, 0.2, x, x],
+        [0.8, x, x, x],
+        [x,  x,  x,  x]
+    ]
 
     exports_token_num = [1, 2, 1, 0]
     """
     expert_num, token_num_mul_topk = experts_info.shape
-    assert token_num_mul_topk < 8072 * 2, "need split to handle seq len too long"
+    assert token_num_mul_topk < 8072 * 8, "need split to handle seq len too long"
     assert exports_token_num.shape[0] == expert_num
+    assert topk_weights.is_contiguous()
     TOKEN_BLOCK_N = triton.next_power_of_2(token_num_mul_topk)
     grid = (expert_num,)
     moe_align1_kernel[grid](
@@ -131,7 +180,11 @@ def moe_align1(experts_info: torch.Tensor, exports_token_num: torch.Tensor, topk
         experts_info.stride(1),
         expert_num,
         token_num_mul_topk,
+        topk_weights,
         exports_token_num,
+        experts_weight_info,
+        experts_weight_info.stride(0),
+        experts_weight_info.stride(1),
         TOKEN_BLOCK_N=TOKEN_BLOCK_N,
         num_warps=8,
         num_stages=1,
@@ -151,6 +204,9 @@ def grouped_matmul_kernel(
     weight_stride_0,
     weight_stride_1,
     weight_stride_2,
+    expert_to_weights_ptr,  # [expert_num, token_num * topk]
+    expert_to_weights_stride0,
+    expert_to_weights_stride1,
     expert_to_token_num,  # [expert_num]
     expert_to_token_index,  # [expert_num, token_num * topk_num]
     expert_to_token_index_stride_0,
@@ -164,6 +220,7 @@ def grouped_matmul_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    MUL_ROUTED_WEIGHT: tl.constexpr = False,
 ):
     tile_idx = tl.program_id(0)
     last_problem_end = 0
@@ -204,6 +261,12 @@ def grouped_matmul_kernel(
                 mask=offs_am < cur_m,
                 other=0,
             )
+            if MUL_ROUTED_WEIGHT:
+                a_m_scale = tl.load(
+                    expert_to_weights_ptr + expert_id * expert_to_weights_stride0 + offs_am,
+                    mask=offs_am < cur_m,
+                    other=0.0,
+                )
 
             offs_bn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             offs_k = tl.arange(0, BLOCK_SIZE_K)
@@ -222,6 +285,9 @@ def grouped_matmul_kernel(
                 b_ptrs += BLOCK_SIZE_K
                 offs_k += BLOCK_SIZE_K
 
+            if MUL_ROUTED_WEIGHT:
+                accumulator *= a_m_scale[:, None]
+
             c = accumulator.to(out_dtype)
 
             offs_cn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
@@ -237,9 +303,11 @@ def grouped_matmul(
     token_inputs: torch.Tensor,
     expert_to_token_num: torch.Tensor,
     expert_to_token_index: torch.Tensor,
+    expert_to_weights: torch.Tensor,
     expert_weights: torch.Tensor,
     topk_num: int,
     out: torch.Tensor,
+    mul_routed_weight: bool,
 ):
     """
     token_inputs is tensor shape [token_num, hidden_dim],
@@ -259,6 +327,11 @@ def grouped_matmul(
 
     expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
+    assert expert_to_token_index.shape == expert_to_weights.shape
+    assert token_inputs.is_contiguous()
+    assert expert_to_token_num.is_contiguous()
+    assert expert_to_weights.is_contiguous()
+    assert expert_weights.is_contiguous()
 
     grid = (NUM_SM,)
 
@@ -274,6 +347,9 @@ def grouped_matmul(
         expert_weights.stride(0),
         expert_weights.stride(1),
         expert_weights.stride(2),
+        expert_to_weights,
+        expert_to_weights.stride(0),
+        expert_to_weights.stride(1),
         expert_to_token_num,
         expert_to_token_index,
         expert_to_token_index.stride(0),
@@ -285,130 +361,102 @@ def grouped_matmul(
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         GROUP_SIZE_M=GROUP_SIZE_M,
+        MUL_ROUTED_WEIGHT=mul_routed_weight,
         num_warps=num_warps,
         num_stages=num_stages,
     )
     return
 
 
-# def fused_experts_impl(
-#     hidden_states: torch.Tensor,
-#     w1: torch.Tensor,
-#     w2: torch.Tensor,
-#     topk_weights: torch.Tensor,
-#     topk_ids: torch.Tensor,
-#     inplace: bool = False,
-#     use_fp8_w8a8: bool = False,
-#     use_int8_w8a16: bool = False,
-#     w1_scale: Optional[torch.Tensor] = None,
-#     w2_scale: Optional[torch.Tensor] = None,
-#     a1_scale: Optional[torch.Tensor] = None,
-#     a2_scale: Optional[torch.Tensor] = None,
-#     alloc_tensor_func=torch.empty,
-# ):
-#     # Check constraints.
-#     assert hidden_states.shape[1] == w1.shape[2], "Hidden size mismatch"
-#     assert topk_weights.shape == topk_ids.shape, "topk shape mismatch"
-#     assert hidden_states.is_contiguous(), "Hidden_states must be contiguous"
-#     assert w1.is_contiguous(), "Expert weights1 must be contiguous"
-#     assert w2.is_contiguous(), "Expert weights2 must be contiguous"
-#     assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
+def fused_experts_impl(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    inplace: bool = False,
+    use_fp8_w8a8: bool = False,
+    use_int8_w8a16: bool = False,
+    w1_scale: Optional[torch.Tensor] = None,
+    w2_scale: Optional[torch.Tensor] = None,
+    a1_scale: Optional[torch.Tensor] = None,
+    a2_scale: Optional[torch.Tensor] = None,
+    alloc_tensor_func=torch.empty,
+):
+    # Check constraints.
+    assert hidden_states.shape[1] == w1.shape[2], "Hidden size mismatch"
+    assert topk_weights.shape == topk_ids.shape, "topk shape mismatch"
+    assert hidden_states.is_contiguous(), "Hidden_states must be contiguous"
+    assert w1.is_contiguous(), "Expert weights1 must be contiguous"
+    assert w2.is_contiguous(), "Expert weights2 must be contiguous"
+    assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
 
-#     num_tokens, _ = hidden_states.shape
-#     E, N, _ = w1.shape
-#     # We execute the fused_moe kernel in chunks to circumvent this issue:
-#     # https://github.com/vllm-project/vllm/issues/5938
-#     CHUNK_SIZE = 8 * 1024
-#     M = min(num_tokens, CHUNK_SIZE)
+    num_tokens, _ = hidden_states.shape
+    E, N, _ = w1.shape
+    CHUNK_SIZE = 8 * 1024
+    topk_num = topk_ids.shape[1]
+    M = min(num_tokens, CHUNK_SIZE)
 
-#     intermediate_cache1 = alloc_tensor_func(
-#         (M, topk_ids.shape[1], N), device=hidden_states.device, dtype=hidden_states.dtype
-#     )
-#     intermediate_cache2 = alloc_tensor_func(
-#         (M * topk_ids.shape[1], N // 2), device=hidden_states.device, dtype=hidden_states.dtype
-#     )
-#     intermediate_cache3 = alloc_tensor_func(
-#         (M, topk_ids.shape[1], w2.shape[1]), device=hidden_states.device, dtype=hidden_states.dtype
-#     )
+    intermediate_cache1 = alloc_tensor_func((M, topk_num, N), device=hidden_states.device, dtype=hidden_states.dtype)
+    intermediate_cache2 = alloc_tensor_func(
+        (M * topk_num, N // 2), device=hidden_states.device, dtype=hidden_states.dtype
+    )
+    intermediate_cache3 = alloc_tensor_func(
+        (M, topk_num, w2.shape[1]), device=hidden_states.device, dtype=hidden_states.dtype
+    )
 
-#     compute_type = tl.bfloat16 if hidden_states.dtype == torch.bfloat16 else tl.float16
+    # compute_type = tl.bfloat16 if hidden_states.dtype == torch.bfloat16 else tl.float16
 
-#     if inplace:
-#         out_hidden_states = hidden_states
-#     else:
-#         out_hidden_states = alloc_tensor_func(
-#             hidden_states.shape, device=hidden_states.device, dtype=hidden_states.dtype
-#         )
+    if inplace:
+        out_hidden_states = hidden_states
+    else:
+        out_hidden_states = alloc_tensor_func(
+            hidden_states.shape, device=hidden_states.device, dtype=hidden_states.dtype
+        )
 
-#     for chunk in range((num_tokens // CHUNK_SIZE) + 1):
-#         begin_chunk_idx, end_chunk_idx = (chunk * CHUNK_SIZE, min((chunk + 1) * CHUNK_SIZE, num_tokens))
-#         curr_hidden_states = hidden_states[begin_chunk_idx:end_chunk_idx]
-#         tokens_in_chunk, _ = curr_hidden_states.shape
+    for chunk in range(triton.cdiv(num_tokens, CHUNK_SIZE)):
+        begin_chunk_idx, end_chunk_idx = (chunk * CHUNK_SIZE, min((chunk + 1) * CHUNK_SIZE, num_tokens))
+        curr_hidden_states = hidden_states[begin_chunk_idx:end_chunk_idx]
+        tokens_in_chunk, _ = curr_hidden_states.shape
 
-#         if tokens_in_chunk == 0:
-#             break
+        intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
+        intermediate_cache2 = intermediate_cache2[:tokens_in_chunk]
+        intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
 
-#         if tokens_in_chunk < CHUNK_SIZE and chunk > 0:
-#             # Adjust the intermediate cache size and config for the last
-#             # chunk. Note that in most cases we only have one chunk
-#             # so the cache size and config are already set correctly and
-#             # do not need to be adjusted.
-#             intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
-#             intermediate_cache2 = intermediate_cache2[:tokens_in_chunk]
-#             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
-#             config = get_config_func(tokens_in_chunk)
+        curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
+        curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
 
-#         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
-#         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
+        expert_to_tokens = torch.empty((E, topk_num * tokens_in_chunk), dtype=torch.int32, device="cuda")
+        expert_to_weights = torch.empty((E, topk_num * tokens_in_chunk), dtype=torch.float32, device="cuda")
+        moe_align(topk_ids=curr_topk_ids, out=expert_to_tokens)
+        expert_to_token_num = torch.empty((E,), dtype=torch.int32, device="cuda")
+        moe_align1(expert_to_tokens, curr_topk_weights, expert_to_weights, expert_to_token_num, topk=topk_num)
 
-#         # 注意 moe_align_block_size 函数不能使用框架自己的缓存tensor管理框架
-#         # 主要是其申请的tensor大小没有与batch size的线性关系，导致与缓存tensor管理
-#         # 框架存在了一些不兼容的情况
-#         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-#             curr_topk_ids, config["BLOCK_SIZE_M"], E, alloc_tensor_func
-#         )
+        grouped_matmul(
+            curr_hidden_states,
+            expert_to_token_num,
+            expert_to_tokens,
+            expert_to_weights=expert_to_weights,
+            expert_weights=w1,
+            topk_num=topk_num,
+            out=intermediate_cache1.view(-1, N),
+            mul_routed_weight=False,
+        )
 
-#         invoke_fused_moe_kernel(
-#             curr_hidden_states,
-#             w1,
-#             intermediate_cache1,
-#             a1_scale,
-#             w1_scale,
-#             curr_topk_weights,
-#             curr_topk_ids,
-#             sorted_token_ids,
-#             expert_ids,
-#             num_tokens_post_padded,
-#             False,
-#             topk_ids.shape[1],
-#             config,
-#             compute_type=compute_type,
-#             use_fp8_w8a8=use_fp8_w8a8,
-#             use_int8_w8a16=use_int8_w8a16,
-#         )
+        ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
 
-#         ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+        grouped_matmul(
+            intermediate_cache2,
+            expert_to_token_num,
+            expert_to_tokens,
+            expert_to_weights=expert_to_weights,
+            expert_weights=w2,
+            topk_num=1,
+            out=intermediate_cache3.view(-1, w2.shape[1]),
+            mul_routed_weight=True,
+        )
 
-#         invoke_fused_moe_kernel(
-#             intermediate_cache2,
-#             w2,
-#             intermediate_cache3,
-#             a2_scale,
-#             w2_scale,
-#             curr_topk_weights,
-#             curr_topk_ids,
-#             sorted_token_ids,
-#             expert_ids,
-#             num_tokens_post_padded,
-#             True,
-#             1,
-#             config,
-#             compute_type=compute_type,
-#             use_fp8_w8a8=use_fp8_w8a8,
-#             use_int8_w8a16=use_int8_w8a16,
-#         )
-
-#         ops.moe_sum(
-#             intermediate_cache3.view(*intermediate_cache3.shape), out_hidden_states[begin_chunk_idx:end_chunk_idx]
-#         )
-#     return out_hidden_states
+        ops.moe_sum(
+            intermediate_cache3.view(*intermediate_cache3.shape), out_hidden_states[begin_chunk_idx:end_chunk_idx]
+        )
+    return out_hidden_states
