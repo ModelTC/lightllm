@@ -319,18 +319,13 @@ class RouterManager:
         return
 
     def merge_rpyc_dict_ans(self, ans: List):
-        ans_: List[Dict] = []
         if self.world_size != 1:
-            for d_ans in ans[0 : self.dp_size]:
-                d_ans = obtain(d_ans)
-                if len(d_ans) != 0:
-                    ans_.append(d_ans)
-        else:
-            ans_ = ans
+            ans: List[Dict] = [obtain(e) for e in ans[0 : self.dp_size]]
+
         if self.dp_size == 1:
-            return ans_[0]
+            return ans[0]
         else:
-            return {k: v for t_ans in ans_ for k, v in t_ans.items()}
+            return {k: v for t_ans in ans for k, v in t_ans.items()}
 
     async def _init_batch(self, batch: Batch):
         reqs = [r.to_rpc_obj() for r in batch.reqs]

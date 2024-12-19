@@ -23,7 +23,7 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
             local_token_num = input_ids.size(0)
             all_token_num = [torch.zeros(1, dtype=torch.int32).to(input_ids.device) for _ in range(world_size)]
             dist.all_gather(all_token_num, torch.tensor([local_token_num], dtype=torch.int32).to(input_ids.device))
-            all_token_num = torch.cat(all_token_num, dim=0)  # __~J: (world_size,)
+            all_token_num = torch.cat(all_token_num, dim=0)
             self.all_token_num = all_token_num.sum().cpu().numpy()
             cumsum_token_num = torch.cumsum(all_token_num, dim=0).cpu().numpy()
             self.all_start_idx = cumsum_token_num - all_token_num.cpu().numpy()

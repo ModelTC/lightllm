@@ -261,7 +261,6 @@ class InferBatch:
         req_manager: ReqManager,
         vocab_size: int,
         radix_cache: RadixCache = None,
-        dp_padding_batch_size: int = 0,
     ):
 
         request_ids = []
