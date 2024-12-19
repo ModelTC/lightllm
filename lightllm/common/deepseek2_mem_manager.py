@@ -12,7 +12,8 @@ logger = init_logger(__name__)
 class Deepseek2MemoryManager(MemoryManager):
     def __init__(self, size, dtype, head_num, head_dim, layer_num, always_copy=False, mem_fraction=0.9):
         super().__init__(size, dtype, head_num, head_dim, layer_num, always_copy, mem_fraction)
-        self.holding_size = int(os.getenv("DP_HOLDSIZE", 0))
+        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
+        self.holding_size = 1 if self.enable_dp else 0
         self.mem_state[0 : self.holding_size] = 1
         self.can_use_mem_size -= self.holding_size
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
