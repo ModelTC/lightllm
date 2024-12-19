@@ -1,5 +1,16 @@
 import torch
-from .better_fused_moe import moe_align, moe_align1
+import time
+from .better_fused_moe import moe_align, moe_align1, grouped_matmul
+from lightllm.utils.log_utils import init_logger
+
+seed = 42
+torch.manual_seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+logger = init_logger(__name__)
 
 
 def test_moe_align():
@@ -43,6 +54,42 @@ def test_moe_align1():
     assert torch.equal(experts_info, true_experts_info)
 
 
+def test_grouped_matmul():
+    test_dtype = torch.bfloat16
+    token_inputs = torch.randn((10, 512), dtype=test_dtype, device="cuda") / 10
+    experts_token_num = torch.tensor([1, 9], dtype=torch.int32, device="cuda")
+    experts_to_token_index = torch.tensor(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 0],
+        ],
+        dtype=torch.int32,
+        device="cuda",
+    )
+    expert_weights = torch.randn((2, 512, 1024), dtype=test_dtype, device="cuda") / 10
+    topk_num = 1
+    out = torch.empty((10, 1024), dtype=test_dtype, device="cuda")
+    # warm up
+    grouped_matmul(token_inputs, experts_token_num, experts_to_token_index, expert_weights, topk_num, out)
+    torch.cuda.synchronize()
+    start = time.time()
+    for _ in range(100):
+        grouped_matmul(token_inputs, experts_token_num, experts_to_token_index, expert_weights, topk_num, out)
+    torch.cuda.synchronize()
+    logger.info(f"grouped_matmul test cost time: {time.time() - start} s")
+
+    ans_list = []
+    ans_list.append(torch.matmul(token_inputs[0:1, :], expert_weights[0]))
+    for i in range(9):
+        t_ans = torch.matmul(token_inputs[(i + 1) : (i + 2), :], expert_weights[1])
+        ans_list.append(t_ans)
+
+    true_out = torch.cat(ans_list, dim=0)
+    logger.info(f"grouped_matmul max delta {torch.max(torch.abs(out - true_out))}")
+    assert torch.allclose(true_out, out, atol=1e-2, rtol=0)
+
+
 if __name__ == "__main__":
     test_moe_align()
     test_moe_align1()
+    test_grouped_matmul()
