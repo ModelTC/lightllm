@@ -70,7 +70,7 @@ def moe_align(topk_ids: torch.Tensor, out: torch.Tensor):
     [0, 0, 0, 0, 0, 0, 0, 0, 1],
     ]
     """
-    TOPK_BLOCK_M = 128
+    TOPK_BLOCK_M = 256
 
     token_num, topk = topk_ids.shape
     assert out.shape[1] == token_num * topk
@@ -308,6 +308,7 @@ def grouped_matmul(
     topk_num: int,
     out: torch.Tensor,
     mul_routed_weight: bool,
+    **run_config,
 ):
     """
     token_inputs is tensor shape [token_num, hidden_dim],
@@ -316,14 +317,22 @@ def grouped_matmul(
     expert_weights is tensor shape [expert_num, out_dim, hidden_dim]
     out is tensor shape [token_num * topk_num, out_dim]
     """
-
-    NUM_SM = 128
-    BLOCK_SIZE_M = 16
-    BLOCK_SIZE_N = 32
-    BLOCK_SIZE_K = 32
-    GROUP_SIZE_M = 1
-    num_stages = 8
-    num_warps = 4
+    if run_config:
+        NUM_SM = run_config["NUM_SM"]
+        BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
+        BLOCK_SIZE_N = run_config["BLOCK_SIZE_N"]
+        BLOCK_SIZE_K = run_config["BLOCK_SIZE_K"]
+        GROUP_SIZE_M = run_config["GROUP_SIZE_M"]
+        num_warps = run_config["num_warps"]
+        num_stages = run_config["num_stages"]
+    else:
+        NUM_SM = 128
+        BLOCK_SIZE_M = 16
+        BLOCK_SIZE_N = 64
+        BLOCK_SIZE_K = 64
+        GROUP_SIZE_M = 3
+        num_warps = 8
+        num_stages = 3
 
     expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
@@ -382,6 +391,7 @@ def fused_experts_impl(
     a1_scale: Optional[torch.Tensor] = None,
     a2_scale: Optional[torch.Tensor] = None,
     alloc_tensor_func=torch.empty,
+    **run_config,
 ):
     # Check constraints.
     assert hidden_states.shape[1] == w1.shape[2], "Hidden size mismatch"
@@ -441,6 +451,7 @@ def fused_experts_impl(
             topk_num=topk_num,
             out=intermediate_cache1.view(-1, N),
             mul_routed_weight=False,
+            **run_config,
         )
 
         ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
@@ -454,6 +465,7 @@ def fused_experts_impl(
             topk_num=1,
             out=intermediate_cache3.view(-1, w2.shape[1]),
             mul_routed_weight=True,
+            **run_config,
         )
 
         ops.moe_sum(
