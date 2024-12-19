@@ -25,7 +25,7 @@ import sys
 import os
 import rpyc
 import pickle
-from .build_prompt import build_prompt
+from .build_prompt import build_prompt, init_tokenizer
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import ujson as json
@@ -384,6 +384,7 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn"),  # this code will not be ok for settings to fork to subprocess
     parser = make_argument_parser()
     args = parser.parse_args()
+    init_tokenizer(args)  # for openai api
     g_objs.args = args
     from .api_start import normal_or_p_d_start, pd_master_start
 
