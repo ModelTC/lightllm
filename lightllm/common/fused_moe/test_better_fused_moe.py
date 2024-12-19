@@ -66,7 +66,7 @@ def test_grouped_matmul():
         dtype=torch.int32,
         device="cuda",
     )
-    expert_weights = torch.randn((2, 512, 1024), dtype=test_dtype, device="cuda") / 10
+    expert_weights = torch.randn((2, 1024, 512), dtype=test_dtype, device="cuda") / 10
     topk_num = 1
     out = torch.empty((10, 1024), dtype=test_dtype, device="cuda")
     # warm up
@@ -79,9 +79,9 @@ def test_grouped_matmul():
     logger.info(f"grouped_matmul test cost time: {time.time() - start} s")
 
     ans_list = []
-    ans_list.append(torch.matmul(token_inputs[0:1, :], expert_weights[0]))
+    ans_list.append(torch.matmul(token_inputs[0:1, :], expert_weights[0].transpose(0, 1)))
     for i in range(9):
-        t_ans = torch.matmul(token_inputs[(i + 1) : (i + 2), :], expert_weights[1])
+        t_ans = torch.matmul(token_inputs[(i + 1) : (i + 2), :], expert_weights[1].transpose(0, 1))
         ans_list.append(t_ans)
 
     true_out = torch.cat(ans_list, dim=0)

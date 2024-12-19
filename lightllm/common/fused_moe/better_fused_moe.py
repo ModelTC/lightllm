@@ -147,7 +147,7 @@ def grouped_matmul_kernel(
     token_ptr,  # [token_num, hidden_dim]
     token_stride_0,
     token_stride_1,
-    weights_ptr,  # [expert_num, K, N]
+    weights_ptr,  # [expert_num, N, K]
     weight_stride_0,
     weight_stride_1,
     weight_stride_2,
@@ -209,7 +209,7 @@ def grouped_matmul_kernel(
             offs_k = tl.arange(0, BLOCK_SIZE_K)
 
             a_ptrs = token_ptr + (a_m_index // topk_num)[:, None] * token_stride_0 + offs_k[None, :]
-            b_ptrs = weights_ptr + weight_stride_0 * expert_id + offs_k[:, None] * weight_stride_1 + offs_bn[None, :]
+            b_ptrs = weights_ptr + weight_stride_0 * expert_id + offs_k[:, None] + offs_bn[None, :] * weight_stride_1
             accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
             for _ in range(0, tl.cdiv(k, BLOCK_SIZE_K)):
                 # hint to Triton compiler to do proper loop pipelining
@@ -219,14 +219,13 @@ def grouped_matmul_kernel(
                 b = tl.load(b_ptrs, mask=(offs_bn[None, :] < n) & (offs_k[:, None] < k))
                 accumulator += tl.dot(a, b)
                 a_ptrs += BLOCK_SIZE_K
-                b_ptrs += BLOCK_SIZE_K * weight_stride_1
+                b_ptrs += BLOCK_SIZE_K
                 offs_k += BLOCK_SIZE_K
 
             c = accumulator.to(out_dtype)
 
             offs_cn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             c_ptrs = out_ptr + a_m_index[:, None] * out_stride_0 + offs_cn[None, :]
-
             tl.store(c_ptrs, c, mask=(offs_am[:, None] < cur_m) & (offs_cn[None, :] < n))
             tile_idx += NUM_SM
 
@@ -246,7 +245,7 @@ def grouped_matmul(
     token_inputs is tensor shape [token_num, hidden_dim],
     expert_to_token_num is tensor shape [expert_num],
     expert_to_token_index is tensor shape [expert_num, token_num * topk_num],
-    expert_weights is tensor shape [expert_num, hidden_dim, out_dim]
+    expert_weights is tensor shape [expert_num, out_dim, hidden_dim]
     out is tensor shape [token_num * topk_num, out_dim]
     """
 
@@ -258,7 +257,7 @@ def grouped_matmul(
     num_stages = 8
     num_warps = 4
 
-    expert_num, k, n = expert_weights.shape
+    expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
 
     grid = (NUM_SM,)
@@ -290,3 +289,126 @@ def grouped_matmul(
         num_stages=num_stages,
     )
     return
+
+
+# def fused_experts_impl(
+#     hidden_states: torch.Tensor,
+#     w1: torch.Tensor,
+#     w2: torch.Tensor,
+#     topk_weights: torch.Tensor,
+#     topk_ids: torch.Tensor,
+#     inplace: bool = False,
+#     use_fp8_w8a8: bool = False,
+#     use_int8_w8a16: bool = False,
+#     w1_scale: Optional[torch.Tensor] = None,
+#     w2_scale: Optional[torch.Tensor] = None,
+#     a1_scale: Optional[torch.Tensor] = None,
+#     a2_scale: Optional[torch.Tensor] = None,
+#     alloc_tensor_func=torch.empty,
+# ):
+#     # Check constraints.
+#     assert hidden_states.shape[1] == w1.shape[2], "Hidden size mismatch"
+#     assert topk_weights.shape == topk_ids.shape, "topk shape mismatch"
+#     assert hidden_states.is_contiguous(), "Hidden_states must be contiguous"
+#     assert w1.is_contiguous(), "Expert weights1 must be contiguous"
+#     assert w2.is_contiguous(), "Expert weights2 must be contiguous"
+#     assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
+
+#     num_tokens, _ = hidden_states.shape
+#     E, N, _ = w1.shape
+#     # We execute the fused_moe kernel in chunks to circumvent this issue:
+#     # https://github.com/vllm-project/vllm/issues/5938
+#     CHUNK_SIZE = 8 * 1024
+#     M = min(num_tokens, CHUNK_SIZE)
+
+#     intermediate_cache1 = alloc_tensor_func(
+#         (M, topk_ids.shape[1], N), device=hidden_states.device, dtype=hidden_states.dtype
+#     )
+#     intermediate_cache2 = alloc_tensor_func(
+#         (M * topk_ids.shape[1], N // 2), device=hidden_states.device, dtype=hidden_states.dtype
+#     )
+#     intermediate_cache3 = alloc_tensor_func(
+#         (M, topk_ids.shape[1], w2.shape[1]), device=hidden_states.device, dtype=hidden_states.dtype
+#     )
+
+#     compute_type = tl.bfloat16 if hidden_states.dtype == torch.bfloat16 else tl.float16
+
+#     if inplace:
+#         out_hidden_states = hidden_states
+#     else:
+#         out_hidden_states = alloc_tensor_func(
+#             hidden_states.shape, device=hidden_states.device, dtype=hidden_states.dtype
+#         )
+
+#     for chunk in range((num_tokens // CHUNK_SIZE) + 1):
+#         begin_chunk_idx, end_chunk_idx = (chunk * CHUNK_SIZE, min((chunk + 1) * CHUNK_SIZE, num_tokens))
+#         curr_hidden_states = hidden_states[begin_chunk_idx:end_chunk_idx]
+#         tokens_in_chunk, _ = curr_hidden_states.shape
+
+#         if tokens_in_chunk == 0:
+#             break
+
+#         if tokens_in_chunk < CHUNK_SIZE and chunk > 0:
+#             # Adjust the intermediate cache size and config for the last
+#             # chunk. Note that in most cases we only have one chunk
+#             # so the cache size and config are already set correctly and
+#             # do not need to be adjusted.
+#             intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
+#             intermediate_cache2 = intermediate_cache2[:tokens_in_chunk]
+#             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
+#             config = get_config_func(tokens_in_chunk)
+
+#         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
+#         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
+
+#         # 注意 moe_align_block_size 函数不能使用框架自己的缓存tensor管理框架
+#         # 主要是其申请的tensor大小没有与batch size的线性关系，导致与缓存tensor管理
+#         # 框架存在了一些不兼容的情况
+#         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+#             curr_topk_ids, config["BLOCK_SIZE_M"], E, alloc_tensor_func
+#         )
+
+#         invoke_fused_moe_kernel(
+#             curr_hidden_states,
+#             w1,
+#             intermediate_cache1,
+#             a1_scale,
+#             w1_scale,
+#             curr_topk_weights,
+#             curr_topk_ids,
+#             sorted_token_ids,
+#             expert_ids,
+#             num_tokens_post_padded,
+#             False,
+#             topk_ids.shape[1],
+#             config,
+#             compute_type=compute_type,
+#             use_fp8_w8a8=use_fp8_w8a8,
+#             use_int8_w8a16=use_int8_w8a16,
+#         )
+
+#         ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+
+#         invoke_fused_moe_kernel(
+#             intermediate_cache2,
+#             w2,
+#             intermediate_cache3,
+#             a2_scale,
+#             w2_scale,
+#             curr_topk_weights,
+#             curr_topk_ids,
+#             sorted_token_ids,
+#             expert_ids,
+#             num_tokens_post_padded,
+#             True,
+#             1,
+#             config,
+#             compute_type=compute_type,
+#             use_fp8_w8a8=use_fp8_w8a8,
+#             use_int8_w8a16=use_int8_w8a16,
+#         )
+
+#         ops.moe_sum(
+#             intermediate_cache3.view(*intermediate_cache3.shape), out_hidden_states[begin_chunk_idx:end_chunk_idx]
+#         )
+#     return out_hidden_states
