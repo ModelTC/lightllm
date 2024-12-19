@@ -69,6 +69,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.enable_opt_decoding_mha = os.getenv("ENABLE_OPT_DECODE_MHA", "False").upper() in ["ON", "TRUE", "1"]
         self.mla_type = "ACCM"
 
+        self.tp_split_ = not os.environ.get("EDP_MODE_ENABLED") == "true"
+
         return
 
     def _bind_attention(self):
@@ -78,8 +80,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
         self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
         if self.is_moe:
-            if os.environ.get("ETP_MODE_ENABLED") == "true":
-                self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_etp, self)
+            if os.environ.get("ETP_MODE_ENABLED") == "true" or os.environ.get("EDP_MODE_ENABLED") == "true":
+                self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_etp_edp, self)
             else:
                 self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
         else:
@@ -155,7 +157,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     ):
         num_local_heads = self.num_heads
         num_local_kv_heads = self.num_kv_heads
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             num_local_heads //= self.world_size_
             num_local_kv_heads //= self.world_size_
         if infer_state.use_dynamic_prompt_cache:
@@ -187,7 +189,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         q_nope, q_rope = q
         num_local_heads = self.num_heads
         num_local_kv_heads = self.num_kv_heads
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             num_local_heads //= self.world_size_
             num_local_kv_heads //= self.world_size_
         # ACC
@@ -275,6 +277,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, q: Tuple[torch.Tensor, torch.Tensor], kv, infer_state: Deepseek2InferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
         q_nope, q_rope = q
+
+        # not support edp yet
+        # assert self.tp_split_ == True
+
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
 
         if infer_state.use_dynamic_prompt_cache:
@@ -440,7 +446,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             torch.cuda.default_stream().wait_event(infer_state.end_event)
         return o_tensor
 
-    def _moe_ffn_etp(
+    def _moe_ffn_etp_edp(
         self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
         world_size_ = self.world_size_
@@ -460,17 +466,25 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         final_hidden_states = torch.empty(
             num_tokens, hidden_dim, device=hidden_states.device, dtype=hidden_states.dtype
         )
-
-        # router_logits_len = hidden_states.shape[0]*layer_weight.moe_gate.shape[1]
-        router_logits = layer_weight.moe_gate.mm(hidden_states)
+      
 
         # now some parameter is not supported yet
         # assert gating_normalize_prob is False
         # assert num_expert_groups<=1
+        is_etp = True
+        if os.environ.get("ETP_MODE_ENABLED") == "true":
+            router_logits = layer_weight.moe_gate.mm(hidden_states)  
+        elif os.environ.get("EDP_MODE_ENABLED") == "true":
+            router_logits = infer_state.mem_manager.work_buffer[ -(num_tokens*num_experts_per_token+hidden_states.nelement()):-hidden_states.nelement()].view( num_tokens ,num_experts_per_token)
+            router_logits = layer_weight.moe_gate.mm(hidden_states,out=router_logits)
+            is_etp = False
 
-        import lightllm_moe_etp_kernel
+        #print(" hid state addr ", infer_state.mem_manager.work_buffer.data_ptr(),
+        #    hidden_states.data_ptr(),
+        #    hidden_states.shape()
+        #    )
 
-        lightllm_moe_etp_kernel.moe_fused_all(
+        moe_fused_all(
             router_logits.contiguous(),
             hidden_states.contiguous(),
             layer_weight.gate_up_proj.weight.contiguous(),  # transpose
@@ -490,8 +504,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             layer_weight.gate_up_proj.weight.size(1) // 2,
             layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
             self.n_shared_experts is not None,
+            is_etp
         )
 
-        router_logits = None
+        if os.environ.get("ETP_MODE_ENABLED") == "true":
+            router_logits = None
 
         return final_hidden_states.view(num_tokens, hidden_dim)
