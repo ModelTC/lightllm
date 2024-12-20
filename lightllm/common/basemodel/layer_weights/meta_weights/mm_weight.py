@@ -319,3 +319,73 @@ class COLBMMWeight(BMMWeight):
 
     def _post_load_weights(self):
         self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)
+
+
+class COLMMWeightNoTp(MMWeight):
+    def __init__(self, weight_name, data_type, split_n_embed, bias_name=None):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name)
+        self.start = 0
+        self.end = split_n_embed
+
+    def load_hf_weights(self, weights):
+        weight = None
+        if self.weight_name in weights:
+            weight = weights[self.weight_name].to(self.data_type_)
+            self.weight = weight[:, self.start : self.end]
+        if self.bias_name in weights:
+            bias = weights[self.bias_name]
+            self.bias = bias.to(self.data_type_).cuda(self.tp_rank_)
+        if weight is None:
+            return
+        self._post_load_weights()
+        return
+
+
+class MultiCOLMMWeightNoTp(MultiROWMMWeightNoTP):
+    def __init__(self, weight_names, data_type, split_n_embed, bias_names=[]):
+        super().__init__(weight_names, data_type, split_n_embed, bias_names)
+
+    def load_hf_weights(self, weights):
+        weight = None
+        for i in range(len(self.weight_names)):
+            if self.weight_names[i] in weights:
+                weight = weights[self.weight_names[i]].to(self.data_type_)
+                self.weights[i] = weight[:, self.starts[i] : self.ends[i]]
+            if self.has_bias and self.bias_names[i] in weights:
+                bias = weights[self.bias_names[i]].to(self.data_type_)
+                self.biases[i] = bias[:, self.starts[i] : self.ends[i]]
+        self._fuse()
+        return
+
+
+class ROWBMMWeightNoTp(BMMWeight):
+    load_hf_weights = ROWMMWeight.load_hf_weights
+
+    def __init__(
+        self,
+        weight_name,
+        data_type,
+        split_n_embed,
+        bias_name=None,
+    ):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name)
+        self.start = 0
+        self.end = split_n_embed
+
+
+class COLBMMWeightNoTp(BMMWeight):
+    load_hf_weights = COLMMWeightNoTp.load_hf_weights
+
+    def __init__(
+        self,
+        weight_name,
+        data_type,
+        split_n_embed,
+        bias_name=None,
+    ):
+        super().__init__(weight_name, data_type, split_n_embed, bias_name)
+        self.start = 0
+        self.end = split_n_embed
+
+    def _post_load_weights(self):
+        self.weight = self.weight.transpose(0, 1).cuda(self.tp_rank_)

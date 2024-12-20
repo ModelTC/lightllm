@@ -12,6 +12,8 @@ from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.common.basemodel import PostLayerInferTpl
 from lightllm.utils.infer_utils import mark_cost_time
 
+import os
+
 
 class LlamaPostLayerInfer(PostLayerInferTpl):
     """ """
@@ -21,6 +23,8 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         self.eps_ = network_config["rms_norm_eps"]
         self.vocab_size_ = network_config["vocab_size"]
         self.embed_dim_ = network_config["n_embed"]
+        self.tp_split_ = not os.environ.get("EDP_MODE_ENABLED") == "true"
+
         return
 
     def _norm(self, input, infer_state, layer_weight: LlamaPreAndPostLayerWeight) -> torch.Tensor:
@@ -89,7 +93,7 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         torch.mm(layer_weight.lm_head_weight_, last_input, out=logic_batch)
 
         last_input = None
-        if self.world_size_ == 1:
+        if self.world_size_ == 1 or not self.tp_split_:
             gather_data = logic_batch
         else:
             gather_data = self.alloc_tensor((self.vocab_size_, token_num), dtype=input_embdings_dtype)

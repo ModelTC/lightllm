@@ -7,6 +7,8 @@ from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from typing import Tuple
 
+import os
+
 
 class TransformerLayerInferTpl(TransformerLayerInfer):
     """ """
@@ -21,6 +23,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         self.tp_o_head_num_ = -1
         self.head_dim_ = -1
         self.embed_dim_ = -1
+        self.tp_split_ = not os.environ.get("EDP_MODE_ENABLED") == "true"
         return
 
     def _att_norm(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:
@@ -79,7 +82,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         o = self._context_attention_kernel(q, cache_kv, infer_state, layer_weight)
         q = None
         o = self._get_o(o, infer_state, layer_weight)
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
@@ -88,7 +91,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
@@ -102,7 +105,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         o = self._token_attention_kernel(q, infer_state, layer_weight)
         q = None
         o = self._get_o(o, infer_state, layer_weight)
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
@@ -111,7 +114,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
@@ -125,7 +128,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         o = self._splitfuse_attention_kernel(q, infer_state, layer_weight)
         q = None
         o = self._get_o(o, infer_state, layer_weight)
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
@@ -134,7 +137,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
-        if self.world_size_ > 1:
+        if self.world_size_ > 1 and self.tp_split_:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
