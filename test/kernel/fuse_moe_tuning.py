@@ -16,13 +16,8 @@ def test_kernel(expert_num: int, m: int, n: int, k: int, topk: int, dtype: torch
         w1 = torch.randn((expert_num, 2 * n, k), device="cuda", dtype=dtype) / 10
         w2 = torch.randn((expert_num, k, n), device="cuda", dtype=dtype) / 10
 
-        # topk_ids = torch.randint(0, expert_num, size=(m, topk), device="cuda", dtype=torch.int32)
-
-        random_expert_ids = torch.empty(m, topk, dtype=torch.int32)
-        for i in range(m):
-            random_expert_ids[i] = torch.randperm(expert_num)[:topk]
-
-        topk_ids = random_expert_ids.cuda()
+        rnd_logics = torch.randn(m, expert_num, device="cuda")
+        topk_values, topk_ids = torch.topk(rnd_logics, topk, dim=1)
 
         topk_weights = torch.randn((m, topk), device="cuda", dtype=dtype) / 10
         input_tuples.append((a, w1, w2, topk_ids, topk_weights))
@@ -36,7 +31,7 @@ def test_kernel(expert_num: int, m: int, n: int, k: int, topk: int, dtype: torch
             a, w1, w2, topk_ids, topk_weights = input_tuples[index]
             fused_experts_impl(a, w1, w2, topk_weights, topk_ids, inplace=True, **config)
 
-    graph.replay()
+    # graph.replay()
     import time
 
     torch.cuda.synchronize()
@@ -46,8 +41,8 @@ def test_kernel(expert_num: int, m: int, n: int, k: int, topk: int, dtype: torch
 
     cost_time = (time.time() - start) * 1000
 
-    print(config)
-    print(f"bf16 {m} cost time: {cost_time} ms")
+    logger.info(str(config))
+    logger.info(f"bf16 {m} cost time: {cost_time} ms")
     return cost_time
 
 
@@ -75,6 +70,10 @@ def worker(
                 **test_configs[index],
             )
             queue.put(cost_time)  # Put result in queue
+        import gc
+
+        gc.collect()
+        torch.cuda.empty_cache()
     except Exception as ex:
         logger.error(str(ex))
         logger.exception(str(ex))
@@ -87,13 +86,25 @@ def worker(
 def get_test_configs():
     # all_configs = []
     physic_sm_num = 108
-    for NUM_SM in [1, 2, 3, 4]:
-        for BLOCK_SIZE_M in [16, 32, 64, 128, 256]:
-            for BLOCK_SIZE_N in [16, 32, 64, 128, 256]:
-                for BLOCK_SIZE_K in [16, 32, 64, 128, 256]:
-                    for GROUP_SIZE_M in [1, 2, 3, 4, 5, 6, 7, 8]:
-                        for num_warps in [4, 8, 16]:
-                            for num_stages in [1, 2, 3, 4, 5]:
+    for num_stages in [
+        1,
+        2,
+        3,
+    ]:
+        for GROUP_SIZE_M in [
+            1,
+            2,
+            4,
+        ]:
+            for num_warps in [4, 8, 16]:
+                for NUM_SM in [1, 2, 3, 4]:
+                    for BLOCK_SIZE_M in [
+                        16,
+                        32,
+                        64,
+                    ]:
+                        for BLOCK_SIZE_N in [16, 32, 64, 128, 256]:
+                            for BLOCK_SIZE_K in [16, 32, 64, 128, 256]:
                                 t_config = {
                                     "NUM_SM": NUM_SM * physic_sm_num,
                                     "BLOCK_SIZE_M": BLOCK_SIZE_M,
@@ -104,10 +115,10 @@ def get_test_configs():
                                     "num_stages": num_stages,
                                 }
                                 yield t_config
-    #                                 all_configs.append(t_config)
+                                # all_configs.append(t_config)
 
-    # # import random
-    # # random.shuffle(all_configs)
+    # import random
+    # random.shuffle(all_configs)
     # for t_config in all_configs:
     #     yield t_config
 
@@ -153,11 +164,11 @@ def tuning_configs(
                 if cost_time < best_cost_time:
                     best_config = test_configs[0]
                     best_cost_time = cost_time
-                    print(f"cur best : {best_config} {best_cost_time}")
+                    logger.info(f"cur best : {best_config} {best_cost_time}")
                 del test_configs[0:1]
             except:
                 del test_configs[0:16]
-                print(f"cur best : {best_config} {best_cost_time}")
+                logger.info(f"cur best : {best_config} {best_cost_time}")
                 break
 
     while len(test_configs) != 0:
@@ -168,6 +179,7 @@ def tuning_configs(
                 m,
                 n,
                 k,
+                topk,
                 dtype,
                 test_count,
                 test_configs,
@@ -183,11 +195,11 @@ def tuning_configs(
             if cost_time < best_cost_time:
                 best_config = test_configs[0]
                 best_cost_time = cost_time
-                print(f"cur best : {best_config} {best_cost_time}")
+                logger.info(f"cur best : {best_config} {best_cost_time}")
             del test_configs[0:1]
         except:
             del test_configs[0:16]
-            print(f"cur best : {best_config} {best_cost_time}")
+            logger.info(f"cur best : {best_config} {best_cost_time}")
             break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
@@ -201,6 +213,6 @@ if __name__ == "__main__":
         k=2048,
         topk=6,
         dtype=torch.bfloat16,
-        test_count=20,
+        test_count=8,
     )
     pass
