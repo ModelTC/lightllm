@@ -241,47 +241,51 @@ def tuning_configs(
         )
         p.start()
         p.join()
-        get_count = 0
-        while get_count < len(test_configs):
+
+        while len(test_configs) != 0:
             try:
                 cost_time = queue.get_nowait()
-                logger.info(f"get {test_configs[get_count]} cost_time: {cost_time}")
-                get_count += 1
+                logger.info(f"get {test_configs[0]} cost_time: {cost_time}")
                 if cost_time < best_cost_time:
-                    best_config = t_config
+                    best_config = test_configs[0]
                     best_cost_time = cost_time
+                    logger.info(f"cur best {best_config}, {best_cost_time}")
+                del test_configs[0:1]
             except:
+                logger.info(f"cur best {best_config}, {best_cost_time}")
+                del test_configs[0:16]
                 break
-        test_configs = test_configs[get_count + 1 :]
 
-    p = mp.Process(
-        target=worker,
-        args=(
-            q_nope_shape,
-            q_rope_shape,
-            kv_nope_shape,
-            kv_rope_shape,
-            test_seq_len,
-            dtype,
-            test_count,
-            test_configs,
-            queue,
-        ),
-    )
-    p.start()
-    p.join()
-    get_count = 0
-    while get_count < len(test_configs):
+    while len(test_configs) != 0:
+        p = mp.Process(
+            target=worker,
+            args=(
+                q_nope_shape,
+                q_rope_shape,
+                kv_nope_shape,
+                kv_rope_shape,
+                test_seq_len,
+                dtype,
+                test_count,
+                test_configs,
+                queue,
+            ),
+        )
+        p.start()
+        p.join()
+
         try:
             cost_time = queue.get_nowait()
-            logger.info(f"get {test_configs[get_count]} cost_time: {cost_time}")
-            get_count += 1
+            logger.info(f"get {test_configs[0]} cost_time: {cost_time}")
             if cost_time < best_cost_time:
-                best_config = t_config
+                best_config = test_configs[0]
                 best_cost_time = cost_time
+                logger.info(f"cur best {best_config}, {best_cost_time}")
+            del test_configs[0:1]
         except:
+            logger.info(f"cur best {best_config}, {best_cost_time}")
+            del test_configs[0:16]
             break
-    test_configs = test_configs[get_count + 1 :]
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
 
