@@ -51,7 +51,7 @@ class MMWeightTpl(BaseWeightTpl):
             else:
                 self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(self.device_id_))
             return
-        self.weight = self.weight.transpose(0, 1).cuda(self.device_id_)
+        self.weight = self.weight.to(self.data_type_).transpose(0, 1).cuda(self.device_id_)
 
 
 class MMWeight(MMWeightTpl):

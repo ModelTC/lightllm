@@ -24,7 +24,8 @@ import uvloop
 import sys
 import os
 import rpyc
-from .build_prompt import build_prompt
+import pickle
+from .build_prompt import build_prompt, init_tokenizer
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import ujson as json
@@ -213,6 +214,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         stop_sequences=request.stop,
         n=request.n,
         best_of=request.n,
+        add_special_tokens=False,
     )
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
@@ -306,28 +308,21 @@ async def metrics() -> Response:
     return response
 
 
-@app.websocket("/register_and_keep_alive")
+@app.websocket("/pd_register")
 async def register_and_keep_alive(websocket: WebSocket):
     await websocket.accept()
     client_ip, client_port = websocket.client
     logger.info(f"Client connected from IP: {client_ip}, Port: {client_port}")
     regist_json = json.loads(await websocket.receive_text())
     logger.info(f"recieved regist_json {regist_json}")
-    await g_objs.httpserver_manager.register_pd(regist_json)
+    await g_objs.httpserver_manager.register_pd(regist_json, websocket)
 
     try:
         while True:
-            try:
-                # 等待接收消息，设置超时为10秒
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-                json_data = json.loads(data)
-                if json_data.get("type") != "heartbeat":
-                    logger.warning(f"recive error messesage {json_data}")
-                    break
-
-            except asyncio.TimeoutError:
-                logger.error(f"client {regist_json} heartbeat timeout")
-                break
+            # 等待接收消息，设置超时为10秒
+            data = await websocket.receive_bytes()
+            obj = pickle.loads(data)
+            await g_objs.httpserver_manager.put_to_handle_queue(obj)
 
     except (WebSocketDisconnect, Exception, RuntimeError) as e:
         logger.error(f"client {regist_json} has error {str(e)}")
@@ -396,4 +391,5 @@ if __name__ == "__main__":
     if args.run_mode == "pd_master":
         pd_master_start(g_objs)
     else:
+        init_tokenizer(args)  # for openai api
         normal_or_p_d_start(g_objs)

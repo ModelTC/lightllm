@@ -11,8 +11,8 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq,
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
-from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
-from ..post_process import sample
+from ...pre_process import prepare_prefill_inputs, prepare_decode_inputs
+from ...post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, g_router_lock
@@ -75,9 +75,10 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                     req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
                     None,
                 )
-                logger.error(
-                    f"req_id: {req_obj.group_req_id} forced to finished, it not in g_success_kv_move_task_cache"
-                )
+                if self.tp_rank < self.dp_size:
+                    logger.error(
+                        f"req_id: {req_obj.group_req_id} forced to finished, it not in g_success_kv_move_task_cache"
+                    )
 
         if self.tp_rank < self.dp_size:
             with g_router_lock.obj:

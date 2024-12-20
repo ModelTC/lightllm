@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 import torch
 import torch.multiprocessing as mp
@@ -11,8 +12,8 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq,
 from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
-from ..pre_process import prepare_prefill_inputs, prepare_decode_inputs
-from ..post_process import sample
+from ...pre_process import prepare_prefill_inputs, prepare_decode_inputs
+from ...post_process import sample
 from lightllm.common.basemodel.infer_lock import g_router_lock, g_infer_state_lock
 from rpyc.utils.server import ThreadedServer
 from .prefill_task_cache import g_kv_move_task_cache
@@ -93,7 +94,8 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
     def prefill_req_handle_and_frozen_tokens(self, run_reqs: List[InferReq]):
         # 提前在radix cache中回收相关的信息，并添加引用信息
-        logger.info("prefill_req_handle_and_frozen_tokens")
+        if self.tp_rank < self.dp_size:
+            logger.info("prefill_req_handle_and_frozen_tokens")
         g_infer_state_lock.acquire()
         try:
             for req in run_reqs:
@@ -126,6 +128,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                         move_kv_len=None,
                         prefill_dp_index=0 if self.dp_size == 1 else self.tp_rank,
                         decode_dp_index=None,
+                        mark_start_time=time.time(),
                     )
                     g_kv_move_task_cache[task.group_request_id] = (task, share_node)
 
@@ -135,5 +138,6 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         except BaseException as e:
             logger.exception(str(e))
         g_infer_state_lock.release()
-        logger.info("prefill_req_handle_and_frozen_tokens end")
+        if self.tp_rank < self.dp_size:
+            logger.info("prefill_req_handle_and_frozen_tokens end")
         return
