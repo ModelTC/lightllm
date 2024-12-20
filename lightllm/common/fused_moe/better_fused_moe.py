@@ -73,7 +73,7 @@ def moe_align(topk_ids: torch.Tensor, out: torch.Tensor):
     TOPK_BLOCK_M = 256
 
     token_num, topk = topk_ids.shape
-    assert out.shape[1] == token_num * topk
+    assert out.shape[1] == token_num * topk, f"out shape {out.shape} topk_ids shape {topk_ids.shape} "
     assert topk_ids.is_contiguous()
     out.fill_(0)
     grid = (triton.cdiv(token_num * topk, TOPK_BLOCK_M),)
@@ -223,20 +223,19 @@ def grouped_matmul_kernel(
     MUL_ROUTED_WEIGHT: tl.constexpr = False,
 ):
     tile_idx = tl.program_id(0)
-    last_problem_end = 0
 
     out_dtype = token_ptr.dtype.element_ty
+
     for expert_id in range(expert_num):
         # get the gemm size of the current problem
-        cur_m = tl.load(expert_to_token_num + expert_id)
+        cur_m = tl.load(expert_to_token_num + expert_id, eviction_policy="evict_last")
         num_m_tiles = tl.cdiv(cur_m, BLOCK_SIZE_M)
         num_n_tiles = tl.cdiv(n, BLOCK_SIZE_N)
         num_tiles = num_m_tiles * num_n_tiles
+
         # iterate through the tiles in the current gemm problem
-        while tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
-
-            tile_idx_in_gemm = tile_idx - last_problem_end
-
+        while tile_idx < num_tiles:
+            tile_idx_in_gemm = tile_idx
             # better super-grouping for L2 Cache Optimizations
             pid = tile_idx_in_gemm
             num_pid_m = num_m_tiles
@@ -295,7 +294,7 @@ def grouped_matmul_kernel(
             tl.store(c_ptrs, c, mask=(offs_am[:, None] < cur_m) & (offs_cn[None, :] < n))
             tile_idx += NUM_SM
 
-        last_problem_end = last_problem_end + num_tiles
+        tile_idx -= num_tiles
     return
 
 
@@ -317,6 +316,8 @@ def grouped_matmul(
     expert_weights is tensor shape [expert_num, out_dim, hidden_dim]
     out is tensor shape [token_num * topk_num, out_dim]
     """
+    # run_config =  {'NUM_SM': 108, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 128,
+    # 'BLOCK_SIZE_K': 256, 'GROUP_SIZE_M': 2, 'num_warps': 8, 'num_stages': 3}
     if run_config:
         NUM_SM = run_config["NUM_SM"]
         BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
@@ -326,11 +327,11 @@ def grouped_matmul(
         num_warps = run_config["num_warps"]
         num_stages = run_config["num_stages"]
     else:
-        NUM_SM = 128
+        NUM_SM = 108 * 4
         BLOCK_SIZE_M = 16
         BLOCK_SIZE_N = 64
-        BLOCK_SIZE_K = 64
-        GROUP_SIZE_M = 3
+        BLOCK_SIZE_K = 128
+        GROUP_SIZE_M = 1
         num_warps = 8
         num_stages = 3
 
