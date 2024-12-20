@@ -318,6 +318,17 @@ def grouped_matmul(
     """
     # run_config =  {'NUM_SM': 108, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 128,
     # 'BLOCK_SIZE_K': 256, 'GROUP_SIZE_M': 2, 'num_warps': 8, 'num_stages': 3}
+    if not run_config:
+        run_config = {
+            "NUM_SM": 216,
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+        }
+
     if run_config:
         NUM_SM = run_config["NUM_SM"]
         BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
