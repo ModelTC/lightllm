@@ -388,7 +388,7 @@ class InferBatch:
     @torch.no_grad()
     def filter(self, request_ids: List[str], finished_request_ids: List[str]):
         if len(requests_mapping) == 0:
-            logger.warning("Batch in rank {dist.get_rank()} has no request!")
+            logger.warning(f"Batch in rank {dist.get_rank()} has no request!")
             return self
         if len(request_ids) == len(self):
             return self

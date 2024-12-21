@@ -80,7 +80,6 @@ class ModeBackend:
         if self.dp_size > 1:
             assert self.dp_size == self.world_size, "Currently only self-sustaining dp_size == tp_size"
             os.environ["ENABLE_DP"] = "1"
-            os.environ["DP_HOLDSIZE"] = "1"
 
         torch.cuda.set_device(self.tp_rank)
 
