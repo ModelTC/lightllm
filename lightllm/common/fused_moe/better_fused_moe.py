@@ -24,6 +24,12 @@ import triton.language as tl
 from typing import Any, Callable, Dict, Optional, Tuple
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.vllm_kernel import _custom_ops as ops
+from lightllm.utils.device_utils import (
+    get_device_sm_count,
+    get_device_sm_regs_num,
+    get_device_sm_shared_mem_num,
+    get_device_warp_size,
+)
 
 FFN_MOE_CHUNK_SIZE = 8 * 1024
 
@@ -218,7 +224,7 @@ def grouped_matmul_kernel(
     out_stride_0,
     out_stride_1,
     # number of virtual SM
-    NUM_SM: tl.constexpr,
+    num_sm,  # int
     # tile sizes
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -297,7 +303,7 @@ def grouped_matmul_kernel(
             offs_cn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             c_ptrs = out_ptr + a_m_index[:, None] * out_stride_0 + offs_cn[None, :]
             tl.store(c_ptrs, c, mask=(offs_am[:, None] < cur_m) & (offs_cn[None, :] < n))
-            tile_idx += NUM_SM
+            tile_idx += num_sm
 
         tile_idx -= num_tiles
     return
@@ -323,11 +329,10 @@ def grouped_matmul(
     expert_token_limit use to limit handles token per expert.
     out is tensor shape [token_num * topk_num, out_dim]
     """
-    # run_config =  {'NUM_SM': 108, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 128,
+    # run_config =  {'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 128,
     # 'BLOCK_SIZE_K': 256, 'GROUP_SIZE_M': 2, 'num_warps': 8, 'num_stages': 3}
     if not run_config:
         run_config = {
-            "NUM_SM": 216,
             "BLOCK_SIZE_M": 32,
             "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 128,
@@ -337,7 +342,6 @@ def grouped_matmul(
         }
 
     if run_config:
-        NUM_SM = run_config["NUM_SM"]
         BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
         BLOCK_SIZE_N = run_config["BLOCK_SIZE_N"]
         BLOCK_SIZE_K = run_config["BLOCK_SIZE_K"]
@@ -345,7 +349,6 @@ def grouped_matmul(
         num_warps = run_config["num_warps"]
         num_stages = run_config["num_stages"]
     else:
-        NUM_SM = 108 * 4
         BLOCK_SIZE_M = 16
         BLOCK_SIZE_N = 64
         BLOCK_SIZE_K = 128
@@ -361,7 +364,58 @@ def grouped_matmul(
     assert expert_to_weights.is_contiguous()
     assert expert_weights.is_contiguous()
 
-    grid = (NUM_SM,)
+    kernel = grouped_matmul_kernel.warmup(
+        expert_token_limit,
+        k,
+        n,
+        expert_num,
+        topk_num,
+        token_inputs,
+        token_inputs.stride(0),
+        token_inputs.stride(1),
+        expert_weights,
+        expert_weights.stride(0),
+        expert_weights.stride(1),
+        expert_weights.stride(2),
+        expert_to_weights,
+        expert_to_weights.stride(0),
+        expert_to_weights.stride(1),
+        expert_to_token_num,
+        expert_to_token_index,
+        expert_to_token_index.stride(0),
+        out,
+        out.stride(0),
+        out.stride(1),
+        num_sm=1,
+        BLOCK_SIZE_M=BLOCK_SIZE_M,
+        BLOCK_SIZE_N=BLOCK_SIZE_N,
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        GROUP_SIZE_M=GROUP_SIZE_M,
+        MUL_ROUTED_WEIGHT=mul_routed_weight,
+        num_warps=num_warps,
+        num_stages=num_stages,
+        grid=(1,),
+    )
+
+    kernel._init_handles()
+    n_regs = kernel.n_regs
+    size_smem = kernel.metadata.shared
+
+    sm_count = get_device_sm_count()
+    max_regs = get_device_sm_regs_num()
+    shared_mem_max = get_device_sm_shared_mem_num()
+    warp_size = get_device_warp_size()
+
+    occupancy = max_regs // (n_regs * warp_size * num_warps)
+    occupancy = min(occupancy, shared_mem_max // size_smem)
+    num_sm = sm_count * occupancy
+
+    need_max_grid = triton.cdiv(n, BLOCK_SIZE_N) * triton.cdiv(
+        expert_to_token_index.shape[1] + expert_num * (BLOCK_SIZE_M - 1), BLOCK_SIZE_M
+    )
+    num_sm = min(num_sm, need_max_grid)
+
+    grid = (num_sm,)
 
     grouped_matmul_kernel[grid](
         expert_token_limit,
@@ -385,7 +439,7 @@ def grouped_matmul(
         out,
         out.stride(0),
         out.stride(1),
-        NUM_SM=NUM_SM,
+        num_sm=num_sm,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
