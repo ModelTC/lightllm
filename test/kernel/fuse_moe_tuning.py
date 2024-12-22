@@ -85,7 +85,6 @@ def worker(
 
 def get_test_configs():
     # all_configs = []
-    physic_sm_num = 108
     for num_stages in [
         1,
         2,
@@ -97,25 +96,23 @@ def get_test_configs():
             4,
         ]:
             for num_warps in [4, 8, 16]:
-                for NUM_SM in [1, 2, 3, 4]:
-                    for BLOCK_SIZE_M in [
-                        16,
-                        32,
-                        64,
-                    ]:
-                        for BLOCK_SIZE_N in [16, 32, 64, 128, 256]:
-                            for BLOCK_SIZE_K in [16, 32, 64, 128, 256]:
-                                t_config = {
-                                    "NUM_SM": NUM_SM * physic_sm_num,
-                                    "BLOCK_SIZE_M": BLOCK_SIZE_M,
-                                    "BLOCK_SIZE_N": BLOCK_SIZE_N,
-                                    "BLOCK_SIZE_K": BLOCK_SIZE_K,
-                                    "GROUP_SIZE_M": GROUP_SIZE_M,
-                                    "num_warps": num_warps,
-                                    "num_stages": num_stages,
-                                }
-                                yield t_config
-                                # all_configs.append(t_config)
+                for BLOCK_SIZE_M in [
+                    16,
+                    32,
+                    64,
+                ]:
+                    for BLOCK_SIZE_N in [16, 32, 64, 128, 256]:
+                        for BLOCK_SIZE_K in [16, 32, 64, 128, 256]:
+                            t_config = {
+                                "BLOCK_SIZE_M": BLOCK_SIZE_M,
+                                "BLOCK_SIZE_N": BLOCK_SIZE_N,
+                                "BLOCK_SIZE_K": BLOCK_SIZE_K,
+                                "GROUP_SIZE_M": GROUP_SIZE_M,
+                                "num_warps": num_warps,
+                                "num_stages": num_stages,
+                            }
+                            yield t_config
+                            # all_configs.append(t_config)
 
     # import random
     # random.shuffle(all_configs)
