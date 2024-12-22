@@ -331,9 +331,9 @@ def grouped_matmul(
     """
     if not run_config:
         run_config = {
-            "BLOCK_SIZE_M": 32,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 32,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
