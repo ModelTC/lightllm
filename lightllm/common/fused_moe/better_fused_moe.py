@@ -25,6 +25,8 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.vllm_kernel import _custom_ops as ops
 
+FFN_MOE_CHUNK_SIZE = 8 * 1024
+
 logger = init_logger(__name__)
 
 
@@ -169,7 +171,8 @@ def moe_align1(
     exports_token_num = [1, 2, 1, 0]
     """
     expert_num, token_num_mul_topk = experts_info.shape
-    assert token_num_mul_topk < 8072 * 8, "need split to handle seq len too long"
+    topk_num = topk_weights.shape[1]
+    assert token_num_mul_topk <= FFN_MOE_CHUNK_SIZE * topk_num, "need split to handle seq len too long"
     assert exports_token_num.shape[0] == expert_num
     assert topk_weights.is_contiguous()
     TOKEN_BLOCK_N = triton.next_power_of_2(token_num_mul_topk)
@@ -420,7 +423,7 @@ def fused_experts_impl(
 
     num_tokens, _ = hidden_states.shape
     E, N, _ = w1.shape
-    CHUNK_SIZE = 8 * 1024
+    CHUNK_SIZE = FFN_MOE_CHUNK_SIZE
     topk_num = topk_ids.shape[1]
     M = min(num_tokens, CHUNK_SIZE)
 
