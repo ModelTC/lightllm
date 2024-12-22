@@ -331,28 +331,19 @@ def grouped_matmul(
     """
     if not run_config:
         run_config = {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 4,
-            "num_warps": 16,
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
             "num_stages": 3,
         }
-
-    if run_config:
-        BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
-        BLOCK_SIZE_N = run_config["BLOCK_SIZE_N"]
-        BLOCK_SIZE_K = run_config["BLOCK_SIZE_K"]
-        GROUP_SIZE_M = run_config["GROUP_SIZE_M"]
-        num_warps = run_config["num_warps"]
-        num_stages = run_config["num_stages"]
-    else:
-        BLOCK_SIZE_M = 16
-        BLOCK_SIZE_N = 64
-        BLOCK_SIZE_K = 128
-        GROUP_SIZE_M = 1
-        num_warps = 8
-        num_stages = 3
+    BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
+    BLOCK_SIZE_N = run_config["BLOCK_SIZE_N"]
+    BLOCK_SIZE_K = run_config["BLOCK_SIZE_K"]
+    GROUP_SIZE_M = run_config["GROUP_SIZE_M"]
+    num_warps = run_config["num_warps"]
+    num_stages = run_config["num_stages"]
 
     expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
