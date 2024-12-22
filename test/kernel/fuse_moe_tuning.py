@@ -70,10 +70,10 @@ def worker(
                 **test_configs[index],
             )
             queue.put(cost_time)  # Put result in queue
-        import gc
+        # import gc
 
-        gc.collect()
-        torch.cuda.empty_cache()
+        # gc.collect()
+        # torch.cuda.empty_cache()
     except Exception as ex:
         logger.error(str(ex))
         logger.exception(str(ex))

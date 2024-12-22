@@ -329,15 +329,13 @@ def grouped_matmul(
     expert_token_limit use to limit handles token per expert.
     out is tensor shape [token_num * topk_num, out_dim]
     """
-    # run_config =  {'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 128,
-    # 'BLOCK_SIZE_K': 256, 'GROUP_SIZE_M': 2, 'num_warps': 8, 'num_stages': 3}
     if not run_config:
         run_config = {
-            "BLOCK_SIZE_M": 32,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 4,
+            "num_warps": 16,
             "num_stages": 3,
         }
 
