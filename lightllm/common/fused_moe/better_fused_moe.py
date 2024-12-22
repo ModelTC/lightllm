@@ -193,6 +193,7 @@ def moe_align1(
 
 @triton.jit
 def grouped_matmul_kernel(
+    expert_token_limit,  # int,
     k,  # int
     n,  # int
     expert_num,  # int
@@ -229,6 +230,7 @@ def grouped_matmul_kernel(
     for expert_id in range(expert_num):
         # get the gemm size of the current problem
         cur_m = tl.load(expert_to_token_num + expert_id, eviction_policy="evict_last")
+        cur_m = tl.where(cur_m <= expert_token_limit, cur_m, 0)
         num_m_tiles = tl.cdiv(cur_m, BLOCK_SIZE_M)
         num_n_tiles = tl.cdiv(n, BLOCK_SIZE_N)
         num_tiles = num_m_tiles * num_n_tiles
@@ -306,6 +308,7 @@ def grouped_matmul(
     expert_weights: torch.Tensor,
     topk_num: int,
     out: torch.Tensor,
+    expert_token_limit: int,
     mul_routed_weight: bool,
     **run_config,
 ):
@@ -314,6 +317,7 @@ def grouped_matmul(
     expert_to_token_num is tensor shape [expert_num],
     expert_to_token_index is tensor shape [expert_num, token_num * topk_num],
     expert_weights is tensor shape [expert_num, out_dim, hidden_dim]
+    expert_token_limit use to limit handles token per expert.
     out is tensor shape [token_num * topk_num, out_dim]
     """
     # run_config =  {'NUM_SM': 108, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 128,
@@ -357,6 +361,7 @@ def grouped_matmul(
     grid = (NUM_SM,)
 
     grouped_matmul_kernel[grid](
+        expert_token_limit,
         k,
         n,
         expert_num,
@@ -462,6 +467,7 @@ def fused_experts_impl(
             expert_weights=w1,
             topk_num=topk_num,
             out=intermediate_cache1.view(-1, N),
+            expert_token_limit=2 ** 31 - 1,
             mul_routed_weight=False,
             **run_config,
         )
@@ -476,6 +482,7 @@ def fused_experts_impl(
             expert_weights=w2,
             topk_num=1,
             out=intermediate_cache3.view(-1, w2.shape[1]),
+            expert_token_limit=2 ** 31 - 1,
             mul_routed_weight=True,
             **run_config,
         )
