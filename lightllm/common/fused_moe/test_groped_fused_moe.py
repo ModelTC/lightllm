@@ -93,26 +93,34 @@ def test_grouped_matmul():
     # warm up
     grouped_matmul(
         token_inputs,
+        None,
         experts_token_num,
         experts_to_token_index,
         experts_to_weights,
         expert_weights,
+        None,
         topk_num,
         out,
+        expert_token_limit=2 ** 31 - 1,
         mul_routed_weight=True,
+        use_fp8_w8a8=False,
     )
     torch.cuda.synchronize()
     start = time.time()
     for _ in range(100):
         grouped_matmul(
             token_inputs,
+            None,
             experts_token_num,
             experts_to_token_index,
             experts_to_weights,
             expert_weights,
+            None,
             topk_num,
             out,
+            expert_token_limit=2 ** 31 - 1,
             mul_routed_weight=True,
+            use_fp8_w8a8=False,
         )
     torch.cuda.synchronize()
     logger.info(f"grouped_matmul test cost time: {time.time() - start} s")
