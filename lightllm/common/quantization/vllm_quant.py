@@ -1,3 +1,4 @@
+import os
 import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
@@ -64,12 +65,32 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.is_moe = False
+        # PINGPONG_FP8_GEMM is per tensor quant way.
+        self.use_pingpong_fp8_gemm = os.getenv("ENABLE_PINGPONG_FP8_GEMM", "0").upper() in ["ON", "TRUE", "1"]
+
+        if self.use_pingpong_fp8_gemm:
+            self.quantize = self.quantize_pingpong_fp8
+            self.apply = self.apply_pingpong_fp8
+        else:
+            self.quantize = self.quantize_scaled_mm_fp8
+            self.apply = self.apply_scaled_mm_fp8
 
     def quantize(self, weight: torch.Tensor):
+        raise Exception("This function needs to be bound.")
+
+    def quantize_scaled_mm_fp8(self, weight: torch.Tensor):
         if self.is_moe:
             return self.quantize_moe(weight)
         qweight, weight_scale = ops.scaled_fp8_quant(
             weight.contiguous().cuda(), scale=None, use_per_token_if_dynamic=True
+        )
+        return qweight.transpose(0, 1), weight_scale
+
+    def quantize_pingpong_fp8(self, weight: torch.Tensor):
+        if self.is_moe:
+            return self.quantize_moe(weight)
+        qweight, weight_scale = ops.scaled_fp8_quant(
+            weight.contiguous().cuda(), scale=None, use_per_token_if_dynamic=False
         )
         return qweight.transpose(0, 1), weight_scale
 
@@ -88,6 +109,9 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         return qweights, weight_scale
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None):
+        raise Exception("This function needs to be bound.")
+
+    def apply_scaled_mm_fp8(self, input_tensor, weights, bias=None, out=None, workspace=None):
         x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
@@ -97,3 +121,11 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
             )
         torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
         return out
+
+    def apply_pingpong_fp8(self, input_tensor, weights, bias=None, out=None, workspace=None):
+        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=False)
+        assert bias is None
+        assert out is None
+        from fp8_pingpong_gemm import cutlass_scaled_mm
+
+        return cutlass_scaled_mm(x_q, weights[0], x_scale, weights[1])
