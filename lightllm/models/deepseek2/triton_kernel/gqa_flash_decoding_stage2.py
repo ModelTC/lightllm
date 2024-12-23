@@ -22,6 +22,7 @@ def _fwd_kernel_flash_decode_stage2(
     stride_od,
     BLOCK_SEQ: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
     cur_head = tl.program_id(0)
     cur_batch = tl.program_id(1)
@@ -37,7 +38,7 @@ def _fwd_kernel_flash_decode_stage2(
 
     offs_v = cur_batch * stride_mid_ob + cur_head * stride_mid_oh + offs_d
     offs_logic = cur_batch * stride_mid_o_eb + cur_head * stride_mid_o_eh
-    for block_seq_n in range(0, block_n_size, 1):
+    for block_seq_n in tl.range(0, block_n_size, 1, num_stages=NUM_STAGES):
         tv = tl.load(Mid_O + offs_v + block_seq_n * stride_mid_os)
         tlogic = tl.load(Mid_O_LogExpSum + offs_logic + block_seq_n)
         new_max_logic = tl.maximum(tlogic, max_logic)
@@ -86,6 +87,7 @@ def flash_decode_stage2(mid_out, mid_out_logexpsum, B_Seqlen, Out, block_seq, **
         Out.stride(2),
         BLOCK_SEQ=BLOCK_SEQ,
         BLOCK_DMODEL=Lk,
+        NUM_STAGES=num_stages,
         num_warps=num_warps,
         num_stages=num_stages,
     )
