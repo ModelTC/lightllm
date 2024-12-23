@@ -230,6 +230,8 @@ def get_test_configs():
         1,
         2,
         3,
+        4,
+        5,
     ]:
         for GROUP_SIZE_M in [
             1,
@@ -337,32 +339,33 @@ def tuning_configs(
         p.start()
         p.join()
 
-        try:
-            cost_time = queue.get_nowait()
-            logger.info(f"get {test_configs[0]} cost_time: {cost_time}")
-            if cost_time < best_cost_time:
-                best_config = test_configs[0]
-                best_cost_time = cost_time
+        while len(test_configs) != 0:
+            try:
+                cost_time = queue.get_nowait()
+                logger.info(f"get {test_configs[0]} cost_time: {cost_time}")
+                if cost_time < best_cost_time:
+                    best_config = test_configs[0]
+                    best_cost_time = cost_time
+                    logger.info(f"cur best : {best_config} {best_cost_time}")
+                del test_configs[0:1]
+            except:
+                del test_configs[0:16]
                 logger.info(f"cur best : {best_config} {best_cost_time}")
-            del test_configs[0:1]
-        except:
-            del test_configs[0:16]
-            logger.info(f"cur best : {best_config} {best_cost_time}")
-            break
+                break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
 
 
 if __name__ == "__main__":
     tuning_configs(
-        expert_num=64,
+        expert_num=160,
         m=200,
-        n=1408 // 2,
-        k=2048,
+        n=192,
+        k=5120,
         topk=6,
         dtype=torch.bfloat16,
-        test_count=8,
-        use_fp8_w8a8=False,
+        test_count=20,
+        use_fp8_w8a8=True,
         is_up=True,
     )
     pass
