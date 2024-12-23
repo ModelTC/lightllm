@@ -198,18 +198,19 @@ def tuning_configs(
         p.start()
         p.join()
 
-        try:
-            cost_time = queue.get_nowait()
-            logger.info(f"get {test_configs[0]} cost_time: {cost_time}")
-            if cost_time < best_cost_time:
-                best_config = test_configs[0]
-                best_cost_time = cost_time
+        while len(test_configs) != 0:
+            try:
+                cost_time = queue.get_nowait()
+                logger.info(f"get {test_configs[0]} cost_time: {cost_time}")
+                if cost_time < best_cost_time:
+                    best_config = test_configs[0]
+                    best_cost_time = cost_time
+                    logger.info(f"cur best : {best_config} {best_cost_time}")
+                del test_configs[0:1]
+            except:
+                del test_configs[0:16]
                 logger.info(f"cur best : {best_config} {best_cost_time}")
-            del test_configs[0:1]
-        except:
-            del test_configs[0:16]
-            logger.info(f"cur best : {best_config} {best_cost_time}")
-            break
+                break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
 
