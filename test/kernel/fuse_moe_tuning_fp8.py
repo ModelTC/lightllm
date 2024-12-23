@@ -247,7 +247,7 @@ def get_test_configs():
                     64,
                 ]:
                     for BLOCK_SIZE_N in [16, 32, 64, 128]:
-                        for BLOCK_SIZE_K in [16, 32, 64, 128]:
+                        for BLOCK_SIZE_K in [32, 64, 128]:
                             t_config = {
                                 "BLOCK_SIZE_M": BLOCK_SIZE_M,
                                 "BLOCK_SIZE_N": BLOCK_SIZE_N,
