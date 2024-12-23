@@ -149,10 +149,10 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
             weights[self._v_bias_name] = v_bias_
             del weights[f"vision_model.encoder.layers.{self.layer_num_}.attn.qkv.bias"]
 
-        if self._q_norm_weight_name in weights:
+        if self.qk_norm and self._q_norm_weight_name in weights:
             weights[self._q_norm_weight_name] = F.pad(weights[self._q_norm_weight_name], (0, self.padding_hidden_size))
 
-        if self._k_norm_weight_name in weights:
+        if self.qk_norm and self._k_norm_weight_name in weights:
             weights[self._k_norm_weight_name] = F.pad(weights[self._k_norm_weight_name], (0, self.padding_hidden_size))
 
         if f"vision_model.encoder.layers.{self.layer_num_}.ls1" in weights:
