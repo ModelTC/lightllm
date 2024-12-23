@@ -125,7 +125,12 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def apply_pingpong_fp8(self, input_tensor, weights, bias=None, out=None, workspace=None):
         x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=False)
         assert bias is None
-        assert out is None
+        m = input_tensor.shape[0]
+        n = weights[0].shape[1]
+        if out is None:
+            out = g_cache_manager.alloc_tensor(
+                (m, n), input_tensor.dtype, device=input_tensor.device, is_graph_out=False
+            )
         from fp8_pingpong_gemm import cutlass_scaled_mm
 
-        return cutlass_scaled_mm(x_q, weights[0], x_scale, weights[1])
+        return cutlass_scaled_mm(x_q, weights[0], x_scale, weights[1], out)
