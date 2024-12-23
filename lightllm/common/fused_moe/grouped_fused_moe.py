@@ -207,6 +207,8 @@ def grouped_matmul_kernel(
     n,  # int
     expert_num,  # int
     topk_num,  # int
+    token_scale_ptr,  # [1,]
+    weight_scale_ptr,  # [expert_num,]
     token_ptr,  # [token_num, hidden_dim]
     token_stride_0,
     token_stride_1,
@@ -225,6 +227,8 @@ def grouped_matmul_kernel(
     out_stride_1,
     # number of virtual SM
     num_sm,  # int
+    compute_type: tl.constexpr,
+    use_fp8_w8a8: tl.constexpr,
     # tile sizes
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -233,8 +237,6 @@ def grouped_matmul_kernel(
     MUL_ROUTED_WEIGHT: tl.constexpr = False,
 ):
     tile_idx = tl.program_id(0)
-
-    out_dtype = token_ptr.dtype.element_ty
 
     for expert_id in range(expert_num):
         # get the gemm size of the current problem
@@ -277,28 +279,56 @@ def grouped_matmul_kernel(
                     mask=offs_am < cur_m,
                     other=0.0,
                 )
+            if use_fp8_w8a8:
+                a_scale = tl.load(token_scale_ptr, eviction_policy="evict_last")
+                b_scale = tl.load(weight_scale_ptr + expert_id, eviction_policy="evict_last")
+                ab_scale = a_scale * b_scale
 
             offs_bn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             offs_k = tl.arange(0, BLOCK_SIZE_K)
 
-            a_ptrs = token_ptr + (a_m_index // topk_num)[:, None] * token_stride_0 + offs_k[None, :]
-            b_ptrs = weights_ptr + weight_stride_0 * expert_id + offs_k[:, None] + offs_bn[None, :] * weight_stride_1
-            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+            if use_fp8_w8a8:
+                a_ptrs = token_ptr + (a_m_index // topk_num)[None, :] * token_stride_0 + offs_k[:, None]
+                b_ptrs = (
+                    weights_ptr + weight_stride_0 * expert_id + offs_k[None, :] + offs_bn[:, None] * weight_stride_1
+                )
+                accumulator = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
+            else:
+                a_ptrs = token_ptr + (a_m_index // topk_num)[:, None] * token_stride_0 + offs_k[None, :]
+                b_ptrs = (
+                    weights_ptr + weight_stride_0 * expert_id + offs_k[:, None] + offs_bn[None, :] * weight_stride_1
+                )
+                accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
             for _ in range(0, tl.cdiv(k, BLOCK_SIZE_K)):
                 # hint to Triton compiler to do proper loop pipelining
                 # tl.multiple_of(a_ptrs, [16, 16])
                 tl.multiple_of(b_ptrs, [16, 16])
-                a = tl.load(a_ptrs, mask=(offs_am[:, None] < cur_m) & (offs_k[None, :] < k))
-                b = tl.load(b_ptrs, mask=(offs_bn[None, :] < n) & (offs_k[:, None] < k))
-                accumulator += tl.dot(a, b)
+
+                if use_fp8_w8a8:
+                    a = tl.load(a_ptrs, mask=(offs_am[None, :] < cur_m) & (offs_k[:, None] < k))
+                    b = tl.load(b_ptrs, mask=(offs_bn[:, None] < n) & (offs_k[None, :] < k))
+                else:
+                    a = tl.load(a_ptrs, mask=(offs_am[:, None] < cur_m) & (offs_k[None, :] < k))
+                    b = tl.load(b_ptrs, mask=(offs_bn[None, :] < n) & (offs_k[:, None] < k))
+
+                if use_fp8_w8a8:
+                    accumulator = tl.dot(b, a, acc=accumulator)
+                else:
+                    accumulator += tl.dot(a, b)
+
                 a_ptrs += BLOCK_SIZE_K
                 b_ptrs += BLOCK_SIZE_K
                 offs_k += BLOCK_SIZE_K
 
+            if use_fp8_w8a8:
+                accumulator = accumulator.T
+                accumulator *= ab_scale
+
             if MUL_ROUTED_WEIGHT:
                 accumulator *= a_m_scale[:, None]
 
-            c = accumulator.to(out_dtype)
+            c = accumulator.to(compute_type)
 
             offs_cn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             c_ptrs = out_ptr + a_m_index[:, None] * out_stride_0 + offs_cn[None, :]
@@ -311,24 +341,31 @@ def grouped_matmul_kernel(
 
 def grouped_matmul(
     token_inputs: torch.Tensor,
+    token_input_scale: torch.Tensor,  # for fp8
     expert_to_token_num: torch.Tensor,
     expert_to_token_index: torch.Tensor,
     expert_to_weights: torch.Tensor,
+    expert_to_weights_scale: torch.Tensor,  # for fp8
     expert_weights: torch.Tensor,
     topk_num: int,
     out: torch.Tensor,
     expert_token_limit: int,
     mul_routed_weight: bool,
+    use_fp8_w8a8: bool,
     **run_config,
 ):
     """
     token_inputs is tensor shape [token_num, hidden_dim],
+    token_input_scale is tensor shape [1,], when use_fp8_w8a8 is False, it must be None
     expert_to_token_num is tensor shape [expert_num],
     expert_to_token_index is tensor shape [expert_num, token_num * topk_num],
     expert_weights is tensor shape [expert_num, out_dim, hidden_dim]
+    expert_to_weights_scale is tensor shape [expert_num], when use_fp8_w8a8 is False, it must be None
     expert_token_limit use to limit handles token per expert.
     out is tensor shape [token_num * topk_num, out_dim]
     """
+    compute_type = tl.bfloat16 if out.dtype == torch.bfloat16 else tl.float16
+
     if not run_config:
         run_config = {
             "BLOCK_SIZE_M": 64,
@@ -345,6 +382,9 @@ def grouped_matmul(
     num_warps = run_config["num_warps"]
     num_stages = run_config["num_stages"]
 
+    if use_fp8_w8a8:
+        token_inputs, token_input_scale = ops.scaled_fp8_quant(token_inputs, token_input_scale)
+
     expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
     assert expert_to_token_index.shape == expert_to_weights.shape
@@ -359,6 +399,8 @@ def grouped_matmul(
         n,
         expert_num,
         topk_num,
+        token_input_scale,
+        expert_to_weights_scale,
         token_inputs,
         token_inputs.stride(0),
         token_inputs.stride(1),
@@ -376,6 +418,8 @@ def grouped_matmul(
         out.stride(0),
         out.stride(1),
         num_sm=1,
+        compute_type=compute_type,
+        use_fp8_w8a8=use_fp8_w8a8,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -412,6 +456,8 @@ def grouped_matmul(
         n,
         expert_num,
         topk_num,
+        token_input_scale,
+        expert_to_weights_scale,
         token_inputs,
         token_inputs.stride(0),
         token_inputs.stride(1),
@@ -429,6 +475,8 @@ def grouped_matmul(
         out.stride(0),
         out.stride(1),
         num_sm=num_sm,
+        compute_type=compute_type,
+        use_fp8_w8a8=use_fp8_w8a8,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -478,8 +526,6 @@ def fused_experts_impl(
         (M, topk_num, w2.shape[1]), device=hidden_states.device, dtype=hidden_states.dtype
     )
 
-    # compute_type = tl.bfloat16 if hidden_states.dtype == torch.bfloat16 else tl.float16
-
     if inplace:
         out_hidden_states = hidden_states
     else:
@@ -507,14 +553,17 @@ def fused_experts_impl(
 
         grouped_matmul(
             curr_hidden_states,
+            a1_scale,
             expert_to_token_num,
             expert_to_tokens,
             expert_to_weights=expert_to_weights,
+            expert_to_weights_scale=w1_scale,
             expert_weights=w1,
             topk_num=topk_num,
             out=intermediate_cache1.view(-1, N),
             expert_token_limit=2 ** 31 - 1,
             mul_routed_weight=False,
+            use_fp8_w8a8=use_fp8_w8a8,
             **run_config,
         )
 
@@ -522,14 +571,17 @@ def fused_experts_impl(
 
         grouped_matmul(
             intermediate_cache2,
+            a2_scale,
             expert_to_token_num,
             expert_to_tokens,
             expert_to_weights=expert_to_weights,
+            expert_to_weights_scale=w2_scale,
             expert_weights=w2,
             topk_num=1,
             out=intermediate_cache3.view(-1, w2.shape[1]),
             expert_token_limit=2 ** 31 - 1,
             mul_routed_weight=True,
+            use_fp8_w8a8=use_fp8_w8a8,
             **run_config,
         )
 
