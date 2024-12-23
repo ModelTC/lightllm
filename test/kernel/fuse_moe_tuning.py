@@ -1,5 +1,5 @@
-import os
 import torch
+import time
 import torch.multiprocessing as mp
 from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
 from typing import List
@@ -8,19 +8,35 @@ from lightllm.utils.log_utils import init_logger
 logger = init_logger(__name__)
 
 
+def set_seed():
+    import torch
+    import random
+    import numpy as np
+
+    seed = 42
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    return
+
+
 @torch.no_grad()
 def test_kernel(expert_num: int, m: int, n: int, k: int, topk: int, dtype: torch.dtype, test_count: int = 20, **config):
+    set_seed()
     input_tuples = []
+
+    a = torch.randn((m, k), device="cuda", dtype=dtype) / 10
+    w1 = torch.randn((expert_num, 2 * n, k), device="cuda", dtype=dtype) / 10
+    w2 = torch.randn((expert_num, k, n), device="cuda", dtype=dtype) / 10
+    rnd_logics = torch.randn(m, expert_num, device="cuda")
+    topk_values, topk_ids = torch.topk(rnd_logics, topk, dim=1)
+    topk_weights = torch.randn((m, topk), device="cuda", dtype=dtype) / 10
+
     for _ in range(test_count):
-        a = torch.randn((m, k), device="cuda", dtype=dtype) / 10
-        w1 = torch.randn((expert_num, 2 * n, k), device="cuda", dtype=dtype) / 10
-        w2 = torch.randn((expert_num, k, n), device="cuda", dtype=dtype) / 10
-
-        rnd_logics = torch.randn(m, expert_num, device="cuda")
-        topk_values, topk_ids = torch.topk(rnd_logics, topk, dim=1)
-
-        topk_weights = torch.randn((m, topk), device="cuda", dtype=dtype) / 10
-        input_tuples.append((a, w1, w2, topk_ids, topk_weights))
+        input_tuples.append((a.clone(), w1.clone(), w2.clone(), topk_ids.clone(), topk_weights.clone()))
 
     fused_experts_impl(a, w1, w2, topk_weights, topk_ids, inplace=True, **config)
 
@@ -31,8 +47,7 @@ def test_kernel(expert_num: int, m: int, n: int, k: int, topk: int, dtype: torch
             a, w1, w2, topk_ids, topk_weights = input_tuples[index]
             fused_experts_impl(a, w1, w2, topk_weights, topk_ids, inplace=True, **config)
 
-    # graph.replay()
-    import time
+    graph.replay()
 
     torch.cuda.synchronize()
     start = time.time()
@@ -70,10 +85,7 @@ def worker(
                 **test_configs[index],
             )
             queue.put(cost_time)  # Put result in queue
-        # import gc
 
-        # gc.collect()
-        # torch.cuda.empty_cache()
     except Exception as ex:
         logger.error(str(ex))
         logger.exception(str(ex))
