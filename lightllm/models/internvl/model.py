@@ -50,7 +50,7 @@ class InternvlTokenizer:
         image_count = len(multimodal_params.images)
         prompt = prompt.replace(IMG_TOKEN, image_tokens, image_count)
 
-        origin_ids = self.tokenizer.encode(prompt, kwargs["add_special_tokens"])
+        origin_ids = self.tokenizer.encode(prompt, add_special_tokens=kwargs["add_special_tokens"])
         # <img></img> --> <img>id,id+1...id+num</img>
         input_ids = []
         image_id = 0
