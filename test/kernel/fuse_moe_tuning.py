@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.multiprocessing as mp
-from lightllm.common.fused_moe.better_fused_moe import fused_experts_impl
+from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
 from typing import List
 from lightllm.utils.log_utils import init_logger
 
