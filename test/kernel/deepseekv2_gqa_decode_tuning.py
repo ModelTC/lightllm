@@ -1,10 +1,26 @@
 import torch
+import time
 import torch.multiprocessing as mp
 from typing import List
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
 
 logger = init_logger(__name__)
+
+
+def set_seed():
+    import torch
+    import random
+    import numpy as np
+
+    seed = 42
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    return
 
 
 @torch.no_grad()
@@ -18,6 +34,7 @@ def test_decode_attentions(
     test_count: int = 20,
     **run_config,
 ):
+    set_seed()
     tmp_class = type("TestObj", (object,), {})
     infer_state = tmp_class()
     infer_state.batch_size = q_nope_shape[0]
@@ -75,27 +92,31 @@ def test_decode_attentions(
         **run_config,
     )
 
-    import time
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        for index in range(test_count):
+            q_nope, q_rope, kv_buffer, kv_nope, kv_rope, o_tensor = input_tuples[index]
+            gqa_token_decode_attention_flash_decoding(
+                q_nope,
+                q_rope,
+                kv_nope,
+                kv_rope,
+                infer_state,
+                q_nope_shape[1],
+                q_nope_shape[2],
+                q_rope_shape[2],
+                None,
+                0.01,
+                out=o_tensor,
+                alloc_tensor_func=inner_alloc_func,
+                **run_config,
+            )
+
+    graph.replay()
 
     torch.cuda.synchronize()
     start = time.time()
-    for index in range(test_count):
-        q_nope, q_rope, kv_buffer, kv_nope, kv_rope, o_tensor = input_tuples[index]
-        gqa_token_decode_attention_flash_decoding(
-            q_nope,
-            q_rope,
-            kv_nope,
-            kv_rope,
-            infer_state,
-            q_nope_shape[1],
-            q_nope_shape[2],
-            q_rope_shape[2],
-            None,
-            0.01,
-            out=o_tensor,
-            alloc_tensor_func=inner_alloc_func,
-            **run_config,
-        )
+    graph.replay()
     torch.cuda.synchronize()
 
     cost_time = (time.time() - start) * 1000
