@@ -1,6 +1,6 @@
 import torch
 import time
-from .better_fused_moe import moe_align, moe_align1, grouped_matmul
+from .grouped_fused_moe import moe_align, moe_align1, grouped_matmul
 from lightllm.utils.log_utils import init_logger
 
 seed = 42
