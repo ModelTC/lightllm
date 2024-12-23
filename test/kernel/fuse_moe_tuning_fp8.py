@@ -23,7 +23,7 @@ def set_seed():
     return
 
 
-def quantize_moe(self, weight):
+def quantize_moe(weight):
     try:
         HAS_VLLM = True
         from lightllm.common.vllm_kernel import _custom_ops as ops
