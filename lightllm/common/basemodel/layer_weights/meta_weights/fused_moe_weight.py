@@ -1,10 +1,9 @@
+import os
 import torch
+import threading
 from .base_weight import BaseWeight
 from lightllm.utils.dist_utils import get_world_size, get_rank
-import threading
 from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
-import os
-
 from lightllm.common.vllm_kernel import _custom_ops as ops
 from lightllm.common.fused_moe import fused_experts
 
@@ -49,7 +48,10 @@ class FusedMoeWeight(BaseWeight):
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
         use_fp8_w8a8 = self.quant_method is not None
-        fused_experts(
+
+        from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
+
+        fused_experts_impl(
             hidden_states=input_tensor,
             w1=w1,
             w2=w2,
@@ -60,6 +62,7 @@ class FusedMoeWeight(BaseWeight):
             w1_scale=w1_scale,
             w2_scale=w2_scale,
         )
+        return
 
     def _fuse(self):
         with self.lock:
