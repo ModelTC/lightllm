@@ -387,7 +387,6 @@ def grouped_matmul(
 
     expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
-    assert expert_to_weights_scale.shape[0] == expert_num
     assert expert_to_token_index.shape == expert_to_weights.shape
     assert token_inputs.is_contiguous()
     assert expert_to_token_num.is_contiguous()
