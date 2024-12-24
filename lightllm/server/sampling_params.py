@@ -11,13 +11,13 @@ DEFAULT_INPUT_PENALTY = os.getenv("INPUT_PENALTY", "False").upper() in ["ON", "T
 
 class SamplingParams:
 
-    _do_sample: bool = (False,)
-    _presence_penalty: float = (0.0,)
-    _frequency_penalty: float = (0.0,)
-    _repetition_penalty: float = (1.0,)
-    _temperature: float = (1.0,)
-    _top_p: float = (1.0,)
-    _top_k: int = (-1,)  # -1 is for all
+    _do_sample: bool = False
+    _presence_penalty: float = 0.0
+    _frequency_penalty: float = 0.0
+    _repetition_penalty: float = 1.0
+    _temperature: float = 1.0
+    _top_p: float = 1.0
+    _top_k: int = -1  # -1 is for all
 
     def __init__(
         self,
