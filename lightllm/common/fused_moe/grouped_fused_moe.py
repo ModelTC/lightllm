@@ -30,6 +30,7 @@ from lightllm.utils.device_utils import (
     get_device_sm_shared_mem_num,
     get_device_warp_size,
 )
+from .moe_kernel_configs import MoeGroupedGemmKernelConfig
 
 FFN_MOE_CHUNK_SIZE = 8 * 1024
 
@@ -365,16 +366,25 @@ def grouped_matmul(
     out is tensor shape [token_num * topk_num, out_dim]
     """
     compute_type = tl.bfloat16 if out.dtype == torch.bfloat16 else tl.float16
+    expert_num, n, k = expert_weights.shape
+    assert token_inputs.shape[1] == k
+    assert expert_to_token_index.shape == expert_to_weights.shape
+    assert token_inputs.is_contiguous()
+    assert expert_to_token_num.is_contiguous()
+    assert expert_to_weights.is_contiguous()
+    assert expert_weights.is_contiguous()
 
     if not run_config:
-        run_config = {
-            "BLOCK_SIZE_M": 64,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 3,
-        }
+        run_config = MoeGroupedGemmKernelConfig.try_to_get_best_config(
+            M=token_inputs.shape[0],
+            N=n,
+            K=k,
+            topk_num=topk_num,
+            expert_num=expert_num,
+            mul_routed_weight=mul_routed_weight,
+            use_fp8_w8a8=use_fp8_w8a8,
+            out_dtype=str(out.dtype),
+        )
     BLOCK_SIZE_M = run_config["BLOCK_SIZE_M"]
     BLOCK_SIZE_N = run_config["BLOCK_SIZE_N"]
     BLOCK_SIZE_K = run_config["BLOCK_SIZE_K"]
@@ -384,14 +394,6 @@ def grouped_matmul(
 
     if use_fp8_w8a8:
         token_inputs, token_input_scale = ops.scaled_fp8_quant(token_inputs, token_input_scale)
-
-    expert_num, n, k = expert_weights.shape
-    assert token_inputs.shape[1] == k
-    assert expert_to_token_index.shape == expert_to_weights.shape
-    assert token_inputs.is_contiguous()
-    assert expert_to_token_num.is_contiguous()
-    assert expert_to_weights.is_contiguous()
-    assert expert_weights.is_contiguous()
 
     kernel = grouped_matmul_kernel.warmup(
         expert_token_limit,

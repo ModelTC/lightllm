@@ -35,3 +35,15 @@ def get_device_warp_size():
 
     properties = driver.active.utils.get_device_properties(0)
     return properties["warpSize"]
+
+
+@lru_cache(maxsize=None)
+def get_current_device_name():
+    import torch
+
+    if torch.cuda.is_available():
+        device = torch.cuda.current_device()
+        gpu_name = torch.cuda.get_device_name(device)
+        return gpu_name
+    else:
+        return None
