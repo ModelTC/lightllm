@@ -41,7 +41,7 @@ class InternvlTokenizer:
         self.get_image_patch_func = get_image_patch_func(kwargs["weight_dir"])
 
     def get_image_token_length(self, img: ImageItem):
-        return self.get_image_patch(img.image_w, img.image_h, use_thumbnail=True) * self.image_length
+        return self.get_image_patch_func(img.image_w, img.image_h, use_thumbnail=True) * self.image_length
 
     # only change the impl of the encode func:
     def encode(self, prompt, multimodal_params: MultimodalParams = None, **kwargs):
