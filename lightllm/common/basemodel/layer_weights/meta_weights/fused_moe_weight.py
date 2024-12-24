@@ -1,10 +1,9 @@
+import os
 import torch
+import threading
 from .base_weight import BaseWeight
 from lightllm.utils.dist_utils import get_world_size, get_rank
-import threading
 from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
-import os
-
 from lightllm.common.vllm_kernel import _custom_ops as ops
 from lightllm.common.fused_moe import fused_experts
 
