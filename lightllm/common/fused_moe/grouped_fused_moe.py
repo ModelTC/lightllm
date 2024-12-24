@@ -387,6 +387,7 @@ def grouped_matmul(
 
     expert_num, n, k = expert_weights.shape
     assert token_inputs.shape[1] == k
+    assert expert_to_weights_scale.shape[0] == expert_num
     assert expert_to_token_index.shape == expert_to_weights.shape
     assert token_inputs.is_contiguous()
     assert expert_to_token_num.is_contiguous()
@@ -520,7 +521,7 @@ def fused_experts_impl(
 
     intermediate_cache1 = alloc_tensor_func((M, topk_num, N), device=hidden_states.device, dtype=hidden_states.dtype)
     intermediate_cache2 = alloc_tensor_func(
-        (M * topk_num, N // 2), device=hidden_states.device, dtype=hidden_states.dtype
+        (M, topk_num, N // 2), device=hidden_states.device, dtype=hidden_states.dtype
     )
     intermediate_cache3 = alloc_tensor_func(
         (M, topk_num, w2.shape[1]), device=hidden_states.device, dtype=hidden_states.dtype
@@ -567,10 +568,10 @@ def fused_experts_impl(
             **run_config,
         )
 
-        ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+        ops.silu_and_mul(intermediate_cache2.view(-1, N // 2), intermediate_cache1.view(-1, N))
 
         grouped_matmul(
-            intermediate_cache2,
+            intermediate_cache2.view(-1, N // 2),
             a2_scale,
             expert_to_token_num,
             expert_to_tokens,
