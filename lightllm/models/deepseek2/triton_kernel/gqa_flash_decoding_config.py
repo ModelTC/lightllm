@@ -12,7 +12,7 @@ class MlaDecodeAttentionKernelConfig(KernelConfigs):
     def try_to_get_best_config(
         cls,
         batch_size: int,
-        total_token_num: int,
+        avg_seq_len_in_batch: int,
         q_head_num: int,
         q_head_dim: int,
         q_rope_dim: int,
@@ -29,8 +29,10 @@ class MlaDecodeAttentionKernelConfig(KernelConfigs):
         finded_config = cls.get_the_config(key_params)
 
         if finded_config:
-            # two search dim, first is total_token_num, second is batch_size
-            batch_size_config: dict = finded_config[min(finded_config.keys(), key=lambda x: abs(x - total_token_num))]
+            # two search dim, first is avg_seq_len_in_batch, second is batch_size
+            batch_size_config: dict = finded_config[
+                min(finded_config.keys(), key=lambda x: abs(x - avg_seq_len_in_batch))
+            ]
             config = batch_size_config[min(batch_size_config.keys(), key=lambda x: abs(x - batch_size))]
 
             return config

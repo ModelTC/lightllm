@@ -31,7 +31,7 @@ def gqa_token_decode_attention_flash_decoding(
     if not run_config:
         run_config = MlaDecodeAttentionKernelConfig.try_to_get_best_config(
             batch_size=batch_size,
-            total_token_num=infer_state.total_token_num,
+            avg_seq_len_in_batch=infer_state.total_token_num // batch_size,
             q_head_num=q_head_num,
             q_head_dim=kv_lora_rank,
             q_rope_dim=q_rope_dim,
