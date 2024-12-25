@@ -1,4 +1,3 @@
-import os
 import torch
 from abc import ABC, abstractmethod
 from lightllm.utils.dist_utils import get_world_size, get_rank

@@ -37,6 +37,7 @@ class VisualModelRpcServer(rpyc.Service):
         self.data_type = kvargs["data_type"]
 
         torch.cuda.set_device(visual_gpu_ids[self.vit_rank_id])
+        set_current_device_id(visual_gpu_ids[self.vit_rank_id])
         dist.init_process_group(
             backend="nccl",
             init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
@@ -44,7 +45,7 @@ class VisualModelRpcServer(rpyc.Service):
             world_size=self.vit_tp,
         )
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
-        set_current_device_id(visual_gpu_ids[self.vit_rank_id])
+        
 
         try:
             self.model_type = model_cfg["model_type"]

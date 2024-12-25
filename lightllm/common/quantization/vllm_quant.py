@@ -3,7 +3,6 @@ import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
-from lightllm.utils.device_utils import get_current_device_id
 import torch.nn.functional as F
 
 try:
@@ -17,7 +16,6 @@ class vLLMBaseQuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()
         assert HAS_VLLM, "vllm is not installed, you can't use quant api of it"
-        self.device_id_ = get_current_device_id()
 
     def quantize(self, weight: torch.Tensor):
         """ """

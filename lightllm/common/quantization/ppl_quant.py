@@ -3,7 +3,6 @@ import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
-from lightllm.utils.device_utils import get_current_device_id
 
 
 @QUANTMETHODS.register("ppl-w4a16-128")
@@ -11,7 +10,6 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
     def __init__(self, group_size=128):
         super().__init__()
         self.group_size = group_size
-        self.device_id_ = get_current_device_id()
 
     def quantize(self, weight: torch.Tensor):
         """
