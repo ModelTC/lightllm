@@ -114,7 +114,9 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
         raise Exception("This function needs to be bound.")
 
-    def apply_scaled_mm_fp8(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
+    def apply_scaled_mm_fp8(
+        self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
+    ):
         x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
@@ -128,7 +130,9 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
         return out
 
-    def apply_pingpong_fp8(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
+    def apply_pingpong_fp8(
+        self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
+    ):
         x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=False)
         assert bias is None
         m = input_tensor.shape[0]
@@ -140,7 +144,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-                
+
         from fp8_pingpong_gemm import cutlass_scaled_mm
 
         return cutlass_scaled_mm(x_q, weights[0], x_scale, weights[1], out)
