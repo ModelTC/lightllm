@@ -396,7 +396,7 @@ if __name__ == "__main__":
     for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
         ans = mp_tuning(
             tuning_configs,
-            params={
+            {
                 "expert_num": 160,
                 "m": m,
                 "n": 192,
