@@ -225,7 +225,6 @@ def worker(
 
 
 def get_test_configs():
-    # all_configs = []
     for num_stages in [
         1,
         2,
@@ -248,7 +247,7 @@ def get_test_configs():
                     32,
                     64,
                 ]:
-                    for BLOCK_SIZE_N in [16, 32, 64, 128]:
+                    for BLOCK_SIZE_N in [64, 128]:
                         for BLOCK_SIZE_K in [32, 64, 128]:
                             t_config = {
                                 "BLOCK_SIZE_M": BLOCK_SIZE_M,
@@ -259,12 +258,6 @@ def get_test_configs():
                                 "num_stages": num_stages,
                             }
                             yield t_config
-                            # all_configs.append(t_config)
-
-    # import random
-    # random.shuffle(all_configs)
-    # for t_config in all_configs:
-    #     yield t_config
 
 
 def tuning_configs(
@@ -354,18 +347,61 @@ def tuning_configs(
                 break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
+    return best_config
 
 
 if __name__ == "__main__":
-    tuning_configs(
-        expert_num=160,
-        m=200,
-        n=192,
+    # tuning to get deepseekv2 large configs and store in H800
+    up_dict = {}
+    for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
+        ans = tuning_configs(
+            expert_num=160,
+            m=m,
+            n=192,
+            k=5120,
+            topk=6,
+            dtype=torch.bfloat16,
+            test_count=20,
+            use_fp8_w8a8=True,
+            is_up=True,
+        )
+        up_dict[m] = ans
+
+    from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
+
+    MoeGroupedGemmKernelConfig.save_config(
+        n=192 * 2,
         k=5120,
-        topk=6,
-        dtype=torch.bfloat16,
-        test_count=20,
+        topk_num=6,
+        expert_num=160,
+        mul_routed_weight=False,
         use_fp8_w8a8=True,
-        is_up=True,
+        out_dtype=str(torch.bfloat16),
+        config_json=up_dict,
     )
-    pass
+
+    down_dict = {}
+    for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
+        ans = tuning_configs(
+            expert_num=160,
+            m=m,
+            n=192,
+            k=5120,
+            topk=6,
+            dtype=torch.bfloat16,
+            test_count=20,
+            use_fp8_w8a8=True,
+            is_up=False,
+        )
+        down_dict[m] = ans
+
+    MoeGroupedGemmKernelConfig.save_config(
+        n=5120,
+        k=192,
+        topk_num=1,
+        expert_num=160,
+        mul_routed_weight=True,
+        use_fp8_w8a8=True,
+        out_dtype=str(torch.bfloat16),
+        config_json=down_dict,
+    )
