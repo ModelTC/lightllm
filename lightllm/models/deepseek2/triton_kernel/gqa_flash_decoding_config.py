@@ -22,7 +22,7 @@ class MlaDecodeAttentionKernelConfig(KernelConfigs):
             "q_head_num": q_head_num,
             "q_head_dim": q_head_dim,
             "q_rope_dim": q_rope_dim,
-            "out_dtype": out_dtype,
+            "out_dtype": str(out_dtype),
         }
         key_params = frozendict(key_params)
 
