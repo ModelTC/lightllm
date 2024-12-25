@@ -16,6 +16,7 @@ from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrain
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
+from lightllm.utils.device_utils import set_current_device_id
 
 
 class VisualModelRpcServer(rpyc.Service):
@@ -36,6 +37,7 @@ class VisualModelRpcServer(rpyc.Service):
         self.data_type = kvargs["data_type"]
 
         torch.cuda.set_device(visual_gpu_ids[self.vit_rank_id])
+        print(visual_gpu_ids[self.vit_rank_id])
         dist.init_process_group(
             backend="nccl",
             init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
@@ -43,7 +45,7 @@ class VisualModelRpcServer(rpyc.Service):
             world_size=self.vit_tp,
         )
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
-        os.environ["CURRENT_DEVICE_ID"] = str(visual_gpu_ids[self.vit_rank_id])
+        set_current_device_id(visual_gpu_ids[self.vit_rank_id])
 
         try:
             self.model_type = model_cfg["model_type"]

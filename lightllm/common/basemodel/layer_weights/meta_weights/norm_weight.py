@@ -1,3 +1,4 @@
+import torch
 from .base_weight import BaseWeightTpl
 
 
@@ -41,8 +42,8 @@ class TpNormWeight(NormWeight):
         self.split_n_embed = split_n_embed
 
     def load_hf_weights(self, weights):
-        start = self.split_n_embed * self.device_id_
-        end = self.split_n_embed * (self.device_id_ + 1)
+        start = self.split_n_embed * self.tp_rank_
+        end = self.split_n_embed * (self.tp_rank_ + 1)
 
         if self.weight_name in weights:
             self.weight = weights[self.weight_name][start:end].to(self.data_type_).cuda(self.device_id_)

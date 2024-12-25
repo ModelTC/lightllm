@@ -77,7 +77,6 @@ class ModeBackend:
         self.pd_rpyc_port = kvargs.get("pd_rpyc_port", None)
         max_total_token_num = kvargs["max_total_token_num"]
 
-        os.environ["CURRENT_DEVICE_ID"] = str(self.tp_rank)
         if self.dp_size > 1:
             assert self.dp_size == self.world_size, "Currently only self-sustaining dp_size == tp_size"
             os.environ["ENABLE_DP"] = "1"

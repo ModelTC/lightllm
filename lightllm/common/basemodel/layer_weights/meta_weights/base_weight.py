@@ -2,6 +2,7 @@ import os
 import torch
 from abc import ABC, abstractmethod
 from lightllm.utils.dist_utils import get_world_size, get_rank
+from lightllm.utils.device_utils import get_current_device_id
 
 
 class BaseWeight(ABC):
@@ -21,7 +22,7 @@ class BaseWeightTpl(BaseWeight):
     def __init__(self):
         self.world_size_ = get_world_size()
         self.tp_rank_ = get_rank()
-        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID", self.tp_rank_))
+        self.device_id_ = get_current_device_id()
 
     def load_hf_weights(self, weights):
         pass

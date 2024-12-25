@@ -7,6 +7,7 @@ from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
 
 from lightllm.common.vllm_kernel import _custom_ops as ops
 from lightllm.common.fused_moe import fused_experts
+from lightllm.utils.device_utils import get_current_device_id
 
 
 class FusedMoeWeight(BaseWeight):
@@ -22,7 +23,6 @@ class FusedMoeWeight(BaseWeight):
         self.split_inter_size = split_inter_size
         self.data_type_ = data_type
         self.tp_rank_ = get_rank()
-        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID", self.tp_rank_))
         self.experts_up_projs = [None] * self.n_routed_experts
         self.experts_gate_projs = [None] * self.n_routed_experts
         self.expert_gate_up_proj_etp = None
@@ -179,10 +179,8 @@ class FusedMoeWeight(BaseWeight):
             self._fuse()
 
     def _cuda(self, cpu_tensor):
-        if self.device_id_ is None:
-            return cpu_tensor.contiguous().to(self.data_type_).cuda()
-        else:
-            return cpu_tensor.contiguous().to(self.data_type_).cuda(self.device_id_)
+        device_id = get_current_device_id()
+        return cpu_tensor.contiguous().to(self.data_type_).cuda(device_id)
 
     def verify_load(self):
         if os.environ.get("ETP_MODE_ENABLED") == "true":

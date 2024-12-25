@@ -11,17 +11,17 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
     MultiROWMMWeight,
     TpNormWeight,
 )
+from lightllm.utils.device_utils import get_current_device_id
 
 
 class ViTTransformerLayerWeight(TransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
-        self.gpu_id_ = int(os.getenv("CURRENT_DEVICE_ID", tp_rank))
-
         return
 
     def _cuda(self, cpu_tensor):
-        return cpu_tensor.contiguous().to(self.data_type_).cuda(self.gpu_id_)
+        device_id = get_current_device_id()
+        return cpu_tensor.contiguous().to(self.data_type_).cuda(device_id)
 
     def _parse_config(self):
         self.padding_hidden_size = self.network_config_["padding_hidden_size"]

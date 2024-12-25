@@ -3,6 +3,7 @@ import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
+from lightllm.utils.device_utils import get_current_device_id
 import torch.nn.functional as F
 
 try:
@@ -33,7 +34,7 @@ class AOBaseQuantizationMethod(QuantizationMethod):
         assert HAS_TORCH_AO, "torchao is not installed, you can't use quant api of it"
         assert TORCH_VERSION_AT_LEAST_2_4, "torchao requires torch >=2.4"
         self.quant_func = None
-        self.device_id_ = int(os.getenv("CURRENT_DEVICE_ID"))
+        self.device_id_ = get_current_device_id()
 
     def quantize(self, weight: torch.Tensor):
         """ """
