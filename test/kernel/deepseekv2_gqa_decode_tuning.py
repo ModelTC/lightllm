@@ -265,6 +265,7 @@ def tuning_configs(
 
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method("spawn")
     # q_node shape torch.Size([200, 16, 512]) q_rope shape torch.Size([200, 16, 64])
     # kv shape torch.Size([400000, 1, 512]) kv_rope torch.Size([400000, 1, 64])
     from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding_config import MlaDecodeAttentionKernelConfig

@@ -348,6 +348,7 @@ def tuning_configs(
 
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method("spawn")
     # tuning to get deepseekv2 lite configs and store
     up_dict = {}
     for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
