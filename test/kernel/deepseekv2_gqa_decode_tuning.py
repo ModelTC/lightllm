@@ -1,5 +1,6 @@
 import torch
 import time
+import os
 import torch.multiprocessing as mp
 from typing import List
 from lightllm.utils.log_utils import init_logger
@@ -158,7 +159,8 @@ def worker(
         pass
 
 
-def get_test_configs():
+def get_test_configs(split_id, split_count):
+    index = 0
     for block_seq in [32, 64, 128, 256]:
         for block_n in [16, 32, 64, 128, 256]:
             for block_q_head in [16, 32, 64]:
@@ -176,23 +178,29 @@ def get_test_configs():
                                         "stage2_num_warps": stage2_num_warps,
                                         "stage2_num_stages": stage2_num_stages,
                                     }
-                                    yield t_config
+                                    if index % split_count == split_id:
+                                        yield t_config
+                                        index += 1
+                                    else:
+                                        index += 1
 
 
 def tuning_configs(
+    device_id: int,  # use for mult mp tunning
+    device_count: int,
     q_nope_shape: List[int],
     q_rope_shape: List[int],
     kv_nope_shape: List[int],
     kv_rope_shape: List[int],
     test_seq_len: int,
     dtype: torch.dtype,
-    test_count: int = 20,
+    test_count: int,
 ):
-
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(device_id)
     best_config, best_cost_time = None, 10000000
     queue = mp.Queue()
     test_configs = []
-    for t_config in get_test_configs():
+    for t_config in get_test_configs(device_id, device_count):
         test_configs.append(t_config)
         if len(test_configs) < 64:
             continue
@@ -261,13 +269,13 @@ def tuning_configs(
                 break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
-    return best_config
+    return best_config, best_cost_time
 
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")
-    # q_node shape torch.Size([200, 16, 512]) q_rope shape torch.Size([200, 16, 64])
-    # kv shape torch.Size([400000, 1, 512]) kv_rope torch.Size([400000, 1, 64])
+
+    from lightllm.utils.tuning_utils import mp_tuning
     from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding_config import MlaDecodeAttentionKernelConfig
 
     q_head_num = 16
@@ -281,14 +289,17 @@ if __name__ == "__main__":
             if batch_size * seq_len > 128 * 1024 * 4:
                 continue
 
-            ans = tuning_configs(
-                q_nope_shape=[batch_size, q_head_num, q_head_dim],
-                q_rope_shape=[batch_size, q_head_num, q_rope_dim],
-                kv_nope_shape=[None, 1, q_head_dim],
-                kv_rope_shape=[None, 1, q_rope_dim],
-                test_seq_len=seq_len,
-                dtype=torch.bfloat16,
-                test_count=20,
+            ans = mp_tuning(
+                tuning_configs,
+                {
+                    "q_nope_shape": [batch_size, q_head_num, q_head_dim],
+                    "q_rope_shape": [batch_size, q_head_num, q_rope_dim],
+                    "kv_nope_shape": [None, 1, q_head_dim],
+                    "kv_rope_shape": [None, 1, q_rope_dim],
+                    "test_seq_len": seq_len,
+                    "dtype": torch.bfloat16,
+                    "test_count": 20,
+                },
             )
             store_json_ans[seq_len][batch_size] = ans
 
