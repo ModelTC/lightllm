@@ -1,3 +1,4 @@
+import os
 import torch
 import time
 import torch.multiprocessing as mp
@@ -224,7 +225,8 @@ def worker(
         pass
 
 
-def get_test_configs():
+def get_test_configs(split_id, split_count):
+    index = 0
     for num_stages in [
         1,
         2,
@@ -257,10 +259,16 @@ def get_test_configs():
                                 "num_warps": num_warps,
                                 "num_stages": num_stages,
                             }
-                            yield t_config
+                            if index % split_count == split_id:
+                                yield t_config
+                                index += 1
+                            else:
+                                index += 1
 
 
 def tuning_configs(
+    device_id: int,  # use for mult mp tunning
+    device_count: int,
     expert_num: int,
     m: int,
     n: int,
@@ -271,11 +279,11 @@ def tuning_configs(
     use_fp8_w8a8: bool,
     is_up: bool,
 ):
-
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(device_id)
     best_config, best_cost_time = None, 10000000
     queue = mp.Queue()
     test_configs = []
-    for t_config in get_test_configs():
+    for t_config in get_test_configs(device_id, device_count):
         test_configs.append(t_config)
         if len(test_configs) < 256:
             continue
@@ -352,57 +360,63 @@ def tuning_configs(
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")
+    from lightllm.utils.tuning_utils import mp_tuning
+    from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
+
     # tuning to get deepseekv2 large configs and store in H800
     up_dict = {}
     for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
-        ans = tuning_configs(
-            expert_num=160,
-            m=m,
-            n=192,
-            k=5120,
-            topk=6,
-            dtype=torch.bfloat16,
-            test_count=20,
-            use_fp8_w8a8=True,
-            is_up=True,
+        ans = mp_tuning(
+            tuning_configs,
+            {
+                "expert_num": 160,
+                "m": m,
+                "n": 192,
+                "k": 5120,
+                "topk": 6,
+                "dtype": torch.bfloat16,
+                "test_count": 20,
+                "use_fp8_w8a8": True,
+                "is_up": True,
+            },
         )
         up_dict[m] = ans
-
-    from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
-
-    MoeGroupedGemmKernelConfig.save_config(
-        N=192 * 2,
-        K=5120,
-        topk_num=6,
-        expert_num=160,
-        mul_routed_weight=False,
-        use_fp8_w8a8=True,
-        out_dtype=str(torch.bfloat16),
-        config_json=up_dict,
-    )
+        MoeGroupedGemmKernelConfig.save_config(
+            N=192 * 2,
+            K=5120,
+            topk_num=6,
+            expert_num=160,
+            mul_routed_weight=False,
+            use_fp8_w8a8=True,
+            out_dtype=str(torch.bfloat16),
+            config_json=up_dict,
+        )
 
     down_dict = {}
     for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
-        ans = tuning_configs(
-            expert_num=160,
-            m=m,
-            n=192,
-            k=5120,
-            topk=6,
-            dtype=torch.bfloat16,
-            test_count=20,
-            use_fp8_w8a8=True,
-            is_up=False,
+        ans = mp_tuning(
+            tuning_configs,
+            params={
+                "expert_num": 160,
+                "m": m,
+                "n": 192,
+                "k": 5120,
+                "topk": 6,
+                "dtype": torch.bfloat16,
+                "test_count": 20,
+                "use_fp8_w8a8": True,
+                "is_up": False,
+            },
         )
         down_dict[m] = ans
 
-    MoeGroupedGemmKernelConfig.save_config(
-        N=5120,
-        K=192,
-        topk_num=1,
-        expert_num=160,
-        mul_routed_weight=True,
-        use_fp8_w8a8=True,
-        out_dtype=str(torch.bfloat16),
-        config_json=down_dict,
-    )
+        MoeGroupedGemmKernelConfig.save_config(
+            N=5120,
+            K=192,
+            topk_num=1,
+            expert_num=160,
+            mul_routed_weight=True,
+            use_fp8_w8a8=True,
+            out_dtype=str(torch.bfloat16),
+            config_json=down_dict,
+        )
