@@ -37,7 +37,6 @@ class VisualModelRpcServer(rpyc.Service):
         self.data_type = kvargs["data_type"]
 
         torch.cuda.set_device(visual_gpu_ids[self.vit_rank_id])
-        print(visual_gpu_ids[self.vit_rank_id])
         dist.init_process_group(
             backend="nccl",
             init_method=f"tcp://127.0.0.1:{visual_nccl_port}",
