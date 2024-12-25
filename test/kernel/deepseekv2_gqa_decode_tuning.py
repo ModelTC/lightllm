@@ -290,14 +290,14 @@ if __name__ == "__main__":
                 dtype=torch.bfloat16,
                 test_count=20,
             )
-            store_json_ans[batch_size * seq_len][batch_size] = ans
+            store_json_ans[seq_len][batch_size] = ans
 
-    MlaDecodeAttentionKernelConfig.save_config(
-        q_head_num=q_head_num,
-        q_head_dim=q_head_dim,
-        q_rope_dim=q_rope_dim,
-        out_dtype=str(torch.bfloat16),
-        config_json=store_json_ans,
-    )
+            MlaDecodeAttentionKernelConfig.save_config(
+                q_head_num=q_head_num,
+                q_head_dim=q_head_dim,
+                q_rope_dim=q_rope_dim,
+                out_dtype=str(torch.bfloat16),
+                config_json=store_json_ans,
+            )
 
     pass
