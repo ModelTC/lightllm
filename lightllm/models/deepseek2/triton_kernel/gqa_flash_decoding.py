@@ -3,6 +3,7 @@ import torch
 import torch.multiprocessing as mp
 from typing import List
 from lightllm.utils.log_utils import init_logger
+from .gqa_flash_decoding_config import MlaDecodeAttentionKernelConfig
 
 logger = init_logger(__name__)
 
@@ -22,15 +23,22 @@ def gqa_token_decode_attention_flash_decoding(
     alloc_tensor_func=torch.empty,
     **run_config
 ):
-    if run_config:
-        BLOCK_SEQ = run_config["BLOCK_SEQ"]
-    else:
-        BLOCK_SEQ = 64
-
     batch_size = infer_state.batch_size
     max_len_in_batch = infer_state.max_len_in_batch
     calcu_shape1 = (batch_size, q_head_num, kv_lora_rank)
     calcu_shape2 = (batch_size, q_head_num, q_rope_dim)
+
+    if not run_config:
+        run_config = MlaDecodeAttentionKernelConfig.try_to_get_best_config(
+            batch_size=batch_size,
+            total_token_num=infer_state.total_token_num,
+            q_head_num=q_head_num,
+            q_head_dim=kv_lora_rank,
+            q_rope_dim=q_rope_dim,
+            out_dtype=torch.bfloat16,
+        )
+
+    BLOCK_SEQ = run_config["BLOCK_SEQ"]
 
     from .gqa_flash_decoding_stage1 import flash_decode_stage1
     from .gqa_flash_decoding_stage2 import flash_decode_stage2

@@ -159,7 +159,7 @@ def worker(
 
 
 def get_test_configs():
-    for block_seq in [16, 32, 64, 128, 256]:
+    for block_seq in [32, 64, 128, 256]:
         for block_n in [16, 32, 64, 128, 256]:
             for block_q_head in [16, 32, 64]:
                 for stage1_num_warps in [1, 2, 4, 8, 16]:
@@ -261,18 +261,42 @@ def tuning_configs(
                 break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
+    return best_config
 
 
 if __name__ == "__main__":
     # q_node shape torch.Size([200, 16, 512]) q_rope shape torch.Size([200, 16, 64])
     # kv shape torch.Size([400000, 1, 512]) kv_rope torch.Size([400000, 1, 64])
-    tuning_configs(
-        q_nope_shape=[200, 16, 512],
-        q_rope_shape=[200, 16, 64],
-        kv_nope_shape=[None, 1, 512],
-        kv_rope_shape=[None, 1, 64],
-        test_seq_len=1035,
-        dtype=torch.bfloat16,
-        test_count=20,
+    from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding_config import MlaDecodeAttentionKernelConfig
+
+    q_head_num = 16
+    q_head_dim = 512
+    q_rope_dim = 64
+    import collections
+
+    store_json_ans = collections.defaultdict(dict)
+    for batch_size in [1, 8, 16, 32, 64, 128, 256]:
+        for seq_len in [256, 512, 1024, 2048, 4096, 8192]:
+            if batch_size * seq_len > 128 * 1024 * 4:
+                continue
+
+            ans = tuning_configs(
+                q_nope_shape=[batch_size, q_head_num, q_head_dim],
+                q_rope_shape=[batch_size, q_head_num, q_rope_dim],
+                kv_nope_shape=[None, 1, q_head_dim],
+                kv_rope_shape=[None, 1, q_rope_dim],
+                test_seq_len=seq_len,
+                dtype=torch.bfloat16,
+                test_count=20,
+            )
+            store_json_ans[batch_size * seq_len][batch_size] = ans
+
+    MlaDecodeAttentionKernelConfig.save_config(
+        q_head_num=q_head_num,
+        q_head_dim=q_head_dim,
+        q_rope_dim=q_rope_dim,
+        out_dtype=str(torch.bfloat16),
+        config_json=store_json_ans,
     )
+
     pass
