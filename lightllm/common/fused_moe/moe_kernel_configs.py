@@ -30,7 +30,7 @@ class MoeGroupedGemmKernelConfig(KernelConfigs):
             "expert_num": expert_num,
             "mul_routed_weight": mul_routed_weight,
             "use_fp8_w8a8": use_fp8_w8a8,
-            "out_dtype": out_dtype,
+            "out_dtype": str(out_dtype),
         }
         key_params = frozendict(key_params)
 
@@ -79,7 +79,7 @@ class MoeGroupedGemmKernelConfig(KernelConfigs):
             "expert_num": expert_num,
             "mul_routed_weight": mul_routed_weight,
             "use_fp8_w8a8": use_fp8_w8a8,
-            "out_dtype": out_dtype,
+            "out_dtype": str(out_dtype),
         }
         key_params = frozendict(key_params)
 
