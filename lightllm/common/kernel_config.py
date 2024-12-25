@@ -34,7 +34,7 @@ class KernelConfigs(ABC):
         config_file_path = os.path.join(config_dir_path, json_file_name)
 
         if os.path.exists(config_file_path):
-            with open(config_file_path, "r") as file:
+            with open(config_file_path, mode="r") as file:
                 return json.load(file)
         else:
             logger.warning(
