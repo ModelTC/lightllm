@@ -367,8 +367,8 @@ if __name__ == "__main__":
     from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
 
     MoeGroupedGemmKernelConfig.save_config(
-        n=1408,
-        k=2048,
+        N=1408,
+        K=2048,
         topk_num=6,
         expert_num=64,
         mul_routed_weight=False,
@@ -392,8 +392,8 @@ if __name__ == "__main__":
         )
         down_dict[m] = ans
     MoeGroupedGemmKernelConfig.save_config(
-        n=2048,
-        k=1408 // 2,
+        N=2048,
+        K=1408 // 2,
         topk_num=1,
         expert_num=64,
         mul_routed_weight=True,
