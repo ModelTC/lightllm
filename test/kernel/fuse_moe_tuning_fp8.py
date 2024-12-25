@@ -355,7 +355,7 @@ def tuning_configs(
                 break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
-    return best_config
+    return best_config, best_cost_time
 
 
 if __name__ == "__main__":
