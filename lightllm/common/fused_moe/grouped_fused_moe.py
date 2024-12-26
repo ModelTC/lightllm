@@ -32,6 +32,7 @@ from lightllm.utils.device_utils import (
 )
 from .moe_kernel_configs import MoeGroupedGemmKernelConfig
 from .moe_silu_and_mul import silu_and_mul_fwd
+from .moe_sum_reduce import moe_sum_reduce
 
 FFN_MOE_CHUNK_SIZE = 8 * 1024
 
@@ -588,7 +589,7 @@ def fused_experts_impl(
             **run_config,
         )
 
-        ops.moe_sum(
+        moe_sum_reduce(
             intermediate_cache3.view(*intermediate_cache3.shape), out_hidden_states[begin_chunk_idx:end_chunk_idx]
         )
     return out_hidden_states
