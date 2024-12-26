@@ -4,6 +4,7 @@ import time
 import torch.multiprocessing as mp
 import itertools
 from lightllm.common.fused_moe.moe_silu_and_mul import MoeSiluAndMulKernelConfig, silu_and_mul_fwd
+from lightllm.utils.watchdog_utils import Watchdog
 from typing import List
 from lightllm.utils.log_utils import init_logger
 
@@ -74,6 +75,8 @@ def worker(
     test_configs,
     queue,
 ):
+    dog = Watchdog(timeout=10)
+    dog.start()
     try:
         for index in range(len(test_configs)):
             cost_time = test_kernel(
@@ -83,6 +86,7 @@ def worker(
                 test_count=test_count,
                 **test_configs[index],
             )
+            dog.heartbeat()
             queue.put(cost_time)  # Put result in queue
 
     except Exception as ex:
@@ -192,22 +196,21 @@ if __name__ == "__main__":
     from lightllm.utils.tuning_utils import mp_tuning
 
     # tuning to get silu and mul
-    n = 192
-
-    json_dict = {}
-    for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
-        ans = mp_tuning(
-            tuning_configs,
-            {
-                "m": m,
-                "n": n,
-                "dtype": torch.bfloat16,
-                "test_count": 20,
-            },
-        )
-        json_dict[m] = ans
-        MoeSiluAndMulKernelConfig.save_config(
-            N=n,
-            out_dtype=str(torch.bfloat16),
-            config_json=json_dict,
-        )
+    for n in [128, 192, 256, 512, 1024, 1408, 2048, 4096, 8192]:
+        json_dict = {}
+        for m in [1, 8, 64, 128, 256, 512, 1024, 2048, 4096, 8192]:
+            ans = mp_tuning(
+                tuning_configs,
+                {
+                    "m": m,
+                    "n": n,
+                    "dtype": torch.bfloat16,
+                    "test_count": 20,
+                },
+            )
+            json_dict[m] = ans
+            MoeSiluAndMulKernelConfig.save_config(
+                N=n,
+                out_dtype=str(torch.bfloat16),
+                config_json=json_dict,
+            )
