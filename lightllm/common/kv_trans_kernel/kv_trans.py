@@ -35,7 +35,7 @@ def _kv_trans_kernel(
     while tid < token_num:
         input_token_idx = tl.load(input_token_idx_ptr + tid)
         output_token_idx = tl.load(output_token_idx_ptr + tid)
-        for block_idx in tl.range(0, tl.cdiv(head_num_dim, BLOCK_SIZE), BLOCK_SIZE, num_stages=NUM_STAGES):
+        for block_idx in tl.range(0, tl.cdiv(head_num_dim, BLOCK_SIZE), 1, num_stages=NUM_STAGES):
             cur_offs = block_idx * BLOCK_SIZE + offs
             in_datas = tl.load(input_ptr + input_stride_0 * input_token_idx + cur_offs, mask=cur_offs < head_num_dim)
             tl.store(output_ptr + output_stride_0 * output_token_idx + cur_offs, in_datas, mask=cur_offs < head_num_dim)
@@ -73,5 +73,6 @@ def kv_trans(input: torch.Tensor, input_idx: torch.Tensor, output: torch.Tensor,
         grid_count=grid_count,
         BLOCK_SIZE=BLOCK_SIZE,
         NUM_STAGES=NUM_STAGES,
+        num_warps=1,
     )
     return
