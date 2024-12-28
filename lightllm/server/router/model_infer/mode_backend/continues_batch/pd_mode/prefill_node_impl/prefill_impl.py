@@ -42,9 +42,10 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         threading.Thread(target=lambda: t.start(), daemon=True).start()
 
         if kv_trans_use_p2p():
-            from ..p2p_fix import rebuild_cuda_tensor
+            from ..p2p_fix import reduce_tensor
 
-            mp.reductions.rebuild_cuda_tensor.__code__ == rebuild_cuda_tensor.__code__
+            mp.reductions.reduce_tensor.__code__ = reduce_tensor.__code__
+
         return
 
     @calculate_time(show=False, min_cost_ms=300)
