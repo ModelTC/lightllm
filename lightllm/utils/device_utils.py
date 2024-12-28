@@ -75,13 +75,10 @@ def init_p2p(device_index):
     import torch
 
     num_gpus = torch.cuda.device_count()
-    for i in range(num_gpus):
-        tensor = torch.rand(
-            1,
-        )
-        tensor = tensor.to(f"cuda:{i}")
-        for j in range(num_gpus):
-            tensor.to(f"cuda:{j}")
+    tensor = torch.zeros((1,))
+    tensor = tensor.to(f"cuda:{device_index}")
+    for j in range(num_gpus):
+        tensor.to(f"cuda:{j}")
 
     torch.cuda.empty_cache()
     return
