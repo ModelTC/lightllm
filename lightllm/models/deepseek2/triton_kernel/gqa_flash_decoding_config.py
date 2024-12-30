@@ -46,6 +46,19 @@ class MlaDecodeAttentionKernelConfig(KernelConfigs):
                 "stage2_num_warps": 4,
                 "stage2_num_stages": 2,
             }
+            config = {
+                "STAGE1_BLOCK_SEQ": 64,
+                "STAGE1_BLOCK_N": 32,
+                "STAGE1_SPLIT_K_DIM": 32,
+                "stage1_num_warps": 4,
+                "stage1_num_stages": 3,
+                "STAGE2_BLOCK_SEQ": 64,
+                "STAGE2_SPLIT_K_DIM": 32,
+                "stage2_num_warps": 8,
+                "stage2_num_stages": 1,
+                "stage3_num_warps": 4,
+                "stage3_num_stages": 1,
+            }
         return config
 
     @classmethod

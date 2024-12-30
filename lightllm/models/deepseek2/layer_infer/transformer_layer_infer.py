@@ -193,16 +193,14 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             return o_tensor
         else:
             kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
+            q = torch.cat([q_nope, q_rope], dim=-1)
             return gqa_token_decode_attention_flash_decoding(
-                q_nope,
-                q_rope,
-                kv[:, :, : -self.qk_rope_head_dim],
-                kv[:, :, -self.qk_rope_head_dim :],
+                q,
+                kv,
                 infer_state,
                 self.tp_q_head_num_,
                 self.kv_lora_rank,
                 self.qk_rope_head_dim,
-                self.qk_nope_head_dim,
                 self.softmax_scale,
                 alloc_tensor_func=self.alloc_tensor,
             )
