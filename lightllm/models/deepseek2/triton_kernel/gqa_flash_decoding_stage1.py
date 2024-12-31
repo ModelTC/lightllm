@@ -67,18 +67,53 @@ def _fwd_kernel_flash_decode_stage1_padding(
             mask=seq_n_mask,
             other=0,
         )
-        off_kv = kv_loc[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_split_d[:, None]
         att_value = tl.zeros([Q_HEAD_NUM, BLOCK_N], dtype=tl.float32)
 
-        for index in tl.range(head_dim // SPLIT_K_DIM, num_stages=NUM_STAGE):
-            q = tl.load(Q + off_q + index * SPLIT_K_DIM, mask=head_mask[:, None], other=0.0)
-            kv = tl.load(KV + off_kv + index * SPLIT_K_DIM, mask=seq_n_mask[None, :], other=0.0)
-            att_value += tl.dot(q, kv)
+        att_value = q_dot_k(
+            Q,
+            KV,
+            kv_loc,
+            att_value,
+            stride_kv_bs,
+            stride_kv_h,
+            head_dim,
+            cur_kv_head,
+            head_mask,
+            offs_split_d,
+            off_q,
+            seq_n_mask,
+            SPLIT_K_DIM,
+            NUM_STAGE,
+        )
 
         att_value *= sm_scale
-
         tl.store(logics + off_o + offs_n_new[None, :], att_value, mask=head_mask[:, None] & seq_n_mask[None, :])
     return
+
+
+@triton.jit
+def q_dot_k(
+    Q,
+    KV,
+    kv_loc,
+    att_value,
+    stride_kv_bs,
+    stride_kv_h,
+    head_dim,
+    cur_kv_head,
+    head_mask,
+    offs_split_d,
+    off_q,
+    seq_n_mask,
+    SPLIT_K_DIM: tl.constexpr,
+    NUM_STAGE: tl.constexpr,
+):
+    off_kv = kv_loc[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_split_d[:, None]
+    for index in tl.range(head_dim // SPLIT_K_DIM, num_stages=NUM_STAGE):
+        q = tl.load(Q + off_q + index * SPLIT_K_DIM, mask=head_mask[:, None], other=0.0)
+        kv = tl.load(KV + off_kv + index * SPLIT_K_DIM, mask=seq_n_mask[None, :], other=0.0)
+        att_value += tl.dot(q, kv)
+    return att_value
 
 
 @torch.no_grad()

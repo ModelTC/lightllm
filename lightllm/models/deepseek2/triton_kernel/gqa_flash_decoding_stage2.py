@@ -51,11 +51,10 @@ def _fwd_kernel_flash_decode_stage2_padding(
     block_ok = tl.where(cur_batch_end_index - cur_batch_start_index <= 0, 0, 1)
 
     offs_n = cur_batch_start_index + tl.arange(0, BLOCK_SEQ)
-    for start_n in range(0, block_ok, 1):
-        offs_n_new = start_n * BLOCK_SEQ + offs_n
-        n_seq_mask = offs_n_new < cur_batch_end_index
+    for _ in range(0, block_ok, 1):
+        n_seq_mask = offs_n < cur_batch_end_index
         kv_loc = tl.load(
-            Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + offs_n_new,
+            Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + offs_n,
             mask=n_seq_mask,
             other=0,
         )
@@ -63,7 +62,7 @@ def _fwd_kernel_flash_decode_stage2_padding(
             mid_out_logics + cur_batch * stride_mid_out_logics_b + cur_q_head_range[:, None] * stride_mid_out_logics_h
         )
         att_value = tl.load(
-            att_ptrs + offs_n_new[None, :], mask=head_mask[:, None] & n_seq_mask[None, :], other=float("-inf")
+            att_ptrs + offs_n[None, :], mask=head_mask[:, None] & n_seq_mask[None, :], other=float("-inf")
         )
         max_logics = tl.max(att_value, axis=1)
         tmp_exp = tl.exp(att_value - max_logics[:, None])
@@ -71,8 +70,10 @@ def _fwd_kernel_flash_decode_stage2_padding(
         prob = tmp_exp / sum_exp[:, None]
         prob = prob.to(KV.dtype.element_ty)
         for index in tl.range(0, head_dim // SPLIT_K_DIM, num_stages=NUM_STAGES):
-            off_kv = kv_loc[:, None] * stride_kv_bs + offs_split_d[None, :] + index * SPLIT_K_DIM
-            cur_kv = tl.load(KV + stride_kv_h * cur_kv_head + off_kv, mask=n_seq_mask[:, None], other=0.0)
+            off_kv = (
+                kv_loc[:, None] * stride_kv_bs + stride_kv_h * cur_kv_head + offs_split_d[None, :] + index * SPLIT_K_DIM
+            )
+            cur_kv = tl.load(KV + off_kv, mask=n_seq_mask[:, None], other=0.0)
             tmp_o = tl.dot(prob, cur_kv)
             off_mid_o = (
                 cur_batch * stride_mid_ob
@@ -81,7 +82,6 @@ def _fwd_kernel_flash_decode_stage2_padding(
                 + offs_split_d[None, :]
                 + index * SPLIT_K_DIM
             )
-            # print(Mid_O + off_mid_o)
             tl.store(Mid_O + off_mid_o, tmp_o, mask=head_mask[:, None])
 
         tl.store(
@@ -119,27 +119,17 @@ def flash_decode_stage2(
     gqa_group_size = q_head_num // kv_head_num
     _fwd_kernel_flash_decode_stage2_padding[grid](
         mid_out_logics,
-        mid_out_logics.stride(0),
-        mid_out_logics.stride(1),
-        mid_out_logics.stride(2),
+        *mid_out_logics.stride(),
         kv,
-        kv.stride(0),
-        kv.stride(1),
-        kv.stride(2),
+        *kv.stride(),
         req_to_token_indexs,
-        req_to_token_indexs.stride(0),
-        req_to_token_indexs.stride(1),
+        *req_to_token_indexs.stride(),
         b_req_idx,
         b_seq_len,
         mid_o,  # [batch, head, seq_block_num, head_dim]
-        mid_o.stride(0),
-        mid_o.stride(1),
-        mid_o.stride(2),
-        mid_o.stride(3),
+        *mid_o.stride(),
         mid_o_logexpsum,  # [batch, head, seq_block_num]
-        mid_o_logexpsum.stride(0),
-        mid_o_logexpsum.stride(1),
-        mid_o_logexpsum.stride(2),
+        *mid_o_logexpsum.stride(),
         gqa_group_size,
         head_dim,
         Q_HEAD_NUM=max(16, triton.next_power_of_2(q_head_num)),
