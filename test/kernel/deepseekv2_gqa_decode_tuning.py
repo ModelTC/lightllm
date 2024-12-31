@@ -2,6 +2,7 @@ import torch
 import time
 import os
 import torch.multiprocessing as mp
+import itertools
 from typing import List
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
@@ -50,21 +51,21 @@ def test_decode_attentions(
     infer_state.b_req_idx = torch.arange(0, infer_state.batch_size, step=1, dtype=torch.int32).cuda()
     infer_state.b_seq_len = torch.full((infer_state.batch_size,), fill_value=test_seq_len, dtype=torch.int32).cuda()
 
+    q_nope = torch.randn(q_nope_shape, device="cuda", dtype=dtype) / 10
+    q_rope = torch.randn(q_rope_shape, device="cuda", dtype=dtype) / 10
+    q = torch.cat([q_nope, q_rope], dim=-1)
+    kv_buffer_shape = [
+        (test_seq_len + 10) * infer_state.batch_size,
+        kv_nope_shape[1],
+        kv_nope_shape[2] + kv_rope_shape[2],
+    ]
+    kv_buffer = torch.randn(kv_buffer_shape, device="cuda", dtype=dtype) / 10
+    o_tensor = torch.empty_like(q_nope)
+
     input_tuples = []
     for _ in range(test_count):
-        q_nope = torch.randn(q_nope_shape, device="cuda", dtype=dtype) / 10
-        q_rope = torch.randn(q_rope_shape, device="cuda", dtype=dtype) / 10
-        kv_buffer_shape = [
-            (test_seq_len + 10) * infer_state.batch_size,
-            kv_nope_shape[1],
-            kv_nope_shape[2] + kv_rope_shape[2],
-        ]
-        kv_buffer = torch.randn(kv_buffer_shape, device="cuda", dtype=dtype) / 10
 
-        kv_nope = kv_buffer[:, :, 0 : kv_nope_shape[2]]
-        kv_rope = kv_buffer[:, :, kv_nope_shape[2] :]
-        o_tensor = torch.empty_like(q_nope)
-        input_tuples.append((q_nope, q_rope, kv_buffer, kv_nope, kv_rope, o_tensor))
+        input_tuples.append((q.clone(), kv_buffer.clone(), o_tensor.clone()))
 
     tensor_dict = {}
 
@@ -78,15 +79,12 @@ def test_decode_attentions(
             return tensor_dict[shape]
 
     gqa_token_decode_attention_flash_decoding(
-        q_nope,
-        q_rope,
-        kv_nope,
-        kv_rope,
+        q,
+        kv_buffer,
         infer_state,
         q_nope_shape[1],
         q_nope_shape[2],
         q_rope_shape[2],
-        None,
         0.01,
         out=o_tensor,
         alloc_tensor_func=inner_alloc_func,
@@ -96,17 +94,14 @@ def test_decode_attentions(
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         for index in range(test_count):
-            q_nope, q_rope, kv_buffer, kv_nope, kv_rope, o_tensor = input_tuples[index]
+            q, kv_buffer, o_tensor = input_tuples[index]
             gqa_token_decode_attention_flash_decoding(
-                q_nope,
-                q_rope,
-                kv_nope,
-                kv_rope,
+                q,
+                kv_buffer,
                 infer_state,
                 q_nope_shape[1],
                 q_nope_shape[2],
                 q_rope_shape[2],
-                None,
                 0.01,
                 out=o_tensor,
                 alloc_tensor_func=inner_alloc_func,
@@ -161,28 +156,42 @@ def worker(
 
 def get_test_configs(split_id, split_count):
     index = 0
-    for block_seq in [32, 64, 128, 256]:
-        for block_n in [16, 32, 64, 128, 256]:
-            for block_q_head in [16, 32, 64]:
-                for stage1_num_warps in [1, 2, 4, 8, 16]:
-                    for stage1_num_stages in [1, 2, 3, 4, 5]:
-                        for stage2_num_warps in [1, 2, 4, 8, 16]:
-                            for stage2_num_stages in [1, 2, 3, 4, 5]:
-                                if block_seq % block_n == 0:
-                                    t_config = {
-                                        "BLOCK_SEQ": block_seq,
-                                        "BLOCK_N": block_n,
-                                        "BLOCK_Q_HEAD": block_q_head,
-                                        "stage1_num_warps": stage1_num_warps,
-                                        "stage1_num_stages": stage1_num_stages,
-                                        "stage2_num_warps": stage2_num_warps,
-                                        "stage2_num_stages": stage2_num_stages,
-                                    }
-                                    if index % split_count == split_id:
-                                        yield t_config
-                                        index += 1
-                                    else:
-                                        index += 1
+    for STAGE1_BLOCK_SEQ, STAGE1_BLOCK_N, STAGE1_SPLIT_K_DIM, stage1_num_warps, stage1_num_stages in itertools.product(
+        [32, 64, 128, 256],
+        [32, 64, 128],
+        [16, 32, 64],
+        [4, 8],
+        [1, 2, 4, 6, 8],
+    ):
+        for STAGE2_BLOCK_SEQ, STAGE2_SPLIT_K_DIM, stage2_num_warps, stage2_num_stages in itertools.product(
+            [32, 64, 128, 256],
+            [16, 32, 64],
+            [4, 8],
+            [1, 2, 4, 6, 8],
+        ):
+            for stage3_num_warps, stage3_num_stages in itertools.product(
+                [4],
+                [5],
+            ):
+                if STAGE1_BLOCK_SEQ % STAGE1_BLOCK_N == 0:
+                    t_config = {
+                        "STAGE1_BLOCK_SEQ": STAGE1_BLOCK_SEQ,
+                        "STAGE1_BLOCK_N": STAGE1_BLOCK_N,
+                        "STAGE1_SPLIT_K_DIM": STAGE1_SPLIT_K_DIM,
+                        "stage1_num_warps": stage1_num_warps,
+                        "stage1_num_stages": stage1_num_stages,
+                        "STAGE2_BLOCK_SEQ": STAGE2_BLOCK_SEQ,
+                        "STAGE2_SPLIT_K_DIM": STAGE2_SPLIT_K_DIM,
+                        "stage2_num_warps": stage2_num_warps,
+                        "stage2_num_stages": stage2_num_stages,
+                        "stage3_num_warps": stage3_num_warps,
+                        "stage3_num_stages": stage3_num_stages,
+                    }
+                    if index % split_count == split_id:
+                        yield t_config
+                        index += 1
+                    else:
+                        index += 1
 
 
 def tuning_configs(

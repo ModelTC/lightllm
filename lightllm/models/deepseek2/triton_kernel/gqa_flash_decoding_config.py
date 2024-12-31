@@ -38,15 +38,6 @@ class MlaDecodeAttentionKernelConfig(KernelConfigs):
             return config
         else:
             config = {
-                "BLOCK_SEQ": 64,
-                "BLOCK_N": 16,
-                "BLOCK_Q_HEAD": 16,
-                "stage1_num_warps": 4,
-                "stage1_num_stages": 2,
-                "stage2_num_warps": 4,
-                "stage2_num_stages": 2,
-            }
-            config = {
                 "STAGE1_BLOCK_SEQ": 64,
                 "STAGE1_BLOCK_N": 32,
                 "STAGE1_SPLIT_K_DIM": 32,
@@ -57,7 +48,7 @@ class MlaDecodeAttentionKernelConfig(KernelConfigs):
                 "stage2_num_warps": 8,
                 "stage2_num_stages": 1,
                 "stage3_num_warps": 4,
-                "stage3_num_stages": 1,
+                "stage3_num_stages": 5,
             }
         return config
 

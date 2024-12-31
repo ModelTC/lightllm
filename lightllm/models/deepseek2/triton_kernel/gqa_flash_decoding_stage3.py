@@ -20,7 +20,7 @@ def _fwd_kernel_flash_decode_stage3(
     stride_obs,
     stride_oh,
     stride_od,
-    BLOCK_SEQ: tl.constexpr,
+    block_seq,
     BLOCK_DMODEL: tl.constexpr,
     NUM_STAGES: tl.constexpr,
 ):
@@ -30,7 +30,7 @@ def _fwd_kernel_flash_decode_stage3(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
 
-    block_n_size = tl.where(cur_batch_seq_len <= 0, 0, cur_batch_seq_len + BLOCK_SEQ - 1) // BLOCK_SEQ
+    block_n_size = tl.where(cur_batch_seq_len <= 0, 0, cur_batch_seq_len + block_seq - 1) // block_seq
 
     sum_exp = 0.0
     max_logic = -float("inf")
@@ -74,7 +74,7 @@ def flash_decode_stage3(mid_out, mid_out_logexpsum, B_Seqlen, Out, **run_config)
         *mid_out.stride(),
         *mid_out_logexpsum.stride(),
         *Out.stride(),
-        BLOCK_SEQ=BLOCK_SEQ,
+        block_seq=BLOCK_SEQ,
         BLOCK_DMODEL=Lk,
         NUM_STAGES=num_stages,
         num_warps=num_warps,
