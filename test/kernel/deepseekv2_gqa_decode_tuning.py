@@ -49,6 +49,7 @@ def test_decode_attentions(
     ).cuda()
     infer_state.b_req_idx = torch.arange(0, infer_state.batch_size, step=1, dtype=torch.int32).cuda()
     infer_state.b_seq_len = torch.full((infer_state.batch_size,), fill_value=test_seq_len, dtype=torch.int32).cuda()
+    infer_state.total_token_num_tensor = torch.sum(infer_state.b_seq_len)
 
     input_tuples = []
     for _ in range(test_count):
@@ -161,28 +162,25 @@ def worker(
 
 def get_test_configs(split_id, split_count):
     index = 0
-    for block_seq in [32, 64, 128, 256]:
-        for block_n in [16, 32, 64, 128, 256]:
-            for block_q_head in [16, 32, 64]:
-                for stage1_num_warps in [1, 2, 4, 8, 16]:
-                    for stage1_num_stages in [1, 2, 3, 4, 5]:
-                        for stage2_num_warps in [1, 2, 4, 8, 16]:
-                            for stage2_num_stages in [1, 2, 3, 4, 5]:
-                                if block_seq % block_n == 0:
-                                    t_config = {
-                                        "BLOCK_SEQ": block_seq,
-                                        "BLOCK_N": block_n,
-                                        "BLOCK_Q_HEAD": block_q_head,
-                                        "stage1_num_warps": stage1_num_warps,
-                                        "stage1_num_stages": stage1_num_stages,
-                                        "stage2_num_warps": stage2_num_warps,
-                                        "stage2_num_stages": stage2_num_stages,
-                                    }
-                                    if index % split_count == split_id:
-                                        yield t_config
-                                        index += 1
-                                    else:
-                                        index += 1
+    for block_n in [16, 32]:
+        for block_q_head in [16, 32, 64]:
+            for stage1_num_warps in [4, 8, 16]:
+                for stage1_num_stages in [1, 4, 8, 12, 16, 20, 24]:
+                    for stage2_num_warps in [1, 2, 4, 8]:
+                        for stage2_num_stages in [1, 2, 3, 4, 5]:
+                            t_config = {
+                                "BLOCK_N": block_n,
+                                "BLOCK_Q_HEAD": block_q_head,
+                                "stage1_num_warps": stage1_num_warps,
+                                "stage1_num_stages": stage1_num_stages,
+                                "stage2_num_warps": stage2_num_warps,
+                                "stage2_num_stages": stage2_num_stages,
+                            }
+                            if index % split_count == split_id:
+                                yield t_config
+                                index += 1
+                            else:
+                                index += 1
 
 
 def tuning_configs(

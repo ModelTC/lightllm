@@ -190,7 +190,6 @@ def flash_decode_stage1(
         BLOCK_N = run_config["BLOCK_N"]
         num_warps = run_config["stage1_num_warps"]
         num_stages = run_config["stage1_num_stages"]
-        num_stages = 10
 
     # shape constraints
     q_nope_dim = q_nope.shape[-1]
