@@ -36,6 +36,7 @@ logger = init_logger(__name__)
 try:
     HAS_VLLM = True
     from .custom_all_reduce import CustomAllreduce
+
     logger.info("using custom allreduce")
 except:
     HAS_VLLM = False
@@ -44,6 +45,7 @@ except:
 try:
     HAS_LIGHTLLM_KERNEL = True
     from .custom_all_gather import CustomAllgather
+
     logger.info("using custom allgather")
 except:
     HAS_LIGHTLLM_KERNEL = False
@@ -69,9 +71,7 @@ class CustomCommunicationOp:
             yield
 
     def set_custom_reduce(self):
-        ENABLE_VLLM_REDUCE = os.getenv("ENABLE_VLLM_REDUCE", "False").upper() in [
-            "ON", "TRUE", "1"
-        ]
+        ENABLE_VLLM_REDUCE = os.getenv("ENABLE_VLLM_REDUCE", "False").upper() in ["ON", "TRUE", "1"]
         world_size = dist.get_world_size()
         ranks = list(range(world_size))
 
@@ -96,9 +96,7 @@ class CustomCommunicationOp:
         dist.all_reduce = _all_reduce_closure
 
     def set_custom_gather(self):
-        ENABLE_CUSTOM_GATHER = os.getenv("ENABLE_CUSTOM_GATHER", "False").upper() in [
-            "ON", "TRUE", "1"
-        ]
+        ENABLE_CUSTOM_GATHER = os.getenv("ENABLE_CUSTOM_GATHER", "False").upper() in ["ON", "TRUE", "1"]
         world_size = dist.get_world_size()
         ranks = list(range(world_size))
         if self.device_group is None:
@@ -118,5 +116,6 @@ class CustomCommunicationOp:
                     original_all_gather_into_tensor(output_, input_, group, async_op)
 
         dist.all_gather_into_tensor = _all_gather_closure
+
 
 custom_comm_ops = CustomCommunicationOp()

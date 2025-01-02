@@ -206,7 +206,7 @@ class CustomAllgather:
         return False
 
     def all_gather(self, out: torch.Tensor, inp: torch.Tensor, registered: bool = False):
-        """Performs an out-of-place all reduce.
+        """Performs an out-of-place all gather.
 
         If registered is True, this assumes inp's pointer is already
         IPC-registered. Otherwise, inp is first copied into a pre-registered
@@ -222,19 +222,21 @@ class CustomAllgather:
         """The main allgather API that provides support for cuda graph."""
         # When custom allgather is disabled, this will be None.
         if self.disabled or not self.should_custom_ar(input):
-            return None
+            return
         if self._IS_CAPTURING:
             if torch.cuda.is_current_stream_capturing():
-                return self.all_gather(output, input, registered=True)
+                self.all_gather(output, input, registered=True)
+                return
             else:
                 # If warm up, mimic the allocation pattern since custom
                 # allgather is out-of-place.
-                return out
+                return
         else:
             # Note: outside of cuda graph context, custom allgather incurs a
             # cost of cudaMemcpy, which should be small (<=1% of overall
             # latency) compared to the performance gain of using custom kernels
-            return self.all_gather(output, input, registered=False)
+            self.all_gather(output, input, registered=False)
+            return
 
     def close(self):
         if not self.disabled and self._ptr:

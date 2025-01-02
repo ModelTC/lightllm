@@ -57,6 +57,5 @@ try:
     from lightllm.common.vllm_kernel._ops import allgather_register_buffer
     from lightllm.common.vllm_kernel._ops import allgather_get_graph_buffer_ipc_meta
     from lightllm.common.vllm_kernel._ops import allgather_register_graph_buffers
-
 except ImportError:
     logger.error("lightllm_kernel is not installed, you can't use custom allgather")
