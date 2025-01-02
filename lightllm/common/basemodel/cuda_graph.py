@@ -35,7 +35,7 @@ class CudaGraph:
             with torch.cuda.graph(graph_obj, pool=self.mempool):
                 predict_logics = decode_func(input_ids, infer_state)
         self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
-        # graph_obj.replay()
+        graph_obj.replay()
         return predict_logics
 
     def replay(self, input_ids, infer_state):
