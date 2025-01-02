@@ -44,21 +44,35 @@ def gqa_token_decode_attention_flash_decoding(
             out_dtype=torch.bfloat16,
         )
 
-    BLOCK_SEQ = run_config["BLOCK_SEQ"]
-
     from .gqa_flash_decoding_stage1 import flash_decode_stage1
     from .gqa_flash_decoding_stage2 import flash_decode_stage2
 
     o_tensor = alloc_tensor_func(q_nope.shape, q_nope.dtype, q_nope.device) if out is None else out
 
-    mid_o = alloc_tensor_func(
-        [batch_size, q_head_num, get_device_sm_count() * 16, kv_lora_rank], dtype=torch.float32, device="cuda"
+    # 这个地方开的管理显存，不能使用内部管理接口，同时支持的batch size 有上限，不能超过 1000
+    assert batch_size <= 1000
+    mid_o_block_seq = torch.empty([1], dtype=torch.int64, device="cuda")
+    mid_o_batch_start_index = torch.empty(
+        [
+            batch_size,
+        ],
+        dtype=torch.int64,
+        device="cuda",
     )
-    mid_o_logexpsum = alloc_tensor_func(
-        [batch_size, q_head_num, get_device_sm_count() * 16], dtype=torch.float32, device="cuda"
+    mid_o = torch.empty([q_head_num, 2048, kv_lora_rank], dtype=torch.float32, device="cuda")
+    mid_o_logexpsum = torch.empty(
+        [
+            q_head_num,
+            2048,
+        ],
+        dtype=torch.float32,
+        device="cuda",
     )
 
     flash_decode_stage1(
+        infer_state.total_token_num_tensor,
+        mid_o_block_seq,
+        mid_o_batch_start_index,
         q_nope.view(calcu_shape1),
         q_rope.view(calcu_shape2),
         kv_nope,
@@ -66,14 +80,19 @@ def gqa_token_decode_attention_flash_decoding(
         infer_state.req_manager.req_to_token_indexs,
         infer_state.b_req_idx,
         infer_state.b_seq_len,
-        infer_state.max_len_in_batch,
         mid_o,
         mid_o_logexpsum,
-        BLOCK_SEQ,
         softmax_scale,
         **run_config
     )
+
     flash_decode_stage2(
-        mid_o, mid_o_logexpsum, infer_state.b_seq_len, o_tensor.view(calcu_shape1), BLOCK_SEQ, **run_config
+        mid_o_block_seq,
+        mid_o_batch_start_index,
+        mid_o,
+        mid_o_logexpsum,
+        infer_state.b_seq_len,
+        o_tensor.view(calcu_shape1),
+        **run_config
     )
     return o_tensor

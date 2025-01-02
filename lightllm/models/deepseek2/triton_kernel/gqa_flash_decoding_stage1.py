@@ -43,6 +43,8 @@ def _fwd_kernel_flash_decode_stage1_padding(
     stride_mid_o_eh,
     stride_mid_o_es,
     total_token_ptr,
+    block_size_ptr,
+    batch_start_index_ptr,
     num_sm,
     head_group_num,
     head_num,
@@ -54,8 +56,12 @@ def _fwd_kernel_flash_decode_stage1_padding(
 ):
     # cur_kv_head = 0
     sm_id = tl.program_id(0)
+    grid_id = sm_id
+    batch_start_index = 0
     total_token_num = tl.load(total_token_ptr, eviction_policy="evict_last")
     block_seq = tl.cdiv(total_token_num // num_sm, 16) * 16 + 64
+    if grid_id == 0:
+        tl.store(block_size_ptr, block_seq)
     cur_q_head_offs = tl.arange(0, Q_HEAD_NUM)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
@@ -63,6 +69,9 @@ def _fwd_kernel_flash_decode_stage1_padding(
     for cur_batch in range(batch_size):
         cur_batch_seq_len = tl.load(B_Seqlen + cur_batch, cache_modifier=".ca", eviction_policy="evict_last")
         cur_block_num = tl.cdiv(cur_batch_seq_len, block_seq) * head_group_num
+        if grid_id == 0:
+            tl.store(batch_start_index_ptr + cur_batch, batch_start_index)
+            batch_start_index += cur_block_num // head_group_num
         cur_batch_req_idx = tl.load(B_req_idx + cur_batch, cache_modifier=".ca", eviction_policy="evict_last")
         req_to_tokens_ptr = Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx
 
@@ -151,6 +160,8 @@ def _fwd_kernel_flash_decode_stage1_padding(
 @torch.no_grad()
 def flash_decode_stage1(
     total_token_num_tensor: torch.Tensor,
+    out_block_seq: torch.Tensor,
+    batch_start_index: torch.Tensor,
     q_nope,
     q_rope,
     kv_nope,
@@ -201,6 +212,8 @@ def flash_decode_stage1(
         *mid_out.stride(),
         *mid_out_logsumexp.stride(),
         total_token_num_tensor,
+        out_block_seq,
+        batch_start_index,
         num_sm=1,
         head_group_num=head_group_num,
         head_num=q_head_num,
@@ -229,6 +242,8 @@ def flash_decode_stage1(
 
     grid = (num_sm,)
 
+    assert num_sm + batch_size <= mid_out.shape[1]
+
     _fwd_kernel_flash_decode_stage1_padding[grid](
         q_nope,
         q_rope,
@@ -248,6 +263,8 @@ def flash_decode_stage1(
         *mid_out.stride(),
         *mid_out_logsumexp.stride(),
         total_token_num_tensor,
+        out_block_seq,
+        batch_start_index,
         num_sm=num_sm,
         head_group_num=head_group_num,
         head_num=q_head_num,
