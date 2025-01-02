@@ -52,7 +52,7 @@ def gqa_token_decode_attention_flash_decoding(
     # 这个地方开的管理显存，不能使用内部管理接口，同时支持的batch size 有上限，不能超过 1000
     assert batch_size <= 1000
     mid_o_block_seq = torch.empty([1], dtype=torch.int64, device="cuda")
-    mid_o_batch_start_index = torch.empty(
+    mid_o_batch_start_index = alloc_tensor_func(
         [
             batch_size,
         ],
@@ -60,14 +60,7 @@ def gqa_token_decode_attention_flash_decoding(
         device="cuda",
     )
     mid_o = torch.empty([q_head_num, 2048, kv_lora_rank], dtype=torch.float32, device="cuda")
-    mid_o_logexpsum = torch.empty(
-        [
-            q_head_num,
-            2048,
-        ],
-        dtype=torch.float32,
-        device="cuda",
-    )
+    mid_o_logexpsum = torch.empty([q_head_num, 2048], dtype=torch.float32, device="cuda")
 
     flash_decode_stage1(
         infer_state.total_token_num_tensor,

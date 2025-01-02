@@ -1,12 +1,7 @@
 import torch
 import triton
 import triton.language as tl
-from lightllm.utils.device_utils import (
-    get_device_sm_count,
-    get_device_sm_regs_num,
-    get_device_sm_shared_mem_num,
-    get_device_warp_size,
-)
+from lightllm.utils.device_utils import calcu_kernel_best_vsm_count
 
 
 @triton.jit
@@ -228,18 +223,7 @@ def flash_decode_stage1(
     )
 
     kernel._init_handles()
-    n_regs = kernel.n_regs
-    size_smem = kernel.metadata.shared
-
-    sm_count = get_device_sm_count()
-    max_regs = get_device_sm_regs_num()
-    shared_mem_max = get_device_sm_shared_mem_num()
-    warp_size = get_device_warp_size()
-
-    occupancy = max_regs // (n_regs * warp_size * num_warps)
-    occupancy = min(occupancy, shared_mem_max // size_smem)
-    num_sm = sm_count * occupancy
-
+    num_sm = calcu_kernel_best_vsm_count(kernel, num_warps=num_warps)
     grid = (num_sm,)
 
     assert num_sm + batch_size <= mid_out.shape[1]
