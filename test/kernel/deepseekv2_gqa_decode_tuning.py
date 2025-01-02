@@ -153,7 +153,7 @@ def worker(
             )
             queue.put(cost_time)  # Put result in queue
     except Exception as ex:
-        logger.error(str(ex))
+        logger.error(str(ex) + f"config {tuning_config}")
         import sys
 
         sys.exit(-1)
@@ -163,11 +163,26 @@ def worker(
 def get_test_configs(split_id, split_count):
     index = 0
     for block_n in [16, 32]:
-        for block_q_head in [16, 32, 64]:
-            for stage1_num_warps in [4, 8, 16]:
-                for stage1_num_stages in [1, 4, 8, 12, 16, 20, 24]:
-                    for stage2_num_warps in [1, 2, 4, 8]:
-                        for stage2_num_stages in [1, 2, 3, 4, 5]:
+        for block_q_head in [
+            16,
+        ]:
+            for stage1_num_warps in [2, 4, 8, 16]:
+                for stage1_num_stages in [
+                    1,
+                    2,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    12,
+                    15,
+                ]:
+                    for stage2_num_warps in [1, 2, 4]:
+                        for stage2_num_stages in [
+                            1,
+                            3,
+                        ]:
                             t_config = {
                                 "BLOCK_N": block_n,
                                 "BLOCK_Q_HEAD": block_q_head,

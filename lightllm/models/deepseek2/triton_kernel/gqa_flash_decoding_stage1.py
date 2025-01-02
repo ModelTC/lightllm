@@ -54,14 +54,14 @@ def _fwd_kernel_flash_decode_stage1_padding(
     grid_id = sm_id
     out_batch_start_index = tl.cast(0, tl.int64)
     total_token_num = tl.load(total_token_ptr, eviction_policy="evict_last")
-    block_seq = tl.cdiv(total_token_num // num_sm, 16) * 16 + 64
+    block_seq = tl.cdiv(total_token_num // num_sm, 16) * 16 + 16
     if grid_id == 0:
         tl.store(block_size_ptr, block_seq)
     cur_q_head_offs = tl.arange(0, Q_HEAD_NUM)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
 
-    for cur_batch in tl.range(batch_size, num_stages=1):
+    for cur_batch in range(batch_size):
         cur_batch_seq_len = tl.load(B_Seqlen + cur_batch, eviction_policy="evict_last")
         cur_block_num = tl.cdiv(cur_batch_seq_len, block_seq) * head_group_num
         cur_batch_req_idx = tl.load(B_req_idx + cur_batch, eviction_policy="evict_last")
