@@ -54,7 +54,10 @@ def _fwd_kernel_flash_decode_stage1_padding(
     grid_id = sm_id
     out_batch_start_index = tl.cast(0, tl.int64)
     total_token_num = tl.load(total_token_ptr, eviction_policy="evict_last")
-    block_seq = tl.cdiv(total_token_num // num_sm, 16) * 16 + 16
+
+    block_seq = tl.cast(total_token_num / num_sm / 4, dtype=tl.int32) + 1
+    block_seq = tl.cdiv(block_seq, BLOCK_N) * BLOCK_N
+
     if grid_id == 0:
         tl.store(block_size_ptr, block_seq)
     cur_q_head_offs = tl.arange(0, Q_HEAD_NUM)
@@ -183,6 +186,7 @@ def flash_decode_stage1(
     mid_out,
     mid_out_logsumexp,
     softmax_scale,
+    get_sm_count: bool = False,
     **run_config,
 ):
     if run_config:
@@ -244,8 +248,10 @@ def flash_decode_stage1(
     kernel._init_handles()
     num_sm = calcu_kernel_best_vsm_count(kernel, num_warps=num_warps)
     grid = (num_sm,)
+    if get_sm_count:
+        return num_sm
 
-    assert num_sm + batch_size <= mid_out.shape[1]
+    assert num_sm * 4 + batch_size <= mid_out.shape[1]
 
     _fwd_kernel_flash_decode_stage1_padding[grid](
         q_nope,

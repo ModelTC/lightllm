@@ -49,8 +49,6 @@ def gqa_token_decode_attention_flash_decoding(
 
     o_tensor = alloc_tensor_func(q_nope.shape, q_nope.dtype, q_nope.device) if out is None else out
 
-    # 这个地方开的管理显存，不能使用内部管理接口，同时支持的batch size 有上限，不能超过 1000
-    assert batch_size <= 1000
     mid_o_block_seq = torch.empty([1], dtype=torch.int64, device="cuda")
     mid_o_batch_start_index = alloc_tensor_func(
         [
@@ -59,8 +57,30 @@ def gqa_token_decode_attention_flash_decoding(
         dtype=torch.int64,
         device="cuda",
     )
-    mid_o = torch.empty([q_head_num, 2048, kv_lora_rank], dtype=torch.float32, device="cuda")
-    mid_o_logexpsum = torch.empty([q_head_num, 2048], dtype=torch.float32, device="cuda")
+
+    mid_o = torch.empty([q_head_num, 0, kv_lora_rank], dtype=torch.float32, device="cuda")
+    mid_o_logexpsum = torch.empty([q_head_num, 0], dtype=torch.float32, device="cuda")
+
+    vsm_count = flash_decode_stage1(
+        infer_state.total_token_num_tensor,
+        mid_o_block_seq,
+        mid_o_batch_start_index,
+        q_nope.view(calcu_shape1),
+        q_rope.view(calcu_shape2),
+        kv_nope,
+        kv_rope,
+        infer_state.req_manager.req_to_token_indexs,
+        infer_state.b_req_idx,
+        infer_state.b_seq_len,
+        mid_o,
+        mid_o_logexpsum,
+        softmax_scale,
+        get_sm_count=True,
+        **run_config
+    )
+
+    mid_o = torch.empty([q_head_num, vsm_count * 4 + batch_size, kv_lora_rank], dtype=torch.float32, device="cuda")
+    mid_o_logexpsum = torch.empty([q_head_num, vsm_count * 4 + batch_size], dtype=torch.float32, device="cuda")
 
     flash_decode_stage1(
         infer_state.total_token_num_tensor,
@@ -76,6 +96,7 @@ def gqa_token_decode_attention_flash_decoding(
         mid_o,
         mid_o_logexpsum,
         softmax_scale,
+        get_sm_count=False,
         **run_config
     )
 

@@ -170,6 +170,7 @@ def get_test_configs(split_id, split_count):
                 for stage1_num_stages in [
                     1,
                     2,
+                    3,
                     4,
                     5,
                     6,
