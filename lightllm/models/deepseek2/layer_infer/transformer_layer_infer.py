@@ -10,6 +10,10 @@ from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import
     context_attention_fwd,
     context_attention_fwd_no_prompt_cache,
 )
+from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad_with_v import (
+    context_attention_fwd_with_v,
+    context_attention_fwd_no_prompt_cache_with_v,
+)
 
 from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
@@ -65,7 +69,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         return
 
     def _bind_attention(self):
-        self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel_origin, self)
+        self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel_with_CC, self)
         self._token_attention_kernel = partial(
             Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
         )
@@ -121,6 +125,68 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         if input.shape[2] == self.kv_lora_rank:
             input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
         o_tensor = layer_weight.o_weight_.mm(input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
+        return o_tensor
+
+    def _context_attention_kernel_with_CC(
+        self,
+        q: torch.Tensor,
+        kv,
+        infer_state: Deepseek2InferStateInfo,
+        layer_weight: Deepseek2TransformerLayerWeight,
+        out=None,
+    ) -> torch.Tensor:
+        if infer_state.use_dynamic_prompt_cache:
+            kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
+
+        # CC
+        compressed_kv, k_rope = torch.split(  # (b*s, 1, kv_lora + qk_r)
+            kv, [layer_weight.kv_lora_rank, layer_weight.qk_rope_head_dim], dim=-1
+        )
+        k_nope = self.alloc_tensor(
+            [compressed_kv.shape[0], q.shape[1], self.qk_nope_head_dim],
+            dtype=compressed_kv.dtype,
+        )
+        v = self.alloc_tensor(
+            k_nope.shape,
+            dtype=compressed_kv.dtype,
+        )
+        compressed_kv = compressed_kv.view(-1, layer_weight.kv_lora_rank)
+        wk = layer_weight.k_b_proj_.weight.view(-1, layer_weight.kv_lora_rank)
+        wv = layer_weight.v_b_proj_.weight.transpose(1, 2).view(-1, layer_weight.kv_lora_rank)
+        torch.mm(compressed_kv, wk.transpose(0, 1), out=k_nope.reshape(compressed_kv.shape[0], -1))
+        torch.mm(compressed_kv, wv.transpose(0, 1), out=v.reshape(compressed_kv.shape[0], -1))
+
+        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+        o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
+        if infer_state.use_dynamic_prompt_cache:
+            context_attention_fwd_with_v(
+                q_nope,
+                q_rope,
+                k_nope,
+                k_rope,
+                v,
+                o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
+                infer_state.b_req_idx,
+                infer_state.b_start_loc,
+                infer_state.b_seq_len,
+                infer_state.b_ready_cache_len,
+                infer_state.max_len_in_batch,
+                infer_state.req_manager.req_to_token_indexs,
+                self.softmax_scale,
+            )
+        else:
+            context_attention_fwd_no_prompt_cache_with_v(
+                q_nope,
+                q_rope,
+                k_nope,
+                k_rope,
+                v,
+                o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
+                infer_state.b_start_loc,
+                infer_state.b_seq_len,
+                infer_state.max_len_in_batch,
+                self.softmax_scale,
+            )
         return o_tensor
 
     def _context_attention_kernel_origin(
