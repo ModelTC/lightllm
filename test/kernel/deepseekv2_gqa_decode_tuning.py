@@ -5,6 +5,7 @@ import torch.multiprocessing as mp
 from typing import List
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
+from lightllm.utils.watchdog_utils import Watchdog
 
 logger = init_logger(__name__)
 
@@ -138,6 +139,9 @@ def worker(
     test_configs,
     queue,
 ):
+    dog = Watchdog(timeout=10)
+    dog.start()
+
     try:
         for index in range(len(test_configs)):
             tuning_config = test_configs[index]
@@ -151,6 +155,7 @@ def worker(
                 test_count=test_count,
                 **tuning_config,
             )
+            dog.heartbeat()
             queue.put(cost_time)  # Put result in queue
     except Exception as ex:
         logger.error(str(ex) + f"config {tuning_config}")
@@ -312,7 +317,7 @@ if __name__ == "__main__":
                     "kv_rope_shape": [None, 1, q_rope_dim],
                     "test_seq_len": seq_len,
                     "dtype": torch.bfloat16,
-                    "test_count": 20,
+                    "test_count": 40,
                 },
             )
             store_json_ans[seq_len][batch_size] = ans
