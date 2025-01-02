@@ -14,8 +14,8 @@ def _fwd_kernel_flash_decode_stage1_padding(
     Req_to_tokens,
     B_req_idx,
     B_Seqlen,
-    Mid_O,  # [batch, head, seq_block_num, head_dim]
-    Mid_O_LogExpSum,  # [batch, head, seq_block_num]
+    Mid_O,  # [head, seq_block_num, head_dim]
+    Mid_O_LogExpSum,  # [head, seq_block_num]
     stride_req_to_tokens_b,
     stride_req_to_tokens_s,
     stride_q_bs,
@@ -47,6 +47,7 @@ def _fwd_kernel_flash_decode_stage1_padding(
     BLOCK_ROPE_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
     NUM_STAGES: tl.constexpr,
+    NEED_HEAD_MASK: tl.constexpr,
 ):
     # cur_kv_head = 0
     sm_id = tl.program_id(0).to(tl.int64)
@@ -61,9 +62,9 @@ def _fwd_kernel_flash_decode_stage1_padding(
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
 
     for cur_batch in tl.range(batch_size, num_stages=1):
-        cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
+        cur_batch_seq_len = tl.load(B_Seqlen + cur_batch, eviction_policy="evict_last")
         cur_block_num = tl.cdiv(cur_batch_seq_len, block_seq) * head_group_num
-        cur_batch_req_idx = tl.load(B_req_idx + cur_batch)
+        cur_batch_req_idx = tl.load(B_req_idx + cur_batch, eviction_policy="evict_last")
         req_to_tokens_ptr = Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx
 
         while sm_id < cur_block_num:
@@ -71,7 +72,8 @@ def _fwd_kernel_flash_decode_stage1_padding(
             loop_seq_block_index = sm_id // head_group_num
 
             cur_q_head_range = loop_head_group_index * Q_HEAD_NUM + cur_q_head_offs
-            head_mask = cur_q_head_range < head_num
+            if NEED_HEAD_MASK:
+                head_mask = cur_q_head_range < head_num
 
             cur_batch_start_index = block_seq * loop_seq_block_index
             cur_batch_end_index = tl.minimum(cur_batch_seq_len, cur_batch_start_index + block_seq)
@@ -80,16 +82,21 @@ def _fwd_kernel_flash_decode_stage1_padding(
             off_rope_q = (
                 cur_batch * stride_q_rope_bs + cur_q_head_range[:, None] * stride_q_rope_h + offs_rope_d[None, :]
             )
-            q = tl.load(
-                Q_nope + off_q,
-                mask=head_mask[:, None],
-                other=0.0,
-            )
-            q_rope = tl.load(
-                Q_rope + off_rope_q,
-                mask=head_mask[:, None],
-                other=0.0,
-            )
+            if NEED_HEAD_MASK:
+                q = tl.load(
+                    Q_nope + off_q,
+                    mask=head_mask[:, None],
+                    other=0.0,
+                )
+                q_rope = tl.load(
+                    Q_rope + off_rope_q,
+                    mask=head_mask[:, None],
+                    other=0.0,
+                )
+            else:
+                q = tl.load(Q_nope + off_q)
+                q_rope = tl.load(Q_rope + off_rope_q)
+
             block_n_size = tl.cdiv(cur_batch_end_index - cur_batch_start_index, BLOCK_N)
 
             offs_n = cur_batch_start_index + tl.arange(0, BLOCK_N)
@@ -131,22 +138,32 @@ def _fwd_kernel_flash_decode_stage1_padding(
                 + offs_d[None, :]
             )
             off_mid_o_logexpsum = cur_q_head_range * stride_mid_o_eh + out_batch_start_index + loop_seq_block_index
-            tl.store(
-                Mid_O + off_mid_o,
-                acc / sum_exp[:, None],
-                mask=head_mask[:, None],
-            )
-            tl.store(
-                Mid_O_LogExpSum + off_mid_o_logexpsum,
-                max_logic + tl.log(sum_exp),
-                mask=head_mask,
-            )
+            if NEED_HEAD_MASK:
+                tl.store(
+                    Mid_O + off_mid_o,
+                    acc / sum_exp[:, None],
+                    mask=head_mask[:, None],
+                )
+                tl.store(
+                    Mid_O_LogExpSum + off_mid_o_logexpsum,
+                    max_logic + tl.log(sum_exp),
+                    mask=head_mask,
+                )
+            else:
+                tl.store(
+                    Mid_O + off_mid_o,
+                    acc / sum_exp[:, None],
+                )
+                tl.store(
+                    Mid_O_LogExpSum + off_mid_o_logexpsum,
+                    max_logic + tl.log(sum_exp),
+                )
             sm_id += num_sm
 
         if grid_id == 0:
             tl.store(batch_start_index_ptr + cur_batch, out_batch_start_index)
-            out_batch_start_index += cur_block_num // head_group_num
 
+        out_batch_start_index += cur_block_num // head_group_num
         sm_id -= cur_block_num
     return
 
@@ -173,6 +190,7 @@ def flash_decode_stage1(
         BLOCK_N = run_config["BLOCK_N"]
         num_warps = run_config["stage1_num_warps"]
         num_stages = run_config["stage1_num_stages"]
+        num_stages = 10
 
     # shape constraints
     q_nope_dim = q_nope.shape[-1]
@@ -186,6 +204,7 @@ def flash_decode_stage1(
 
     batch_size, q_head_num = B_req_idx.shape[0], q_nope.shape[1]
     head_group_num = triton.cdiv(q_head_num, Q_HEAD_NUM)
+    NEED_HEAD_MASK = (q_head_num % Q_HEAD_NUM) != 0
 
     kernel = _fwd_kernel_flash_decode_stage1_padding.warmup(
         q_nope,
@@ -216,6 +235,7 @@ def flash_decode_stage1(
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
         BLOCK_N=BLOCK_N,
+        NEED_HEAD_MASK=NEED_HEAD_MASK,
         NUM_STAGES=num_stages,
         num_warps=num_warps,
         num_stages=1,
@@ -257,6 +277,7 @@ def flash_decode_stage1(
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
         BLOCK_N=BLOCK_N,
+        NEED_HEAD_MASK=NEED_HEAD_MASK,
         NUM_STAGES=num_stages,
         num_warps=num_warps,
         num_stages=1,
