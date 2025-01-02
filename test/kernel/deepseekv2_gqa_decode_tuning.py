@@ -252,7 +252,7 @@ def tuning_configs(
                 del test_configs[0:1]
             except:
                 logger.info(f"cur best {best_config}, {best_cost_time}")
-                del test_configs[0:16]
+                del test_configs[0:1]
                 break
 
     while len(test_configs) != 0:
@@ -284,7 +284,7 @@ def tuning_configs(
                 del test_configs[0:1]
             except:
                 logger.info(f"cur best {best_config}, {best_cost_time}")
-                del test_configs[0:16]
+                del test_configs[0:1]
                 break
 
     logger.info(f"{best_config} best cost: {best_cost_time}")
