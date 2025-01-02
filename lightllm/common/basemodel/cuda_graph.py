@@ -1,7 +1,7 @@
 import os
 import torch
 from lightllm.utils.log_utils import init_logger
-from lightllm.distributed import lightllm_capture_graph
+from lightllm.distributed import custom_comm_ops
 
 logger = init_logger(__name__)
 
@@ -31,11 +31,11 @@ class CudaGraph:
             torch.cuda.synchronize()
             decode_func(input_ids, infer_state)
             torch.cuda.synchronize()
-        with lightllm_capture_graph():
+        with custom_comm_ops.lightllm_capture_graph():
             with torch.cuda.graph(graph_obj, pool=self.mempool):
                 predict_logics = decode_func(input_ids, infer_state)
         self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
-        graph_obj.replay()
+        # graph_obj.replay()
         return predict_logics
 
     def replay(self, input_ids, infer_state):
