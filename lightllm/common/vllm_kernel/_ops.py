@@ -1070,7 +1070,9 @@ def register_graph_buffers(fa: int, handles: List[List[int]], offsets: List[List
 
 
 # custom ar
-def init_custom_gather_ar(ipc_tensors: List[torch.Tensor], rank_data: torch.Tensor, rank: int, full_nvlink: bool) -> int:
+def init_custom_gather_ar(
+    ipc_tensors: List[torch.Tensor], rank_data: torch.Tensor, rank: int, full_nvlink: bool
+) -> int:
     return torch.ops.vllm_total_custom_ar.init_custom_gather_ar(ipc_tensors, rank_data, rank, full_nvlink)
 
 
@@ -1092,7 +1094,6 @@ def allgather_get_graph_buffer_ipc_meta(fa: int) -> Tuple[List[int], List[int]]:
 
 def allgather_register_graph_buffers(fa: int, handles: List[List[int]], offsets: List[List[int]]) -> None:
     torch.ops.vllm_total_custom_ar.allgather_register_graph_buffers(fa, handles, offsets)
-
 
 
 # temporary fix for https://github.com/vllm-project/vllm/issues/5456
