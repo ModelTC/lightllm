@@ -35,11 +35,9 @@ def _fwd_kernel_flash_decode_stage1_padding(
     stride_kv_rope_bs,
     stride_kv_rope_h,
     stride_kv_rope_d,
-    stride_mid_ob,
     stride_mid_oh,
     stride_mid_os,
     stride_mid_od,
-    stride_mid_o_eb,
     stride_mid_o_eh,
     stride_mid_o_es,
     total_token_ptr,
@@ -53,11 +51,12 @@ def _fwd_kernel_flash_decode_stage1_padding(
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_ROPE_DMODEL: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
     # cur_kv_head = 0
-    sm_id = tl.program_id(0)
+    sm_id = tl.program_id(0).to(tl.int64)
     grid_id = sm_id
-    batch_start_index = 0
+    out_batch_start_index = tl.cast(0, tl.int64)
     total_token_num = tl.load(total_token_ptr, eviction_policy="evict_last")
     block_seq = tl.cdiv(total_token_num // num_sm, 16) * 16 + 64
     if grid_id == 0:
@@ -66,13 +65,10 @@ def _fwd_kernel_flash_decode_stage1_padding(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
 
-    for cur_batch in range(batch_size):
-        cur_batch_seq_len = tl.load(B_Seqlen + cur_batch, cache_modifier=".ca", eviction_policy="evict_last")
+    for cur_batch in tl.range(batch_size, num_stages=1):
+        cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
         cur_block_num = tl.cdiv(cur_batch_seq_len, block_seq) * head_group_num
-        if grid_id == 0:
-            tl.store(batch_start_index_ptr + cur_batch, batch_start_index)
-            batch_start_index += cur_block_num // head_group_num
-        cur_batch_req_idx = tl.load(B_req_idx + cur_batch, cache_modifier=".ca", eviction_policy="evict_last")
+        cur_batch_req_idx = tl.load(B_req_idx + cur_batch)
         req_to_tokens_ptr = Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx
 
         while sm_id < cur_block_num:
@@ -90,14 +86,14 @@ def _fwd_kernel_flash_decode_stage1_padding(
                 cur_batch * stride_q_rope_bs + cur_q_head_range[:, None] * stride_q_rope_h + offs_rope_d[None, :]
             )
             q = tl.load(
-                Q_nope + off_q, mask=head_mask[:, None], other=0.0, cache_modifier=".ca", eviction_policy="evict_last"
+                Q_nope + off_q,
+                mask=head_mask[:, None],
+                other=0.0,
             )
             q_rope = tl.load(
                 Q_rope + off_rope_q,
                 mask=head_mask[:, None],
                 other=0.0,
-                cache_modifier=".ca",
-                eviction_policy="evict_last",
             )
             block_n_size = tl.cdiv(cur_batch_end_index - cur_batch_start_index, BLOCK_N)
 
@@ -105,7 +101,7 @@ def _fwd_kernel_flash_decode_stage1_padding(
             sum_exp = tl.zeros([Q_HEAD_NUM], dtype=tl.float32)
             max_logic = tl.zeros([Q_HEAD_NUM], dtype=tl.float32) - float("inf")
             acc = tl.zeros([Q_HEAD_NUM, BLOCK_DMODEL], dtype=tl.float32)
-            for start_n in range(0, block_n_size, 1):
+            for start_n in tl.range(0, block_n_size, 1, num_stages=NUM_STAGES):
                 offs_n_new = start_n * BLOCK_N + offs_n
                 seq_n_mask = offs_n_new < cur_batch_end_index
                 kv_loc = tl.load(
@@ -135,12 +131,11 @@ def _fwd_kernel_flash_decode_stage1_padding(
                 max_logic = new_max_logic
 
             off_mid_o = (
-                cur_batch * stride_mid_ob
-                + cur_q_head_range[:, None] * stride_mid_oh
-                + loop_seq_block_index * stride_mid_os
+                cur_q_head_range[:, None] * stride_mid_oh
+                + (out_batch_start_index + loop_seq_block_index) * stride_mid_os
                 + offs_d[None, :]
             )
-            off_mid_o_logexpsum = cur_batch * stride_mid_o_eb + cur_q_head_range * stride_mid_o_eh + sm_id
+            off_mid_o_logexpsum = cur_q_head_range * stride_mid_o_eh + out_batch_start_index + loop_seq_block_index
             tl.store(
                 Mid_O + off_mid_o,
                 acc / sum_exp[:, None],
@@ -149,9 +144,13 @@ def _fwd_kernel_flash_decode_stage1_padding(
             tl.store(
                 Mid_O_LogExpSum + off_mid_o_logexpsum,
                 max_logic + tl.log(sum_exp),
-                mask=head_mask[:, None],
+                mask=head_mask,
             )
             sm_id += num_sm
+
+        if grid_id == 0:
+            tl.store(batch_start_index_ptr + cur_batch, out_batch_start_index)
+            out_batch_start_index += cur_block_num // head_group_num
 
         sm_id -= cur_block_num
     return
@@ -175,7 +174,7 @@ def flash_decode_stage1(
     **run_config,
 ):
     if run_config:
-        Q_HEAD_NUM = run_config["Q_HEAD_NUM"]
+        Q_HEAD_NUM = run_config["BLOCK_Q_HEAD"]
         BLOCK_N = run_config["BLOCK_N"]
         num_warps = run_config["stage1_num_warps"]
         num_stages = run_config["stage1_num_stages"]
@@ -222,8 +221,9 @@ def flash_decode_stage1(
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
         BLOCK_N=BLOCK_N,
+        NUM_STAGES=num_stages,
         num_warps=num_warps,
-        num_stages=num_stages,
+        num_stages=1,
         grid=(1,),
     )
 
@@ -273,8 +273,9 @@ def flash_decode_stage1(
         BLOCK_DMODEL=q_nope_dim,
         BLOCK_ROPE_DMODEL=q_rope_dim,
         BLOCK_N=BLOCK_N,
+        NUM_STAGES=num_stages,
         num_warps=num_warps,
-        num_stages=num_stages,
+        num_stages=1,
     )
 
     return

@@ -28,8 +28,8 @@ def _fwd_kernel_flash_decode_stage2(
 
     offs_d = tl.arange(0, BLOCK_DMODEL)
     cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
-    cur_batch_start_index = tl.load(batch_start_index + cur_batch, cache_modifier=".ca", eviction_policy="evict_last")
-    block_seq = tl.load(block_seq_ptr, cache_modifier=".ca", eviction_policy="evict_last")
+    cur_batch_start_index = tl.load(batch_start_index + cur_batch)
+    block_seq = tl.load(block_seq_ptr)
 
     block_n_size = tl.cdiv(cur_batch_seq_len, block_seq)
     sum_exp = 0.0
@@ -86,6 +86,6 @@ def flash_decode_stage2(
         BLOCK_DMODEL=Lk,
         NUM_STAGES=num_stages,
         num_warps=num_warps,
-        num_stages=num_stages,
+        num_stages=1,
     )
     return
