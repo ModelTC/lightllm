@@ -15,12 +15,14 @@ class VSMGQADecodeAttentionKernelConfig(KernelConfigs):
         avg_seq_len_in_batch: int,
         q_head_num: int,
         q_head_dim: int,
+        kv_head_num: int,
         kv_head_dim: int,
         out_dtype: str,
     ) -> dict:
         key_params = {
             "q_head_num": q_head_num,
             "q_head_dim": q_head_dim,
+            "kv_head_num": kv_head_num,
             "kv_head_dim": kv_head_dim,
             "out_dtype": str(out_dtype),
         }
@@ -49,12 +51,13 @@ class VSMGQADecodeAttentionKernelConfig(KernelConfigs):
 
     @classmethod
     def save_config(
-        cls, q_head_num: int, q_head_dim: int, kv_head_dim: int, out_dtype: str, config_json: Dict[int, Dict[int, Dict]]
+        cls, q_head_num: int, q_head_dim: int, kv_head_num: int, kv_head_dim: int, out_dtype: str, config_json: Dict[int, Dict[int, Dict]]
     ):
 
         key_params = {
             "q_head_num": q_head_num,
             "q_head_dim": q_head_dim,
+            "kv_head_num": kv_head_num,
             "kv_head_dim": kv_head_dim,
             "out_dtype": str(out_dtype),
         }

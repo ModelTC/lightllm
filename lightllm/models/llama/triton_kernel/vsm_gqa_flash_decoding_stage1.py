@@ -5,7 +5,7 @@ from lightllm.utils.device_utils import calcu_kernel_best_vsm_count
 from .vsm_gqa_flash_decoding_config import VSMGQADecodeAttentionKernelConfig
 
 @triton.jit
-def _kernel_vsm_gqa_flash_decoding_stage1(
+def _fwd_kernel_vsm_gqa_flash_decoding_stage1(
     Q,
     K,
     V,
@@ -104,7 +104,6 @@ def _kernel_vsm_gqa_flash_decoding_stage1(
                 )
 
                 off_kv = kv_loc[None, :] * stride_k_bs + cur_kv_head * stride_k_h + off_kv_dim[:, None] # shape: (d, chunk)
-                mask_kv = (off_token)
                 k = tl.load(K + off_kv, 
                         mask=mask_kv[None, :],
                         other=0.0)
@@ -126,10 +125,10 @@ def _kernel_vsm_gqa_flash_decoding_stage1(
                 sum_exp = sum_exp * exp_scale + tl.sum(exp_norm, axis=1)
                 max_exp = new_max
             
-            head_mask = cur_q_head[:, None] < (cur_kv_head + 1) * gqa_group_size
-            off_mid_o = cur_q_head * stride_mid_o_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_s + off_q_dim
+            head_mask = cur_q_head < (cur_kv_head + 1) * gqa_group_size
+            off_mid_o = cur_q_head[:, None] * stride_mid_o_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_s + off_q_dim
             off_mid_log_expsum = cur_q_head * stride_mid_o_logexpsum_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_logexpsum_s
-            tl.store(mid_o + off_mid_o, acc / sum_exp[:, None], mask=head_mask)
+            tl.store(mid_o + off_mid_o, acc / sum_exp[:, None], mask=head_mask[:, None])
             tl.store(mid_o_logexpsum + off_mid_log_expsum, max_exp + tl.log(sum_exp), mask=head_mask)
 
         out_batch_start_idx += cur_block_num // gqa_group_size
@@ -146,6 +145,7 @@ def vsm_gqa_flash_decoding_stage1(
     mid_o_logexpsum,
     mid_o_batch_start_index,
     mid_o_chunk_num,
+    chunk_size,
     num_vsm,
     get_sm_count,
     **run_config: VSMGQADecodeAttentionKernelConfig
@@ -161,9 +161,10 @@ def vsm_gqa_flash_decoding_stage1(
     GROUP_Q_HEAD_NUM =max(16, triton.next_power_of_2(gqa_group_size))
     Q_HEAD_DIM = q.shape[-1]
     KV_HEAD_NUM = k.shape[1]
+    
 
     kernel = _fwd_kernel_vsm_gqa_flash_decoding_stage1.warmup(
-        q.
+        q,
         k,
         v,
         sm_scale,
@@ -175,6 +176,7 @@ def vsm_gqa_flash_decoding_stage1(
         mid_o_batch_start_index,
         mid_o_chunk_num,
         total_token_in_the_batch_addr,
+        chunk_size,
         num_vsm,
         *q.stride(),
         *k.stride(),
@@ -186,8 +188,9 @@ def vsm_gqa_flash_decoding_stage1(
         batch_size=batch_size,
         GROUP_Q_HEAD_NUM=GROUP_Q_HEAD_NUM,
         Q_HEAD_DIM=Q_HEAD_DIM,
-        KV_HEAD_NUM=KV_HEAD_NUM,
         BLOCK_N=BLOCK_N,
+        KV_HEAD_DIM=Q_HEAD_DIM,
+        NUM_STAGES=num_stages,
         num_stages=num_stages,
         num_warps=1,
         grid=(1,)
@@ -199,7 +202,7 @@ def vsm_gqa_flash_decoding_stage1(
     grid = (num_vsm, )
 
     _fwd_kernel_vsm_gqa_flash_decoding_stage1[grid](
-        q.
+         q,
         k,
         v,
         sm_scale,
@@ -211,6 +214,7 @@ def vsm_gqa_flash_decoding_stage1(
         mid_o_batch_start_index,
         mid_o_chunk_num,
         total_token_in_the_batch_addr,
+        chunk_size,
         num_vsm,
         *q.stride(),
         *k.stride(),
@@ -222,9 +226,9 @@ def vsm_gqa_flash_decoding_stage1(
         batch_size=batch_size,
         GROUP_Q_HEAD_NUM=GROUP_Q_HEAD_NUM,
         Q_HEAD_DIM=Q_HEAD_DIM,
-        KV_HEAD_NUM=KV_HEAD_NUM,
         BLOCK_N=BLOCK_N,
+        KV_HEAD_DIM=Q_HEAD_DIM,
+        NUM_STAGES=num_stages,
         num_stages=num_stages,
-        num_warps=num_warps,
     )
     

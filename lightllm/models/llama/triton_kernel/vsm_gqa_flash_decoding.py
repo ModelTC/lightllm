@@ -12,6 +12,7 @@ def vsm_gqa_flash_decoding(
     q_head_dim,
     q_head_num,
     kv_head_dim,
+    kv_head_num,
     out=None,
     alloc_tensor_func=torch.empty,
     **run_config: VSMGQADecodeAttentionKernelConfig
@@ -32,13 +33,13 @@ def vsm_gqa_flash_decoding(
             avg_seq_len_in_batch=avg_seq_len_in_batch,
             q_head_num=q_head_num,
             q_head_dim=q_head_dim,
+            kv_head_num=kv_head_num,
             kv_head_dim=kv_head_dim,
             out_dtype=torch.bfloat16,
         )
 
-    o_tensor = alloc_tensor_func(q.shape, q.dtype, q.device) if out is None else out
-    
-    # virtual calculate
+    o_tensor = alloc_tensor_func(q.shape, dtype=q.dtype, device=q.device) if out is None else out
+
     mid_o_block_seq = torch.empty([1], dtype=torch.int64, device="cuda")
     mid_o_batch_start_index = alloc_tensor_func(
         [
@@ -47,6 +48,9 @@ def vsm_gqa_flash_decoding(
         dtype=torch.int64,
         device="cuda",
     )
+    chunk_size = torch.empty([1], dtype=torch.int32, device="cuda")
+    # virtual calculate
+
     mid_o = torch.empty([q_head_num, 0, kv_head_dim], dtype=torch.float32, device="cuda")
     mid_o_logexpsum = torch.empty([q_head_num, 0], dtype=torch.float32, device="cuda")
     vsm_count = vsm_gqa_flash_decoding_stage1(
@@ -61,6 +65,8 @@ def vsm_gqa_flash_decoding(
         mid_o_logexpsum,
         mid_o_block_seq,
         mid_o_batch_start_index,
+        chunk_size,
+        num_vsm=1,
         get_sm_count=True,
         **run_config
     )
@@ -80,6 +86,8 @@ def vsm_gqa_flash_decoding(
         mid_o_logexpsum,
         mid_o_block_seq,
         mid_o_batch_start_index,
+        chunk_size,
+        num_vsm=vsm_count,
         get_sm_count=False,
         **run_config
     )
@@ -90,6 +98,7 @@ def vsm_gqa_flash_decoding(
         mid_o_block_seq,
         mid_o_batch_start_index,
         infer_state.b_seq_len,
+        chunk_size,
         o_tensor.view(q_shape),
         **run_config
     )

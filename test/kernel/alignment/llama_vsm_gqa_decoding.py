@@ -14,7 +14,7 @@ class TestVSMGQADecoding(unittest.TestCase):
                 q_head_dim = 128
                 q_head_num = kv_head_num // group_size
                 kv_head_dim = 128
-                seq_len = torch.randint(128, 2048, (bs,)).item()
+                seq_len = torch.randint(128, 2048, (bs,))
                 total_token_in_the_batch = seq_len.sum().item()
                 rounded_total_token_in_the_batch = (total_token_in_the_batch + 128 - 1) // 128 * 128
 
@@ -36,12 +36,14 @@ class TestVSMGQADecoding(unittest.TestCase):
                 req_to_token_index = req_to_token_index.long().cuda()
                 
                 b_req_idx = torch.arange(bs, device="cuda")
-                
                 state = InferStateInfo()
                 state.req_manager = ReqManager(bs, 2048, None)
-                state.b_req_idx = b_req_idx
-                state.b_seq_len = seq_len 
-                vsm_gqa_flash_decoding(q, state, k, v, total_token_in_the_batch, q_head_dim, q_head_num, kv_head_dim)
+                state.b_req_idx = b_req_idx.cuda()
+                state.b_seq_len = seq_len.cuda()
+                state.max_len_in_batch = 2048
+                state.batch_size = bs
+                state.total_token_num = torch.tensor([total_token_in_the_batch], dtype=torch.int32).cuda() 
+                vsm_gqa_flash_decoding(q, state, k, v, total_token_in_the_batch, q_head_dim, q_head_num, kv_head_dim, kv_head_num)
 
 if __name__ == "__main__":
     unittest.main()
