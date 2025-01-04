@@ -1,5 +1,6 @@
 import os
 import torch
+import copy
 from lightllm.utils.log_utils import init_logger
 from lightllm.distributed import custom_comm_ops
 
@@ -36,7 +37,7 @@ class CudaGraph:
         # 中的 tensor。
         for _ in range(1):
             torch.cuda.synchronize()
-            decode_func(input_ids, infer_state.copy())  # infer_state must copy()
+            decode_func(input_ids, copy.copy(infer_state))  # infer_state must copy()
             torch.cuda.synchronize()
 
         with custom_comm_ops.lightllm_capture_graph():
