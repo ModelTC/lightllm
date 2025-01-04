@@ -137,9 +137,10 @@ def _fwd_kernel_calcu_index_and_block_seq(
     
     block_seq = tl.cast(total_token_num / num_sm / 4, dtype=tl.int32) + 1
     block_seq = tl.cdiv(block_seq, BLOCK_N) * BLOCK_N
-
-    cumsum_seq_len = tl.cumsum(tl.cdiv(b_seq_len, block_seq))
-    batch_start_index = cumsum_seq_len - b_seq_len
+    
+    block_seq_len = tl.cdiv(b_seq_len, block_seq)
+    cumsum_seq_len = tl.cumsum(block_seq_len)
+    batch_start_index = cumsum_seq_len - block_seq_len
     tl.store(mid_o_batch_start_index_ptr + tl.arange(0, 2048), batch_start_index, mask=tl.arange(0, 2048) < batch_size)
     tl.store(mid_o_decode_att_block_seq_ptr, block_seq)
     return
