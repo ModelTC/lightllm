@@ -154,7 +154,7 @@ def _fwd_kernel_flash_decode_stage1_padding(
                     max_logic + tl.log(sum_exp),
                 )
             sm_id += num_sm
-        
+
         out_batch_start_index += cur_block_num // head_group_num
         sm_id -= cur_block_num
     return
