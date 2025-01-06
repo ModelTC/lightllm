@@ -98,11 +98,8 @@ class ModelRpcServer(rpyc.Service):
                 batch_id = obtain(batch_id)
             return self.backend.prefill_batch(batch_id)
         except Exception as e:
-            import traceback
-
             err_msg = str(e)
-            err_traceback = traceback.format_exc()
-            logger.error(f"Batch prefill encountered an unexpected ERROR: {err_msg}\nStack Trace:\n{err_traceback}")
+            logger.exception(f"Batch prefill encountered an unexpected ERROR: {err_msg}")
 
     # @calculate_time(show=True, min_cost_ms=200)
     def exposed_decode_batch(self, batch_id):
@@ -111,11 +108,8 @@ class ModelRpcServer(rpyc.Service):
                 batch_id = obtain(batch_id)
             return self.backend.decode_batch(batch_id)
         except Exception as e:
-            import traceback
-
             err_msg = str(e)
-            err_traceback = traceback.format_exc()
-            logger.error(f"Batch decode encountered an unexpected ERROR: {err_msg}\nStack Trace:\n{err_traceback}")
+            logger.exception(f"Batch decode encountered an unexpected ERROR: {err_msg}")
 
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_filter_batch(self, batch_id, req_id_list, finished_req_id_list):
