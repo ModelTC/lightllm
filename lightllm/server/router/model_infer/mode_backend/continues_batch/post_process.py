@@ -14,12 +14,12 @@ class OverlapStream:
         return self.overlap_stream
 
 
-_single_overlap_stream = OverlapStream()
+g_single_overlap_stream = OverlapStream()
 
 
 def sample(logits, reqs, eos_id: List[int] = [2]):
 
-    with torch.cuda.stream(_single_overlap_stream.get_overlap_stream()):
+    with torch.cuda.stream(g_single_overlap_stream.get_overlap_stream()):
         (
             presence_penalties,
             frequency_penalties,
@@ -36,7 +36,7 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
             mask_eos_reqs,
         ) = _get_post_sample_tensors(reqs)
 
-    torch.cuda.current_stream().wait_stream(_single_overlap_stream.get_overlap_stream())
+    torch.cuda.current_stream().wait_stream(g_single_overlap_stream.get_overlap_stream())
 
     logits = logits.contiguous()
 
