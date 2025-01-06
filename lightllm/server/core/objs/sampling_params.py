@@ -344,7 +344,6 @@ class SamplingParams(ctypes.Structure):
             "regular_constraint": self.regular_constraint.to_str(),
             "allowed_token_ids": self.allowed_token_ids.to_list(),
             "group_request_id": self.group_request_id,
-            "suggested_dp_index": self.suggested_dp_index,
             "move_kv_to_decode_node": self.move_kv_to_decode_node.to_dict(),
             "skip_special_tokens": self.skip_special_tokens,
             "add_special_tokens": self.add_special_tokens,
