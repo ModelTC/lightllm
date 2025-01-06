@@ -346,6 +346,10 @@ class SamplingParams(ctypes.Structure):
             "group_request_id": self.group_request_id,
             "suggested_dp_index": self.suggested_dp_index,
             "move_kv_to_decode_node": self.move_kv_to_decode_node.to_dict(),
+            "skip_special_tokens": self.skip_special_tokens,
+            "add_special_tokens": self.add_special_tokens,
+            "add_spaces_between_special_tokens": self.add_spaces_between_special_tokens,
+            "print_eos_token": self.print_eos_token,
         }
 
     def to_origin_dict(self):
