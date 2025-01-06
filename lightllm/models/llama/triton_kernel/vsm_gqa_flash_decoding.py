@@ -8,7 +8,6 @@ def vsm_gqa_flash_decoding(
     infer_state,
     k, 
     v,
-    total_token_in_the_batch,
     q_head_dim,
     q_head_num,
     kv_head_dim,
@@ -72,8 +71,8 @@ def vsm_gqa_flash_decoding(
     )
 
     # real calculate
-    mid_o = torch.empty([q_head_num, vsm_count, kv_head_dim], dtype=torch.float32, device="cuda")
-    mid_o_logexpsum = torch.empty([q_head_num, vsm_count], dtype=torch.float32, device="cuda")
+    mid_o = torch.empty([q_head_num, vsm_count * 4 + batch_size, kv_head_dim], dtype=torch.float32, device="cuda")
+    mid_o_logexpsum = torch.empty([q_head_num, vsm_count * 4 + batch_size], dtype=torch.float32, device="cuda")
     vsm_gqa_flash_decoding_stage1(
         q.view(q_shape),
         k,

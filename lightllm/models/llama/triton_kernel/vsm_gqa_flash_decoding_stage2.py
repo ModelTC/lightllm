@@ -62,6 +62,7 @@ def vsm_gqa_flash_decoding_stage2(
     o,
     **run_config: VSMGQADecodeAttentionKernelConfig
 ):
+    return
     num_warps = run_config['stage2_num_warps']
     num_stages = run_config['stage2_num_stages']
 

@@ -77,7 +77,6 @@ def _fwd_kernel_vsm_gqa_flash_decoding_stage1(
         while cur_kv_chunk_idx < cur_block_num:
             cur_kv_head = cur_kv_chunk_idx % gqa_group_size
             cur_end_chunk_idx = cur_kv_chunk_idx // gqa_group_size
-            cur_kv_chunk_idx += num_vsm
 
             cur_q_head = cur_kv_head * gqa_group_size + group_q_head_offset
 
@@ -126,10 +125,11 @@ def _fwd_kernel_vsm_gqa_flash_decoding_stage1(
                 max_exp = new_max
             
             head_mask = cur_q_head < (cur_kv_head + 1) * gqa_group_size
-            off_mid_o = cur_q_head[:, None] * stride_mid_o_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_s + off_q_dim
-            off_mid_log_expsum = cur_q_head * stride_mid_o_logexpsum_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_logexpsum_s
+            off_mid_o = cur_q_head[:, None] * stride_mid_o_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_s + off_q_dim * stride_mid_o_d
             tl.store(mid_o + off_mid_o, acc / sum_exp[:, None], mask=head_mask[:, None])
-            tl.store(mid_o_logexpsum + off_mid_log_expsum, max_exp + tl.log(sum_exp), mask=head_mask)
+            # off_mid_log_expsum = cur_q_head * stride_mid_o_logexpsum_h + (out_batch_start_idx + cur_end_chunk_idx) * stride_mid_o_logexpsum_s
+            # tl.store(mid_o_logexpsum + off_mid_log_expsum, max_exp + tl.log(sum_exp), mask=head_mask)
+            cur_kv_chunk_idx += num_vsm
 
         out_batch_start_idx += cur_block_num // gqa_group_size
 
@@ -162,7 +162,6 @@ def vsm_gqa_flash_decoding_stage1(
     Q_HEAD_DIM = q.shape[-1]
     KV_HEAD_NUM = k.shape[1]
     
-
     kernel = _fwd_kernel_vsm_gqa_flash_decoding_stage1.warmup(
         q,
         k,
@@ -201,6 +200,7 @@ def vsm_gqa_flash_decoding_stage1(
         return num_vsm
     grid = (num_vsm, )
 
+    print(mid_o.shape)
     _fwd_kernel_vsm_gqa_flash_decoding_stage1[grid](
          q,
         k,
