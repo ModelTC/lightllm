@@ -188,14 +188,25 @@ class SamplingParams(ctypes.Structure):
         ("ignore_eos", ctypes.c_bool),
         ("max_new_tokens", ctypes.c_int),
         ("min_new_tokens", ctypes.c_int),
+        # Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
         ("input_penalty", ctypes.c_bool),
         ("regular_constraint", RegularConstraint),
+        # If provided, the engine will construct a logits,
+        # processor which only retains scores for the given token ids. Defaults to None.
+        # allowed_token_ids only can be used in "--simple_constraint_mode" started server.
         ("allowed_token_ids", AllowedTokenIds),
         ("stop_sequences", StopSequenceGroups),
         ("exponential_decay_length_penalty", ExponentialDecayLengthPenalty),
-        ("group_request_id", ctypes.c_int),
-        ("suggested_dp_index", ctypes.c_int),
-        ("move_kv_to_decode_node", DecodeNode),
+        ("group_request_id", ctypes.c_int),  # p d mode used params
+        ("suggested_dp_index", ctypes.c_int),  # suggest dp index, deepseekv2 dp mode, use to suggest used dp_index
+        ("move_kv_to_decode_node", DecodeNode),  # move kv to deocde node, only used in pd mode
+        ("skip_special_tokens", ctypes.c_bool),  # whether to skip special tokens when decoding
+        ("add_special_tokens", ctypes.c_bool),  # whether to add special tokens when encoding
+        (
+            "add_spaces_between_special_tokens",
+            ctypes.c_bool,
+        ),  # whether to add spaces between special tokens when decoding
+        ("print_eos_token", ctypes.c_bool),  # eos_id will be always ignored except the value is set to True
     ]
 
     _do_sample: bool = False
@@ -223,6 +234,11 @@ class SamplingParams(ctypes.Structure):
         self.input_penalty = kwargs.get("input_penalty", DEFAULT_INPUT_PENALTY)
         self.group_request_id = kwargs.get("group_request_id", -1)
         self.suggested_dp_index = kwargs.get("suggested_dp_index", -1)
+
+        self.skip_special_tokens = kwargs.get("skip_special_tokens", True)
+        self.add_special_tokens = kwargs.get("add_special_tokens", True)
+        self.add_spaces_between_special_tokens = kwargs.get("add_spaces_between_special_tokens", True)
+        self.print_eos_token = kwargs.get("print_eos_token", False)
 
         self.exponential_decay_length_penalty = ExponentialDecayLengthPenalty()
         self.exponential_decay_length_penalty.initialize(kwargs.get("exponential_decay_length_penalty", (1, 1.0)))
