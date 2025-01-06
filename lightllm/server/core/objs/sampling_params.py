@@ -17,13 +17,13 @@ REGULAR_CONSTRAINT_MAX_LENGTH = int(os.getenv("LIGHTLLM_REGULAR_CONSTRAINT_MAX_L
 class StopSequence(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("sequences", ctypes.c_int * STOP_SEQUENCE_MAX_LENGTH),
+        ("sequence", ctypes.c_int * STOP_SEQUENCE_MAX_LENGTH),
         ("size", ctypes.c_int),
     ]
 
     def initialize(self, sequence: List[int]):
         self.size = len(sequence)
-        assert self.size <= STOP_SEQUENCE_MAX_LENGTH, "Too many stop sequences."
+        assert self.size <= STOP_SEQUENCE_MAX_LENGTH, "stop token length too long."
         assert all(isinstance(e, int) for e in sequence), "all must be int"
         self.sequence[: self.size] = sequence[:]
 
@@ -137,8 +137,8 @@ class ExponentialDecayLengthPenalty(ctypes.Structure):
 class DecodeNode(ctypes.Structure):
     _fields_ = [
         ("exists", ctypes.c_bool),
-        ("node_id_high", ctypes.c_int64),  # UUID 的高 64 位
-        ("node_id_low", ctypes.c_int64),  # UUID 的低 64 位
+        ("node_id_high", ctypes.c_uint64),  # UUID 的高 64 位
+        ("node_id_low", ctypes.c_uint64),  # UUID 的低 64 位
         ("ip", ctypes.c_int32 * 4),
         ("rpyc_port", ctypes.c_int),
         ("max_new_tokens", ctypes.c_int),
