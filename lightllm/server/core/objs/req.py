@@ -9,6 +9,7 @@ from typing import List, Any
 
 
 class ReqStatus(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [("status", ctypes.c_int)]
 
     WAIT_IN_QUEUE = 0
@@ -40,6 +41,7 @@ class ReqStatus(ctypes.Structure):
 
 
 class FinishStatus(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [("status", ctypes.c_int)]
 
     NO_FINISH = 0
@@ -74,10 +76,18 @@ class FinishStatus(ctypes.Structure):
 
 
 class PrefixTokenIdsStruct(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [("size", ctypes.c_int), ("data", ctypes.c_int64 * 10)]
 
     def __init__(self):
         self.size = 0
+
+    def set_token_ids(self, ids: List[int]):
+        self.size = len(ids)
+        self.data[: len(ids)] = ids
+
+    def get_token_ids(self):
+        return list(self.data[: self.size])
 
 
 class Req(ctypes.Structure):
@@ -219,11 +229,9 @@ class TokenHealingReq(NormalReq):
         for prefix_token_num in range(2, -1, -1):
             if self.input_len > prefix_token_num:
                 self.input_len -= prefix_token_num
-                for get_token_id_idx in range(prefix_token_num):
-                    self.prefix_token_ids.data[get_token_id_idx] = self.shm_prompt_ids.arr[
-                        self.input_len + get_token_id_idx
-                    ]
-                self.prefix_token_ids.size = prefix_token_num
+                self.prefix_token_ids.set_token_ids(
+                    self.shm_prompt_ids.arr[self.input_len : (self.input_len + prefix_token_num)]
+                )
                 break
         # 因为原始的输出token数量，会被中间的前缀补全占用decode次数，
         # 所以默认多添加一些decode步数
