@@ -27,8 +27,12 @@ class ShmArray:
             logger.error(f"size not same, unlink shm {self.name} and create again")
             shm.unlink()
             shm.close()
-            shm = shared_memory.SharedMemory(name=self.name, create=True, size=self.dest_size)
-            logger.info(f"create shm {self.name}")
+            try:
+                shm = shared_memory.SharedMemory(name=self.name, create=True, size=self.dest_size)
+                logger.info(f"create shm {self.name}")
+            except:
+                shm = shared_memory.SharedMemory(name=self.name, create=False, size=self.dest_size)
+                logger.info(f"link shm {self.name}")
 
         self.shm = shm  # SharedMemory 对象一定要被持有，否则会被释放
         self.arr = np.ndarray(self.shape, dtype=self.dtype, buffer=self.shm.buf)
