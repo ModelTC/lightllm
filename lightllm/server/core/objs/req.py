@@ -220,7 +220,9 @@ class TokenHealingReq(NormalReq):
             if self.input_len > prefix_token_num:
                 self.input_len -= prefix_token_num
                 for get_token_id_idx in range(prefix_token_num):
-                    self.prefix_token_ids.data[get_token_id_idx] = self.prompt_ids[self.input_len + get_token_id_idx]
+                    self.prefix_token_ids.data[get_token_id_idx] = self.shm_prompt_ids.arr[
+                        self.input_len + get_token_id_idx
+                    ]
                 self.prefix_token_ids.size = prefix_token_num
                 break
         # 因为原始的输出token数量，会被中间的前缀补全占用decode次数，
