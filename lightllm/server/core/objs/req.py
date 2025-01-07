@@ -169,9 +169,6 @@ class Req(ctypes.Structure):
     def get_first_router_need_tokens(self):
         raise NotImplementedError("Subclasses should implement this method")
 
-    def __del__(self):
-        pass
-
 
 class NormalReq(Req):
     _pack_ = 4
