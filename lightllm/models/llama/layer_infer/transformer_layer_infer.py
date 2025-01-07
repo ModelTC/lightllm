@@ -593,8 +593,12 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             alloc_tensor_func=self.alloc_tensor,
         )
 
-    def _token_decode_attention_gqa_flashdecoding_vsm( self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
-        from lightllm.models.llama.triton_kernel.gqa_flash_decoding_vsm import gqa_token_decode_attention_flash_decoding_vsm
+    def _token_decode_attention_gqa_flashdecoding_vsm(
+        self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None
+    ):
+        from lightllm.models.llama.triton_kernel.gqa_flash_decoding_vsm import (
+            gqa_token_decode_attention_flash_decoding_vsm,
+        )
 
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :]
         cache_v = infer_state.mem_manager.kv_buffer[self.layer_num_][
