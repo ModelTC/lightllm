@@ -79,7 +79,8 @@ class PrefixTokenIdsStruct(ctypes.Structure):
 class Req(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("ref_count", ctypes.c_int)("request_id", ctypes.c_int),  # 引用计数
+        ("ref_count", ctypes.c_int),
+        ("request_id", ctypes.c_int),  # 引用计数
         ("group_req_id", ctypes.c_int),
         ("input_len", ctypes.c_int),
         ("cur_kv_len", ctypes.c_int),
