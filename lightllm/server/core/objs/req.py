@@ -132,7 +132,6 @@ class Req(ctypes.Structure):
     def create_prompt_ids_shm_array(self):
         service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_prompts_{self.index_in_shm_mem}"
-        assert not hasattr(self, "shm_prompt_ids")
         self.shm_prompt_ids = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.int64)
         self.shm_prompt_ids.create_shm()
         return
@@ -140,7 +139,6 @@ class Req(ctypes.Structure):
     def link_prompt_ids_shm_array(self):
         service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_prompts_{self.index_in_shm_mem}"
-        assert not hasattr(self, "shm_prompt_ids")
         self.shm_prompt_ids = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.int64)
         self.shm_prompt_ids.link_shm()
         return
@@ -148,7 +146,6 @@ class Req(ctypes.Structure):
     def create_logprobs_shm_array(self):
         service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
-        assert not hasattr(self, "shm_logprobs")
         self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
         self.shm_logprobs.create_shm()
         return
@@ -156,7 +153,6 @@ class Req(ctypes.Structure):
     def link_logprobs_shm_array(self):
         service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
-        assert not hasattr(self, "shm_logprobs")
         self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
         self.shm_logprobs.link_shm()
         return

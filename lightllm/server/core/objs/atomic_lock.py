@@ -13,8 +13,8 @@ class AtomicShmLock:
 
         if self.shm.size != self.dest_size:
             logger.info(f"size not same, unlink lock shm {lock_name} and create again")
-            self.shm.unlink()
             self.shm.close()
+            self.shm.unlink()
             self.shm = None
             self._init_shm()
         self.shm.buf.cast("i")[0] = 0

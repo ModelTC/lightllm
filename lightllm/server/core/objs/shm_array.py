@@ -24,9 +24,9 @@ class ShmArray:
             logger.info(f"link shm {self.name}")
 
         if shm.size != self.dest_size:
-            logger.error(f"size not same, unlink shm {self.name} and create again")
-            shm.unlink()
+            logger.warning(f"size not same, unlink shm {self.name} and create again")
             shm.close()
+            shm.unlink()
             try:
                 shm = shared_memory.SharedMemory(name=self.name, create=True, size=self.dest_size)
                 logger.info(f"create shm {self.name}")
@@ -50,4 +50,4 @@ class ShmArray:
             self.shm.close()
             self.shm.unlink()
             self.shm = None
-            self.arr
+            self.arr = None

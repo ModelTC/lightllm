@@ -30,8 +30,8 @@ class ShmReqManager:
 
         if self.reqs_shm.size != self.req_shm_byte_size:
             logger.info(f"size not same, unlink lock shm {self.reqs_shm.name} and create again")
-            self.reqs_shm.unlink()
             self.reqs_shm.close()
+            self.reqs_shm.unlink()
             self.reqs_shm = None
             self._init_reqs_shm()
 
@@ -71,8 +71,11 @@ class ShmReqManager:
         self.alloc_state_shm = ShmArray(shm_name, (self.max_req_num,), np.int32)
         self.alloc_state_shm.create_shm()
         self.alloc_state_shm.arr[:] = 0
+        # 用来做为每个进程独立的状态管理，用于申请和
+        self.proc_private_get_state = np.zeros(shape=(self.max_req_num,), dtype=np.int32)
         return
 
+    # alloc_req_index 和 release_req_index 是分配资源时使用的接口。
     def alloc_req_index(self):
         with self.manager_lock:
             indices = np.where(self.alloc_state_shm.arr == 0)[0]
@@ -89,3 +92,22 @@ class ShmReqManager:
             assert self.alloc_state_shm.arr[req_index_in_mem] == 1
             self.alloc_state_shm.arr[req_index_in_mem] = 0
         return
+
+    # get_req_obj_by_index 和 put_back_req_obj 是 分配好后，进行对象获取和
+    # 管理的接口，主要是要进行引用计数的管理。
+    def get_req_obj_by_index(self, req_index_in_mem):
+        assert req_index_in_mem < self.max_req_num
+        assert self.proc_private_get_state[req_index_in_mem] == 0
+        ans: Req = self.reqs[req_index_in_mem]
+        with self.get_req_lock_by_index(req_index_in_mem):
+            ans.ref_count = ans.ref_count + 1
+        self.proc_private_get_state[req_index_in_mem] = 1
+        return
+
+    def put_back_req_obj(self, req: Req):
+        req_index_in_mem = req.index_in_shm_mem
+        assert req_index_in_mem < self.max_req_num
+        assert self.proc_private_get_state[req_index_in_mem] == 1
+        with self.get_req_lock_by_index(req_index_in_mem):
+            req.ref_count = req.ref_count - 1
+        self.proc_private_get_state[req_index_in_mem] = 0
