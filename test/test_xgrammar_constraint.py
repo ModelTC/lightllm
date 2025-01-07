@@ -3,16 +3,6 @@ import requests
 import json
 import threading
 
-"""
-python -m lightllm.server.api_server --model_dir /Meta-Llama-3-8B-Instruct  \
-                                     --host 0.0.0.0                 \
-                                     --port 8017                   \
-                                     --tp 1                         \
-                                     --max_total_token_num 100000 \
-                                     --simple_constraint_mode \
-                                     --use_dynamic_prompt_cache
-"""
-
 
 class RequestThread(threading.Thread):
     def __init__(self, url, headers, data):
@@ -51,7 +41,7 @@ for i in range(1):
         "inputs": "Introduce yourself in JSON briefly.",
         # 'temperature': 0.1,
         "parameters": {
-            "do_sample": False, 
+            "do_sample": False,
             "guided_grammar": json_grammar_ebnf_str,
             "max_new_tokens": 200,
         },

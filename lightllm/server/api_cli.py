@@ -149,11 +149,14 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
     parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
     parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
-    # parser.add_argument("--simple_constraint_mode", action="store_true", help="output constraint mode")
-    parser.add_argument("--output_constraint_mode", type=str,
+
+    parser.add_argument(
+        "--output_constraint_mode",
+        type=str,
         choices=["outlines", "xgrammar", "none"],
         default="none",
-        help="set the output constraint backend, none means no output constraint",)
+        help="set the output constraint backend, none means no output constraint",
+    )
     parser.add_argument(
         "--first_token_constraint_mode",
         action="store_true",

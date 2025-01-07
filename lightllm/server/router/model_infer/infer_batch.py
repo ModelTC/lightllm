@@ -64,11 +64,11 @@ class InferSamplingParams:
         # constraint states
         self.regular_constraint = regular_constraint
         self.guided_grammar = guided_grammar
-        self.fsm_current_state: int = 0
         self.allowed_token_ids = allowed_token_ids
 
         # Outlines constraint states
         self.regex_guide = None
+        self.fsm_current_state: int = 0
 
         # Xgrammar constraint states
         self.xgrammar_compiled_grammar = None
@@ -84,7 +84,9 @@ class InferSamplingParams:
         return
 
     def has_constraint_setting(self) -> bool:
-        return self.regular_constraint is not None or self.allowed_token_ids is not None or self.guided_grammar is not None
+        return (
+            self.regular_constraint is not None or self.allowed_token_ids is not None or self.guided_grammar is not None
+        )
 
 
 class InferReq:
