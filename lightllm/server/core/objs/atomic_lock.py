@@ -17,7 +17,7 @@ class AtomicShmLock:
             self.shm.close()
             self.shm = None
             self._init_shm()
-        self.shm.buf[0] = 0
+        self.shm.buf.cast("i")[0] = 0
         return
 
     def _init_shm(self):
