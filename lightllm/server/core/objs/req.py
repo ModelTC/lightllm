@@ -1,5 +1,8 @@
+import os
 import ctypes
+import numpy as np
 from .sampling_params import SamplingParams
+from .shm_array import ShmArray
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from typing import List, Any
 
@@ -79,10 +82,11 @@ class PrefixTokenIdsStruct(ctypes.Structure):
 class Req(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("ref_count", ctypes.c_int),
+        ("index_in_shm_mem", ctypes.c_int)("ref_count", ctypes.c_int),  # 个人不要操作这个计数  # 个人不要操作这个引用计数
         ("request_id", ctypes.c_int),  # 引用计数
         ("group_req_id", ctypes.c_int),
         ("input_len", ctypes.c_int),
+        ("alloc_shm_numpy_len", ctypes.c_int),
         ("cur_kv_len", ctypes.c_int),
         ("cur_output_len", ctypes.c_int),
         ("prompt_cache_len", ctypes.c_int),
@@ -96,9 +100,6 @@ class Req(ctypes.Structure):
     def init(self, request_id: int, prompt_ids: List[int], sample_param: dict, tokenizer: Any, splitfuse_block_size=0):
         self.request_id = request_id
         self.group_req_id = convert_sub_id_to_group_id(request_id)
-        self.prompt_ids = prompt_ids
-        self.input_len = len(prompt_ids)
-
         self.req_status = ReqStatus()
         self.finish_status = FinishStatus()
         self.cur_kv_len = 0
@@ -109,10 +110,50 @@ class Req(ctypes.Structure):
         self.splitfuse_block_size = splitfuse_block_size
         self.prefix_token_ids = PrefixTokenIdsStruct()
 
+        self.input_len = len(prompt_ids)
+        self.alloc_shm_numpy_len = self.input_len + self.sample_params.max_new_tokens + 1024  # + 1024 for safe
+        self.create_logprobs_shm_array()
+        self.create_prompt_ids_shm_array()
+
+        self.shm_prompt_ids[0 : len(prompt_ids)] = prompt_ids
+
         self.post_init()
 
     def post_init(self):
+        # 子类继承进行一些额外的初始化操作
         pass
+
+    def create_prompt_ids_shm_array(self):
+        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        name = f"{service_uni_name}_shm_prompts_{self.index_in_shm_mem}"
+        assert not hasattr(self, "shm_prompt_ids")
+        self.shm_prompt_ids = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.int64)
+        self.shm_prompt_ids.create_shm()
+        return
+
+    def link_prompt_ids_shm_array(self):
+        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        name = f"{service_uni_name}_shm_prompts_{self.index_in_shm_mem}"
+        assert not hasattr(self, "shm_prompt_ids")
+        self.shm_prompt_ids = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.int64)
+        self.shm_prompt_ids.link_shm()
+        return
+
+    def create_logprobs_shm_array(self):
+        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
+        assert not hasattr(self, "shm_logprobs")
+        self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
+        self.shm_logprobs.create_shm()
+        return
+
+    def link_logprobs_shm_array(self):
+        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
+        assert not hasattr(self, "shm_logprobs")
+        self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
+        self.shm_logprobs.link_shm()
+        return
 
     def get_used_tokens(self):
         return max(0, self.cur_kv_len)
@@ -126,8 +167,13 @@ class Req(ctypes.Structure):
     def get_first_router_need_tokens(self):
         raise NotImplementedError("Subclasses should implement this method")
 
+    def __del__(self):
+        pass
+
 
 class NormalReq(Req):
+    _pack_ = 4
+
     def get_tuple_tokens(self, is_busy, router_max_new_token_len):
         has_out_len = self.cur_output_len
         if self.sample_params.ignore_eos:
