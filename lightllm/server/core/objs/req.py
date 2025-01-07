@@ -100,6 +100,10 @@ class Req(ctypes.Structure):
     ]
 
     def init(self, request_id: int, prompt_ids: List[int], sample_param: dict, tokenizer: Any, splitfuse_block_size=0):
+        # 只是为了有更好的编码辅助类型提示
+        self.index_in_shm_mem: int = self.index_in_shm_mem
+        self.ref_count: int = self.ref_count
+
         self.request_id = request_id
         self.group_req_id = convert_sub_id_to_group_id(request_id)
         self.req_status = ReqStatus()
