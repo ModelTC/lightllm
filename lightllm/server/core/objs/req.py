@@ -82,7 +82,8 @@ class PrefixTokenIdsStruct(ctypes.Structure):
 class Req(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("index_in_shm_mem", ctypes.c_int)("ref_count", ctypes.c_int),  # 个人不要操作这个计数  # 个人不要操作这个引用计数
+        ("index_in_shm_mem", ctypes.c_int),
+        ("ref_count", ctypes.c_int),  # 个人不要操作这个计数  # 个人不要操作这个引用计数
         ("request_id", ctypes.c_int),  # 引用计数
         ("group_req_id", ctypes.c_int),
         ("input_len", ctypes.c_int),
@@ -115,7 +116,7 @@ class Req(ctypes.Structure):
         self.create_logprobs_shm_array()
         self.create_prompt_ids_shm_array()
 
-        self.shm_prompt_ids[0 : len(prompt_ids)] = prompt_ids
+        self.shm_prompt_ids.arr[0 : len(prompt_ids)] = prompt_ids
 
         self.post_init()
 
