@@ -19,7 +19,7 @@ class AtomicShmArrayLock:
             self.shm = None
             self._init_shm()
         for index in range(self.lock_num):
-            self.shm.buf[index] = 0
+            self.shm.buf.cast("i")[index] = 0
         return
 
     def _init_shm(self):
