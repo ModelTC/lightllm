@@ -154,7 +154,6 @@ def make_argument_parser() -> argparse.ArgumentParser:
         choices=["outlines", "xgrammar", "none"],
         default="none",
         help="set the output constraint backend, none means no output constraint",)
-    parser.add_argument("--guided_grammar", type=str, default=None, help="output constraint mode config")
     parser.add_argument(
         "--first_token_constraint_mode",
         action="store_true",
