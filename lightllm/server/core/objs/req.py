@@ -2,6 +2,7 @@ import os
 import ctypes
 import numpy as np
 from .sampling_params import SamplingParams
+from .out_token_circlequeue import CircularQueue
 from .shm_array import ShmArray
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.utils.envs_utils import get_unique_server_name
@@ -104,6 +105,7 @@ class Req(ctypes.Structure):
         ("prompt_cache_len", ctypes.c_int),
         ("req_status", ReqStatus),
         ("finish_status", FinishStatus),
+        ("out_tokens_queue", CircularQueue),
         ("sample_params", SamplingParams),
         ("splitfuse_block_size", ctypes.c_int),  # 只有splitfuse模式才使用的参数
         ("prefix_token_ids", PrefixTokenIdsStruct),  # 只有 token_headling 模式使用的参数
@@ -126,6 +128,7 @@ class Req(ctypes.Structure):
         self.splitfuse_block_size = splitfuse_block_size
         self.prefix_token_ids = PrefixTokenIdsStruct()
 
+        self.out_tokens_queue = CircularQueue()
         self.input_len = len(prompt_ids)
         self.alloc_shm_numpy_len = self.input_len + self.sample_params.max_new_tokens + 1024  # + 1024 for safe
         self.create_logprobs_shm_array()
