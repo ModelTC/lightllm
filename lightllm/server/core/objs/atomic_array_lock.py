@@ -43,12 +43,16 @@ class AtomicLockItem:
         self.index = index
 
     def __enter__(self):
-        with atomics.atomicview(buffer=self.context.shm.buf[self.index : (self.index + 1)], atype=atomics.INT) as a:
+        with atomics.atomicview(
+            buffer=self.context.shm.buf[self.index * 4 : (self.index + 1) * 4], atype=atomics.INT
+        ) as a:
             while not a.cmpxchg_weak(0, 1):
                 pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        with atomics.atomicview(buffer=self.context.shm.buf[self.index : (self.index + 1)], atype=atomics.INT) as a:
+        with atomics.atomicview(
+            buffer=self.context.shm.buf[self.index * 4 : (self.index + 1) * 4], atype=atomics.INT
+        ) as a:
             while not a.cmpxchg_weak(1, 0):
                 pass
         return False

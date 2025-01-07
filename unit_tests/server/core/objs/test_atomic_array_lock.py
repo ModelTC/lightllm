@@ -20,6 +20,17 @@ def test_initialization(setup_shared_memory):
     assert lock.shm.size == 8  # 4 bytes per lock * 2 locks
 
 
+def test_lock(setup_shared_memory):
+    with setup_shared_memory.get_lock_context(0):
+        assert setup_shared_memory.shm.buf.cast("i")[0] == 1
+        assert setup_shared_memory.shm.buf.cast("i")[1] == 0
+        with setup_shared_memory.get_lock_context(1):
+            assert setup_shared_memory.shm.buf.cast("i")[0] == 1
+            assert setup_shared_memory.shm.buf.cast("i")[1] == 1
+    assert setup_shared_memory.shm.buf.cast("i")[0] == 0
+    assert setup_shared_memory.shm.buf.cast("i")[1] == 0
+
+
 def test_locking_and_unlocking(setup_shared_memory):
     lock = setup_shared_memory
 
@@ -39,8 +50,8 @@ def test_locking_and_unlocking(setup_shared_memory):
     process2.join()
 
     # After both processes finish, check that the locks are released
-    assert lock.shm.buf[0] == 0
-    assert lock.shm.buf[1] == 0
+    assert lock.shm.buf.cast("i")[0] == 0
+    assert lock.shm.buf.cast("i")[1] == 0
 
 
 def test_lock_exceeding_index(setup_shared_memory):
