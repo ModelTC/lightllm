@@ -9,7 +9,7 @@ LIGHTLLM_OUT_TOKEN_QUEUE_SIZE = int(os.getenv("LIGHTLLM_OUT_TOKEN_QUEUE_SIZE", 4
 class QueueItem(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("data", ctypes.c_char * LIGHTLLM_TOKEN_MAX_BYTES),
+        ("data", ctypes.c_byte * LIGHTLLM_TOKEN_MAX_BYTES),
         ("data_len", ctypes.c_int),
         ("src_index", ctypes.c_int),  # 在源token队列的索引位置
     ]
@@ -27,7 +27,7 @@ class QueueItem(ctypes.Structure):
         return
 
     def get(self):
-        return (self.data[: self.data_len].decode("utf-8"), self.src_index)
+        return (bytes(self.data[: self.data_len]).decode("utf-8"), self.src_index)
 
 
 class CircularQueue(ctypes.Structure):
@@ -65,7 +65,7 @@ class CircularQueue(ctypes.Structure):
             raise Exception("Queue is empty")
 
         # 移除元素
-        item = self.items[self.head]
+        item: QueueItem = self.items[self.head]
         result = item.get()
 
         # 更新头部
