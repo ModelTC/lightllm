@@ -4,6 +4,7 @@ import numpy as np
 from .sampling_params import SamplingParams
 from .shm_array import ShmArray
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
+from lightllm.utils.envs_utils import get_unique_server_name
 from typing import List, Any
 
 
@@ -125,7 +126,7 @@ class Req(ctypes.Structure):
         pass
 
     def create_prompt_ids_shm_array(self):
-        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_prompts_{self.index_in_shm_mem}"
         assert not hasattr(self, "shm_prompt_ids")
         self.shm_prompt_ids = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.int64)
@@ -133,7 +134,7 @@ class Req(ctypes.Structure):
         return
 
     def link_prompt_ids_shm_array(self):
-        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_prompts_{self.index_in_shm_mem}"
         assert not hasattr(self, "shm_prompt_ids")
         self.shm_prompt_ids = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.int64)
@@ -141,7 +142,7 @@ class Req(ctypes.Structure):
         return
 
     def create_logprobs_shm_array(self):
-        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
         assert not hasattr(self, "shm_logprobs")
         self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
@@ -149,7 +150,7 @@ class Req(ctypes.Structure):
         return
 
     def link_logprobs_shm_array(self):
-        service_uni_name = os.getenv("UNIQUE_SERVICE_NAME_ID")
+        service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
         assert not hasattr(self, "shm_logprobs")
         self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
