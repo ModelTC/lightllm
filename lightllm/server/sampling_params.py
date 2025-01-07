@@ -42,6 +42,7 @@ class SamplingParams:
         # Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
         input_penalty: bool = DEFAULT_INPUT_PENALTY,
         regular_constraint: Optional[str] = None,  # Regular expressions constrain the output.
+        guided_grammar: Optional[str] = None,  # EBNF constrain the output.
         # If provided, the engine will construct a logits,
         # processor which only retains scores for the given token ids. Defaults to None.
         # allowed_token_ids only can be used in "--simple_constraint_mode" started server.
@@ -76,6 +77,7 @@ class SamplingParams:
         self.add_spaces_between_special_tokens = add_spaces_between_special_tokens
         self.print_eos_token = print_eos_token
         self.regular_constraint = regular_constraint
+        self.guided_grammar = guided_grammar
         self.allowed_token_ids = allowed_token_ids
         self.group_request_id = group_request_id
         self.move_kv_to_decode_node = move_kv_to_decode_node
@@ -251,6 +253,7 @@ class SamplingParams:
         ret["best_of"] = self.best_of
         ret["input_penalty"] = self.input_penalty
         ret["regular_constraint"] = self.regular_constraint
+        ret["guided_grammar"] = self.guided_grammar
         ret["allowed_token_ids"] = self.allowed_token_ids
         ret["move_kv_to_decode_node"] = self.move_kv_to_decode_node
         return ret
