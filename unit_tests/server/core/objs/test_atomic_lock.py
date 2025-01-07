@@ -17,12 +17,12 @@ def setup_shared_memory():
 
 def test_lock_acquisition(setup_shared_memory):
     lock = setup_shared_memory
-    assert lock.shm.buf[0] == 0  # Initially, the lock should be free
+    assert lock.shm.buf.cast("i")[0] == 0  # Initially, the lock should be free
 
     with lock:
-        assert lock.shm.buf[0] == 1  # Lock should be acquired
+        assert lock.shm.buf.cast("i")[0] == 1  # Lock should be acquired
 
-    assert lock.shm.buf[0] == 0  # Lock should be released
+    assert lock.shm.buf.cast("i")[0] == 0  # Lock should be released
 
 
 def test_multiple_processes_locking():
@@ -39,11 +39,11 @@ def test_multiple_processes_locking():
     p.start()
 
     time.sleep(0.1)  # Ensure the first process has acquired the lock
-    assert lock.shm.buf[0] == 1  # The lock should be held by the first process
+    assert lock.shm.buf.cast("i")[0] == 1  # The lock should be held by the first process
 
     # Wait for the first process to finish
     p.join()
-    assert lock.shm.buf[0] == 0  # The lock should be released after the process finishes
+    assert lock.shm.buf.cast("i")[0] == 0  # The lock should be released after the process finishes
 
 
 def test_lock_recreation_on_size_mismatch():
@@ -56,7 +56,7 @@ def test_lock_recreation_on_size_mismatch():
     # Now recreate the lock
     lock_new = AtomicShmLock(lock_name)
     assert lock_new.shm.size == lock_new.dest_size  # Ensure the size is correct
-    assert lock_new.shm.buf[0] == 0  # Ensure the lock is free
+    assert lock_new.shm.buf.cast("i")[0] == 0  # Ensure the lock is free
 
     lock_new.shm.unlink()  # Clean up after tests
 
