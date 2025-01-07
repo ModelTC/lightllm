@@ -21,7 +21,9 @@ class XgrammarBackend(ContinuesBatchBackend):
         super().__init__()
 
     def init_custom(self):
-        self.tokenizer = get_tokenizer(self.args.model_dir, self.args.tokenizer_mode, trust_remote_code=self.args.trust_remote_code)
+        self.tokenizer = get_tokenizer(
+            self.args.model_dir, self.args.tokenizer_mode, trust_remote_code=self.args.trust_remote_code
+        )
 
         tokenizer_info = xgr.TokenizerInfo.from_huggingface(self.tokenizer)
         self.xgrammar_compiler = xgr.GrammarCompiler(tokenizer_info, max_threads=8)
@@ -111,7 +113,7 @@ class XgrammarBackend(ContinuesBatchBackend):
             if sample_params.xgrammar_matcher.is_terminated():
                 req_obj.finish_status = FinishStatus.FINISHED_STOP
             else:
-                assert(sample_params.xgrammar_matcher.accept_token(next_token_id))
+                assert sample_params.xgrammar_matcher.accept_token(next_token_id)
 
         metadata = {
             "id": next_token_id,
