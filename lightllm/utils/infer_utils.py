@@ -5,6 +5,7 @@ import time
 from typing import Callable
 
 from lightllm.utils.log_utils import init_logger
+
 logger = init_logger(__name__)
 
 is_show_cost_time = False
@@ -77,8 +78,9 @@ def benchmark_time(func: Callable, *args, warmup: int = 1, repeat: int = 5, **kw
     for _ in range(repeat):
         func(*args, **kwargs)
     torch.cuda.synchronize()
-    cost_time = (time.time() - start_time) * 1000 / repeat # unit: ms
+    cost_time = (time.time() - start_time) * 1000 / repeat  # unit: ms
     return cost_time
+
 
 def set_random_seed(seed: int) -> None:
     import random
