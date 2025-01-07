@@ -18,10 +18,8 @@ class ShmArray:
     def create_shm(self):
         try:
             shm = shared_memory.SharedMemory(name=self.name, create=True, size=self.dest_size)
-            logger.info(f"create shm {self.name}")
         except:
             shm = shared_memory.SharedMemory(name=self.name, create=False, size=self.dest_size)
-            logger.info(f"link shm {self.name}")
 
         if shm.size != self.dest_size:
             logger.warning(f"size not same, unlink shm {self.name} and create again")
@@ -39,7 +37,6 @@ class ShmArray:
 
     def link_shm(self):
         shm = shared_memory.SharedMemory(name=self.name, create=False, size=self.dest_size)
-        logger.info(f"link shm {self.name}")
         assert shm.size == self.dest_size
         self.shm = shm
         self.arr = np.ndarray(self.shape, dtype=self.dtype, buffer=self.shm.buf)
