@@ -36,6 +36,7 @@ class ShmArray:
     def link_shm(self):
         shm = shared_memory.SharedMemory(name=self.name, create=False, size=self.dest_size)
         logger.info(f"link shm {self.name}")
+        assert shm.size == self.dest_size
         self.shm = shm
         self.arr = np.ndarray(self.shape, dtype=self.dtype, buffer=self.shm.buf)
         return
@@ -44,3 +45,5 @@ class ShmArray:
         if self.shm is not None:
             self.shm.close()
             self.shm.unlink()
+            self.shm = None
+            self.arr
