@@ -63,6 +63,10 @@ class FinishStatus(ctypes.Structure):
     def is_finished(self):
         return self.FINISHED_STOP <= self.status <= self.FINISHED_ABORT
 
+    # 正常 finished 的状态
+    def is_ok_finished(self):
+        return self.FINISHED_STOP <= self.status <= self.FINISHED_LENGTH
+
     def is_aborted(self):
         return self.status == self.FINISHED_ABORT
 
@@ -105,6 +109,9 @@ class Req(ctypes.Structure):
         ("prompt_cache_len", ctypes.c_int),
         ("req_status", ReqStatus),
         ("finish_status", FinishStatus),
+        # 当FinishStatus 是正常结束状态时，finish_token_index 用于标识结束的
+        # token 的index位置
+        ("finish_token_index", ctypes.c_int),
         ("out_tokens_queue", CircularQueue),
         ("sample_params", SamplingParams),
         ("splitfuse_block_size", ctypes.c_int),  # 只有splitfuse模式才使用的参数
@@ -134,6 +141,7 @@ class Req(ctypes.Structure):
         self.cur_kv_len = 0
         self.cur_output_len = 0
         self.prompt_cache_len = 0
+        self.finish_token_index = -1
         self.can_released_mark = False
         if isinstance(sample_param, SamplingParams):
             self.sample_params = sample_param
@@ -178,15 +186,33 @@ class Req(ctypes.Structure):
         self.shm_logprobs.create_shm()
         return
 
-    def get_prompt_ids(self):
-        return self.shm_prompt_ids.arr[: self.input_len].tolist()
-
     def link_logprobs_shm_array(self):
         service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
         self.shm_logprobs = ShmArray(name, (self.alloc_shm_numpy_len,), dtype=np.float32)
         self.shm_logprobs.link_shm()
         return
+
+    def get_prompt_ids(self):
+        return self.shm_prompt_ids.arr[: self.input_len].tolist()
+
+    def can_release(self):
+        # 只有管理节点有一个引用
+        ref_count_ok = self.ref_count == 1
+        can_released_mark = self.can_released_mark
+
+        if self.finish_status.is_aborted() and can_released_mark and ref_count_ok:
+            return True
+
+        if (
+            self.finish_status.is_ok_finished()
+            and can_released_mark
+            and ref_count_ok
+            and self.out_tokens_queue.is_empty()
+        ):
+            return True
+
+        return False
 
     def get_used_tokens(self):
         return max(0, self.cur_kv_len)
