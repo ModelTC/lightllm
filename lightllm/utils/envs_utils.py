@@ -2,6 +2,7 @@ import os
 import json
 from easydict import EasyDict
 from functools import lru_cache
+from lightllm.server.core.objs import StartArgs
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -21,7 +22,7 @@ def set_env_start_args(args):
 
 
 @lru_cache(maxsize=None)
-def get_env_start_args():
+def get_env_start_args() -> StartArgs:
     start_args = json.loads(os.environ["LIGHTLLM_START_ARGS"])
     start_args = EasyDict(start_args)
     return start_args
