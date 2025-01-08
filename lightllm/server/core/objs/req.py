@@ -178,6 +178,9 @@ class Req(ctypes.Structure):
         self.shm_logprobs.create_shm()
         return
 
+    def get_prompt_ids(self):
+        return self.shm_prompt_ids.arr[: self.input_len].tolist()
+
     def link_logprobs_shm_array(self):
         service_uni_name = get_unique_server_name()
         name = f"{service_uni_name}_shm_logprobs_{self.index_in_shm_mem}"
