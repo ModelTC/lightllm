@@ -501,14 +501,38 @@ class HttpServerManager:
                     await websocket.send(json.dumps(regist_json))
                     logger.info(f"Sent registration JSON: {regist_json}")
 
-                    forwarding_tokens_task = asyncio.create_task(self.up_tokens_to_pd_master(websocket))
+                    # 转发token的task
+                    async def up_tokens_to_pd_master(forwarding_queue: AsyncQueue, websocket):
+                        while True:
+                            handle_list = await forwarding_queue.wait_to_get_all_data()
+                            if len(handle_list) != 0:
+                                await websocket.send(pickle.dumps((ObjType.TOKEN_PACKS, handle_list)))
+                        return
+
+                    forwarding_tokens_task = asyncio.create_task(
+                        up_tokens_to_pd_master(self.forwarding_queue, websocket)
+                    )
 
                     while True:
                         recv_bytes = await websocket.recv()
                         obj = pickle.loads(recv_bytes)
                         if obj[0] == ObjType.REQ:
                             prompt, sampling_params, multimodal_params = obj[1]
-                            asyncio.create_task(self._pd_process_generate(prompt, sampling_params, multimodal_params))
+
+                            # 触发推理的task
+                            async def pd_process_generate(
+                                manager: "HttpServerManager", prompt, sampling_params, multimodal_params
+                            ):
+                                try:
+                                    async for _, _, _, _ in manager.generate(
+                                        prompt, sampling_params, multimodal_params, None
+                                    ):
+                                        pass
+                                except BaseException as e:
+                                    logger.error(str(e))
+
+                            asyncio.create_task(pd_process_generate(self, prompt, sampling_params, multimodal_params))
+
                         elif obj[0] == ObjType.ABORT:
                             group_req_id = obj[1]
                             await self.abort(group_req_id)
@@ -524,24 +548,11 @@ class HttpServerManager:
                 await self.forwarding_queue.get_all_data()
                 logger.info("reconnection to pd_master")
 
-    async def up_tokens_to_pd_master(self, websocket):
-        while True:
-            handle_list = await self.forwarding_queue.wait_to_get_all_data()
-            if len(handle_list) != 0:
-                await websocket.send(pickle.dumps((ObjType.TOKEN_PACKS, handle_list)))
-
     async def timer_log(self):
         while True:
             await asyncio.sleep(30)
             self.first_time_costs.print_log("mean first cost")
             self.per_token_costs.print_log("mean per token cost")
-
-    async def _pd_process_generate(self, prompt, sampling_params, multimodal_params):
-        try:
-            async for _, _, _, _ in self.generate(prompt, sampling_params, multimodal_params, None):
-                pass
-        except BaseException as e:
-            logger.error(str(e))
 
 
 class ReqStatus:
