@@ -18,9 +18,8 @@ from ..pd_io_struct import NodeRole, ObjType
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..multimodal_params import MultimodalParams
 from ..req_id_generator import ReqIDGenerator
-from ..io_struct import FinishStatus
 from .async_queue import AsyncQueue
-from lightllm.server.core.objs import Req
+from lightllm.server.core.objs import Req, FinishStatus
 from lightllm.server.core.objs import SamplingParams
 from lightllm.server.core.objs.io_objs import GroupReqObjs
 from fastapi import Request
@@ -459,9 +458,11 @@ class HttpServerManager:
                             "count_output_tokens": count_output_tokens,
                         }
                         if req.finish_token_index != src_index:
-                            token_list.append((req_id, text, metadata, req.finish_status.NO_FINISH))
+                            token_list.append((req_id, text, metadata, FinishStatus()))
                         else:
-                            token_list.append((req_id, text, metadata, req.finish_status))
+                            finish_status = FinishStatus()
+                            finish_status.set_status(req.finish_status)
+                            token_list.append((req_id, text, metadata, finish_status))
 
                 async with req_status.lock:
                     req_status.out_token_info_list.extend(token_list)
