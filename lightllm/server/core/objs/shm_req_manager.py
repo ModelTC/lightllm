@@ -3,27 +3,42 @@ import numpy as np
 from lightllm.utils.envs_utils import get_unique_server_name
 from multiprocessing import shared_memory
 from lightllm.utils.log_utils import init_logger
-from .req import Req, NormalReq
+from .req import Req, NormalReq, SplitFuseReq, TokenHealingReq
 from .shm_array import ShmArray
 from .atomic_array_lock import AtomicShmArrayLock, AtomicLockItem
 from .atomic_lock import AtomicShmLock
+from .start_args_type import StartArgs
 from typing import List
+from lightllm.utils.envs_utils import get_env_start_args
 
 logger = init_logger(__name__)
 
 
 class ShmReqManager:
-    def __init__(self, req_class: Req.__class__, max_req_num: int):
-        class_size = ctypes.sizeof(req_class)
-        self.req_class = req_class
-        self.req_shm_byte_size = class_size * max_req_num
-        self.max_req_num = max_req_num
+    def __init__(self):
+        self.req_class: Req.__class__ = self.get_req_class_type()
+        class_size = ctypes.sizeof(self.req_class)
+        self.max_req_num = self.get_max_req_num()
+        self.req_shm_byte_size = class_size * self.max_req_num
+
         self.init_reqs_shm()
         self.init_to_req_objs()
         self.init_to_req_locks()
         self.init_manager_lock()
         self.init_alloc_state_shm()
         return
+
+    def get_req_class_type(self):
+        args: StartArgs = get_env_start_args()
+        if args.splitfuse_mode:
+            return SplitFuseReq
+        if args.token_healing_mode:
+            return TokenHealingReq
+        return NormalReq
+
+    def get_max_req_num(self):
+        args: StartArgs = get_env_start_args()
+        return args.running_max_req_size
 
     def init_reqs_shm(self):
         self._init_reqs_shm()
