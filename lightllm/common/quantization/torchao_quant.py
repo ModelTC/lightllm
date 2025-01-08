@@ -2,7 +2,6 @@ import os
 import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
-from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 import torch.nn.functional as F
 
 try:

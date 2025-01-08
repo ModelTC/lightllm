@@ -2,7 +2,6 @@ import os
 import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
-from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
 @QUANTMETHODS.register("ppl-w4a16-128")
@@ -10,6 +9,9 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
     def __init__(self, group_size=128):
         super().__init__()
         self.group_size = group_size
+        from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
+
+        self.cache_manager = g_cache_manager
 
     def quantize(self, weight: torch.Tensor):
         """
@@ -40,7 +42,7 @@ class PPLW4A16QuantizationMethod(QuantizationMethod):
             dtype = input_tensor.dtype
             device = input_tensor.device
             if use_custom_tensor_mananger:
-                out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+                out = self.cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
             else:
                 out = torch.empty(shape, dtype, device=device)
         from lightllm_ppl_int4_kernel import matmul_i4_fp16
