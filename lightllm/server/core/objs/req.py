@@ -6,7 +6,7 @@ from .out_token_circlequeue import CircularQueue
 from .shm_array import ShmArray
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.utils.envs_utils import get_unique_server_name
-from typing import List, Any
+from typing import List, Any, Union
 
 
 class ReqStatus(ctypes.Structure):
@@ -115,7 +115,14 @@ class Req(ctypes.Structure):
         ("can_released_mark", ctypes.c_bool),
     ]
 
-    def init(self, request_id: int, prompt_ids: List[int], sample_param: dict, tokenizer: Any, splitfuse_block_size=0):
+    def init(
+        self,
+        request_id: int,
+        prompt_ids: List[int],
+        sample_param: Union[dict, SamplingParams],
+        tokenizer: Any,
+        splitfuse_block_size=0,
+    ):
         # 只是为了有更好的编码辅助类型提示
         self.index_in_shm_mem: int = self.index_in_shm_mem
         self.ref_count: int = self.ref_count
@@ -128,8 +135,11 @@ class Req(ctypes.Structure):
         self.cur_output_len = 0
         self.prompt_cache_len = 0
         self.can_released_mark = False
-        self.sample_params = SamplingParams()
-        self.sample_params.init(tokenizer=tokenizer, **sample_param)
+        if isinstance(sample_param, SamplingParams):
+            self.sample_params = sample_param
+        else:
+            self.sample_params = SamplingParams()
+            self.sample_params.init(tokenizer=tokenizer, **sample_param)
         self.splitfuse_block_size = splitfuse_block_size
         self.prefix_token_ids = PrefixTokenIdsStruct()
 

@@ -22,6 +22,7 @@ from ..sampling_params import SamplingParams
 from ..multimodal_params import MultimodalParams
 from ..req_id_generator import ReqIDGenerator
 from fastapi import Request
+from lightllm.server.core.objs.shm_req_manager import ShmReqManager
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.utils.statics_utils import MovingAverage
@@ -52,6 +53,8 @@ class HttpServerManager:
             self.cache_client = rpyc.connect("localhost", cache_port)
             self.send_to_visual = context.socket(zmq.PUSH)
             self.send_to_visual.connect(f"{args.zmq_mode}127.0.0.1:{visual_port}")
+
+        self.shm_req_manager = ShmReqManager()
 
         self.recv_from_detokenization = context.socket(zmq.PULL)
         self.recv_from_detokenization.bind(f"{args.zmq_mode}127.0.0.1:{httpserver_port}")
@@ -147,7 +150,6 @@ class HttpServerManager:
             # 监控
             self.metric_client.counter_inc("lightllm_request_count")
 
-            sampling_params.stop_sentences_to_token_ids(self.tokenizer)
             prompt_ids = await self._encode(
                 prompt, multimodal_params, add_special_tokens=sampling_params.add_special_tokens
             )

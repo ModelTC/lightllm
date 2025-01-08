@@ -10,6 +10,7 @@ from .metrics.manager import start_metric_manager
 from .embed_cache.manager import start_cache_manager
 from .visualserver.manager import start_visual_process
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import set_env_start_args
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
 from .httpserver.manager import HttpServerManager
@@ -17,10 +18,15 @@ from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
 
 logger = init_logger(__name__)
 
+
 def set_env(args):
     import os
+
     if args.static_quant:
         os.environ["STATIC_QUANT"] = "1"
+    set_env_start_args(args)
+    return
+
 
 def normal_or_p_d_start(g_objs):
     from .api_server import G_Objs
