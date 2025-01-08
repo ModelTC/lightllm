@@ -127,3 +127,6 @@ class ShmReqManager:
         with self.get_req_lock_by_index(req_index_in_mem):
             req.ref_count = req.ref_count - 1
         self.proc_private_get_state[req_index_in_mem] = 0
+
+    def __del__(self):
+        self.reqs = None
