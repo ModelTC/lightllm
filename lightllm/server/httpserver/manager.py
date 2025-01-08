@@ -468,6 +468,7 @@ class HttpServerManager:
                     req_status.out_token_info_list.extend(token_list)
                     req_status.event.set()
 
+            self.recycle_event.set()
         return
 
     async def pd_handle_loop(self):
