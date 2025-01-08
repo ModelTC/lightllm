@@ -375,6 +375,8 @@ class HttpServerManager:
                         x_session_id = request.headers.get("X-Session-Id", "") if request is not None else ""
                         prompt_cache_len = metadata.pop("prompt_cache_len", 0)
                         prompt_cache_ratio = prompt_cache_len / prompt_tokens
+                        self.metric_client.histogram_observe("lightllm_cache_length", prompt_cache_len)
+                        self.metric_client.histogram_observe("lightllm_cache_ratio", prompt_cache_ratio)
                         format_start_time = datetime.datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
                         if request is not None:
                             logger.info(

@@ -1,10 +1,8 @@
 import uuid
 import numpy as np
-from typing import List
-from lightllm.utils.infer_utils import calculate_time
-from lightllm.server.io_struct import Batch, Req
-from lightllm.server.io_struct import ReqRunStatus
+from ...batch import Batch, Req
 from lightllm.server.router.req_queue.base_queue import BaseQueue
+from lightllm.server.core.objs import ReqStatus
 
 
 class SplitFuseQueue(BaseQueue):
@@ -39,7 +37,7 @@ class SplitFuseQueue(BaseQueue):
             < self.max_total_tokens
         )
 
-        if req.req_status != ReqRunStatus.PAUSED_AND_OFFLOAD:
+        if req.req_status != ReqStatus.PAUSED_AND_OFFLOAD:
             ok_req_num = len(self.cache_len_list) + len(self.pause_req_dict) <= self.running_max_req_size
         else:
             ok_req_num = len(self.cache_len_list) + len(self.pause_req_dict) - 1 <= self.running_max_req_size
@@ -80,7 +78,7 @@ class SplitFuseQueue(BaseQueue):
         can_run_list = []
         aborted_count = 0
         for req in self.waiting_req_list:
-            if req.finish_status.is_aborted() and req.req_status == ReqRunStatus.WAIT_IN_QUEUE:
+            if req.finish_status.is_aborted() and req.req_status == ReqStatus.WAIT_IN_QUEUE:
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
                 # 暂停的请求需要恢复后，由 router manager 部分来过滤。暂时保持这种处理方法, 否则会导致管理token的泄漏
                 aborted_count += 1
@@ -90,7 +88,7 @@ class SplitFuseQueue(BaseQueue):
             )
             if ok_insert:
                 can_run_list.append(req)
-                if req.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
+                if req.req_status == ReqStatus.PAUSED_AND_OFFLOAD:
                     self.pause_req_dict.pop(req.request_id)
             else:
                 break
