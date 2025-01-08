@@ -102,12 +102,18 @@ class ShmReqManager:
                 self.alloc_state_shm.arr[ans] = 1
                 return ans
 
+    async def async_alloc_req_index(self):
+        return self.alloc_req_index()
+
     def release_req_index(self, req_index_in_mem):
         assert req_index_in_mem < self.max_req_num
         with self.manager_lock:
             assert self.alloc_state_shm.arr[req_index_in_mem] == 1
             self.alloc_state_shm.arr[req_index_in_mem] = 0
         return
+
+    async def async_release_req_index(self, req_index_in_mem):
+        return self.release_req_index(req_index_in_mem)
 
     # get_req_obj_by_index 和 put_back_req_obj 是 分配好后，进行对象获取和
     # 管理的接口，主要是要进行引用计数的管理。
@@ -120,6 +126,9 @@ class ShmReqManager:
         self.proc_private_get_state[req_index_in_mem] = 1
         return ans
 
+    async def async_get_req_obj_by_index(self, req_index_in_mem):
+        return self.get_req_obj_by_index(req_index_in_mem)
+
     def put_back_req_obj(self, req: Req):
         req_index_in_mem = req.index_in_shm_mem
         assert req_index_in_mem < self.max_req_num
@@ -127,6 +136,9 @@ class ShmReqManager:
         with self.get_req_lock_by_index(req_index_in_mem):
             req.ref_count = req.ref_count - 1
         self.proc_private_get_state[req_index_in_mem] = 0
+
+    async def async_put_back_req_obj(self, req: Req):
+        return self.put_back_req_obj(req)
 
     def __del__(self):
         self.reqs = None
