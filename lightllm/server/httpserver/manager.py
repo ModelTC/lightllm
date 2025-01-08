@@ -14,16 +14,19 @@ import ujson as json
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
 from ..tokenizer import get_tokenizer
-from ..io_struct import BatchStrOut, AbortReq, FinishStatus
 from ..pd_io_struct import NodeRole, ObjType
 from ..embed_cache.utils import get_shm_name_data, create_shm
-from ..req_id_generator import convert_sub_id_to_group_id
-from ..sampling_params import SamplingParams
 from ..multimodal_params import MultimodalParams
 from ..req_id_generator import ReqIDGenerator
+from ..io_struct import FinishStatus
+from .async_queue import AsyncQueue
+from lightllm.server.core.objs import Req
+from lightllm.server.core.objs import SamplingParams
+from lightllm.server.core.objs.io_objs import GroupReqObjs
 from fastapi import Request
 from lightllm.server.core.objs.shm_req_manager import ShmReqManager
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.utils.statics_utils import MovingAverage
 from lightllm.utils.net_utils import get_hostname_ip
@@ -62,7 +65,7 @@ class HttpServerManager:
         self.tokenizer = get_tokenizer(args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code)
 
         self.req_id_to_out_inf: Dict[int, ReqStatus] = {}  # value type (out_str, metadata, finished, event)
-        self.forwarding_queue = None  # p d 分离模式使用的转发队列, 需要延迟初始化
+        self.forwarding_queue: AsyncQueue = None  # p d 分离模式使用的转发队列, 需要延迟初始化
 
         self.max_req_total_len = args.max_req_total_len
         self.metric_client = MetricClient(metric_port)
@@ -164,13 +167,31 @@ class HttpServerManager:
                 "lightllm_request_validation_duration", verify_time_end - verify_time_begin
             )
 
-            req_status = ReqStatus(group_request_id, multimodal_params)
+            # 申请资源并存储
+            alloced_req_indexes = []
+            while len(alloced_req_indexes) < sampling_params.n:
+                alloc_req_index = await self.shm_req_manager.async_alloc_req_index()
+                while alloc_req_index is None:
+                    await asyncio.sleep(0.1)
+                    alloc_req_index = await self.shm_req_manager.async_alloc_req_index()
+                alloced_req_indexes.append(alloc_req_index)
+            req_objs = []
+            for i, req_index in enumerate(alloced_req_indexes):
+                req_obj = await self.shm_req_manager.async_get_req_obj_by_index(req_index)
+                req_obj.init(
+                    group_request_id + i,
+                    prompt_ids,
+                    sampling_params,
+                    self.tokenizer,
+                    splitfuse_block_size=get_env_start_args().splitfuse_block_size,
+                )
+                req_objs.append(req_obj)
+
+            req_status = ReqStatus(group_request_id, multimodal_params, req_objs, start_time)
             self.req_id_to_out_inf[group_request_id] = req_status
 
             # 将请求转发给其他节点
-            await self.transfer_to_next_module(
-                prompt_ids, sampling_params, multimodal_params, group_request_id, start_time
-            )
+            await self.transfer_to_next_module(req_status.group_req_objs)
 
             results_generator = self._wait_to_token_package(
                 start_time, prompt_ids, group_request_id, sampling_params, req_status, request
@@ -255,17 +276,18 @@ class HttpServerManager:
         return prompt_ids
 
     async def transfer_to_next_module(
-        self, prompt_ids, sampling_params, multimodal_params, group_request_id, start_time
+        self,
+        group_req_objs: GroupReqObjs,
     ):
         if self.pd_mode == NodeRole.P:
             if self.enable_multimodal:
                 self.send_to_visual.send_pyobj(
-                    (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time),
+                    group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
             else:
                 self.send_to_router.send_pyobj(
-                    (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time),
+                    group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
             return
@@ -273,7 +295,7 @@ class HttpServerManager:
         if self.pd_mode == NodeRole.D:
             # 在 D 模式下，不需要传输真的多模态参数，因为其已经被 P 处理好了, 传输一个空的即可
             self.send_to_router.send_pyobj(
-                (prompt_ids, sampling_params, MultimodalParams(), group_request_id, start_time),
+                group_req_objs.to_group_req_index(),
                 protocol=pickle.HIGHEST_PROTOCOL,
             )
             return
@@ -281,12 +303,12 @@ class HttpServerManager:
         if self.pd_mode == NodeRole.NORMAL:
             if self.enable_multimodal:
                 self.send_to_visual.send_pyobj(
-                    (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time),
+                    group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
             else:
                 self.send_to_router.send_pyobj(
-                    (prompt_ids, sampling_params, multimodal_params, group_request_id, start_time),
+                    group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
             return
@@ -347,11 +369,6 @@ class HttpServerManager:
 
                     # 所有子请求完成后，就删除占用的资源
                     if unfinished_count == 0:
-                        try:
-                            del self.req_id_to_out_inf[group_request_id]
-                            await self._release_multimodal_resources(req_status.multimodal_params)
-                        except:
-                            pass
                         total_cost_time_ms = (time.time() - start_time) * 1000
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
                         self.per_token_costs.add(mean_per_token_cost_time_ms)
@@ -370,7 +387,6 @@ class HttpServerManager:
                                 f"prompt_token_num:{prompt_tokens} "
                                 f"prompt_cache_len:{prompt_cache_len} "
                                 f"prompt_cache_ratio:{prompt_cache_ratio} "
-                                f"sampling_params: {{{sampling_params.to_string()}}}"
                             )
                             self.metric_client.histogram_observe(
                                 "lightllm_request_inference_duration", total_cost_time_ms / 1000.0
@@ -388,42 +404,69 @@ class HttpServerManager:
                 req_status.out_token_info_list.clear()
         return
 
-    async def abort(self, group_request_id):
-        abort_req = AbortReq(group_req_id=group_request_id)
-        self.send_to_router.send_pyobj(abort_req, protocol=pickle.HIGHEST_PROTOCOL)
-        if self.enable_multimodal:
-            self.send_to_visual.send_pyobj(abort_req, protocol=pickle.HIGHEST_PROTOCOL)
-        try:
-            req = self.req_id_to_out_inf[group_request_id]
-            await self._release_multimodal_resources(req.multimodal_params)
-            del self.req_id_to_out_inf[group_request_id]
-        except:
-            pass
-        logger.warning(f"aborted group_request_id {group_request_id}")
+    async def abort(self, group_req_id: int):
+        if group_req_id in self.req_id_to_out_inf:
+            req_status = self.req_id_to_out_inf[group_req_id]
+            group_req_objs: GroupReqObjs = req_status.group_req_objs
+            for req in group_req_objs.shm_req_objs:
+                req.finish_status.set_status(req.finish_status.FINISHED_ABORT)
+        logger.warning(f"aborted group_request_id {group_req_objs.group_req_id}")
+        return
+
+    async def recycle_resource_loop(self):
+        while True:
+
+            try:
+                await asyncio.wait_for(self.recycle_event.wait(), timeout=0.02)
+            except asyncio.TimeoutError:
+                pass
+            self.recycle_event.clear()
+
+            # 清理已经处理完的可以删除的请求
+            release_req_status: List[ReqStatus] = []
+            for req_status in self.req_id_to_out_inf.values():
+                if req_status.can_release():
+                    release_req_status.append(req_status)
+
+            for req_status in release_req_status:
+                self.req_id_to_out_inf.pop(req_status.group_req_objs.group_req_id, None)
+                for req in req_status.group_req_objs.shm_req_objs:
+                    await self.shm_req_manager.async_put_back_req_obj(req)
+                    await self.shm_req_manager.async_release_req_index(req.index_in_shm_mem)
+                await self._release_multimodal_resources(req_status.group_req_objs.multimodal_params)
         return
 
     async def handle_loop(self):
+        self.recycle_event = asyncio.Event()
+        asyncio.create_task(self.recycle_resource_loop())
 
         if self.pd_mode.is_P_or_D():
             self.forwarding_queue = AsyncQueue()
             asyncio.create_task(self.pd_handle_loop())
 
         while True:
-            recv_ans: BatchStrOut = await self.recv_from_detokenization.recv_pyobj()
-            assert isinstance(recv_ans, BatchStrOut), f"error recv type {type(recv_ans)}"
-            for sub_req_id, text, metadata, finish_status in recv_ans.reqs_infs:
-                finish_status = FinishStatus(finish_status)
-                group_req_id = convert_sub_id_to_group_id(sub_req_id)
-                try:
-                    if not finish_status.is_aborted():
-                        req_status: ReqStatus = self.req_id_to_out_inf[group_req_id]
-                        async with req_status.lock:
-                            req_status.out_token_info_list.append((sub_req_id, text, metadata, finish_status))
-                            req_status.event.set()
-                    else:
-                        del self.req_id_to_out_inf[group_req_id]
-                except:
-                    pass
+            await self.recv_from_detokenization.recv_pyobj()
+            for req_status in self.req_id_to_out_inf.values():
+                token_list = []
+                for req in req_status.group_req_objs.shm_req_objs:
+                    req_id = req.request_id
+                    if not req.out_tokens_queue.is_empty():
+                        text, src_index, special, count_output_tokens = req.out_tokens_queue.pop()
+                        metadata = {
+                            "id": req.shm_prompt_ids.arr[src_index],
+                            "logprob": req.shm_logprobs.arr[src_index],
+                            "special": special,
+                            "count_output_tokens": count_output_tokens,
+                        }
+                        if req.finish_token_index != src_index:
+                            token_list.append((req_id, text, metadata, req.finish_status.NO_FINISH))
+                        else:
+                            token_list.append((req_id, text, metadata, req.finish_status))
+
+                async with req_status.lock:
+                    req_status.out_token_info_list.extend(token_list)
+                    req_status.event.set()
+
         return
 
     async def pd_handle_loop(self):
@@ -502,40 +545,16 @@ class HttpServerManager:
 
 
 class ReqStatus:
-    def __init__(self, req_id, multimodal_params) -> None:
-        self.req_id = req_id
-        self.multimodal_params = multimodal_params
+    def __init__(self, group_request_id, multimodal_params, req_objs: List[Req], start_time) -> None:
         self.lock = asyncio.Lock()
         self.event = asyncio.Event()
-        self.out_token_info_list: List[Tuple[int, str, dict, FinishStatus]] = []
+        self.group_req_objs = GroupReqObjs(
+            group_req_id=group_request_id, multimodal_params=multimodal_params, req_objs=req_objs, time_mark=start_time
+        )
+        self.out_token_info_list = []
 
-
-class AsyncQueue:
-    def __init__(self):
-        self.datas = []
-        self.event = asyncio.Event()
-        self.lock = asyncio.Lock()
-
-    async def wait_to_ready(self):
-        try:
-            await asyncio.wait_for(self.event.wait(), timeout=3)
-        except asyncio.TimeoutError:
-            pass
-
-    async def get_all_data(self):
-        async with self.lock:
-            self.event.clear()
-            ans = self.datas
-            self.datas = []
-            return ans
-
-    async def put(self, obj):
-        async with self.lock:
-            self.datas.append(obj)
-            self.event.set()
-        return
-
-    async def wait_to_get_all_data(self):
-        await self.wait_to_ready()
-        handle_list = await self.get_all_data()
-        return handle_list
+    def can_release(self):
+        for req in self.group_req_objs.shm_req_objs:
+            if not req.can_release():
+                return False
+        return True
