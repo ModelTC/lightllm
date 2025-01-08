@@ -549,7 +549,10 @@ class ReqStatus:
         self.lock = asyncio.Lock()
         self.event = asyncio.Event()
         self.group_req_objs = GroupReqObjs(
-            group_req_id=group_request_id, multimodal_params=multimodal_params, req_objs=req_objs, time_mark=start_time
+            group_req_id=group_request_id,
+            multimodal_params=multimodal_params,
+            shm_req_objs=req_objs,
+            time_mark=start_time,
         )
         self.out_token_info_list = []
 
