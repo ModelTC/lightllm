@@ -39,7 +39,7 @@ from fastapi import BackgroundTasks, FastAPI, Request, WebSocket, WebSocketDisco
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 import uvicorn
 from .api_cli import make_argument_parser
-from .sampling_params import SamplingParams
+from lightllm.server.core.objs.sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from .httpserver.manager import HttpServerManager
 from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
@@ -202,21 +202,23 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
 
     created_time = int(time.time())
     prompt = await build_prompt(request)
-    sampling_params = SamplingParams(
-        do_sample=request.do_sample,
-        presence_penalty=request.presence_penalty,
-        frequency_penalty=request.frequency_penalty,
-        repetition_penalty=request.repetition_penalty,
-        temperature=request.temperature,
-        top_p=request.top_p,
-        top_k=request.top_k,
-        ignore_eos=request.ignore_eos,
-        max_new_tokens=request.max_tokens,
-        stop_sequences=request.stop,
-        n=request.n,
-        best_of=request.n,
-        add_special_tokens=False,
-    )
+    sampling_params_dict = {
+        "do_sample": request.do_sample,
+        "presence_penalty": request.presence_penalty,
+        "frequency_penalty": request.frequency_penalty,
+        "temperature": request.temperature,
+        "top_p": request.top_p,
+        "top_k": request.top_k,
+        "ignore_eos": request.ignore_eos,
+        "max_new_tokens": request.max_tokens,
+        "stop_sequences": request.stop,
+        "n": request.n,
+        "best_of": request.n,
+        "add_special_tokens": False,
+    }
+    sampling_params = SamplingParams()
+    sampling_params.init(tokenizer=g_objs.httpserver_manager.tokenizer, **sampling_params_dict)
+
     sampling_params.verify()
     multimodal_params = MultimodalParams(images=[])
 
