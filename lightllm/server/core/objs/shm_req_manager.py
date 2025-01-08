@@ -76,6 +76,7 @@ class ShmReqManager:
         return
 
     # alloc_req_index 和 release_req_index 是分配资源时使用的接口。
+    # 只有管理请求申请和释放的首节点才能调用这个接口。
     def alloc_req_index(self):
         with self.manager_lock:
             indices = np.where(self.alloc_state_shm.arr == 0)[0]

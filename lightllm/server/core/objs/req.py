@@ -109,6 +109,10 @@ class Req(ctypes.Structure):
         ("sample_params", SamplingParams),
         ("splitfuse_block_size", ctypes.c_int),  # 只有splitfuse模式才使用的参数
         ("prefix_token_ids", PrefixTokenIdsStruct),  # 只有 token_headling 模式使用的参数
+        # can_released_mark的作用是：
+        # 只有整个流程中的最后一个处理模块，一般是 detokenization 进程，标记这个参数为True后，主管理进程才能真
+        # 的释放请求对像。
+        ("can_released_mark", ctypes.c_bool),
     ]
 
     def init(self, request_id: int, prompt_ids: List[int], sample_param: dict, tokenizer: Any, splitfuse_block_size=0):
@@ -123,6 +127,7 @@ class Req(ctypes.Structure):
         self.cur_kv_len = 0
         self.cur_output_len = 0
         self.prompt_cache_len = 0
+        self.can_released_mark = False
         self.sample_params = SamplingParams()
         self.sample_params.init(tokenizer=tokenizer, **sample_param)
         self.splitfuse_block_size = splitfuse_block_size
