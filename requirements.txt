@@ -83,3 +83,4 @@ cchardet==2.1.7
 ujson==5.10.0
 frozendict==2.4.6
 atomics==1.0.3
+easydict==1.13
