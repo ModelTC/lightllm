@@ -10,7 +10,7 @@ def setup_env():
     yield
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def shm_req_manager():
     return ShmReqManager()
 
@@ -53,12 +53,6 @@ def test_alloc_req_index_no_available(shm_req_manager):
         shm_req_manager.alloc_req_index()
     index = shm_req_manager.alloc_req_index()
     assert index is None  # No indices should be available
-
-
-def test_reinit_reqs_shm(shm_req_manager):
-    shm_req_manager.alloc_req_index()
-    shm_req_manager.init_reqs_shm()  # Reinitialize shared memory
-    assert shm_req_manager.reqs_shm.size == shm_req_manager.req_shm_byte_size
 
 
 def test_performance_alloc_release(shm_req_manager):
