@@ -14,8 +14,9 @@ def get_unique_server_name():
 
 
 def set_env_start_args(args):
-    args_dict = vars(args)
-    os.environ["LIGHTLLM_START_ARGS"] = json.dumps(args_dict)
+    if not isinstance(args, dict):
+        args = vars(args)
+    os.environ["LIGHTLLM_START_ARGS"] = json.dumps(args)
     return
 
 

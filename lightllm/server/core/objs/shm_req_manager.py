@@ -118,7 +118,7 @@ class ShmReqManager:
         with self.get_req_lock_by_index(req_index_in_mem):
             ans.ref_count = ans.ref_count + 1
         self.proc_private_get_state[req_index_in_mem] = 1
-        return
+        return ans
 
     def put_back_req_obj(self, req: Req):
         req_index_in_mem = req.index_in_shm_mem
