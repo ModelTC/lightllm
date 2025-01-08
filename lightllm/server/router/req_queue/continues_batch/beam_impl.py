@@ -91,12 +91,14 @@ class BeamContinuesBatchQueue(BaseQueue):
 
         self._init_cache_list(current_batch, is_busy)
         can_run_list = []
+        abort_req_list = []
         new_batch_first_router_need_tokens = 0  # 主要是对 prefill 大块计算时候的token数量限制
         aborted_count = 0
         cur_group_reqs = []
         for req in self.waiting_req_list:
             if req.finish_status.is_aborted() and req.req_status == ReqStatus.WAIT_IN_QUEUE:
                 aborted_count += 1
+                abort_req_list.append(req)
                 continue
 
             if self._add_to_group(cur_group_reqs, req):
@@ -127,6 +129,9 @@ class BeamContinuesBatchQueue(BaseQueue):
 
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list, dp_size=self.dp_size)
+            for req in abort_req_list:
+                self.router.shm_req_manager.put_back_req_obj(req)
+
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]
             return new_batch
         else:

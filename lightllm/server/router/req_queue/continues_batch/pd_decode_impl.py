@@ -33,12 +33,14 @@ class ContinuesBatchQueueForPDDecode(BaseQueue):
             return None
 
         can_run_list = []
+        abort_req_list = []
         aborted_count = 0
         for req in self.waiting_req_list:
             if req.finish_status.is_aborted() and req.req_status == ReqRunStatus.WAIT_IN_QUEUE:
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
                 # 暂停的请求需要恢复后，由 router manager 部分来过滤。暂时保持这种处理方法, 否则会导致管理token和管理req对象的泄漏
                 aborted_count += 1
+                abort_req_list.append(req)
                 continue
             if exist_req_num + len(can_run_list) + 1 <= self.batch_max_tokens:
                 can_run_list.append(req)
@@ -47,6 +49,8 @@ class ContinuesBatchQueueForPDDecode(BaseQueue):
 
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list, dp_size=self.dp_size)
+            for req in abort_req_list:
+                self.router.shm_req_manager.put_back_req_obj(req)
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]
             return new_batch
         else:
