@@ -444,7 +444,11 @@ class HttpServerManager:
             asyncio.create_task(self.pd_handle_loop())
 
         while True:
-            await self.recv_from_detokenization.recv_pyobj()
+            try:
+                await asyncio.wait_for(self.recv_from_detokenization.recv_pyobj(), timeout=0.02)
+            except asyncio.TimeoutError:
+                pass
+
             for req_status in self.req_id_to_out_inf.values():
                 token_list = []
                 for req in req_status.group_req_objs.shm_req_objs:
