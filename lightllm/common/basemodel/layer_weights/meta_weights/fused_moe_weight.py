@@ -11,12 +11,22 @@ from lightllm.utils.device_utils import get_current_device_id
 
 class FusedMoeWeight(BaseWeight):
     def __init__(
-        self, gate_proj_name, down_proj_name, up_proj_name, weight_prefix, n_routed_experts, split_inter_size, data_type
+        self,
+        gate_proj_name,
+        down_proj_name,
+        up_proj_name,
+        e_score_correction_bias_name,
+        weight_prefix,
+        n_routed_experts,
+        split_inter_size,
+        data_type,
+        network_config,
     ):
         super().__init__()
         self.w1_weight_name = gate_proj_name
         self.w2_weight_name = down_proj_name
         self.w3_weight_name = up_proj_name
+        self.e_score_correction_bias_name = e_score_correction_bias_name
         self.weight_prefix = weight_prefix
         self.n_routed_experts = n_routed_experts
         self.split_inter_size = split_inter_size
@@ -26,8 +36,10 @@ class FusedMoeWeight(BaseWeight):
         self.experts_gate_projs = [None] * self.n_routed_experts
         self.expert_gate_up_proj_etp = None
         self.expert_down_proj_etp = None
+        self.e_score_correction_bias = None
         self.w2_list = [None] * self.n_routed_experts
         self.quant_method = None
+        self.scoring_func = network_config["scoring_func"]
         self.lock = threading.Lock()
 
     def set_quant_method(self, quant_method):
@@ -37,14 +49,18 @@ class FusedMoeWeight(BaseWeight):
                 self.quant_method.is_moe = True
 
     def experts(self, input_tensor, router_logits, top_k, renormalize, use_grouped_topk, topk_group, num_expert_group):
-        topk_weights, topk_ids = ops.select_experts(
+        from lightllm.common.fused_moe.topk_select import select_experts
+
+        topk_weights, topk_ids = select_experts(
             hidden_states=input_tensor,
             router_logits=router_logits,
+            correction_bias=self.e_score_correction_bias,
             use_grouped_topk=use_grouped_topk,
             top_k=top_k,
             renormalize=renormalize,
             topk_group=topk_group,
             num_expert_group=num_expert_group,
+            scoring_func=self.scoring_func,
         )
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
@@ -105,6 +121,8 @@ class FusedMoeWeight(BaseWeight):
         # tp to ep here
         expert_gate_up_proj_last = None
         expert_down_proj_last = None
+        if self.e_score_correction_bias_name in weights:
+            self.e_score_correction_bias = self._cuda(self.e_score_correction_bias_name)
 
         for i_experts_ep in range(n_expert_ep):
             expert_up_proj = None
