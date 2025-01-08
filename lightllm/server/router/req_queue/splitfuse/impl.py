@@ -76,12 +76,14 @@ class SplitFuseQueue(BaseQueue):
 
         self._init_cache_list(current_batch, is_busy)
         can_run_list = []
+        abort_req_list = []
         aborted_count = 0
         for req in self.waiting_req_list:
             if req.finish_status.is_aborted() and req.req_status == ReqStatus.WAIT_IN_QUEUE:
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
                 # 暂停的请求需要恢复后，由 router manager 部分来过滤。暂时保持这种处理方法, 否则会导致管理token的泄漏
                 aborted_count += 1
+                abort_req_list.append(req)
                 continue
             ok_insert, new_batch_first_router_need_tokens = self._can_add_new_req(
                 req, is_busy, new_batch_first_router_need_tokens
@@ -95,6 +97,8 @@ class SplitFuseQueue(BaseQueue):
 
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().hex, can_run_list, dp_size=self.dp_size)
+            for req in abort_req_list:
+                self.router.shm_req_manager.put_back_req_obj(req)
             self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]
             return new_batch
         else:
