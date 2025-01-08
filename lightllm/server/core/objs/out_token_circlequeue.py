@@ -11,23 +11,34 @@ class QueueItem(ctypes.Structure):
     _fields_ = [
         ("data", ctypes.c_byte * LIGHTLLM_TOKEN_MAX_BYTES),
         ("data_len", ctypes.c_int),
+        ("special", ctypes.c_bool),
+        ("count_output_tokens", ctypes.c_int),
         ("src_index", ctypes.c_int),  # 在源token队列的索引位置
     ]
 
     def __init__(self):
         self.data_len = 0
         self.src_index = -1
+        self.special = False
+        self.count_output_tokens = -1
 
-    def set(self, token_str: str, src_index: int):
+    def set(self, token_str: str, src_index: int, special: bool, count_output_tokens: int):
         str_bytes = token_str.encode("utf-8")
         assert len(str_bytes) <= LIGHTLLM_TOKEN_MAX_BYTES
         ctypes.memmove(self.data, str_bytes, len(str_bytes))
         self.data_len = len(str_bytes)
         self.src_index = src_index
+        self.special = special
+        self.count_output_tokens = count_output_tokens
         return
 
     def get(self):
-        return (bytes(self.data[: self.data_len]).decode("utf-8"), self.src_index)
+        return (
+            bytes(self.data[: self.data_len]).decode("utf-8"),
+            self.src_index,
+            self.special,
+            self.count_output_tokens,
+        )
 
 
 class CircularQueue(ctypes.Structure):
@@ -49,18 +60,18 @@ class CircularQueue(ctypes.Structure):
     def is_full(self):
         return (self.tail + 1) % LIGHTLLM_OUT_TOKEN_QUEUE_SIZE == self.head
 
-    def push(self, token_str: str, src_index: int):
+    def push(self, token_str: str, src_index: int, special: bool, count_output_tokens: int):
         if self.is_full():
             raise Exception("Queue is full")
 
         # 添加元素
         item: QueueItem = self.items[self.tail]
-        item.set(token_str, src_index)
+        item.set(token_str, src_index, special, count_output_tokens)
 
         # 更新尾部
         self.tail = (self.tail + 1) % LIGHTLLM_OUT_TOKEN_QUEUE_SIZE
 
-    def pop(self) -> Tuple[str, int]:
+    def pop(self) -> Tuple[str, int, bool, int]:
         if self.is_empty():
             raise Exception("Queue is empty")
 
