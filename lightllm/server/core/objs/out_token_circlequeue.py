@@ -9,7 +9,7 @@ LIGHTLLM_OUT_TOKEN_QUEUE_SIZE = int(os.getenv("LIGHTLLM_OUT_TOKEN_QUEUE_SIZE", 6
 class QueueItem(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("data", ctypes.c_byte * LIGHTLLM_TOKEN_MAX_BYTES),
+        ("data", ctypes.c_ubyte * LIGHTLLM_TOKEN_MAX_BYTES),
         ("data_len", ctypes.c_int),
         ("special", ctypes.c_bool),
         ("count_output_tokens", ctypes.c_int),
