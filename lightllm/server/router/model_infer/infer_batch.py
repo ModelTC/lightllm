@@ -11,61 +11,43 @@ from typing import List, Dict, Tuple, Optional
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.core.objs import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import Req, SamplingParams, ReqRunStatus, FinishStatus, ShmReqManager
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 logger = init_logger(__name__)
-requests_mapping = {}
+requests_mapping: Dict[int, "InferReq"] = {}
 group_mapping = {}
 
 
 class InferSamplingParams:
     def __init__(
         self,
-        best_of: int = 1,
-        do_sample: bool = False,
-        presence_penalty: float = 0.0,
-        frequency_penalty: float = 0.0,
-        repetition_penalty: float = 1.0,
-        exponential_decay_length_penalty: Tuple[int, float] = (1, 1.0),
-        temperature: float = 1.0,
-        top_p: float = 1.0,
-        top_k: int = -1,
-        vocab_size: int = -1,
-        min_new_tokens: int = 1,
-        max_new_tokens: int = 16,
-        ignore_eos: bool = False,
-        stop_sequences: List[List[int]] = [],
-        input_penalty: bool = False,
-        regular_constraint: Optional[str] = None,
-        allowed_token_ids: Optional[List[int]] = None,
-        move_kv_to_decode_node: Optional[bool] = None,
+        shm_req: Req,
+        vocab_size: int,
     ) -> None:
-        self.best_of = best_of
-        self.do_sample = do_sample
-        self.presence_penalty = presence_penalty
-        self.frequency_penalty = frequency_penalty
-        self.repetition_penalty = repetition_penalty
-        self.exponential_decay_length_penalty = exponential_decay_length_penalty
-        self.temperature = temperature
-        self.top_p = top_p
-        self.top_k = top_k
-        self.min_new_tokens = min_new_tokens
-        self.max_new_tokens = max_new_tokens
-        self.ignore_eos = ignore_eos
-        self.stop_sequences = stop_sequences
-        if self.top_k == -1:
-            self.top_k = vocab_size
-        self.input_penalty = input_penalty
+        self.shm_param = shm_req.sample_params
+        if self.shm_param.top_k == -1:
+            self.shm_param.top_k = vocab_size
+
         # output constraint states
-        self.regular_constraint = regular_constraint
+        self.regular_constraint = self.shm_param.regular_constraint.to_str()
+        if len(self.regular_constraint) == 0:
+            self.regular_constraint = None
+
         self.regex_guide = None
         self.fsm_current_state: int = 0
-        self.allowed_token_ids = allowed_token_ids
+        self.allowed_token_ids = self.shm_param.allowed_token_ids.to_list()
+        if len(self.allowed_token_ids) == 0:
+            self.allowed_token_ids = None
+
         # p d mode use params
-        self.move_kv_to_decode_node = move_kv_to_decode_node
+        if self.shm_param.move_kv_to_decode_node.exists:
+            self.move_kv_to_decode_node = self.shm_param.move_kv_to_decode_node.to_dict()
+        else:
+            self.move_kv_to_decode_node = None
+
         # this check is not very good to placed here. to do...
         if self.allowed_token_ids is not None:
             if not all(e < vocab_size for e in self.allowed_token_ids):
@@ -80,60 +62,75 @@ class InferSamplingParams:
 class InferReq:
     def __init__(
         self,
-        r_id,
-        group_req_id,
-        input_token_ids=[],
+        shm_req: Req,
+        req_idx: int,
         sampling_param: InferSamplingParams = None,
-        req_idx=-1,
-        prompt_len=0,
-        req_status=None,
         multimodal_params=None,
-        prefix_token_ids=[],
     ) -> None:
-        self.r_id = r_id
-        self.group_req_id = group_req_id
+        self.shm_req = shm_req
         self.sampling_param: InferSamplingParams = sampling_param
         self.multimodal_params = multimodal_params
         self.req_idx = req_idx
-        self.prompt_len = prompt_len
-        self.input_token_ids = input_token_ids
-        self.req_status = req_status
-        self.cur_kv_len = 0  # 当前已经占用掉 token 现存的 kv len 长度
         self.shared_kv_node = None
-        self.finish_status = FinishStatus.NO_FINISH
         self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
         self.cum_logprob = 0.0  # cumulative logprob of each token, using for beamsearch and diverse_backend
-        self.prefix_token_ids = prefix_token_ids  # token healing feature use
-        if self.sampling_param.input_penalty:
-            self.out_token_id_count = collections.Counter(input_token_ids)
+
+        if self.sampling_param.shm_param.input_penalty:
+            self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
         else:
             self.out_token_id_count = collections.defaultdict(int)
 
+        self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
         return
 
     def get_output_len(self):
-        return len(self.input_token_ids) - self.prompt_len
+        return self.shm_req.cur_output_len
+
+    def get_cur_total_len(self):
+        return self.shm_req.input_len + self.shm_req.cur_output_len
+
+    def get_input_token_ids(self):
+        return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
+
+    def set_next_gen_token_id(self, next_token_id: int, logprob: float):
+        index = self.get_cur_total_len()
+        self.shm_req.shm_prompt_ids.arr[index] = next_token_id
+        self.shm_req.shm_logprobs.arr[index] = logprob
+        self.shm_req.cur_output_len += 1
+        return
+
+    def get_last_gen_token(self):
+        return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.shm_req.cur_output_len - 1]
 
     def update_finish_status(self, eos_ids):
+        if self.shm_req.finish_status.is_aborted():
+            return
+
         if self._stop_sequences_matched():
-            self.finish_status = FinishStatus.FINISHED_STOP
+            self.shm_req.finish_token_index = self.get_cur_total_len() - 1
+            self.shm_req.finish_status.set_status(FinishStatus.FINISHED_STOP)
         elif (
-            len(self.input_token_ids) > self.prompt_len
-            and self.input_token_ids[-1] in eos_ids
-            and self.sampling_param.ignore_eos is False
+            self.shm_req.cur_output_len > 0
+            and self.get_last_gen_token() in eos_ids
+            and self.sampling_param.shm_param.ignore_eos is False
         ):
-            self.finish_status = FinishStatus.FINISHED_STOP
-        elif len(self.input_token_ids) >= self.prompt_len + self.sampling_param.max_new_tokens:
-            self.finish_status = FinishStatus.FINISHED_LENGTH
+            self.shm_req.finish_token_index = self.get_cur_total_len() - 1
+            self.shm_req.finish_status.set_status(FinishStatus.FINISHED_STOP)
+        elif self.shm_req.cur_output_len >= self.sampling_param.shm_param.max_new_tokens:
+            self.shm_req.finish_token_index = self.get_cur_total_len() - 1
+            self.shm_req.finish_status.set_status(FinishStatus.FINISHED_LENGTH)
         return
 
     def _stop_sequences_matched(self):
-        for stop_token_ids in self.sampling_param.stop_sequences:
+        for stop_token_ids in self.stop_sequences:
             stop_len = len(stop_token_ids)
-            output_len = len(self.input_token_ids) - self.prompt_len
+            output_len = self.shm_req.cur_output_len
             if stop_len > 0:
                 if output_len >= stop_len:
-                    if all(self.input_token_ids[i] == stop_token_ids[i] for i in range(-1, -(stop_len + 1), -1)):
+                    input_token_ids = self.shm_req.shm_prompt_ids.arr[
+                        0 : (self.shm_req.input_len + self.shm_req.cur_output_len)
+                    ]
+                    if all(input_token_ids[i] == stop_token_ids[i] for i in range(-1, -(stop_len + 1), -1)):
                         return True
         return False
 
@@ -248,8 +245,9 @@ class InferReqGroup:
 class InferBatch:
     batch_id: int
     request_ids: List
-    req_manager: ReqManager
+    req_manager: ReqManager  # gpu 请求管理
     radix_cache: RadixCache
+    shm_req_manager: ShmReqManager  # 共享内存请求管理
 
     @classmethod
     @torch.no_grad()
@@ -261,53 +259,48 @@ class InferBatch:
         device: torch.device,
         req_manager: ReqManager,
         vocab_size: int,
-        radix_cache: RadixCache = None,
+        radix_cache: RadixCache,
+        shm_req_manager: ShmReqManager,
     ):
 
         request_ids = []
-        need_alloc_size = len([r for r in requests if r["request_id"] not in requests_mapping])
+        need_alloc_size = len([r for r in requests if r[0] not in requests_mapping])
         nopad_b_req_idx = req_manager.alloc(need_alloc_size)
         nopad_b_req_idx = nopad_b_req_idx.cpu().numpy()
 
         index = 0
         for r in requests:
             # request id -> idx in list mapping
-            r_id = r["request_id"]
+            r_id, r_index, multimodal_params, _ = r
             if r_id not in requests_mapping.keys():
-                tokenized_input = r["input_id"]
-                input_length = len(tokenized_input)
-                # postprocessor
-                sampling_param = r["sampling_param"]
-                multimodal_params = r["multimodal_params"]
-                sampling_param["vocab_size"] = vocab_size
-                assert r["req_status"] == ReqRunStatus.WAIT_IN_QUEUE
-                group_req_id = r["group_req_id"]
+                shm_req = shm_req_manager.get_req_obj_by_index(r_index)
+                shm_req.link_prompt_ids_shm_array()
+                shm_req.link_logprobs_shm_array()
+
+                assert shm_req.req_status.is_waiting()
+
                 r_obj = InferReq(
-                    r_id,
-                    group_req_id,
-                    input_token_ids=tokenized_input,
-                    sampling_param=InferSamplingParams(**sampling_param),
-                    multimodal_params=multimodal_params,
+                    shm_req=shm_req,
                     req_idx=nopad_b_req_idx[index],
-                    prompt_len=input_length,
-                    req_status=r["req_status"],
-                    prefix_token_ids=r.get("prefix_token_ids", []),  # 只有token_healing feature 使用的参数
+                    sampling_param=InferSamplingParams(shm_req, vocab_size),
+                    multimodal_params=multimodal_params,
                 )
                 requests_mapping[r_id] = r_obj
                 index += 1
             else:
-                if requests_mapping[r_id].req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
+                if requests_mapping[r_id].shm_req.req_status.is_paused_and_offload():
                     r_obj: InferReq = requests_mapping[r_id]
-                    r_obj.req_status = ReqRunStatus.RERUNNING_FROM_OFFLOAD
+                    r_obj.shm_req.req_status.set_status(ReqRunStatus.RERUNNING_FROM_OFFLOAD)
                 else:
-                    assert False, f"should not exist {requests_mapping[r_id].req_status}"
+                    assert False, f"should not exist {requests_mapping[r_id].shm_req.req_status}"
 
             request_ids.append(r_id)
 
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
-            if r_obj.req_status in [ReqRunStatus.RERUNNING_FROM_OFFLOAD, ReqRunStatus.WAIT_IN_QUEUE]:
-                if radix_cache is not None and len(r_obj.input_token_ids) > 1:
-                    key = torch.tensor(r_obj.input_token_ids, dtype=torch.int64, device="cpu")
+            if r_obj.shm_req.req_status.is_waiting() or r_obj.shm_req.req_status.is_rerunning():
+                if radix_cache is not None and r_obj.get_cur_total_len() > 1:
+                    input_token_ids = r_obj.shm_req.shm_prompt_ids.arr[0 : r_obj.get_cur_total_len()]
+                    key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
                     key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
                     share_node, kv_len, value_tensor = radix_cache.match_prefix(key, update_refs=True)
                     if share_node is not None:
@@ -317,24 +310,26 @@ class InferBatch:
                         value_tensor = value_tensor.long().cuda()
                         mem_manager.add_refs(value_tensor)  # 加 refs
                         req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
-                        r_obj.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
+                        r_obj.shm_req.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
 
             # 初始化之后 所有请求状态置换为 RUNNING 状态
-            r_obj.req_status = ReqRunStatus.RUNNING
+            r_obj.shm_req.req_status.set_status(ReqRunStatus.RUNNING)
 
         return cls(
             batch_id=batch_id,
             request_ids=request_ids,
             req_manager=req_manager,
             radix_cache=radix_cache,
+            shm_req_manager=shm_req_manager,
         )
 
     def _free_a_req_mem(self, free_token_index: List, req: InferReq, is_group_finished: bool):
         if self.radix_cache is None:
             free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
         else:
-            key = torch.tensor(req.input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
-            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+            input_token_ids = req.get_input_token_ids()
+            key = torch.tensor(input_token_ids[0 : req.shm_req.cur_kv_len], dtype=torch.int64, device="cpu")
+            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len].detach().cpu()
             if is_group_finished:
                 prefix_len = self.radix_cache.insert(key, value)
                 free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
@@ -343,7 +338,7 @@ class InferBatch:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
             else:
-                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
+                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len])
                 if req.shared_kv_node is not None:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
@@ -356,9 +351,9 @@ class InferBatch:
         free_token_index = []
         for request_id in self.request_ids:
             req: InferReq = requests_mapping.pop(request_id)
-            group_req_id = convert_sub_id_to_group_id(req.r_id)
+            group_req_id = convert_sub_id_to_group_id(req.shm_req.request_id)
             if group_req_id in group_mapping:
-                is_group_finished = group_mapping[group_req_id].decrease_refs(req.r_id)
+                is_group_finished = group_mapping[group_req_id].decrease_refs(req.shm_req.request_id)
                 if is_group_finished:
                     del group_mapping[group_req_id]
                 self._free_a_req_mem(free_token_index, req, is_group_finished)
@@ -366,7 +361,8 @@ class InferBatch:
                 self._free_a_req_mem(free_token_index, req, True)
 
             free_req_index.append(req.req_idx)
-            req.cur_kv_len = 0
+            req.shm_req.cur_kv_len = 0
+            self.shm_req_manager.put_back_req_obj(req.shm_req)
 
         free_token_index = torch.cat(free_token_index, dim=-1)
         self.req_manager.free(free_req_index, free_token_index)

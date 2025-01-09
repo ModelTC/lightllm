@@ -170,14 +170,18 @@ class RouterManager:
         for req_index in group_req_indexes.shm_req_indexes:
             req = self.shm_req_manager.get_req_obj_by_index(req_index)
             req.multimodal_params = group_req_indexes.multimodal_params
+            req.start_time = group_req_indexes.time_mark
             req_group.append(req)
 
         self.req_queue.extend(req_group)
+        try:
+            self.send_to_detokenization.send_pyobj(
+                group_req_indexes,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
+        except BaseException as e:
+            logger.exception(str(e))
 
-        self.send_to_detokenization.send_pyobj(
-            group_req_indexes,
-            protocol=pickle.HIGHEST_PROTOCOL,
-        )
         return
 
     async def loop_for_fwd(
@@ -279,7 +283,7 @@ class RouterManager:
         return
 
     async def _init_batch(self, batch: Batch):
-        reqs = [r.to_rpc_obj() for r in batch.reqs]
+        reqs = [r.to_router_rpc_obj() for r in batch.reqs]
         rets = [self.model_rpcs[tp_rank].init_batch(batch.batch_id, reqs) for tp_rank in range(self.world_size)]
         await asyncio.gather(*rets)
         self._update_init_status_to_batch(batch)

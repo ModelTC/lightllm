@@ -196,6 +196,17 @@ class Req(ctypes.Structure):
     def get_prompt_ids(self):
         return self.shm_prompt_ids.arr[: self.input_len].tolist()
 
+    def to_router_rpc_obj(self):
+        if hasattr(self, "multimodal_params"):
+            return (
+                self.request_id,
+                self.index_in_shm_mem,
+                self.multimodal_params,
+                self.sample_params.suggested_dp_index,
+            )
+        else:
+            return (self.request_id, self.index_in_shm_mem, None, self.sample_params.suggested_dp_index)
+
     def can_release(self):
         # 只有管理节点有一个引用
         ref_count_ok = self.ref_count == 1

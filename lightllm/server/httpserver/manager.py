@@ -466,8 +466,7 @@ class HttpServerManager:
                         if req.finish_token_index != src_index:
                             token_list.append((req_id, text, metadata, FinishStatus()))
                         else:
-                            finish_status = FinishStatus()
-                            finish_status.set_status(req.finish_status)
+                            finish_status = FinishStatus(req.finish_status.status)
                             token_list.append((req_id, text, metadata, finish_status))
 
                 async with req_status.lock:
