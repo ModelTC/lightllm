@@ -110,6 +110,8 @@ class ShmReqManager:
         with self.manager_lock:
             assert self.alloc_state_shm.arr[req_index_in_mem] == 1
             self.alloc_state_shm.arr[req_index_in_mem] = 0
+        if np.sum(self.alloc_state_shm.arr) == 0:
+            logger.info("all shm req has been release ok")
         return
 
     async def async_release_req_index(self, req_index_in_mem):

@@ -391,28 +391,37 @@ class InferBatch:
         if len(request_ids) == 0:
             self.free_self()
             return InferBatch(
-                batch_id=self.batch_id, request_ids=[], req_manager=self.req_manager, radix_cache=self.radix_cache
+                batch_id=self.batch_id,
+                request_ids=[],
+                req_manager=self.req_manager,
+                radix_cache=self.radix_cache,
+                shm_req_manager=self.shm_req_manager,
             )
         free_req_index = []
         free_token_index = []
         for request_id in finished_request_ids:
             req: InferReq = requests_mapping.pop(request_id)
-            group_req_id = convert_sub_id_to_group_id(req.r_id)
+            group_req_id = convert_sub_id_to_group_id(req.shm_req.request_id)
             if group_req_id in group_mapping:
-                is_group_finished = group_mapping[group_req_id].decrease_refs(req.r_id)
+                is_group_finished = group_mapping[group_req_id].decrease_refs(req.shm_req.request_id)
                 if is_group_finished:
                     del group_mapping[group_req_id]
                 self._free_a_req_mem(free_token_index, req, is_group_finished)
             else:
                 self._free_a_req_mem(free_token_index, req, True)
             free_req_index.append(req.req_idx)
-            req.cur_kv_len = 0
+            req.shm_req.cur_kv_len = 0
+            self.shm_req_manager.put_back_req_obj(req.shm_req)
 
         free_token_index = torch.cat(free_token_index, dim=-1)
         self.req_manager.free(free_req_index, free_token_index)
 
         return InferBatch(
-            batch_id=self.batch_id, request_ids=request_ids, req_manager=self.req_manager, radix_cache=self.radix_cache
+            batch_id=self.batch_id,
+            request_ids=request_ids,
+            req_manager=self.req_manager,
+            radix_cache=self.radix_cache,
+            shm_req_manager=self.shm_req_manager,
         )
 
     @torch.no_grad()
@@ -420,12 +429,12 @@ class InferBatch:
         free_token_index = []
         for request_id, pause_way in pause_reqs:
             req: InferReq = requests_mapping[request_id]
-            req.req_status = pause_way
+            req.shm_req.req_status.set_status(pause_way)
             self.request_ids.remove(request_id)
             if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
                 # 不支持多输出的情况
                 self._free_a_req_mem(free_token_index, req, is_group_finished=True)
-                req.cur_kv_len = 0
+                req.shm_req.cur_kv_len = 0
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
@@ -443,6 +452,7 @@ class InferBatch:
             request_ids=request_ids,
             req_manager=batch1.req_manager,
             radix_cache=batch1.radix_cache,
+            shm_req_manager=batch1.shm_req_manager,
         )
 
     def __len__(self):
