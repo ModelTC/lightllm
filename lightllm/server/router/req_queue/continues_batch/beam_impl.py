@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 from ...batch import Batch, Req
-from lightllm.server.core.objs import ReqStatus
+from lightllm.server.core.objs import ReqRunStatus
 from lightllm.server.router.req_queue.base_queue import BaseQueue
 
 
@@ -54,7 +54,7 @@ class BeamContinuesBatchQueue(BaseQueue):
             < self.max_total_tokens
         )
 
-        if req.req_status != ReqStatus.PAUSED_AND_OFFLOAD:
+        if req.req_status != ReqRunStatus.PAUSED_AND_OFFLOAD:
             ok_req_num = len(self.cache_len_list) + len(self.pause_req_dict) <= self.running_max_req_size
         else:
             ok_req_num = (
@@ -96,7 +96,7 @@ class BeamContinuesBatchQueue(BaseQueue):
         aborted_count = 0
         cur_group_reqs = []
         for req in self.waiting_req_list:
-            if req.finish_status.is_aborted() and req.req_status == ReqStatus.WAIT_IN_QUEUE:
+            if req.finish_status.is_aborted() and req.req_status == ReqRunStatus.WAIT_IN_QUEUE:
                 aborted_count += 1
                 abort_req_list.append(req)
                 continue
@@ -110,7 +110,7 @@ class BeamContinuesBatchQueue(BaseQueue):
             if ok_insert:
                 can_run_list.extend(cur_group_reqs)
                 for cur_req in cur_group_reqs:
-                    if cur_req.req_status == ReqStatus.PAUSED_AND_OFFLOAD:
+                    if cur_req.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                         self.pause_req_dict.pop(cur_req.request_id)
                 cur_group_reqs = [req]  # 等待判断的组
             else:
@@ -124,7 +124,7 @@ class BeamContinuesBatchQueue(BaseQueue):
             if ok_insert:
                 can_run_list.extend(cur_group_reqs)
                 for req in cur_group_reqs:
-                    if req.req_status == ReqStatus.PAUSED_AND_OFFLOAD:
+                    if req.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
                         self.pause_req_dict.pop(req.request_id)
 
         if len(can_run_list) != 0:
