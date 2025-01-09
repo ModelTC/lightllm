@@ -2,7 +2,7 @@ import os
 import shutil
 import torch
 from .impl import ContinuesBatchBackend
-from lightllm.server.io_struct import FinishStatus
+from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample

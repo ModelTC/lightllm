@@ -1,9 +1,9 @@
 import uuid
 import numpy as np
 from typing import List, Tuple
-from lightllm.server.io_struct import Batch, Req
+from .batch import Batch, Req
 from lightllm.server.router.req_queue.base_queue import BaseQueue
-from lightllm.server.io_struct import ReqRunStatus
+from lightllm.server.core.objs import ReqRunStatus
 
 
 class Strategy:

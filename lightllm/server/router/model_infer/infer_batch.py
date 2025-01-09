@@ -11,7 +11,7 @@ from typing import List, Dict, Tuple, Optional
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.io_struct import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id

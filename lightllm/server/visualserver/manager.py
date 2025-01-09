@@ -6,7 +6,6 @@ import rpyc
 import pickle
 from typing import List
 from transformers import AutoConfig
-from ..io_struct import AbortReq
 from ..embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from rpyc.utils.classic import obtain
 
@@ -78,6 +77,7 @@ class VisualManager:
         return
 
     async def abort(self, group_req_id):
+        AbortReq = object
         abort_req = AbortReq(group_req_id=group_req_id)
         self.send_to_router.send_pyobj(abort_req, protocol=pickle.HIGHEST_PROTOCOL)
         # 过滤掉被 aborted的请求。
@@ -127,6 +127,7 @@ class VisualManager:
     async def loop_for_netio_req(self):
         while True:
             recv_req = await self.recv_from_httpserver.recv_pyobj()
+            AbortReq = object
             if isinstance(recv_req, tuple) and len(recv_req) == 5:
                 self.waiting_reqs.append(recv_req)
             elif isinstance(recv_req, AbortReq):
