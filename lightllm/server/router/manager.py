@@ -174,13 +174,7 @@ class RouterManager:
             req_group.append(req)
 
         self.req_queue.extend(req_group)
-        try:
-            self.send_to_detokenization.send_pyobj(
-                group_req_indexes,
-                protocol=pickle.HIGHEST_PROTOCOL,
-            )
-        except BaseException as e:
-            logger.exception(str(e))
+        self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
 
         return
 
