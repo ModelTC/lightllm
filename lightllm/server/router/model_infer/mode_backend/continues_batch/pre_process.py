@@ -21,23 +21,24 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
     b_ready_cache_len = []
     for request_id in batch.request_ids:
         req: InferReq = requests_mapping[request_id]
-        assert req.req_status == ReqRunStatus.RUNNING
+        assert req.shm_req.req_status.is_running()
 
         run_reqs.append(req)
         batch_multimodal_params.append(req.multimodal_params)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
 
-        seq_len = len(req.input_token_ids)
-        input_token_len = seq_len - req.cur_kv_len
+        input_token_ids = req.get_input_token_ids()
+        seq_len = len(input_token_ids)
+        input_token_len = seq_len - req.shm_req.cur_kv_len
 
-        input_id = req.input_token_ids[req.cur_kv_len :]
+        input_id = input_token_ids[req.shm_req.cur_kv_len :]
 
         nopad_b_seq_len.append(seq_len)
         input_ids.append(input_id)
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, input_token_len)
-        b_ready_cache_len.append(req.cur_kv_len)
+        b_ready_cache_len.append(req.shm_req.cur_kv_len)
         start_loc += input_token_len
 
     input_ids = np.concatenate(input_ids, dtype=np.int64)
@@ -85,13 +86,13 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     nopad_b_seq_len = []
     for request_id in batch.request_ids:
         req: InferReq = requests_mapping[request_id]
-        assert req.req_status == ReqRunStatus.RUNNING
+        assert req.shm_req.req_status.is_running()
         run_reqs.append(req)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
-        input_id = req.input_token_ids[-1]
-        seq_len = len(req.input_token_ids)
-        assert req.cur_kv_len == seq_len - 1
+        input_id = req.get_last_gen_token()
+        seq_len = req.get_cur_total_len()
+        assert req.shm_req.cur_kv_len == seq_len - 1
         nopad_b_seq_len.append(seq_len)
         input_ids.append(input_id)
         nopad_total_token_num += seq_len

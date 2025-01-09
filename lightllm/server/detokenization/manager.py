@@ -50,13 +50,14 @@ class DeTokenizationManager:
         return
 
     async def handle_loop(self):
-        while True:
-            try:
-                recv_obj: Union[None, GroupReqIndexes] = await asyncio.wait_for(
-                    self.recv_from_router.recv_pyobj(), timeout=0.05
-                )
-            except asyncio.TimeoutError:
-                recv_obj = None
+        try:
+            while True:
+                try:
+                    recv_obj: Union[None, GroupReqIndexes] = await asyncio.wait_for(
+                        self.recv_from_router.recv_pyobj(), timeout=0.05
+                    )
+                except asyncio.TimeoutError:
+                    recv_obj = None
 
                 if isinstance(recv_obj, GroupReqIndexes):
                     for req_index in recv_obj.shm_req_indexes:
@@ -78,8 +79,8 @@ class DeTokenizationManager:
                     if cost_time > 50:
                         logger.info(f"detokenize batch cost time {cost_time} ms")
 
-            except Exception as e:
-                logger.exception(f"detoken process has exception {str(e)}")
+        except Exception as e:
+            logger.exception(f"detoken process has exception {str(e)}")
 
     def gen_token_out(self):
         exist_need_detoken = False
@@ -95,7 +96,7 @@ class DeTokenizationManager:
                 out_text = decode_token(
                     self.tokenizer,
                     decode_req,
-                    new_token_id,
+                    int(new_token_id),
                     self.eos_id,
                 )
                 if out_text.endswith("\ufffd"):

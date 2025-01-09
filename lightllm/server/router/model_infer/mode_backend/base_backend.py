@@ -40,16 +40,16 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq,
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
 from lightllm.utils.device_utils import set_current_device_id
-
+from lightllm.server.core.objs import ShmReqManager
 import torch.distributed as dist
 
 
 class ModeBackend:
     def __init__(self) -> None:
+        self.shm_req_manager = ShmReqManager()
         pass
 
     def init_model(self, kvargs):
-        import torch
 
         self.args = kvargs.get("args", None)
         # p d 分离模式下会有特殊的一些初始化, 所以需要传递
@@ -239,7 +239,7 @@ class ModeBackend:
         # 在 dp 模式下 tp_rank == dp_rank
         if self.dp_size != 1:
             cur_dp_index = self.tp_rank
-            reqs = [req for req in reqs if req["dp_index"] == cur_dp_index]
+            reqs = [req for req in reqs if req[3] == cur_dp_index]
 
         g_infer_state_lock.acquire()
         batch_data = InferBatch.init_batch(
@@ -250,24 +250,11 @@ class ModeBackend:
             self.model.req_manager,
             self.model.vocab_size,
             self.radix_cache,
+            self.shm_req_manager,
         )
         self.cache[batch_id] = batch_data
         g_infer_state_lock.release()
-
-        # 将更新后的状态返回给调用方用于router中请求的状态
-        ans = {}
-        for req_id in batch_data.request_ids:
-            req_obj: InferReq = requests_mapping[req_id]
-            # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
-            ans[req_id] = (
-                req_obj.req_status,
-                req_obj.cur_kv_len,
-                req_obj.get_output_len(),
-                [],
-                req_obj.finish_status.value,
-                None,
-            )
-        return ans
+        return
 
     # @calculate_time(show=True, min_cost_ms=0.1)
     def filter_batch(self, batch_id, req_id_list, finished_req_id_list):

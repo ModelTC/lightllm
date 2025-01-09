@@ -100,6 +100,7 @@ class ModelRpcServer(rpyc.Service):
         except Exception as e:
             err_msg = str(e)
             logger.exception(f"Batch prefill encountered an unexpected ERROR: {err_msg}")
+            raise e
 
     # @calculate_time(show=True, min_cost_ms=200)
     def exposed_decode_batch(self, batch_id):
@@ -110,6 +111,7 @@ class ModelRpcServer(rpyc.Service):
         except Exception as e:
             err_msg = str(e)
             logger.exception(f"Batch decode encountered an unexpected ERROR: {err_msg}")
+            raise e
 
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_filter_batch(self, batch_id, req_id_list, finished_req_id_list):
