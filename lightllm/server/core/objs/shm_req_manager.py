@@ -83,6 +83,8 @@ class ShmReqManager:
 
     def init_alloc_state_shm(self):
         shm_name = f"{get_unique_server_name()}_req_alloc_states"
+        req_link_list_name = f"{get_unique_server_name()}_req_linked_states"
+        self.linked_req_manager = ReqLinkedListManager(req_link_list_name, self.max_req_num)
         self.alloc_state_shm = ShmArray(shm_name, (self.max_req_num,), np.int32)
         self.alloc_state_shm.create_shm()
         self.alloc_state_shm.arr[:] = 0
@@ -94,13 +96,12 @@ class ShmReqManager:
     # 只有管理请求申请和释放的首节点才能调用这个接口。
     def alloc_req_index(self):
         with self.manager_lock:
-            indices = np.where(self.alloc_state_shm.arr == 0)[0]
-            if len(indices) == 0:
-                return None
-            else:
-                ans = indices[0]
-                self.alloc_state_shm.arr[ans] = 1
-                return ans
+            idx = self.linked_req_manager.alloc()
+            if idx is not None:
+                assert self.alloc_state_shm.arr[idx] == 0
+                self.alloc_state_shm.arr[idx] = 1
+            return idx
+        return None
 
     async def async_alloc_req_index(self):
         return self.alloc_req_index()
@@ -110,7 +111,9 @@ class ShmReqManager:
         with self.manager_lock:
             assert self.alloc_state_shm.arr[req_index_in_mem] == 1
             self.alloc_state_shm.arr[req_index_in_mem] = 0
-        if np.sum(self.alloc_state_shm.arr) == 0:
+            self.linked_req_manager.free(req_index_in_mem)
+
+        if np.sum(self.alloc_state_shm.arr) == 0 and self.linked_req_manager.test_is_full():
             logger.info("all shm req has been release ok")
         return
 
@@ -144,3 +147,47 @@ class ShmReqManager:
 
     def __del__(self):
         self.reqs = None
+
+
+class ReqLinkedListManager:
+    NEXT_INDEX = 0  # 仅保留指向下一个可用索引的指针
+
+    def __init__(self, name: str, size: int) -> None:
+        self.size = size + 1  # +1 , 0 号节点用于链表头
+        self._shm_array = ShmArray(name, shape=(self.size, 1), dtype=np.int64)  # 只需一列
+        self._shm_array.create_shm()
+        self._values = self._shm_array.arr
+
+        self._initialize_values()
+
+    def _initialize_values(self) -> None:
+        # Initialize next pointers
+        self._values[0 : self.size - 1, self.NEXT_INDEX] = np.arange(1, self.size)
+        self._values[self.size - 1, self.NEXT_INDEX] = -1  # 最后一个指向 -1（表示空）
+
+    def alloc(self) -> int:
+        """Allocate an index from the linked list."""
+        if self._values[0, self.NEXT_INDEX] != -1:
+            alloc_idx = self._values[0, self.NEXT_INDEX]
+            self._values[0, self.NEXT_INDEX] = self._values[alloc_idx, self.NEXT_INDEX]
+            return alloc_idx - 1  # 返回实际索引
+        return None
+
+    def is_empty(self) -> bool:
+        """Check if the linked list is empty."""
+        return self._values[0, self.NEXT_INDEX] == -1
+
+    def free(self, idx: int) -> None:
+        """Free a previously allocated index."""
+        assert 0 <= idx < self.size - 1, "Index out of bounds"
+        self._values[idx + 1, self.NEXT_INDEX] = self._values[0, self.NEXT_INDEX]
+        self._values[0, self.NEXT_INDEX] = idx + 1
+
+    def test_is_full(self):
+        count = 0
+        idx = 0
+        while self._values[idx, self.NEXT_INDEX] != -1:
+            count += 1
+            idx = self._values[idx, self.NEXT_INDEX]
+
+        return count == self.size - 1
