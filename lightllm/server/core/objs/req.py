@@ -9,7 +9,7 @@ from lightllm.utils.envs_utils import get_unique_server_name
 from typing import List, Any, Union
 
 
-class ReqStatus(ctypes.Structure):
+class ReqRunStatus(ctypes.Structure):
     _pack_ = 4
     _fields_ = [("status", ctypes.c_int)]
 
@@ -107,7 +107,7 @@ class Req(ctypes.Structure):
         ("cur_kv_len", ctypes.c_int),
         ("cur_output_len", ctypes.c_int),
         ("prompt_cache_len", ctypes.c_int),
-        ("req_status", ReqStatus),
+        ("req_status", ReqRunStatus),
         ("finish_status", FinishStatus),
         # 当FinishStatus 是正常结束状态时，finish_token_index 用于标识结束的
         # token 的index位置
@@ -136,7 +136,7 @@ class Req(ctypes.Structure):
 
         self.request_id = request_id
         self.group_req_id = convert_sub_id_to_group_id(request_id)
-        self.req_status = ReqStatus()
+        self.req_status = ReqRunStatus()
         self.finish_status = FinishStatus()
         self.cur_kv_len = 0
         self.cur_output_len = 0
