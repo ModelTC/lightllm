@@ -20,7 +20,7 @@ class DecodeReq:
         self.prefix_str = ""
 
     def need_detoken(self):
-        if (not self.req.finish_status.is_aborted()) and len(self.output_ids) < self.req.cur_output_len:
+        if (not self.req.finish_status.is_aborted()) and len(self.output_ids) < self.req.candetoken_out_len:
             return True
         return False
 
@@ -36,7 +36,7 @@ class DecodeReq:
             return True
         if (
             self.req.finish_status.is_finished()
-            and self.req.cur_output_len == len(self.output_ids)
+            and self.req.candetoken_out_len == len(self.output_ids)
             and self.req.finish_token_index == self.input_len + len(self.output_ids) - 1
         ):
             return True
