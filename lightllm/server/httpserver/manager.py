@@ -458,8 +458,8 @@ class HttpServerManager:
                     if not req.out_tokens_queue.is_empty():
                         text, src_index, special, count_output_tokens = req.out_tokens_queue.pop()
                         metadata = {
-                            "id": req.shm_prompt_ids.arr[src_index],
-                            "logprob": req.shm_logprobs.arr[src_index],
+                            "id": int(req.shm_prompt_ids.arr[src_index]),
+                            "logprob": float(req.shm_logprobs.arr[src_index]),
                             "special": special,
                             "count_output_tokens": count_output_tokens,
                         }
