@@ -10,7 +10,7 @@ from lightllm.server.router.model_infer.infer_batch import (
     requests_mapping,
     group_mapping,
 )
-from lightllm.server.io_struct import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.tokenizer import get_tokenizer
 from lightllm.server.router.model_infer.mode_backend.beamsearch.pre_process import (

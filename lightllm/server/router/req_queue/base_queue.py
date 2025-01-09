@@ -1,6 +1,6 @@
 from typing import List, Dict
 from lightllm.utils.infer_utils import calculate_time
-from lightllm.server.io_struct import Batch, Req
+from ..batch import Batch, Req
 from lightllm.server.core.objs import ReqStatus, FinishStatus
 from lightllm.common.basemodel.infer_lock import g_router_lock
 

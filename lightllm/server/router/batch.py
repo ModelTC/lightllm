@@ -7,35 +7,6 @@ from lightllm.utils.log_utils import init_logger
 logger = init_logger(__name__)
 
 
-class ReqDetokenizationState:
-    def __init__(
-        self,
-        group_req_id: int,
-        prompt_ids: List[int],
-        max_output_len: int,
-        ignore_eos: bool,
-        skip_special_tokens: bool,
-        add_spaces_between_special_tokens: bool,
-        print_eos_token: bool,
-        best_of: int,
-    ) -> None:
-        self.request_id = None
-        self.group_req_id = group_req_id
-        self.prompt_ids = prompt_ids
-        self.output_ids = []
-        self.output_tokens = []
-        self.output_str = ""
-        self.sub_texts = []
-        self.current_sub_text = []
-        self.max_output_len = max_output_len
-        self.ignore_eos = ignore_eos
-        self.gen_metadata = {}
-        self.skip_special_tokens = skip_special_tokens
-        self.add_spaces_between_special_tokens = add_spaces_between_special_tokens
-        self.print_eos_token = print_eos_token
-        self.best_of = best_of
-
-
 class Batch:
     def __init__(self, batch_id, reqs: List[Req], dp_size: int):
         self.batch_id = batch_id
