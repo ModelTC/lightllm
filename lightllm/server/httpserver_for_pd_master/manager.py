@@ -13,7 +13,7 @@ import pickle
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
-from ..io_struct import FinishStatus
+from lightllm.server.core.objs import FinishStatus
 from ..pd_io_struct import PD_Client_Obj, UpKVStatus, ObjType
 from ..sampling_params import SamplingParams
 from ..multimodal_params import MultimodalParams

@@ -50,8 +50,8 @@ class FinishStatus(ctypes.Structure):
     FINISHED_LENGTH = 2
     FINISHED_ABORT = 3
 
-    def __init__(self):
-        self.status = self.NO_FINISH
+    def __init__(self, init_state=NO_FINISH):
+        self.status = init_state
 
     def set_status(self, new_status):
         assert 0 <= new_status <= 3
