@@ -23,7 +23,6 @@ class ContinuesBatchBackend(ModeBackend):
 
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
-        output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
@@ -42,6 +41,7 @@ class ContinuesBatchBackend(ModeBackend):
             req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
+            req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
 
         self.cache[batch.batch_id] = batch
-        return output_dict
+        return

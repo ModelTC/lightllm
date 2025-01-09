@@ -105,7 +105,11 @@ class Req(ctypes.Structure):
         ("input_len", ctypes.c_int),
         ("alloc_shm_numpy_len", ctypes.c_int),
         ("cur_kv_len", ctypes.c_int),
-        ("cur_output_len", ctypes.c_int),
+        ("cur_output_len", ctypes.c_int),  # 推理进程记录自己输出长度的计数
+        # candetoken_out_len 推理进程修改这个数据，让detokenization进程知道需要detoken的长度，
+        # 虽然某种程度上 cur_output_len 也有同样的功能，但是为了避免多进程访问导致的问题，添加
+        # candetoken_out_len 变量单独传输这个信息。
+        ("candetoken_out_len", ctypes.c_int),
         ("prompt_cache_len", ctypes.c_int),
         ("req_status", ReqRunStatus),
         ("finish_status", FinishStatus),
@@ -140,6 +144,7 @@ class Req(ctypes.Structure):
         self.finish_status = FinishStatus()
         self.cur_kv_len = 0
         self.cur_output_len = 0
+        self.candetoken_out_len = 0
         self.prompt_cache_len = 0
         self.finish_token_index = -1
         self.can_released_mark = False
