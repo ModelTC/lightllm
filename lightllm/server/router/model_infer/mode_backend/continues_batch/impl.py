@@ -8,6 +8,8 @@ from lightllm.utils.log_utils import init_logger
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 
+logger = init_logger(__name__)
+
 
 class ContinuesBatchBackend(ModeBackend):
     def __init__(self) -> None:
@@ -30,18 +32,20 @@ class ContinuesBatchBackend(ModeBackend):
             kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
         logits = self.model.forward(**kwargs)
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            # prefill and decode is same
-            req_obj: InferReq = req_obj
-            req_obj.shm_req.cur_kv_len = req_obj.get_cur_total_len()
-            req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
-            req_obj.out_token_id_count[next_token_id] += 1
-            req_obj.update_finish_status(self.eos_id)
-            req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
+        if self.tp_rank < self.dp_size:
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+
+            for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
+                # prefill and decode is same
+                req_obj: InferReq = req_obj
+                req_obj.shm_req.cur_kv_len = req_obj.get_cur_total_len()
+                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
+                req_obj.out_token_id_count[next_token_id] += 1
+                req_obj.update_finish_status(self.eos_id)
+                req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
 
         self.cache[batch.batch_id] = batch
         return

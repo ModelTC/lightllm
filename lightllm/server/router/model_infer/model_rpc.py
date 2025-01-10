@@ -86,10 +86,15 @@ class ModelRpcServer(rpyc.Service):
 
     # @calculate_time(show=True, min_cost_ms=0.1)
     def exposed_add_batch(self, batch_id, reqs):
-        if self.world_size != 1:
-            batch_id, reqs = obtain(batch_id), obtain(reqs)
+        try:
+            if self.world_size != 1:
+                batch_id, reqs = obtain(batch_id), obtain(reqs)
 
-        return self.backend.add_batch(batch_id, reqs)
+            return self.backend.add_batch(batch_id, reqs)
+        except Exception as e:
+            err_msg = str(e)
+            logger.exception(f"Batch add encountered an unexpected ERROR: {err_msg}")
+            raise e
 
     # @calculate_time(show=False, min_cost_ms=300)
     def exposed_prefill_batch(self, batch_id):
