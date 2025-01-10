@@ -277,8 +277,6 @@ class InferBatch:
                 shm_req.link_prompt_ids_shm_array()
                 shm_req.link_logprobs_shm_array()
 
-                assert shm_req.req_status.is_waiting()
-
                 r_obj = InferReq(
                     shm_req=shm_req,
                     req_idx=nopad_b_req_idx[index],
@@ -325,7 +323,7 @@ class InferBatch:
 
     def _free_a_req_mem(self, free_token_index: List, req: InferReq, is_group_finished: bool):
         if self.radix_cache is None:
-            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
+            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len])
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.shm_req.cur_kv_len], dtype=torch.int64, device="cpu")
@@ -361,7 +359,6 @@ class InferBatch:
                 self._free_a_req_mem(free_token_index, req, True)
 
             free_req_index.append(req.req_idx)
-            req.shm_req.cur_kv_len = 0
             self.shm_req_manager.put_back_req_obj(req.shm_req)
 
         free_token_index = torch.cat(free_token_index, dim=-1)
@@ -410,7 +407,6 @@ class InferBatch:
             else:
                 self._free_a_req_mem(free_token_index, req, True)
             free_req_index.append(req.req_idx)
-            req.shm_req.cur_kv_len = 0
             self.shm_req_manager.put_back_req_obj(req.shm_req)
 
         free_token_index = torch.cat(free_token_index, dim=-1)
@@ -434,7 +430,11 @@ class InferBatch:
             if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
                 # 不支持多输出的情况
                 self._free_a_req_mem(free_token_index, req, is_group_finished=True)
-                req.shm_req.cur_kv_len = 0
+                # 因为每个前面清楚token的处理中，需要cur_kv_len 信息
+                # 所以不能某个进程单独修改，可能会有同步问题，pasue 由
+                # router进程来修改
+                # to do
+                # req.shm_req.cur_kv_len = 0
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
