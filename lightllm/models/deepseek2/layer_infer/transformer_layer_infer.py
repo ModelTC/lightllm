@@ -56,6 +56,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             if mscale_all_dim:
                 mscale = get_deepseek_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
+        self.enable_cc_method = os.getenv("ENABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         if self.enable_dp:
@@ -67,7 +68,14 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         return
 
     def _bind_attention(self):
-        self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel_with_CC, self)
+        if self.enable_cc_method:
+            self._context_attention_kernel = partial(
+                Deepseek2TransformerLayerInfer._context_attention_kernel_with_CC, self
+            )
+        else:
+            self._context_attention_kernel = partial(
+                Deepseek2TransformerLayerInfer._context_attention_kernel_origin, self
+            )
         self._token_attention_kernel = partial(
             Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
         )
