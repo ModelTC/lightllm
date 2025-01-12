@@ -6,8 +6,10 @@ import asyncio
 import torch
 import rpyc
 import pickle
+import threading
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+import concurrent.futures
 import zmq
 import zmq.asyncio
 import torch.multiprocessing as mp
@@ -79,6 +81,11 @@ class RouterManager:
         # 主要是为了防止调度失误，造成 OOM 等错误
         self.router_lock = mp.Lock()
         g_router_lock.obj = self.router_lock
+
+        # 调度和推理进行折叠使用的线程池
+        self.overlap_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self.schedule_task = None
+        self.overlap_event = threading.Event()
         return
 
     async def wait_to_model_ready(self):
@@ -223,6 +230,23 @@ class RouterManager:
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
 
+    async def get_schedule_result(self, running_batch: Batch):
+        if self.schedule_task is None:
+            self.overlap_event.clear()
+
+            def get_new_batch():
+                self.overlap_event.wait(timeout=0.020)
+                time.sleep(0.003)  # 这里是为了保证能正确进入推理的流程，保证折叠成功。
+                new_batch = self.req_queue.generate_new_batch(running_batch)
+                return new_batch
+
+            self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
+            return None
+        else:
+            result = await self.schedule_task
+            self.schedule_task = None
+            return result
+
     async def _step(self):
         """
         事件处理循环
@@ -230,7 +254,7 @@ class RouterManager:
         # 删除所有已经 finished 的 req
         # 当前无运行请求时
         if self.running_batch is None:
-            new_batch = self.req_queue.generate_new_batch(self.running_batch)
+            new_batch = await self.get_schedule_result(self.running_batch)
             if new_batch is not None:
                 self.metric_client.histogram_observe("lightllm_batch_next_size", len(new_batch.reqs))
                 for req in new_batch.reqs:
@@ -244,9 +268,9 @@ class RouterManager:
                 self.has_wait_tokens = self.max_wait_tokens
             return
 
-        # 有运行请求，但是已经到了可以调度新的请求合并推理的时机
-        if self.has_wait_tokens >= self.max_wait_tokens:
-            new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
+        # 有运行请求，当持续decode的次数到达一个阈值，或者有上次预调度的结果存在的时。
+        if self.has_wait_tokens >= self.max_wait_tokens or self.schedule_task is not None:
+            new_mini_batch = await self.get_schedule_result(self.running_batch)
             self.has_wait_tokens = 0
             if new_mini_batch is not None:
                 self.has_wait_tokens = self.max_wait_tokens
@@ -291,6 +315,7 @@ class RouterManager:
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
             rets = [self.model_rpcs[tp_rank].prefill_batch(batch.batch_id) for tp_rank in range(self.world_size)]
+            self.overlap_event.set()
             await asyncio.gather(*rets)
             self._update_out_status_to_batch(batch)
             unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
@@ -306,6 +331,7 @@ class RouterManager:
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
         rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.world_size)]
+        self.overlap_event.set()
         await asyncio.gather(*rets)
 
         self._update_out_status_to_batch(batch)
