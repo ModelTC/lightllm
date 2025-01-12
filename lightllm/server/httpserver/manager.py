@@ -412,7 +412,9 @@ class HttpServerManager:
             group_req_objs: GroupReqObjs = req_status.group_req_objs
             for req in group_req_objs.shm_req_objs:
                 req.finish_status.set_status(req.finish_status.FINISHED_ABORT)
-        logger.warning(f"aborted group_request_id {group_req_objs.group_req_id}")
+            logger.warning(f"aborted group_request_id {group_req_objs.group_req_id}")
+        else:
+            logger.warning("aborted group_request_id not exist")
         return
 
     async def recycle_resource_loop(self):

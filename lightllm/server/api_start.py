@@ -263,7 +263,7 @@ def pd_master_start(args):
     command = [
         "gunicorn",
         "--workers",
-        "4",
+        "1",
         "--worker-class",
         "uvicorn.workers.UvicornWorker",
         "--bind",
