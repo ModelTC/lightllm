@@ -40,7 +40,7 @@ class HttpServerManager:
         args,
         router_port,
         cache_port,
-        httpserver_port,
+        detokenization_pub_port,
         visual_port,
         metric_port,
         enable_multimodal,
@@ -58,8 +58,9 @@ class HttpServerManager:
 
         self.shm_req_manager = ShmReqManager()
 
-        self.recv_from_detokenization = context.socket(zmq.PULL)
-        self.recv_from_detokenization.bind(f"{args.zmq_mode}127.0.0.1:{httpserver_port}")
+        self.recv_from_detokenization = context.socket(zmq.SUB)
+        self.recv_from_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_pub_port}")
+        self.recv_from_detokenization.setsockopt(zmq.SUBSCRIBE, b"")
 
         self.tokenizer = get_tokenizer(args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code)
 
@@ -447,7 +448,7 @@ class HttpServerManager:
 
         while True:
             try:
-                await asyncio.wait_for(self.recv_from_detokenization.recv_pyobj(), timeout=0.02)
+                await asyncio.wait_for(self.recv_from_detokenization.recv_pyobj(), timeout=0.05)
             except asyncio.TimeoutError:
                 pass
 

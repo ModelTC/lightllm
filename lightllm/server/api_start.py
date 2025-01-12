@@ -153,7 +153,7 @@ def normal_or_p_d_start(g_objs):
         num=6 + args.tp + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
     )
     logger.info(f"alloced ports: {can_use_ports}")
-    router_port, detokenization_port, httpserver_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
+    router_port, detokenization_port, detokenization_pub_port, visual_port, cache_port, metric_port = can_use_ports[0:6]
     model_rpc_ports = can_use_ports[6 : 6 + args.tp]
     can_use_ports = can_use_ports[6 + args.tp :]
 
@@ -208,8 +208,8 @@ def normal_or_p_d_start(g_objs):
         args,
         router_port=router_port,
         cache_port=cache_port,
+        detokenization_pub_port=detokenization_pub_port,
         visual_port=visual_port,
-        httpserver_port=httpserver_port,
         enable_multimodal=args.enable_multimodal,
         metric_port=metric_port,
     )
@@ -218,7 +218,7 @@ def normal_or_p_d_start(g_objs):
         start_funcs=[start_router_process, start_detokenization_process],
         start_args=[
             (args, router_port, detokenization_port, model_rpc_ports, metric_port),
-            (args, detokenization_port, httpserver_port),
+            (args, detokenization_port, detokenization_pub_port),
         ],
     )
     if "s3://" in args.model_dir:

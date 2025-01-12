@@ -26,7 +26,7 @@ class DeTokenizationManager:
         model_weightdir,
         tokenizor_mode,
         detokenization_port,
-        httpserver_port,
+        detokenization_pub_port,
         trust_remote_code,
     ):
         self.args = args
@@ -34,9 +34,9 @@ class DeTokenizationManager:
         self.recv_from_router = context.socket(zmq.PULL)
         self.recv_from_router.bind(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
 
-        self.send_to_httpserver = context.socket(zmq.PUSH)
-        self.send_to_httpserver.connect(f"{args.zmq_mode}127.0.0.1:{httpserver_port}")
-
+        self.pub_to_httpserver = context.socket(zmq.PUB)
+        self.pub_to_httpserver.bind(f"{args.zmq_mode}127.0.0.1:{detokenization_pub_port}")
+        logger.info(f"pub_to_httpserver sendhwm {self.pub_to_httpserver.getsockopt(zmq.SNDHWM)}")
         self.tokenizer = get_tokenizer(model_weightdir, tokenizor_mode, trust_remote_code=trust_remote_code)
         self.all_special_ids = set(self.tokenizer.all_special_ids)
         self.req_id_to_out: Dict[int, DecodeReq] = {}
@@ -50,8 +50,8 @@ class DeTokenizationManager:
         return
 
     async def handle_loop(self):
-        try:
-            while True:
+        while True:
+            try:
                 try:
                     recv_obj: Union[None, GroupReqIndexes] = await asyncio.wait_for(
                         self.recv_from_router.recv_pyobj(), timeout=0.05
@@ -79,8 +79,8 @@ class DeTokenizationManager:
                     if cost_time > 50:
                         logger.info(f"detokenize batch cost time {cost_time} ms")
 
-        except Exception as e:
-            logger.exception(f"detoken process has exception {str(e)}")
+            except Exception as e:
+                logger.exception(f"detoken process has exception {str(e)}")
 
     def gen_token_out(self):
         exist_need_detoken = False
@@ -120,7 +120,7 @@ class DeTokenizationManager:
 
         # 通知 httpserver 进程
         if exist_decode:
-            self.send_to_httpserver.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+            self.pub_to_httpserver.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
 
         self.remove_finished_reqs()
 
@@ -139,7 +139,7 @@ class DeTokenizationManager:
         return
 
 
-def start_detokenization_process(args, detokenization_port, httpserver_port, pipe_writer):
+def start_detokenization_process(args, detokenization_port, detokenization_pub_port, pipe_writer):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -153,7 +153,7 @@ def start_detokenization_process(args, detokenization_port, httpserver_port, pip
             args.model_dir,
             args.tokenizer_mode,
             detokenization_port=detokenization_port,
-            httpserver_port=httpserver_port,
+            detokenization_pub_port=detokenization_pub_port,
             trust_remote_code=args.trust_remote_code,
         )
     except Exception as e:
