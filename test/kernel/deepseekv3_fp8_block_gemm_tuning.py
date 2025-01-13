@@ -107,37 +107,31 @@ def worker(
 
 
 def get_test_configs(split_id, split_count):
+    fp8_gemm_configs = [
+        {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8, "num_stages": 3, "num_warps": 8},
+        {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 5, "num_warps": 2},
+        {"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8, "num_stages": 5, "num_warps": 2},
+        {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128, "GROUP_M": 8, "num_stages": 3, "num_warps": 8},
+        {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "GROUP_M": 8, "num_stages": 3, "num_warps": 8},
+        {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64, "GROUP_M": 8, "num_stages": 4, "num_warps": 4},
+    ]
     index = 0
-    for block_m in [32, 64, 128]:
-        for block_n in [32, 64, 128]:
-            for block_k in [32, 64, 128]:
-                for group_m in [32, 64, 128]:
-                    for num_warps in [2, 4, 8]:
-                        for num_stages in [
-                            1,
-                            2,
-                            3,
-                            # 4,
-                            # 5,
-                            # 6,
-                            # 7,
-                            # 8,
-                            # 12,
-                            # 15,
-                        ]:
-                            t_config = {
-                                "BLOCK_M": block_m,
-                                "BLOCK_N": block_n,
-                                "BLOCK_K": block_k,
-                                "GROUP_M": group_m,
-                                "num_warps": num_warps,
-                                "num_stages": num_stages,
-                            }
-                            if index % split_count == split_id:
-                                yield t_config
-                                index += 1
-                            else:
-                                index += 1
+    for cfg in fp8_gemm_configs:
+        if index % split_count == split_id:
+            yield cfg
+            index += 1
+        else:
+            index += 1
 
 
 def tuning_configs(
@@ -234,11 +228,11 @@ if __name__ == "__main__":
     block_size = 128
     store_json_ans = collections.defaultdict(dict)
     for N, K in [
-        # (256, 7168),
-        # (512, 7168),
-        # (576, 7168),
-        # (1536, 1536),
-        # (1536, 7168),
+        (256, 7168),
+        (512, 7168),
+        (576, 7168),
+        (1536, 1536),
+        (1536, 7168),
         (2048, 512),
         (2304, 7168),
         (8072, 7168),
