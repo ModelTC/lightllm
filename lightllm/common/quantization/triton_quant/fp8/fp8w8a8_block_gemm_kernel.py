@@ -6,6 +6,7 @@ from lightllm.common.kernel_config import KernelConfigs
 from frozendict import frozendict
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
+from triton import Config
 
 
 class Fp8BlockMMKernelConfig(KernelConfigs):
@@ -78,7 +79,6 @@ def grouped_launch(pid, m, n, block_m: tl.constexpr, block_n: tl.constexpr, grou
     return pid_m, pid_n
 
 
-# Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/quantization/fp8_kernel.py
 @triton.jit
 def _block_scaled_block_gemm(
     A,
@@ -107,7 +107,6 @@ def _block_scaled_block_gemm(
     GROUP_M: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    grid_k = tl.cdiv(K, BLOCK_K)
     pid_m, pid_n = grouped_launch(pid, M, N, BLOCK_M, BLOCK_N, GROUP_M)
 
     offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
@@ -121,15 +120,15 @@ def _block_scaled_block_gemm(
     Bscale_ptrs = Bscale + offs_bsn * stride_Bscale_n
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(0, grid_k):
+    # tmp_a_s = tl.zeros((BLOCK_M,), dtype=tl.float32) + 1
+    # tmp_b_s = tl.zeros((BLOCK_N,), dtype=tl.float32) + 1
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
         k_remaining = K - k * BLOCK_K
         a = tl.load(a_ptrs, mask=offs_k[None, :] < k_remaining, other=0.0)
         b = tl.load(b_ptrs, mask=offs_k[:, None] < k_remaining, other=0.0)
-
         offs_ks = k * BLOCK_K // group_k
         a_s = tl.load(Ascale_ptrs + offs_ks * stride_Ascale_k)
         b_s = tl.load(Bscale_ptrs + offs_ks * stride_Bscale_k)
-
         acc += tl.dot(a, b) * a_s[:, None] * b_s[None, :]
         a_ptrs += BLOCK_K * stride_ak
         b_ptrs += BLOCK_K * stride_bk
@@ -169,7 +168,7 @@ def w8a8_block_fp8_matmul(
     assert len(block_size) == 2
     block_k, block_n = block_size[0], block_size[1]
     assert A.shape[0] == Ascale.shape[0] and A.shape[-1] == B.shape[0]
-    assert A.is_contiguous() and B.is_contiguous() and C.is_contiguous()
+    assert A.is_contiguous() and C.is_contiguous()
     M, K = A.shape
     _, N = B.shape
     assert triton.cdiv(K, block_k) == Ascale.shape[-1] and Ascale.shape[-1] == Bscale.shape[0]
@@ -177,7 +176,6 @@ def w8a8_block_fp8_matmul(
     if not run_config:
         run_config = Fp8BlockMMKernelConfig.try_to_get_best_config(M, N, K, block_size, dtype)
     grid = (triton.cdiv(M, run_config["BLOCK_M"]) * triton.cdiv(N, run_config["BLOCK_N"]),)
-
     _block_scaled_block_gemm[grid](
         A,
         B,
@@ -211,54 +209,34 @@ if __name__ == "__main__":
     block_size = 128
     output_dtype = torch.bfloat16
     M, N, K = 4096, 256, 7168
-    A = torch.randn((M, K), dtype=torch.float32).cuda().to(torch.float8_e4m3fn)  # Activation
-    B = torch.randn((K, N), dtype=torch.float32).cuda().to(torch.float8_e4m3fn)  # Weight
-    Ascale = torch.ones((M, K // block_size)).cuda()
+    A = torch.randn((M, K), dtype=output_dtype).cuda().to(torch.float8_e4m3fn)  # Activation
+    B = torch.randn((K, N), dtype=output_dtype).cuda().to(torch.float8_e4m3fn)  # Weight
+    Ascale = torch.randn((M, K // block_size)).cuda()  # + 0.2
     Bscale = torch.ones((K // block_size, N // block_size)).cuda()
 
     C = torch.randn((M, N), dtype=output_dtype).cuda()  # weight
+    B = B.T.contiguous().T
+    # warmup
 
     w8a8_block_fp8_matmul(A, B, Ascale, Bscale, C, (block_size, block_size), output_dtype)
 
-    # warmup
-    for i in range(100):
-        w8a8_block_fp8_matmul(A, B, Ascale, Bscale, C, (block_size, block_size), output_dtype)
-
-    graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
-        w8a8_block_fp8_matmul(A, B, Ascale, Bscale, C, (block_size, block_size), output_dtype)
-
-    torch.cuda.synchronize()
-    fp8_start_time = time.time()
-
-    for i in range(100):
-        # w8a8_block_fp8_matmul(A, B, Ascale, Bscale, C, (block_size, block_size), output_dtype)
-        graph.replay()
-
-    torch.cuda.synchronize()
-    fp8_end_time = time.time()
     #### groud truth
+    print(Ascale.unsqueeze(-1).repeat(1, 1, block_size).reshape(M, K).to(output_dtype).shape)
+    d_A = A.to(output_dtype) * (Ascale.unsqueeze(-1).repeat(1, 1, block_size).reshape(M, K).to(output_dtype))
+    d_B = B.to(output_dtype).contiguous()
 
-    d_A = A.to(output_dtype)
-    d_B = B.to(output_dtype)
-
-    # warmup
-    for i in range(100):
-        gt_C = d_A.mm(d_B)
-
-    torch.cuda.synchronize()
-    fp16_start_time = time.time()
-
-    for i in range(100):
-        gt_C = d_A.mm(d_B)
-
-    torch.cuda.synchronize()
-    fp16_end_time = time.time()
+    gt_C = d_A.mm(d_B)
     # caluate the simlarity
     import torch.nn.functional as F
 
     cosine_sim = F.cosine_similarity(C.flatten().unsqueeze(0), gt_C.flatten().unsqueeze(0), dim=1)
 
     print(f"Cosine Similarity between C and gt_C: {cosine_sim.item()}")
-    print(f"fp8 mm time : {(fp8_end_time - fp8_start_time) * 10} ms")
-    print(f"fp16 mm time : {(fp16_end_time - fp16_start_time) * 10} ms")
+
+    fn2 = lambda: torch.mm(d_A, d_B, out=gt_C)
+    ms2 = triton.testing.do_bench(fn2)
+    print(f"bf16 time : {ms2} ms")
+
+    fn2 = lambda: w8a8_block_fp8_matmul(A, B, Ascale, Bscale, C, (block_size, block_size), output_dtype)
+    ms2 = triton.testing.do_bench_cudagraph(fn2)
+    print(f"fp8 time : {ms2} ms")
