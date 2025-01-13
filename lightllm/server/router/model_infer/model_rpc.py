@@ -1,10 +1,9 @@
 import asyncio
-import rpyc
-import tempfile
 import torch.multiprocessing as mp
+import multiprocessing
+import threading
 from datetime import timedelta
 from typing import Dict, List, Tuple
-from rpyc.utils.classic import obtain
 from lightllm.server.router.model_infer.mode_backend import (
     ContinuesBatchBackend,
     ReturnPromptLogProbBackend,
@@ -19,25 +18,77 @@ from lightllm.server.router.model_infer.mode_backend import (
     ContinuesBatchBackendForDecodeNode,
     DPBackend,
 )
+from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
 
-class ModelRpcServer(rpyc.Service):
-    def __init__(self, args, info_queue: mp.Queue, mem_queue: mp.Queue):
+class ModelRpcServer:
+    def __init__(
+        self,
+        args,
+        tp_rank: int,
+        rpc_event: multiprocessing.Event,
+        rpc_finished_event: multiprocessing.Event,
+        info_queue: mp.Queue,
+        mem_queue: mp.Queue,
+    ):
         super().__init__()
         self.args = args
+        self.world_size = self.args.tp
         self.info_queue = info_queue
         self.mem_queue = mem_queue
+        self.rpc_event = rpc_event
+        self.rpc_finished_event = rpc_finished_event
+
+        self.rpc_shm_params = RpcShmParams()
+        self.rpc_shm_params.create_or_link_shm()
+        self.rpc_shm_results = RpcShmResults()
+        self.rpc_shm_results.create_or_link_shm()
+        self.rpc_shm_sync_status = ShmSyncStatusArray(self.world_size)
+        self.rpc_shm_sync_status.create_or_link_shm()
+
+        self.tp_rank = tp_rank
+
+        # 多卡才是跨进程的
+        if self.args.tp != 1:
+            self.loop_thread = threading.Thread(target=self.rpc_loop)
+            self.loop_thread.start()
         return
 
-    def exposed_init_model(self, kvargs):
-        self.world_size = kvargs["world_size"]
-        if self.world_size != 1:
-            kvargs = obtain(kvargs)
-            self.world_size = kvargs["world_size"]
+    def rpc_loop(self):
+        while True:
+            try:
+                self.rpc_event.wait()
+                func_name, args = self.rpc_shm_params.read_func_params()
 
+                ans = getattr(self, func_name)(*args)
+                if ans is not None and self.tp_rank == 0:
+                    self.rpc_shm_results.write_func_result(func_name=func_name, ret=ans)
+
+                # 下面得执行顺序不可随意交换, 否则容易出现同步或者死锁问题。
+                self.rpc_shm_sync_status.add_mark(self.tp_rank)
+                while not self.rpc_shm_sync_status.run_finished():
+                    pass
+
+                self.rpc_event.clear()
+
+                self.rpc_shm_sync_status.add_mark1(self.tp_rank)
+                while not self.rpc_shm_sync_status.run_finished1():
+                    pass
+
+                if self.tp_rank == 0:
+                    self.rpc_finished_event.set()
+
+            except BaseException as e:
+                logger.exception(str(e))
+        return
+
+    def init_model(self, kvargs):
+        # 填充真正的 rank_id 参数
+        kvargs["rank_id"] = self.tp_rank
+        self.world_size = kvargs["world_size"]
         is_splitfuse_mode = kvargs.get("is_splitfuse_mode", False)
         return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         use_reward_model = kvargs.get("use_reward_model", False)
@@ -85,11 +136,8 @@ class ModelRpcServer(rpyc.Service):
         return
 
     # @calculate_time(show=True, min_cost_ms=0.1)
-    def exposed_add_batch(self, batch_id, reqs):
+    def init_batch(self, batch_id, reqs):
         try:
-            if self.world_size != 1:
-                batch_id, reqs = obtain(batch_id), obtain(reqs)
-
             return self.backend.add_batch(batch_id, reqs)
         except Exception as e:
             err_msg = str(e)
@@ -97,10 +145,8 @@ class ModelRpcServer(rpyc.Service):
             raise e
 
     # @calculate_time(show=False, min_cost_ms=300)
-    def exposed_prefill_batch(self, batch_id):
+    def prefill_batch(self, batch_id):
         try:
-            if self.world_size != 1:
-                batch_id = obtain(batch_id)
             return self.backend.prefill_batch(batch_id)
         except Exception as e:
             err_msg = str(e)
@@ -108,10 +154,8 @@ class ModelRpcServer(rpyc.Service):
             raise e
 
     # @calculate_time(show=True, min_cost_ms=200)
-    def exposed_decode_batch(self, batch_id):
+    def decode_batch(self, batch_id):
         try:
-            if self.world_size != 1:
-                batch_id = obtain(batch_id)
             return self.backend.decode_batch(batch_id)
         except Exception as e:
             err_msg = str(e)
@@ -119,149 +163,165 @@ class ModelRpcServer(rpyc.Service):
             raise e
 
     # @calculate_time(show=True, min_cost_ms=0.1)
-    def exposed_filter_batch(self, batch_id, req_id_list, finished_req_id_list):
-        if self.world_size != 1:
-            batch_id, req_id_list, finished_req_id_list = (
-                obtain(batch_id),
-                obtain(req_id_list),
-                obtain(finished_req_id_list),
-            )
-
+    def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
         return self.backend.filter_batch(batch_id, req_id_list, finished_req_id_list)
 
-    def exposed_pause_reqs(self, batch_id, req_list):
-        if self.world_size != 1:
-            batch_id, req_list = obtain(batch_id), obtain(req_list)
-
+    def pause_reqs(self, batch_id, req_list):
         return self.backend.pause_reqs(batch_id, req_list)
 
     # @calculate_time(show=True, min_cost_ms=0.1)
-    def exposed_merge_batch(self, batch_id1, batch_id2):
-        if self.world_size != 1:
-            batch_id1, batch_id2 = obtain(batch_id1), obtain(batch_id2)
+    def merge_batch(self, batch_id1, batch_id2):
         return self.backend.merge_batch(batch_id1, batch_id2)
 
     # @calculate_time(show=True, min_cost_ms=10)
-    def exposed_remove_batch(self, batch_id):
-        if self.world_size != 1:
-            batch_id = obtain(batch_id)
-
+    def remove_batch(self, batch_id):
         return self.backend.remove_batch(batch_id)
 
-    def exposed_get_max_total_token_num(self):
+    def get_max_total_token_num(self):
         return self.backend.get_max_total_token_num()
 
 
 class ModelRpcClient:
-    def __init__(self, model_rpc, world_size, rpc_server_process=None):
-        self.model: ModelRpcServer = model_rpc
-        self.world_size = world_size
-        self.rpc_server_process = rpc_server_process
-        self.use_rpc = self.world_size != 1
-        if self.use_rpc:
-
-            def async_wrap(f):
-                f = rpyc.async_(f)
-
-                async def _func(*args, **kwargs):
-                    ans = f(*args, **kwargs)
-                    await asyncio.to_thread(ans.wait)
-                    # raise if exception
-                    return ans.value
-
-                return _func
-
-            self._init_model = async_wrap(self.model.init_model)
-            self._add_batch = async_wrap(self.model.add_batch)
-            self._prefill_batch = async_wrap(self.model.prefill_batch)
-            self._decode_batch = async_wrap(self.model.decode_batch)
-            self._pause_reqs = async_wrap(self.model.pause_reqs)
-            self._filter_batch = async_wrap(self.model.filter_batch)
-            self._merge_batch = async_wrap(self.model.merge_batch)
-            self._remove_batch = async_wrap(self.model.remove_batch)
-            self._get_max_total_token_num = async_wrap(self.model.get_max_total_token_num)
+    def __init__(self, model_infer_servers: List[ModelRpcServer], world_size, rpc_event, rpc_finished_event):
+        # model_infer_servers 是传入的推理服务对象，但是在重构后，
+        # 单卡不使用rpc 通信的时候，里面才有真实对象，当多卡使用rpc
+        # 以后，model_infer_servers 传入的是 None 数组
+        if world_size == 1:
+            self.model_infer_server: ModelRpcServer = model_infer_servers[0]
         else:
-            self._init_model = self.model.exposed_init_model
-            self._add_batch = self.model.exposed_add_batch
-            self._prefill_batch = self.model.exposed_prefill_batch
-            self._decode_batch = self.model.exposed_decode_batch
-            self._pause_reqs = self.model.exposed_pause_reqs
-            self._filter_batch = self.model.exposed_filter_batch
-            self._merge_batch = self.model.exposed_merge_batch
-            self._remove_batch = self.model.exposed_remove_batch
-            self._get_max_total_token_num = self.model.exposed_get_max_total_token_num
+            self.model_infer_server: ModelRpcServer = None
+
+        self.world_size = world_size
+        self.use_rpc = self.world_size != 1
+        self.rpc_shm_params = RpcShmParams()
+        self.rpc_shm_params.create_or_link_shm()
+        self.rpc_shm_results = RpcShmResults()
+        self.rpc_shm_results.create_or_link_shm()
+
+        self.rpc_event = rpc_event
+        self.rpc_finished_event = rpc_finished_event
         return
 
     async def init_model(self, kvargs):
-        ans: rpyc.AsyncResult = self._init_model(kvargs)
         if self.use_rpc:
-            await ans
+            self.rpc_shm_params.write_func_params("init_model", (kvargs,))
+            self.rpc_event.set()
+
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
             return
         else:
+            self.model_infer_server.init_model(kvargs)
             return
 
     async def init_batch(self, batch_id, reqs):
-        ans = self._add_batch(batch_id, reqs)
         if self.use_rpc:
-            return await ans
-        else:
-            return ans
+            self.rpc_shm_params.write_func_params("init_batch", (batch_id, reqs))
+            self.rpc_event.set()
 
-    async def prefill_batch(self, batch_id):
-        ans = self._prefill_batch(batch_id)
-        if self.use_rpc:
-            return await ans
-        else:
-            return ans
-
-    async def decode_batch(self, batch_id):
-        ans = self._decode_batch(batch_id)
-        if self.use_rpc:
-            return await ans
-        else:
-            return ans
-
-    async def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
-        ans = self._filter_batch(batch_id, req_id_list, finished_req_id_list)
-        if self.use_rpc:
-            await ans
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
             return
         else:
+            self.model_infer_server.init_batch(batch_id, reqs)
+            return
+
+    async def prefill_batch(self, batch_id):
+        if self.use_rpc:
+            self.rpc_shm_params.write_func_params("prefill_batch", (batch_id,))
+            self.rpc_event.set()
+
+            await asyncio.to_thread(self.rpc_finished_event.wait)
+            self.rpc_finished_event.clear()
+            return
+        else:
+            self.model_infer_server.prefill_batch(batch_id)
+            return
+
+    async def decode_batch(self, batch_id):
+        if self.use_rpc:
+            self.rpc_shm_params.write_func_params("decode_batch", (batch_id,))
+            self.rpc_event.set()
+
+            await asyncio.to_thread(self.rpc_finished_event.wait)
+            self.rpc_finished_event.clear()
+            return
+        else:
+            self.model_infer_server.decode_batch(batch_id)
+            return
+
+    async def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
+        if self.use_rpc:
+            self.rpc_shm_params.write_func_params("filter_batch", (batch_id, req_id_list, finished_req_id_list))
+            self.rpc_event.set()
+
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
+            return
+        else:
+            self.model_infer_server.filter_batch(batch_id, req_id_list, finished_req_id_list)
             return
 
     async def pause_reqs(self, batch_id, reqs_list):
-        ans = self._pause_reqs(batch_id, reqs_list)
         if self.use_rpc:
-            await ans
+            self.rpc_shm_params.write_func_params("filter_batch", (batch_id, reqs_list))
+            self.rpc_event.set()
+
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
             return
         else:
+            self.model_infer_server.pause_reqs(batch_id, reqs_list)
             return
 
     async def merge_batch(self, batch_id1, batch_id2):
-        ans = self._merge_batch(batch_id1, batch_id2)
         if self.use_rpc:
-            await ans
+            self.rpc_shm_params.write_func_params("merge_batch", (batch_id1, batch_id2))
+            self.rpc_event.set()
+
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
             return
         else:
+            self.model_infer_server.merge_batch(batch_id1, batch_id2)
             return
 
     async def remove_batch(self, batch_id):
-        ans = self._remove_batch(batch_id)
         if self.use_rpc:
-            await ans
+            self.rpc_shm_params.write_func_params("remove_batch", (batch_id,))
+            self.rpc_event.set()
+
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
             return
         else:
+            self.model_infer_server.remove_batch(batch_id)
             return
 
     async def get_max_total_token_num(self):
-        ans = self._get_max_total_token_num()
         if self.use_rpc:
-            return await ans
+            self.rpc_shm_params.write_func_params("get_max_total_token_num", ())
+            self.rpc_event.set()
+
+            self.rpc_finished_event.wait()
+            self.rpc_finished_event.clear()
+            func_name, ret = self.rpc_shm_results.read_func_result()
+            assert func_name == "get_max_total_token_num"
+            return ret
         else:
-            return ans
+            return self.model_infer_server.get_max_total_token_num()
 
 
-def _init_env(args, socket_path, info_queue, mem_queue, router_lock, success_event: mp.Event):
+def _init_env(
+    args,
+    tp_rank,
+    info_queue,
+    mem_queue,
+    router_lock,
+    rpc_event: mp.Event,
+    rpc_finished_event: mp.Event,
+    success_event: mp.Event,
+):
     import lightllm.utils.rpyc_fix_utils as _
 
     # 注册graceful 退出的处理
@@ -275,41 +335,36 @@ def _init_env(args, socket_path, info_queue, mem_queue, router_lock, success_eve
 
     g_router_lock.obj = router_lock
 
-    from rpyc.utils.server import ThreadedServer
-
-    t = ThreadedServer(
-        ModelRpcServer(args, info_queue, mem_queue), socket_path=socket_path, protocol_config={"allow_pickle": True}
-    )
+    model_rpc_server = ModelRpcServer(args, tp_rank, rpc_event, rpc_finished_event, info_queue, mem_queue)
     success_event.set()
-    t.start()
+
+    model_rpc_server.loop_thread.join()
     return
 
 
-async def start_model_process(args, port, world_size, info_queue: mp.Queue, mem_queue: mp.Queue, router_lock: mp.Queue):
+async def start_model_process(
+    args,
+    tp_rank,
+    rpc_event,
+    rpc_finished_event,
+    world_size,
+    info_queue: mp.Queue,
+    mem_queue: mp.Queue,
+    router_lock: mp.Queue,
+):
     import lightllm.utils.rpyc_fix_utils as _
 
     # 单卡时不使用 rpc
     if world_size == 1:
-        return ModelRpcClient(ModelRpcServer(args, info_queue, mem_queue), world_size)
+        return ModelRpcServer(args, tp_rank, rpc_event, rpc_finished_event, info_queue, mem_queue)
 
-    socket_path = tempfile.mktemp()
     success_event = mp.Event()
-    proc = mp.Process(target=_init_env, args=(args, socket_path, info_queue, mem_queue, router_lock, success_event))
+    proc = mp.Process(
+        target=_init_env,
+        args=(args, tp_rank, info_queue, mem_queue, router_lock, rpc_event, rpc_finished_event, success_event),
+    )
     proc.start()
     success_event.wait(timeout=40)
-
-    repeat_count = 0
-    while repeat_count < 20:
-        try:
-            from rpyc.utils.factory import unix_connect
-
-            con = unix_connect(socket_path, config={"allow_pickle": True})
-            break
-        except BaseException:
-            await asyncio.sleep(1)
-        repeat_count += 1
-    if repeat_count == 20:
-        raise Exception("init rpc env error!")
-
     assert proc.is_alive()
-    return ModelRpcClient(con.root, world_size, rpc_server_process=proc)
+
+    return None

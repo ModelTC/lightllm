@@ -13,6 +13,7 @@ import concurrent.futures
 import zmq
 import zmq.asyncio
 import torch.multiprocessing as mp
+import multiprocessing
 from typing import Dict, List, Optional
 from .batch import Batch
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
@@ -90,62 +91,72 @@ class RouterManager:
 
     async def wait_to_model_ready(self):
         # 初始化模型
-        self.model_rpcs: List[ModelRpcClient] = []
+        self.model_rpc_servers = []
         # 用于 kv move 管理进程 和 推理进程进行task信息的交互。
         self.info_queue: mp.Queue = mp.Queue()
         self.mem_queues: List[torch.multiprocessing.Queue] = [
             torch.multiprocessing.Queue() for _ in range(self.world_size)
         ]
+        self.rpc_event = multiprocessing.Event()
+        self.rpc_finished_event = multiprocessing.Event()
+
         for rank_id in range(self.world_size):
             rpc_model = await start_model_process(
                 args=self.args,
-                port=self.model_rpc_ports[rank_id],
+                tp_rank=rank_id,
+                rpc_event=self.rpc_event,
+                rpc_finished_event=self.rpc_finished_event,
                 world_size=self.world_size,
                 info_queue=self.info_queue,
                 mem_queue=self.mem_queues[rank_id],
                 router_lock=self.router_lock,
             )
-            self.model_rpcs.append(rpc_model)
+            self.model_rpc_servers.append(rpc_model)
 
-        init_model_ret = []
-        for rank_id in range(self.world_size):  # async init model process
-            kvargs = {
-                "args": self.args,
-                "rank_id": rank_id,
-                "world_size": self.world_size,
-                "dp_size": self.dp_size,
-                "weight_dir": self.model_weightdir,
-                "load_way": self.load_way,
-                "max_total_token_num": self.max_total_token_num,
-                "mode": self.mode,
-                "max_req_num": self.args.running_max_req_size + 8,
-                "max_seq_length": self.args.max_req_total_len + 8,  # 留一点余量
-                "nccl_port": self.args.nccl_port,
-                "is_first_token_constraint_mode": self.args.first_token_constraint_mode,
-                "is_splitfuse_mode": self.is_splitfuse_mode,
-                "splitfuse_block_size": self.splitfuse_block_size,
-                "is_token_healing": self.args.token_healing_mode,
-                "return_all_prompt_logprobs": self.args.return_all_prompt_logprobs,
-                "use_reward_model": self.args.use_reward_model,
-                "use_dynamic_prompt_cache": self.args.use_dynamic_prompt_cache,
-                "data_type": self.args.data_type,
-                "eos_id": self.eos_id,
-                "beam_mode": self.args.beam_mode,
-                "diverse_mode": self.args.diverse_mode,
-                "graph_max_batch_size": self.args.graph_max_batch_size,
-                "graph_max_len_in_batch": self.args.graph_max_len_in_batch,
-                "disable_cudagraph": self.args.disable_cudagraph,
-                "mem_fraction": self.args.mem_fraction,
-                "batch_max_tokens": self.args.batch_max_tokens,
-                "quant_type": self.args.quant_type,
-                "quant_cfg": self.args.quant_cfg,
-                "pd_rpyc_port": self.args.pd_tp_infer_rpyc_ports[rank_id],  # 非 pd 模式可以不设置
-            }
-            init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
+        self.model_rpc_client = ModelRpcClient(
+            model_infer_servers=self.model_rpc_servers,
+            world_size=self.world_size,
+            rpc_event=self.rpc_event,
+            rpc_finished_event=self.rpc_finished_event,
+        )
 
-        await asyncio.gather(*init_model_ret)
+        kvargs = {
+            "args": self.args,
+            "rank_id": None,  # 由后续处理填充真实数据
+            "world_size": self.world_size,
+            "dp_size": self.dp_size,
+            "weight_dir": self.model_weightdir,
+            "load_way": self.load_way,
+            "max_total_token_num": self.max_total_token_num,
+            "mode": self.mode,
+            "max_req_num": self.args.running_max_req_size + 8,
+            "max_seq_length": self.args.max_req_total_len + 8,  # 留一点余量
+            "nccl_port": self.args.nccl_port,
+            "is_first_token_constraint_mode": self.args.first_token_constraint_mode,
+            "is_splitfuse_mode": self.is_splitfuse_mode,
+            "splitfuse_block_size": self.splitfuse_block_size,
+            "is_token_healing": self.args.token_healing_mode,
+            "return_all_prompt_logprobs": self.args.return_all_prompt_logprobs,
+            "use_reward_model": self.args.use_reward_model,
+            "use_dynamic_prompt_cache": self.args.use_dynamic_prompt_cache,
+            "data_type": self.args.data_type,
+            "eos_id": self.eos_id,
+            "beam_mode": self.args.beam_mode,
+            "diverse_mode": self.args.diverse_mode,
+            "graph_max_batch_size": self.args.graph_max_batch_size,
+            "graph_max_len_in_batch": self.args.graph_max_len_in_batch,
+            "disable_cudagraph": self.args.disable_cudagraph,
+            "mem_fraction": self.args.mem_fraction,
+            "batch_max_tokens": self.args.batch_max_tokens,
+            "quant_type": self.args.quant_type,
+            "quant_cfg": self.args.quant_cfg,
+            "pd_rpyc_port": self.args.pd_tp_infer_rpyc_ports[rank_id],  # 非 pd 模式可以不设置
+        }
+
+        await self.model_rpc_client.init_model(kvargs=kvargs)
+
         if self.max_total_token_num is None:
-            self.max_total_token_num = await self.model_rpcs[0].get_max_total_token_num()
+            self.max_total_token_num = await self.model_rpc_client.get_max_total_token_num()
             self.args.max_total_token_num = self.max_total_token_num
         if self.args.use_dynamic_prompt_cache:
             self.radix_cache_client = RadixCacheReadOnlyClient(
@@ -232,10 +243,10 @@ class RouterManager:
 
     async def get_schedule_result(self, running_batch: Batch):
         if self.schedule_task is None:
-            self.overlap_event.clear()
 
             def get_new_batch():
                 self.overlap_event.wait(timeout=0.020)
+                self.overlap_event.clear()
                 time.sleep(0.003)  # 这里是为了保证能正确进入推理的流程，保证折叠成功。
                 new_batch = self.req_queue.generate_new_batch(running_batch)
                 return new_batch
@@ -302,8 +313,7 @@ class RouterManager:
 
     async def _init_batch(self, batch: Batch):
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
-        rets = [self.model_rpcs[tp_rank].init_batch(batch.batch_id, reqs) for tp_rank in range(self.world_size)]
-        await asyncio.gather(*rets)
+        await self.model_rpc_client.init_batch(batch_id=batch.batch_id, reqs=reqs)
         self._update_init_status_to_batch(batch)
         logger.debug(f"Init Batch: {batch.simple_log()} \n")
         return
@@ -314,9 +324,8 @@ class RouterManager:
         await self._init_batch(batch)
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
-            rets = [self.model_rpcs[tp_rank].prefill_batch(batch.batch_id) for tp_rank in range(self.world_size)]
             self.overlap_event.set()
-            await asyncio.gather(*rets)
+            await self.model_rpc_client.prefill_batch(batch_id=batch.batch_id)
             self._update_out_status_to_batch(batch)
             unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
             self._send_to_detokenization_proc(batch)
@@ -330,9 +339,8 @@ class RouterManager:
     async def _decode_batch(self, batch: Batch):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
-        rets = [self.model_rpcs[tp_rank].decode_batch(batch.batch_id) for tp_rank in range(self.world_size)]
         self.overlap_event.set()
-        await asyncio.gather(*rets)
+        await self.model_rpc_client.decode_batch(batch.batch_id)
 
         self._update_out_status_to_batch(batch)
         unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
@@ -345,31 +353,20 @@ class RouterManager:
         return
 
     async def _filter_batch(self, batch: Batch, unfinished_req_ids, finished_req_ids: List):
-        rets = [
-            self.model_rpcs[tp_rank].filter_batch(batch.batch_id, unfinished_req_ids, finished_req_ids)
-            for tp_rank in range(self.world_size)
-        ]
-        await asyncio.gather(*rets)
+        await self.model_rpc_client.filter_batch(batch.batch_id, unfinished_req_ids, finished_req_ids)
         return
 
     async def _merge_batch(self, batch1, batch2):
-        rets = [
-            self.model_rpcs[tp_rank].merge_batch(batch1.batch_id, batch2.batch_id) for tp_rank in range(self.world_size)
-        ]
-        await asyncio.gather(*rets)
+        await self.model_rpc_client.merge_batch(batch1.batch_id, batch2.batch_id)
         return
 
     async def _remove_batch(self, batch):
-        rets = [self.model_rpcs[tp_rank].remove_batch(batch.batch_id) for tp_rank in range(self.world_size)]
-        await asyncio.gather(*rets)
+        await self.model_rpc_client.remove_batch(batch.batch_id)
         return
 
     async def _pause_reqs(self, batch: Batch, pasue_reqs):
         pasue_reqs_info = [(r.request_id, r.req_status) for r in pasue_reqs]
-        rets = [
-            self.model_rpcs[tp_rank].pause_reqs(batch.batch_id, pasue_reqs_info) for tp_rank in range(self.world_size)
-        ]
-        await asyncio.gather(*rets)
+        await self.model_rpc_client.pause_reqs(batch.batch_id, pasue_reqs_info)
         return
 
     async def _handle_finish_req(self, batch: Batch, unfinished_req_ids, finished_req_ids):
