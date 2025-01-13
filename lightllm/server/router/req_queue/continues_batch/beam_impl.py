@@ -128,7 +128,7 @@ class BeamContinuesBatchQueue(BaseQueue):
                         self.pause_req_dict.pop(req.request_id)
 
         if len(can_run_list) != 0:
-            new_batch = Batch(uuid.uuid4().hex, can_run_list, dp_size=self.dp_size)
+            new_batch = Batch(uuid.uuid4().int, can_run_list, dp_size=self.dp_size)
             for req in abort_req_list:
                 self.router.shm_req_manager.put_back_req_obj(req)
 
