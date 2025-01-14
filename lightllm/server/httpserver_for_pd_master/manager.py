@@ -350,15 +350,10 @@ class HttpServerManagerForPDMaster:
                             finish_status: FinishStatus = finish_status
                             group_req_id = convert_sub_id_to_group_id(sub_req_id)
                             try:
-                                if not finish_status.is_aborted():
-                                    req_status: ReqStatus = self.req_id_to_out_inf[group_req_id]
-                                    async with req_status.lock:
-                                        req_status.out_token_info_list.append(
-                                            (sub_req_id, text, metadata, finish_status)
-                                        )
-                                        req_status.event.set()
-                                else:
-                                    del self.req_id_to_out_inf[group_req_id]
+                                req_status: ReqStatus = self.req_id_to_out_inf[group_req_id]
+                                async with req_status.lock:
+                                    req_status.out_token_info_list.append((sub_req_id, text, metadata, finish_status))
+                                    req_status.event.set()
                             except:
                                 pass
                     else:
