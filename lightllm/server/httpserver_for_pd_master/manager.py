@@ -221,7 +221,7 @@ class HttpServerManagerForPDMaster:
             logger.warning(f"group_request_id: {group_request_id} kv move time out err")
             assert False, f"req_id {group_request_id} kv move time out, server is busy"
 
-        sampling_params.move_kv_to_decode_node = None
+        sampling_params.move_kv_to_decode_node.initialize(None)
         sampling_params.max_new_tokens = old_max_new_tokens - 1
         sampling_params.suggested_dp_index = up_status_event.upkv_status.dp_index
 
