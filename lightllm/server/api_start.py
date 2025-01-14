@@ -163,7 +163,7 @@ def normal_or_p_d_start(args):
     # 申请在 p d 分离模式下，会用的端口
     args.pd_tp_infer_rpyc_ports = can_use_ports[0 : args.tp]
     # p d 分离模式下用于标识节点的id
-    args.pd_node_id = str(uuid.uuid4())
+    args.pd_node_id = uuid.uuid4().int
     # p 节点用来建立torch kv 传输分布组的可用端口范围
     args.pd_p_allowed_port_min = 20000
     args.pd_p_allowed_port_max = 30000
