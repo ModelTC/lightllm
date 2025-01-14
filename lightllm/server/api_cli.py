@@ -56,7 +56,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tokenizer_mode",
         type=str,
-        default="slow",
+        default="fast",
         help="""tokenizer load mode, can be slow, fast or auto, slow mode load fast but run slow,
           slow mode is good for debug and test, fast mode get best performance, auto mode will
           try to use fast mode, if failed will use slow mode""",

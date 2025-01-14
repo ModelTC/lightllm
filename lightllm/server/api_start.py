@@ -253,6 +253,10 @@ def pd_master_start(args):
     can_use_ports = alloc_can_use_network_port(num=1, used_nccl_ports=[args.nccl_port, args.port])
     metric_port = can_use_ports[0]
 
+    args.metric_port = metric_port
+
+    set_env(args)
+
     start_submodule_processes(
         start_funcs=[
             start_metric_manager,
