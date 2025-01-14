@@ -100,7 +100,6 @@ class InferReq:
         index = self.get_cur_total_len()
         self.shm_req.shm_prompt_ids.arr[index] = next_token_id
         self.shm_req.shm_logprobs.arr[index] = logprob
-        self.cur_output_len += 1
         return
 
     def get_last_gen_token(self):
