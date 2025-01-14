@@ -209,15 +209,10 @@ class Req(ctypes.Structure):
         ref_count_ok = self.ref_count == 1
         can_released_mark = self.can_released_mark
 
-        if self.finish_status.is_aborted() and can_released_mark and ref_count_ok:
+        if self.is_aborted and can_released_mark and ref_count_ok:
             return True
 
-        if (
-            self.finish_status.is_ok_finished()
-            and can_released_mark
-            and ref_count_ok
-            and self.out_tokens_queue.is_empty()
-        ):
+        if self.finish_status.is_finished() and can_released_mark and ref_count_ok and self.out_tokens_queue.is_empty():
             return True
 
         return False
@@ -270,7 +265,7 @@ class NormalReq(Req):
         if self.req_status.is_waiting():
             return self.input_len
         elif self.req_status.is_paused_and_offload():
-            return self.input_len + self.cur_output_len
+            return self.input_len + self.shm_cur_output_len
         else:
             raise ValueError("Invalid request status")
 
