@@ -201,7 +201,7 @@ class HttpServerManagerForPDMaster:
                 token_list = await req_status.pop_all_tokens()
                 for sub_req_id, request_output, metadata, finish_status in token_list:
                     if old_max_new_tokens != 1:
-                        finish_status = FinishStatus.NO_FINISH
+                        finish_status = FinishStatus(FinishStatus.NO_FINISH)
                     else:
                         finish_status = FinishStatus(finish_status)
                     # 得到 p 节点返回的 prompt_ids 信息
@@ -347,7 +347,7 @@ class HttpServerManagerForPDMaster:
                 for obj in objs:
                     if obj[0] == ObjType.TOKEN_PACKS:
                         for sub_req_id, text, metadata, finish_status in obj[1]:
-                            finish_status = FinishStatus(finish_status)
+                            finish_status: FinishStatus = finish_status
                             group_req_id = convert_sub_id_to_group_id(sub_req_id)
                             try:
                                 if not finish_status.is_aborted():

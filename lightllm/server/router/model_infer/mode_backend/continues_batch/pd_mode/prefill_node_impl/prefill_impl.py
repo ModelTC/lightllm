@@ -59,7 +59,6 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
-        output_dict = {}
         batch: InferBatch = self.cache.pop(batch_id)
         if is_prefill:
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
@@ -72,32 +71,21 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            # prefill and decode is same
-            req_obj: InferReq = req_obj
-            req_obj.cur_kv_len = len(req_obj.input_token_ids)
-            req_obj.input_token_ids.append(next_token_id)
-            req_obj.out_token_id_count[next_token_id] += 1
-            req_obj.update_finish_status(self.eos_id)
-
-            metadata = {
-                "id": int(next_token_id),
-                "logprob": float(next_token_logprob),
-            }
-
-            output_dict[req_obj.r_id] = (
-                req_obj.req_status,
-                req_obj.cur_kv_len,
-                req_obj.get_output_len(),
-                [(int(next_token_id), metadata)],
-                req_obj.finish_status.value,  # 转化为整数，避免传送大对象,
-                None,
-            )  # 请求状态， 当前占用的kv的长度， 当前输出token的数量， 输出的token的id和元信息列表， 是否推理结束的状态， 额外保留参数
-
+            
+            if self.tp_rank < self.dp_size:
+                # prefill and decode is same
+                req_obj: InferReq = req_obj
+                req_obj.shm_req.cur_kv_len = len(req_obj.get_input_token_ids())
+                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
+                req_obj.out_token_id_count[next_token_id] += 1
+                req_obj.update_finish_status(self.eos_id)
+                req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
+                
         if is_prefill:
             self.prefill_req_handle_and_frozen_tokens(run_reqs)
 
         self.cache[batch.batch_id] = batch
-        return output_dict
+        return
 
     def prefill_req_handle_and_frozen_tokens(self, run_reqs: List[InferReq]):
         # 提前在radix cache中回收相关的信息，并添加引用信息
@@ -106,15 +94,23 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         g_infer_state_lock.acquire()
         try:
             for req in run_reqs:
-                key = torch.tensor(req.input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
-                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+                req:InferReq = req
+                key = req.get_input_token_ids()[0:req.shm_req.cur_kv_len]
+                key = torch.tensor(key, dtype=torch.int64, device="cpu")
+                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len].detach().cpu()
                 prefix_len = self.radix_cache.insert(key, value)
                 self.model.mem_manager.free(self.model.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
                 if req.shared_kv_node is not None:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
-                req.cur_kv_len = 0
-                if req.sampling_param.move_kv_to_decode_node is not None:
+                
+                # 等待所有的请求都将radix cache 操作完成，不然下面的 req.shm_req.cur_kv_len = 0 可能会让
+                # 其他进程得到错误的 kv 长度信息，然后执行错误的操作。
+                dist.barrier()
+                if self.tp_rank < self.dp_size:
+                    req.shm_req.cur_kv_len = 0
+                
+                if req.shm_req.sample_params.move_kv_to_decode_node.exists:
                     # 注意兼容纯tp 和 tp dp 混合模式的逻辑
                     if self.tp_rank < self.dp_size:
                         g_router_lock.acquire()
@@ -124,9 +120,9 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                     share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
                     assert len(key) == len(value)
                     # 将下面的请求放入到任务队列中, 注意要使用raidx cache 返回的value
-                    decode_node_info = DecodeNodeInfo(**req.sampling_param.move_kv_to_decode_node)
+                    decode_node_info = DecodeNodeInfo(**req.shm_req.sample_params.move_kv_to_decode_node.to_dict())
                     task = KVMoveTask(
-                        group_request_id=req.group_req_id,
+                        group_request_id=req.shm_req.group_req_id,
                         input_tokens=key.tolist(),
                         prefill_token_indexes=value.tolist(),
                         decode_token_indexes=None,
