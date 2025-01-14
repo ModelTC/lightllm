@@ -59,7 +59,8 @@ def select_paused_reqs(batch: Batch, strategy: Strategy, req_queue: BaseQueue, m
     # 更新请求状态
     for req in pause_reqs:
         req.req_status = ReqRunStatus.PAUSED_AND_OFFLOAD
-        req.cur_kv_len = 0
+        # 重构后改由推理进程进行长度设置。
+        # req.shm_cur_kv_len = 0
 
     req_queue.back_to_wait_list(pause_reqs)
 
