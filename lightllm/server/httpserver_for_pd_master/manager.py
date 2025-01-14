@@ -188,7 +188,7 @@ class HttpServerManagerForPDMaster:
         old_max_new_tokens = sampling_params.max_new_tokens
         sampling_params.max_new_tokens = 1
         sampling_params.move_kv_to_decode_node.initialize(decode_node_dict if old_max_new_tokens != 1 else None)
-        sampling_params.suggested_dp_index = None
+        sampling_params.suggested_dp_index = -1
 
         await p_node.websocket.send_bytes(pickle.dumps((ObjType.REQ, (prompt, sampling_params, multimodal_params))))
 

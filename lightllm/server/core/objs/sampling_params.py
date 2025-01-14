@@ -151,14 +151,14 @@ class DecodeNode(ctypes.Structure):
 
         self.exists = True
 
-        pd_node_id = data_dict["pd_node_id"]
+        pd_node_id = data_dict["node_id"]
         self.node_id_high = (pd_node_id >> 64) & 0xFFFFFFFFFFFFFFFF
         self.node_id_low = pd_node_id & 0xFFFFFFFFFFFFFFFF
 
-        ip_parts = [int(part) for part in data_dict["host"].split(".")]
+        ip_parts = [int(part) for part in data_dict["ip"].split(".")]
         self.ip = (ctypes.c_int32 * 4)(*ip_parts)
 
-        self.rpyc_port = data_dict["pd_decode_rpyc_port"]
+        self.rpyc_port = data_dict["rpyc_port"]
         self.max_new_tokens = data_dict["max_new_tokens"]
 
     def to_dict(self):
@@ -166,9 +166,9 @@ class DecodeNode(ctypes.Structure):
             return None
         uuid_int = (self.node_id_high << 64) | self.node_id_low
         return {
-            "pd_node_id": uuid_int,
-            "host": ".".join(str(self.ip[i]) for i in range(4)),
-            "pd_decode_rpyc_port": self.rpyc_port,
+            "node_id": uuid_int,
+            "ip": ".".join(str(self.ip[i]) for i in range(4)),
+            "rpyc_port": self.rpyc_port,
             "max_new_tokens": self.max_new_tokens,
         }
 
