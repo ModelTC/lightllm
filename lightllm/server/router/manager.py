@@ -441,6 +441,10 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
 
     graceful_registry(inspect.currentframe().f_code.co_name)
 
+    from lightllm.utils.process_check import start_parent_check_thread
+
+    start_parent_check_thread()
+
     try:
         router = RouterManager(
             args,

@@ -335,6 +335,10 @@ def _init_env(
 
     g_router_lock.obj = router_lock
 
+    from lightllm.utils.process_check import start_parent_check_thread
+
+    start_parent_check_thread()
+
     model_rpc_server = ModelRpcServer(args, tp_rank, rpc_event, rpc_finished_event, info_queue, mem_queue)
     success_event.set()
 
