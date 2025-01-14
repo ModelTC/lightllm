@@ -231,7 +231,7 @@ class Req(ctypes.Structure):
         return False
 
     def get_used_tokens(self):
-        return max(0, self.cur_kv_len)
+        return max(0, self.shm_cur_kv_len)
 
     def get_tuple_tokens(self, is_busy, router_max_new_token_len):
         raise NotImplementedError("Subclasses should implement this method")
@@ -247,7 +247,7 @@ class NormalReq(Req):
     _pack_ = 4
 
     def get_tuple_tokens(self, is_busy, router_max_new_token_len):
-        has_out_len = self.cur_output_len
+        has_out_len = self.shm_cur_output_len
         if self.sample_params.ignore_eos:
             cur_max_new_token_len = self.sample_params.max_new_tokens
         elif is_busy:
@@ -309,7 +309,7 @@ class SplitFuseReq(Req):
     _pack_ = 4
 
     def get_tuple_tokens(self, is_busy, router_max_new_token_len):
-        has_out_len = self.cur_output_len
+        has_out_len = self.shm_cur_output_len
         if self.sample_params.ignore_eos:
             cur_max_new_token_len = self.sample_params.max_new_tokens
         elif is_busy:
