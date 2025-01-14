@@ -12,8 +12,6 @@ logger = init_logger(__name__)
 
 def decode_mode_fix(req_out: DecodeReq, tokenizer, eos_id):
     new_token_id = req_out.prompt_ids[-1]
-    req_out.prompt_ids = req_out.prompt_ids[0:-1]
-    req_out.output_ids.append(new_token_id)
 
     out_text = decode_token(
         tokenizer,

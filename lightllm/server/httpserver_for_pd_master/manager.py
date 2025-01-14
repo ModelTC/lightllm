@@ -15,7 +15,7 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict
 from lightllm.server.core.objs import FinishStatus
 from ..pd_io_struct import PD_Client_Obj, UpKVStatus, ObjType
-from ..sampling_params import SamplingParams
+from lightllm.server.core.objs import SamplingParams
 from ..multimodal_params import MultimodalParams
 from ..tokenizer import get_tokenizer
 from ..req_id_generator import ReqIDGenerator, convert_sub_id_to_group_id
@@ -187,7 +187,7 @@ class HttpServerManagerForPDMaster:
 
         old_max_new_tokens = sampling_params.max_new_tokens
         sampling_params.max_new_tokens = 1
-        sampling_params.move_kv_to_decode_node = decode_node_dict if old_max_new_tokens != 1 else None
+        sampling_params.move_kv_to_decode_node.initialize(decode_node_dict if old_max_new_tokens != 1 else None)
         sampling_params.suggested_dp_index = None
 
         await p_node.websocket.send_bytes(pickle.dumps((ObjType.REQ, (prompt, sampling_params, multimodal_params))))

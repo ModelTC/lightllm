@@ -2,7 +2,6 @@ import os
 import time
 import threading
 import psutil
-import sys
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -21,7 +20,7 @@ def check_parent_alive():
     while True:
         if not is_process_active(parent_pid):
             logger.warning("parent is dead, kill self")
-            sys.exit(-1)
+            os._exit(-1)
 
         time.sleep(10)
     return
@@ -29,5 +28,4 @@ def check_parent_alive():
 
 def start_parent_check_thread():
     thread = threading.Thread(target=check_parent_alive)
-    thread.daemon = True
     thread.start()

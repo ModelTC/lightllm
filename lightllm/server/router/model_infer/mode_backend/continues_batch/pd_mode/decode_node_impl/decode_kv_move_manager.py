@@ -541,5 +541,5 @@ def start_decode_kv_move_manager_process(args, info_queue: mp.Queue, mem_queues:
     proc.start()
     event.wait()
     assert proc.is_alive()
-    logger.info("prefill kv move manager process started")
+    logger.info("decode kv move manager process started")
     return

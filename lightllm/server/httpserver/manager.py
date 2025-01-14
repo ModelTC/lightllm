@@ -198,7 +198,7 @@ class HttpServerManager:
             )
             async for sub_req_id, request_output, metadata, finish_status in results_generator:
                 # p d 模式下，将 token 数据放入到转发队列中
-                if self.pd_mode.is_P_or_D():
+                if self.pd_mode.is_P_or_D() and sub_req_id >= 0:
                     await self.forwarding_queue.put((sub_req_id, request_output, metadata, finish_status))
                 else:
                     yield sub_req_id, request_output, metadata, finish_status
