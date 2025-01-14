@@ -48,35 +48,25 @@ class FinishStatus(ctypes.Structure):
     NO_FINISH = 0
     FINISHED_STOP = 1
     FINISHED_LENGTH = 2
-    FINISHED_ABORT = 3
 
     def __init__(self, init_state=NO_FINISH):
         self.status = init_state
 
     def set_status(self, new_status):
-        assert 0 <= new_status <= 3
+        assert 0 <= new_status <= 2
         self.status = new_status
 
     def get_status(self):
         return self.status
 
     def is_finished(self):
-        return self.FINISHED_STOP <= self.status <= self.FINISHED_ABORT
-
-    # 正常 finished 的状态
-    def is_ok_finished(self):
         return self.FINISHED_STOP <= self.status <= self.FINISHED_LENGTH
-
-    def is_aborted(self):
-        return self.status == self.FINISHED_ABORT
 
     def get_finish_reason(self):
         if self.status == self.FINISHED_STOP:
             return "stop"
         elif self.status == self.FINISHED_LENGTH:
             return "length"
-        elif self.status == self.FINISHED_ABORT:
-            return "abort"
         return None
 
 
@@ -113,6 +103,7 @@ class Req(ctypes.Structure):
         ("prompt_cache_len", ctypes.c_int),
         ("req_status", ReqRunStatus),
         ("finish_status", FinishStatus),
+        ("is_aborted", ctypes.c_bool),
         # 当FinishStatus 是正常结束状态时，finish_token_index 用于标识结束的
         # token 的index位置
         ("finish_token_index", ctypes.c_int),
@@ -142,6 +133,7 @@ class Req(ctypes.Structure):
         self.group_req_id = convert_sub_id_to_group_id(request_id)
         self.req_status = ReqRunStatus()
         self.finish_status = FinishStatus()
+        self.is_aborted = False
         self.shm_cur_kv_len = 0
         self.shm_cur_output_len = 0
         self.candetoken_out_len = 0
