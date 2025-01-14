@@ -20,7 +20,7 @@ class DecodeReq:
         self.prefix_str = ""
 
     def need_detoken(self):
-        if (not self.req.finish_status.is_aborted()) and len(self.output_ids) < self.req.candetoken_out_len:
+        if (not self.req.is_aborted) and len(self.output_ids) < self.req.candetoken_out_len:
             return True
         return False
 
@@ -32,7 +32,7 @@ class DecodeReq:
         return self.req.shm_prompt_ids.arr[src_index], src_index
 
     def can_set_release_mark(self):
-        if self.req.finish_status.is_aborted():
+        if self.req.is_aborted:
             return True
         if (
             self.req.finish_status.is_finished()
