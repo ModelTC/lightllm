@@ -104,8 +104,8 @@ class Req(ctypes.Structure):
         ("group_req_id", ctypes.c_int),
         ("input_len", ctypes.c_int),
         ("alloc_shm_numpy_len", ctypes.c_int),
-        ("cur_kv_len", ctypes.c_int),
-        ("cur_output_len", ctypes.c_int),  # 推理进程记录自己输出长度的计数
+        ("shm_cur_kv_len", ctypes.c_int),  # 推理进程记录自己当前占用kv 显存长度
+        ("shm_cur_output_len", ctypes.c_int),  # 推理进程记录自己输出长度的计数
         # candetoken_out_len 推理进程修改这个数据，让detokenization进程知道需要detoken的长度，
         # 虽然某种程度上 cur_output_len 也有同样的功能，但是为了避免多进程访问导致的问题，添加
         # candetoken_out_len 变量单独传输这个信息。
@@ -142,8 +142,8 @@ class Req(ctypes.Structure):
         self.group_req_id = convert_sub_id_to_group_id(request_id)
         self.req_status = ReqRunStatus()
         self.finish_status = FinishStatus()
-        self.cur_kv_len = 0
-        self.cur_output_len = 0
+        self.shm_cur_kv_len = 0
+        self.shm_cur_output_len = 0
         self.candetoken_out_len = 0
         self.prompt_cache_len = 0
         self.finish_token_index = -1
@@ -324,7 +324,7 @@ class SplitFuseReq(Req):
                 self.input_len + has_out_len,
                 max(
                     0,
-                    (self.input_len + has_out_len - self.cur_kv_len + self.splitfuse_block_size - 1)
+                    (self.input_len + has_out_len - self.shm_cur_kv_len + self.splitfuse_block_size - 1)
                     // self.splitfuse_block_size
                     + cur_max_new_token_len
                     - has_out_len
@@ -360,7 +360,7 @@ class SplitFuseReq(Req):
         splitfuse 调度模式的实现
         """
         if self.req_status.is_running():
-            return min(self.input_len + self.cur_output_len - self.cur_kv_len, self.splitfuse_block_size)
+            return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.splitfuse_block_size)
         else:
             raise ValueError("Invalid request status")
 
@@ -368,6 +368,6 @@ class SplitFuseReq(Req):
         if self.req_status.is_waiting():
             return min(self.input_len, self.splitfuse_block_size)
         elif self.req_status.is_paused_and_offload():
-            return min(self.input_len + self.cur_output_len, self.splitfuse_block_size)
+            return min(self.input_len + self.shm_cur_output_len, self.splitfuse_block_size)
         else:
             raise ValueError("Invalid request status")
