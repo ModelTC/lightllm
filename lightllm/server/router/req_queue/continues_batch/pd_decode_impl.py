@@ -36,7 +36,7 @@ class ContinuesBatchQueueForPDDecode(BaseQueue):
         abort_req_list = []
         aborted_count = 0
         for req in self.waiting_req_list:
-            if req.finish_status.is_aborted() and req.req_status == ReqRunStatus.WAIT_IN_QUEUE:
+            if req.is_aborted and req.req_status.is_waiting():
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
                 # 暂停的请求需要恢复后，由 router manager 部分来过滤。暂时保持这种处理方法, 否则会导致管理token和管理req对象的泄漏
                 aborted_count += 1

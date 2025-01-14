@@ -410,7 +410,7 @@ class HttpServerManager:
             req_status = self.req_id_to_out_inf[group_req_id]
             group_req_objs: GroupReqObjs = req_status.group_req_objs
             for req in group_req_objs.shm_req_objs:
-                req.finish_status.set_status(req.finish_status.FINISHED_ABORT)
+                req.is_aborted = True
             logger.warning(f"aborted group_request_id {group_req_objs.group_req_id}")
         else:
             logger.warning("aborted group_request_id not exist")

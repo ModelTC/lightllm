@@ -75,6 +75,10 @@ class InferReq:
         self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
         self.cum_logprob = 0.0  # cumulative logprob of each token, using for beamsearch and diverse_backend
 
+        self.cur_kv_len = 0
+        self.cur_output_len = 0
+        self.finish_status = FinishStatus()
+
         if self.sampling_param.shm_param.input_penalty:
             self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
         else:
@@ -84,10 +88,10 @@ class InferReq:
         return
 
     def get_output_len(self):
-        return self.shm_req.cur_output_len
+        return self.cur_output_len
 
     def get_cur_total_len(self):
-        return self.shm_req.input_len + self.shm_req.cur_output_len
+        return self.shm_req.input_len + self.cur_output_len
 
     def get_input_token_ids(self):
         return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
@@ -96,39 +100,33 @@ class InferReq:
         index = self.get_cur_total_len()
         self.shm_req.shm_prompt_ids.arr[index] = next_token_id
         self.shm_req.shm_logprobs.arr[index] = logprob
-        self.shm_req.cur_output_len += 1
+        self.cur_output_len += 1
         return
 
     def get_last_gen_token(self):
-        return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.shm_req.cur_output_len - 1]
+        return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.cur_output_len - 1]
 
     def update_finish_status(self, eos_ids):
-        if self.shm_req.finish_status.is_aborted():
-            return
-
         if self._stop_sequences_matched():
-            self.shm_req.finish_token_index = self.get_cur_total_len() - 1
-            self.shm_req.finish_status.set_status(FinishStatus.FINISHED_STOP)
+            self.finish_status.set_status(FinishStatus.FINISHED_STOP)
         elif (
-            self.shm_req.cur_output_len > 0
+            self.cur_output_len > 0
             and self.get_last_gen_token() in eos_ids
             and self.sampling_param.shm_param.ignore_eos is False
         ):
-            self.shm_req.finish_token_index = self.get_cur_total_len() - 1
-            self.shm_req.finish_status.set_status(FinishStatus.FINISHED_STOP)
-        elif self.shm_req.cur_output_len >= self.sampling_param.shm_param.max_new_tokens:
-            self.shm_req.finish_token_index = self.get_cur_total_len() - 1
-            self.shm_req.finish_status.set_status(FinishStatus.FINISHED_LENGTH)
+            self.finish_status.set_status(FinishStatus.FINISHED_STOP)
+        elif self.cur_output_len >= self.sampling_param.shm_param.max_new_tokens:
+            self.finish_status.set_status(FinishStatus.FINISHED_LENGTH)
         return
 
     def _stop_sequences_matched(self):
         for stop_token_ids in self.stop_sequences:
             stop_len = len(stop_token_ids)
-            output_len = self.shm_req.cur_output_len
+            output_len = self.cur_output_len
             if stop_len > 0:
                 if output_len >= stop_len:
                     input_token_ids = self.shm_req.shm_prompt_ids.arr[
-                        0 : (self.shm_req.input_len + self.shm_req.cur_output_len)
+                        0 : (self.shm_req.input_len + self.cur_output_len)
                     ]
                     if all(input_token_ids[i] == stop_token_ids[i] for i in range(-1, -(stop_len + 1), -1)):
                         return True
@@ -307,7 +305,9 @@ class InferBatch:
                     value_tensor = value_tensor.long().cuda()
                     mem_manager.add_refs(value_tensor)  # 加 refs
                     req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
-                    r_obj.shm_req.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
+                    r_obj.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
+
+            r_obj.shm_req.shm_cur_kv_len = r_obj.cur_kv_len
 
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.shm_req.req_status.set_status(ReqRunStatus.RUNNING)
@@ -322,11 +322,11 @@ class InferBatch:
 
     def _free_a_req_mem(self, free_token_index: List, req: InferReq, is_group_finished: bool):
         if self.radix_cache is None:
-            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len])
+            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
         else:
             input_token_ids = req.get_input_token_ids()
-            key = torch.tensor(input_token_ids[0 : req.shm_req.cur_kv_len], dtype=torch.int64, device="cpu")
-            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len].detach().cpu()
+            key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
+            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
             if is_group_finished:
                 prefix_len = self.radix_cache.insert(key, value)
                 free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
@@ -335,7 +335,7 @@ class InferBatch:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
             else:
-                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len])
+                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
                 if req.shared_kv_node is not None:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
@@ -429,11 +429,8 @@ class InferBatch:
             if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
                 # 不支持多输出的情况
                 self._free_a_req_mem(free_token_index, req, is_group_finished=True)
-                # 因为每个前面清楚token的处理中，需要cur_kv_len 信息
-                # 所以不能某个进程单独修改，可能会有同步问题，pasue 由
-                # router进程来修改
-                # to do
-                # req.shm_req.cur_kv_len = 0
+                req.cur_kv_len = 0
+                req.shm_req.shm_cur_kv_len = req.cur_kv_len
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
