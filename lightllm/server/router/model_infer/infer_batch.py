@@ -377,7 +377,7 @@ class InferBatch:
         if len(group_mapping) == 0:
             group_mapping.clear()
 
-        if self.radix_cache is not None:
+        if g_core_managers.radix_cache is not None:
             logger.debug(
                 f"free a batch state:\n"
                 f"radix refed token num {g_core_managers.radix_cache.get_refed_tokens_num()}\n"
