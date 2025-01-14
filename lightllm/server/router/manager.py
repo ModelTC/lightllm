@@ -150,7 +150,7 @@ class RouterManager:
             "batch_max_tokens": self.args.batch_max_tokens,
             "quant_type": self.args.quant_type,
             "quant_cfg": self.args.quant_cfg,
-            "pd_rpyc_port": self.args.pd_tp_infer_rpyc_ports[rank_id],  # 非 pd 模式可以不设置
+            "pd_rpyc_ports": self.args.pd_tp_infer_rpyc_ports,  # 非 pd 模式可以不设置
         }
 
         await self.model_rpc_client.init_model(kvargs=kvargs)
@@ -431,10 +431,6 @@ class RouterManager:
                 assert False, f"Error Req Inf {recv_req}"
 
     def clean_up(self):
-        for model_rpc in self.model_rpcs:
-            model_rpc.rpc_server_process.kill()
-        for model_rpc in self.model_rpcs:
-            model_rpc.rpc_server_process.join()
         return
 
 

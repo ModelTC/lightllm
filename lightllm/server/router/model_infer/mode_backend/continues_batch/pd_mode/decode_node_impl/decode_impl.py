@@ -32,7 +32,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         self.lock_nccl_group = dist.new_group(backend="gloo")
         from .decode_infer_rpyc import PDDecodeInferRpcServer
 
-        socket_path = f"/tmp/decode_node_infer_rpyc_{self.pd_rpyc_port}"
+        socket_path = f"/tmp/decode_node_infer_rpyc_{self.pd_rpyc_ports[self.tp_rank]}"
         if os.path.exists(socket_path):
             os.remove(socket_path)
 

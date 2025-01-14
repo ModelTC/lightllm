@@ -75,7 +75,7 @@ class ModeBackend:
         nccl_port_str = str(kvargs["nccl_port"])
         self.shared_token_load = TokenLoad(f"{nccl_port_str}_shared_token_load", self.dp_size)
         # p d 分离模式，decode节点才会使用的参数
-        self.pd_rpyc_port = kvargs.get("pd_rpyc_port", None)
+        self.pd_rpyc_ports = kvargs.get("pd_rpyc_ports", None)
         max_total_token_num = kvargs["max_total_token_num"]
 
         if self.dp_size > 1:
