@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from lightllm.server.router.model_infer.infer_batch import requests_mapping, InferReq, InferBatch
+from lightllm.server.router.model_infer.infer_batch import requests_mapping, InferReq, InferBatch, g_core_managers
 from lightllm.server.core.objs import ReqRunStatus
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
@@ -51,9 +51,9 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
 
     # dynamic prompt cache 准备 token
     g_infer_state_lock.acquire()
-    if radix_cache is not None:
-        radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
-    mem_indexes = batch.req_manager.mem_manager.alloc(input_ids.shape[0])
+    if g_core_managers.radix_cache is not None:
+        g_core_managers.radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
+    mem_indexes = g_core_managers.req_manager.mem_manager.alloc(input_ids.shape[0])
     g_infer_state_lock.release()
 
     kwargs = {
@@ -106,9 +106,9 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
 
     # dynamic prompt cache 准备 token
     g_infer_state_lock.acquire()
-    if radix_cache is not None:
-        radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
-    mem_indexes = batch.req_manager.mem_manager.alloc(input_ids.shape[0])
+    if g_core_managers.radix_cache is not None:
+        g_core_managers.radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
+    mem_indexes = g_core_managers.req_manager.mem_manager.alloc(input_ids.shape[0])
     g_infer_state_lock.release()
 
     kwargs = {
