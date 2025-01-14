@@ -95,17 +95,46 @@ class InferReq:
         self.cur_kv_len = 0
         self.cur_output_len = 0
         self.finish_status = FinishStatus()
-
-        if self.sampling_param.shm_param.input_penalty:
-            self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
-        else:
-            self.out_token_id_count = collections.defaultdict(int)
-
         self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
+
+        # 标记是否完整完成初始化
+        self.initialized = False
         return
 
-    def init_all_ok(self):
-        pass
+    def init_all(self):
+        """
+        初始化 req 对象的 prompt ids 共享内存绑定以及radix cache的填充等
+        """
+        assert self.initialized is False
+
+        # 区分是否是暂停恢复的请求, 暂停后恢复的请求不需要
+        # link shm。
+        if not hasattr(self.shm_req, "shm_prompt_ids"):
+            self.shm_req.link_prompt_ids_shm_array()
+            self.shm_req.link_logprobs_shm_array()
+            if self.sampling_param.shm_param.input_penalty:
+                self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
+            else:
+                self.out_token_id_count = collections.defaultdict(int)
+
+        # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
+        if g_core_managers.radix_cache is not None and self.get_cur_total_len() > 1:
+            input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
+            key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
+            key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
+            share_node, kv_len, value_tensor = g_core_managers.radix_cache.match_prefix(key, update_refs=True)
+            if share_node is not None:
+                self.shared_kv_node = share_node
+                ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
+                mem_manager: MemoryManager = g_core_managers.req_manager.mem_manager
+                value_tensor = value_tensor.long().cuda()
+                mem_manager.add_refs(value_tensor)  # 加 refs
+                g_core_managers.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
+                self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
+
+        self.shm_req.shm_cur_kv_len = self.cur_kv_len
+        self.initialized = True
+        return
 
     def get_output_len(self):
         return self.cur_output_len
@@ -285,9 +314,6 @@ class InferBatch:
             r_id, r_index, multimodal_params, _ = r
             if r_id not in requests_mapping.keys():
                 shm_req = g_core_managers.shm_req_manager.get_req_obj_by_index(r_index)
-                shm_req.link_prompt_ids_shm_array()
-                shm_req.link_logprobs_shm_array()
-
                 r_obj = InferReq(
                     shm_req=shm_req,
                     req_idx=nopad_b_req_idx[index],
@@ -305,23 +331,7 @@ class InferBatch:
 
             request_ids.append(r_id)
 
-            # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
-            if g_core_managers.radix_cache is not None and r_obj.get_cur_total_len() > 1:
-                input_token_ids = r_obj.shm_req.shm_prompt_ids.arr[0 : r_obj.get_cur_total_len()]
-                key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
-                key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
-                share_node, kv_len, value_tensor = g_core_managers.radix_cache.match_prefix(key, update_refs=True)
-                if share_node is not None:
-                    r_obj.shared_kv_node = share_node
-                    ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
-                    mem_manager: MemoryManager = g_core_managers.req_manager.mem_manager
-                    value_tensor = value_tensor.long().cuda()
-                    mem_manager.add_refs(value_tensor)  # 加 refs
-                    g_core_managers.req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
-                    r_obj.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
-
-            r_obj.shm_req.shm_cur_kv_len = r_obj.cur_kv_len
-
+            r_obj.init_all()
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.shm_req.req_status.set_status(ReqRunStatus.RUNNING)
 
