@@ -71,16 +71,23 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            
+            # prefill and decode is same
+            req_obj: InferReq = req_obj
+            req_obj.cur_kv_len = len(req_obj.get_input_token_ids())
+            req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
+            req_obj.out_token_id_count[next_token_id] += 1
+            req_obj.update_finish_status(self.eos_id)
+
             if self.tp_rank < self.dp_size:
-                # prefill and decode is same
-                req_obj: InferReq = req_obj
-                req_obj.shm_req.cur_kv_len = len(req_obj.get_input_token_ids())
-                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
-                req_obj.out_token_id_count[next_token_id] += 1
-                req_obj.update_finish_status(self.eos_id)
-                req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
-                
+                req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
+                req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
+
+                if req_obj.finish_status.is_finished():
+                    req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
+                    req_obj.shm_req.finish_status = req_obj.finish_status
+
+                req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
+
         if is_prefill:
             self.prefill_req_handle_and_frozen_tokens(run_reqs)
 
@@ -94,22 +101,19 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         g_infer_state_lock.acquire()
         try:
             for req in run_reqs:
-                req:InferReq = req
-                key = req.get_input_token_ids()[0:req.shm_req.cur_kv_len]
+                req: InferReq = req
+                key = req.get_input_token_ids()[0 : req.cur_kv_len]
                 key = torch.tensor(key, dtype=torch.int64, device="cpu")
-                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.shm_req.cur_kv_len].detach().cpu()
+                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
                 prefix_len = self.radix_cache.insert(key, value)
                 self.model.mem_manager.free(self.model.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
                 if req.shared_kv_node is not None:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
-                
-                # 等待所有的请求都将radix cache 操作完成，不然下面的 req.shm_req.cur_kv_len = 0 可能会让
-                # 其他进程得到错误的 kv 长度信息，然后执行错误的操作。
-                dist.barrier()
-                if self.tp_rank < self.dp_size:
-                    req.shm_req.cur_kv_len = 0
-                
+
+                req.cur_kv_len = 0
+                req.shm_req.shm_cur_kv_len = 0
+
                 if req.shm_req.sample_params.move_kv_to_decode_node.exists:
                     # 注意兼容纯tp 和 tp dp 混合模式的逻辑
                     if self.tp_rank < self.dp_size:

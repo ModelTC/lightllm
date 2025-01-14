@@ -69,13 +69,15 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
             else:
                 # 对于不合法的请求，直接模拟将其finished掉
                 req_obj: InferReq = requests_mapping[request_id]
-                if self.tp_rank < self.dp_size:
-                    req_obj.set_next_gen_token_id(0, 0.0)
-                    req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
-                    req_obj.shm_req.finish_status.set_status(FinishStatus.FINISHED_STOP)
-                    req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
+                req_obj.set_next_gen_token_id(0, 0.0)
 
                 if self.tp_rank < self.dp_size:
+                    req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
+                    req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
+                    req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
+                    req_obj.shm_req.finish_status.set_status(FinishStatus.FINISHED_STOP)
+                    req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
+
                     req_id = req_obj.shm_req.request_id
                     logger.error(f"req_id: {req_id} forced to finished, it not in g_success_kv_move_task_cache")
 
@@ -102,19 +104,27 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
 
         logits = self.model.forward(**kwargs)
 
-        if self.tp_rank < self.dp_size:
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-            for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-                # prefill and decode is same
-                req_obj: InferReq = req_obj
-                req_obj.shm_req.cur_kv_len = req_obj.get_cur_total_len()
-                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
-                req_obj.out_token_id_count[next_token_id] += 1
-                req_obj.update_finish_status(self.eos_id)
-                req_obj.shm_req.candetoken_out_len = req_obj.shm_req.cur_output_len
+        for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
+            # prefill and decode is same
+            req_obj: InferReq = req_obj
+            req_obj.cur_kv_len = req_obj.get_cur_total_len()
+            req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
+            req_obj.out_token_id_count[next_token_id] += 1
+            req_obj.update_finish_status(self.eos_id)
+
+            if self.tp_rank < self.dp_size:
+                req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
+                req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
+
+                if req_obj.finish_status.is_finished():
+                    req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
+                    req_obj.shm_req.finish_status = req_obj.finish_status
+
+                req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
 
         self.cache[batch.batch_id] = batch
         return
