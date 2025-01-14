@@ -17,6 +17,23 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
 logger = init_logger(__name__)
+
+
+@dataclass
+class CoreManagers:
+    req_manager: ReqManager = None  # gpu 请求管理
+    radix_cache: RadixCache = None
+    shm_req_manager: ShmReqManager = None  # 共享内存请求管理
+
+    def register(self, req_manager: ReqManager, radix_cache: RadixCache, shm_req_manager: ShmReqManager):
+        self.req_manager = req_manager
+        self.radix_cache = radix_cache
+        self.shm_req_manager = shm_req_manager
+        return
+
+
+g_core_managers = CoreManagers()
+
 requests_mapping: Dict[int, "InferReq"] = {}
 group_mapping = {}
 
@@ -86,6 +103,9 @@ class InferReq:
 
         self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
         return
+
+    def init_all_ok(self):
+        pass
 
     def get_output_len(self):
         return self.cur_output_len
@@ -242,9 +262,6 @@ class InferReqGroup:
 class InferBatch:
     batch_id: int
     request_ids: List
-    req_manager: ReqManager  # gpu 请求管理
-    radix_cache: RadixCache
-    shm_req_manager: ShmReqManager  # 共享内存请求管理
 
     @classmethod
     @torch.no_grad()
@@ -254,15 +271,12 @@ class InferBatch:
         requests,
         dtype: torch.dtype,
         device: torch.device,
-        req_manager: ReqManager,
         vocab_size: int,
-        radix_cache: RadixCache,
-        shm_req_manager: ShmReqManager,
     ):
 
         request_ids = []
         need_alloc_size = len([r for r in requests if r[0] not in requests_mapping])
-        nopad_b_req_idx = req_manager.alloc(need_alloc_size)
+        nopad_b_req_idx = g_core_managers.req_manager.alloc(need_alloc_size)
         nopad_b_req_idx = nopad_b_req_idx.cpu().numpy()
 
         index = 0
@@ -270,7 +284,7 @@ class InferBatch:
             # request id -> idx in list mapping
             r_id, r_index, multimodal_params, _ = r
             if r_id not in requests_mapping.keys():
-                shm_req = shm_req_manager.get_req_obj_by_index(r_index)
+                shm_req = g_core_managers.shm_req_manager.get_req_obj_by_index(r_index)
                 shm_req.link_prompt_ids_shm_array()
                 shm_req.link_logprobs_shm_array()
 
@@ -292,18 +306,18 @@ class InferBatch:
             request_ids.append(r_id)
 
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
-            if radix_cache is not None and r_obj.get_cur_total_len() > 1:
+            if g_core_managers.radix_cache is not None and r_obj.get_cur_total_len() > 1:
                 input_token_ids = r_obj.shm_req.shm_prompt_ids.arr[0 : r_obj.get_cur_total_len()]
                 key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
                 key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
-                share_node, kv_len, value_tensor = radix_cache.match_prefix(key, update_refs=True)
+                share_node, kv_len, value_tensor = g_core_managers.radix_cache.match_prefix(key, update_refs=True)
                 if share_node is not None:
                     r_obj.shared_kv_node = share_node
                     ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
-                    mem_manager: MemoryManager = req_manager.mem_manager
+                    mem_manager: MemoryManager = g_core_managers.req_manager.mem_manager
                     value_tensor = value_tensor.long().cuda()
                     mem_manager.add_refs(value_tensor)  # 加 refs
-                    req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
+                    g_core_managers.req_manager.req_to_token_indexs[r_obj.req_idx, 0:ready_cache_len] = value_tensor
                     r_obj.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
 
             r_obj.shm_req.shm_cur_kv_len = r_obj.cur_kv_len
@@ -314,29 +328,26 @@ class InferBatch:
         return cls(
             batch_id=batch_id,
             request_ids=request_ids,
-            req_manager=req_manager,
-            radix_cache=radix_cache,
-            shm_req_manager=shm_req_manager,
         )
 
     def _free_a_req_mem(self, free_token_index: List, req: InferReq, is_group_finished: bool):
-        if self.radix_cache is None:
-            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
+        if g_core_managers.radix_cache is None:
+            free_token_index.append(g_core_managers.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
-            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+            value = g_core_managers.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
             if is_group_finished:
-                prefix_len = self.radix_cache.insert(key, value)
-                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
+                prefix_len = g_core_managers.radix_cache.insert(key, value)
+                free_token_index.append(g_core_managers.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
                 if req.shared_kv_node is not None:
                     assert req.shared_kv_node.shared_idx_node.get_node_prefix_total_len() <= prefix_len
-                    self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
+                    g_core_managers.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
             else:
-                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
+                free_token_index.append(g_core_managers.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
                 if req.shared_kv_node is not None:
-                    self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
+                    g_core_managers.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
 
     @torch.no_grad()
@@ -357,10 +368,10 @@ class InferBatch:
                 self._free_a_req_mem(free_token_index, req, True)
 
             free_req_index.append(req.req_idx)
-            self.shm_req_manager.put_back_req_obj(req.shm_req)
+            g_core_managers.shm_req_manager.put_back_req_obj(req.shm_req)
 
         free_token_index = torch.cat(free_token_index, dim=-1)
-        self.req_manager.free(free_req_index, free_token_index)
+        g_core_managers.req_manager.free(free_req_index, free_token_index)
         if len(requests_mapping) == 0:
             requests_mapping.clear()
         if len(group_mapping) == 0:
@@ -369,10 +380,10 @@ class InferBatch:
         if self.radix_cache is not None:
             logger.debug(
                 f"free a batch state:\n"
-                f"radix refed token num {self.radix_cache.get_refed_tokens_num()}\n"
-                f"radix hold token num {self.radix_cache.get_tree_total_tokens_num()}\n"
-                f"mem manager can alloc token num {self.req_manager.mem_manager.can_use_mem_size}\n"
-                f"mem manager total size {self.req_manager.mem_manager.size}"
+                f"radix refed token num {g_core_managers.radix_cache.get_refed_tokens_num()}\n"
+                f"radix hold token num {g_core_managers.radix_cache.get_tree_total_tokens_num()}\n"
+                f"mem manager can alloc token num {g_core_managers.req_manager.mem_manager.can_use_mem_size}\n"
+                f"mem manager total size {g_core_managers.req_manager.mem_manager.size}"
             )
         return
 
@@ -385,13 +396,7 @@ class InferBatch:
             return self
         if len(request_ids) == 0:
             self.free_self()
-            return InferBatch(
-                batch_id=self.batch_id,
-                request_ids=[],
-                req_manager=self.req_manager,
-                radix_cache=self.radix_cache,
-                shm_req_manager=self.shm_req_manager,
-            )
+            return InferBatch(batch_id=self.batch_id, request_ids=[])
         free_req_index = []
         free_token_index = []
         for request_id in finished_request_ids:
@@ -405,17 +410,14 @@ class InferBatch:
             else:
                 self._free_a_req_mem(free_token_index, req, True)
             free_req_index.append(req.req_idx)
-            self.shm_req_manager.put_back_req_obj(req.shm_req)
+            g_core_managers.shm_req_manager.put_back_req_obj(req.shm_req)
 
         free_token_index = torch.cat(free_token_index, dim=-1)
-        self.req_manager.free(free_req_index, free_token_index)
+        g_core_managers.req_manager.free(free_req_index, free_token_index)
 
         return InferBatch(
             batch_id=self.batch_id,
             request_ids=request_ids,
-            req_manager=self.req_manager,
-            radix_cache=self.radix_cache,
-            shm_req_manager=self.shm_req_manager,
         )
 
     @torch.no_grad()
@@ -433,7 +435,7 @@ class InferBatch:
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
-            self.req_manager.free_token(free_token_index)
+            g_core_managers.req_manager.free_token(free_token_index)
 
         return self
 
@@ -445,9 +447,6 @@ class InferBatch:
         return InferBatch(
             batch_id=batch1.batch_id,
             request_ids=request_ids,
-            req_manager=batch1.req_manager,
-            radix_cache=batch1.radix_cache,
-            shm_req_manager=batch1.shm_req_manager,
         )
 
     def __len__(self):

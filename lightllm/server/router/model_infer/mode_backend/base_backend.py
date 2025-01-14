@@ -216,6 +216,12 @@ class ModeBackend:
         self.logger.info(f"loaded model class {self.model.__class__}")
         self.init_custom()
 
+        # 注册到全局共享
+        from ..infer_batch import g_core_managers
+
+        g_core_managers.register(
+            req_manager=self.model.req_manager, radix_cache=self.radix_cache, shm_req_manager=self.shm_req_manager
+        )
         return
 
     def init_custom(self):
@@ -247,10 +253,7 @@ class ModeBackend:
             reqs,
             self.model.data_type,
             torch.cuda.current_device(),
-            self.model.req_manager,
             self.model.vocab_size,
-            self.radix_cache,
-            self.shm_req_manager,
         )
         self.cache[batch_id] = batch_data
         g_infer_state_lock.release()
