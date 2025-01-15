@@ -304,11 +304,6 @@ class InferBatch:
     ):
 
         request_ids = []
-        need_alloc_size = len([r for r in requests if r[0] not in requests_mapping])
-        nopad_b_req_idx = g_core_managers.req_manager.alloc(need_alloc_size)
-        nopad_b_req_idx = nopad_b_req_idx.cpu().numpy()
-
-        index = 0
         for r in requests:
             # request id -> idx in list mapping
             r_id, r_index, multimodal_params, _ = r
@@ -316,12 +311,11 @@ class InferBatch:
                 shm_req = g_core_managers.shm_req_manager.get_req_obj_by_index(r_index)
                 r_obj = InferReq(
                     shm_req=shm_req,
-                    req_idx=nopad_b_req_idx[index],
+                    req_idx=g_core_managers.req_manager.alloc(),
                     sampling_param=InferSamplingParams(shm_req, vocab_size),
                     multimodal_params=multimodal_params,
                 )
                 requests_mapping[r_id] = r_obj
-                index += 1
             else:
                 if requests_mapping[r_id].shm_req.req_status.is_paused_and_offload():
                     r_obj: InferReq = requests_mapping[r_id]

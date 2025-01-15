@@ -62,7 +62,9 @@ class CudaGraph:
             # dummy prefill
             prefill_input_len = 1
             dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
-            b_req_idx = model.req_manager.alloc(batch_size).int()
+            b_req_idx = torch.tensor(
+                [model.req_manager.alloc() for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+            )
             mem_indexes = model.mem_manager.alloc(len(dummy_input_ids))
             b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
             b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
