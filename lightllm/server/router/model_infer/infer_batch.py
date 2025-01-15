@@ -12,7 +12,7 @@ from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
 from lightllm.server.core.objs import Req, SamplingParams, ReqRunStatus, FinishStatus, ShmReqManager
-from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
+from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNode
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 
@@ -88,7 +88,7 @@ class InferReq:
         self.sampling_param: InferSamplingParams = sampling_param
         self.multimodal_params = multimodal_params
         self.req_idx = req_idx
-        self.shared_kv_node = None
+        self.shared_kv_node: TreeNode = None
         self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
         self.cum_logprob = 0.0  # cumulative logprob of each token, using for beamsearch and diverse_backend
 
@@ -125,7 +125,7 @@ class InferReq:
             share_node, kv_len, value_tensor = g_core_managers.radix_cache.match_prefix(key, update_refs=True)
             if share_node is not None:
                 self.shared_kv_node = share_node
-                ready_cache_len = share_node.shared_idx_node.get_node_prefix_total_len()
+                ready_cache_len = share_node.node_prefix_total_len
                 mem_manager: MemoryManager = g_core_managers.req_manager.mem_manager
                 value_tensor = value_tensor.long().cuda()
                 mem_manager.add_refs(value_tensor)  # 加 refs
@@ -262,7 +262,7 @@ class InferReqGroup:
         # record previous status
         prev_req = requests_mapping[self.req_group[0]]
         if prev_req.shared_kv_node is not None:
-            prefix_len = prev_req.shared_kv_node.shared_idx_node.get_node_prefix_total_len()
+            prefix_len = prev_req.shared_kv_node.node_prefix_total_len
         else:
             prefix_len = 0
         cache_token_id = req_manager.req_to_token_indexs[prev_req.req_idx][prefix_len : len(prev_req.input_token_ids)]
@@ -351,7 +351,7 @@ class InferBatch:
                 prefix_len = g_core_managers.radix_cache.insert(key, value)
                 free_token_index.append(g_core_managers.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
                 if req.shared_kv_node is not None:
-                    assert req.shared_kv_node.shared_idx_node.get_node_prefix_total_len() <= prefix_len
+                    assert req.shared_kv_node.node_prefix_total_len <= prefix_len
                     g_core_managers.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
             else:
