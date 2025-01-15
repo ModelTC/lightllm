@@ -468,7 +468,8 @@ class DecodeKVMoveManager(rpyc.Service):
             raise e
 
         try:
-            trans_obj.ready_to_move_queue.put(alloc_tokened_tasks)
+            if len(alloc_tokened_tasks) != 0:
+                trans_obj.ready_to_move_queue.put(alloc_tokened_tasks)
         except BaseException as e:
             logger.exception(str(e))
             self.put_to_fail_release_task_queue(alloc_tokened_tasks)

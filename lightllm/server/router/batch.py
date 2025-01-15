@@ -28,7 +28,7 @@ class Batch:
     def mark_and_get_finished_req_and_preupdate_status(self):
         unfinished_req_ids, finished_req_ids = [], []
         for req in self.reqs:
-            if req.finish_status.is_finished():
+            if req.finish_status.is_finished() or req.is_aborted:
                 finished_req_ids.append(req.request_id)
                 req_dp_index = req.sample_params.suggested_dp_index
                 # 标记的时候，也同时更新一些这些请求被移除掉的更新量，有点dirty

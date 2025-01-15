@@ -15,6 +15,7 @@ from lightllm.server.core.objs import Req, SamplingParams, ReqRunStatus, FinishS
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNode
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 
 logger = init_logger(__name__)
 
@@ -301,6 +302,7 @@ class InferBatch:
         dtype: torch.dtype,
         device: torch.device,
         vocab_size: int,
+        init_req_obj: bool = True,  # 标记是否直接在这个函数内部初始化shm和radix cache 相关的东西，如果是false，则可以延后到推理部分进行折叠。
     ):
 
         request_ids = []
@@ -325,7 +327,9 @@ class InferBatch:
 
             request_ids.append(r_id)
 
-            r_obj.init_all()
+            if init_req_obj:
+                r_obj.init_all()
+
             # 初始化之后 所有请求状态置换为 RUNNING 状态
             r_obj.shm_req.req_status.set_status(ReqRunStatus.RUNNING)
 

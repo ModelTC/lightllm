@@ -11,7 +11,7 @@ from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq,
 from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
-from ...pre_process import prepare_prefill_inputs, prepare_decode_inputs
+from .pre_process import prepare_decode_inputs
 from ...post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
@@ -48,17 +48,41 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
 
         return
 
+    def add_batch(self, batch_id, reqs):
+        # 当 dp_size 不等于 1 的时候，需要提前从发来的请求参数中
+        # 剔除掉不需要处理的请求参数, deepseekv2 这种特殊的模型
+        # 在 dp 模式下 tp_rank == dp_rank
+        if self.dp_size != 1:
+            cur_dp_index = self.tp_rank
+            reqs = [req for req in reqs if req[3] == cur_dp_index]
+
+        g_infer_state_lock.acquire()
+        batch_data = InferBatch.init_batch(
+            batch_id,
+            reqs,
+            self.model.data_type,
+            torch.cuda.current_device(),
+            self.model.vocab_size,
+            init_req_obj=False,  # 延后进行初始化
+        )
+        self.cache[batch_id] = batch_data
+        g_infer_state_lock.release()
+        return
+
     @calculate_time(show=False, min_cost_ms=300)
     def prefill_batch(self, batch_id):
+        pass
+
+    def post_init(self, uninit_reqs: List[InferReq]):
         """
         检查请求的 kv len 将可能有问题的请求立即结束掉
         """
-        batch: InferBatch = self.cache.pop(batch_id)
-
         g_infer_state_lock.acquire()
         remove_count = 0
         estimated_peak_token_count = 0
-        for request_id in batch.request_ids:
+        for req_obj in uninit_reqs:
+            req_obj: InferReq = req_obj  # for easy typing
+            request_id = req_obj.shm_req.request_id
             if request_id in g_success_kv_move_task_cache:
                 task, share_node, _ = g_success_kv_move_task_cache.pop(request_id)
                 task: KVMoveTask = task  # for easy typing
@@ -66,9 +90,11 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 req_all_len = len(task.input_tokens) + task.decode_node.max_new_tokens
                 remove_count += req_all_len
                 estimated_peak_token_count += req_all_len
+                req_obj.init_all()
             else:
                 # 对于不合法的请求，直接模拟将其finished掉
-                req_obj: InferReq = requests_mapping[request_id]
+                req_obj.shm_req.link_prompt_ids_shm_array()
+                req_obj.shm_req.link_logprobs_shm_array()
                 req_obj.set_next_gen_token_id(0, 0.0)
                 req_obj.cur_output_len += 1
 
@@ -88,60 +114,64 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 self.shared_token_load.add_estimated_peak_token_count(estimated_peak_token_count, self.tp_rank)
         g_infer_state_lock.release()
 
-        self.cache[batch.batch_id] = batch
         return
 
     @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
-        return self.forward(batch_id, is_prefill=False)
-
-    def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
         batch: InferBatch = self.cache.pop(batch_id)
-        if is_prefill:
-            kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
-        else:
-            kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
-        logits = self.model.forward(**kwargs)
+        kwargs, run_reqs, uninit_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
-        # 对于后处理采样，只需要一个进程操作即可，其他进程只需要虚假的结果填充流程即可
-        # 这样可以节省点电费吧。
-        if self.tp_rank < self.dp_size:
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-        else:
-            next_token_ids = [0 for _ in range(len(run_reqs))]
-            next_token_logprobs = [0.0 for _ in range(len(run_reqs))]
+        if len(run_reqs) != 0:
+            logits = self.model.forward(**kwargs)
 
-        for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            # prefill and decode is same
-            req_obj: InferReq = req_obj
-            req_obj.cur_kv_len = req_obj.get_cur_total_len()
-            # 只需要有真实采样的进程写入最后结果即可，由于其他进程没有做运算，所以其fake结果
-            # 不能写入。
+        if len(uninit_reqs) != 0:
+            from ...post_process import g_single_overlap_stream
+
+            with torch.cuda.stream(g_single_overlap_stream.get_overlap_stream()):
+                self.post_init(uninit_reqs)
+            torch.cuda.current_stream().wait_stream(g_single_overlap_stream.get_overlap_stream())
+
+        if len(run_reqs) != 0:
+
+            # 对于后处理采样，只需要一个进程操作即可，其他进程只需要虚假的结果填充流程即可
+            # 这样可以节省点电费吧。
             if self.tp_rank < self.dp_size:
-                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
-            req_obj.cur_output_len += 1
+                next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+                next_token_ids = next_token_ids.detach().cpu().numpy()
+                next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            else:
+                next_token_ids = [0 for _ in range(len(run_reqs))]
+                next_token_logprobs = [0.0 for _ in range(len(run_reqs))]
 
-            req_obj.out_token_id_count[next_token_id] += 1
-            req_obj.update_finish_status(self.eos_id)
+            for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
+                # prefill and decode is same
+                req_obj: InferReq = req_obj
+                req_obj.cur_kv_len = req_obj.get_cur_total_len()
+                # 只需要有真实采样的进程写入最后结果即可，由于其他进程没有做运算，所以其fake结果
+                # 不能写入。
+                if self.tp_rank < self.dp_size:
+                    req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
+                req_obj.cur_output_len += 1
 
-            if self.tp_rank < self.dp_size:
-                # shm_cur_kv_len shm_cur_output_len finish_status
-                # 是router 调度进程需要读的信息
-                # finish_token_index finish_status candetoken_out_len
-                # 是 detokenization 进程需要的信息，注意这些变量的写入顺序
-                # 避免异步协同问题。
-                req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
-                req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
+                req_obj.out_token_id_count[next_token_id] += 1
+                req_obj.update_finish_status(self.eos_id)
 
-                if req_obj.finish_status.is_finished():
-                    req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
-                    req_obj.shm_req.finish_status = req_obj.finish_status
+                if self.tp_rank < self.dp_size:
+                    # shm_cur_kv_len shm_cur_output_len finish_status
+                    # 是router 调度进程需要读的信息
+                    # finish_token_index finish_status candetoken_out_len
+                    # 是 detokenization 进程需要的信息，注意这些变量的写入顺序
+                    # 避免异步协同问题。
+                    req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
+                    req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
 
-                req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
+                    if req_obj.finish_status.is_finished():
+                        req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
+                        req_obj.shm_req.finish_status = req_obj.finish_status
+
+                    req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
 
         self.cache[batch.batch_id] = batch
         return
