@@ -22,6 +22,7 @@ from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 import os
+from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
@@ -133,6 +134,33 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         o_tensor = layer_weight.o_weight_.mm(input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
         return o_tensor
 
+    def _decompress_kv(self, compressed_kv, layer_weight: Deepseek2TransformerLayerWeight):
+        k_nope = self.alloc_tensor(
+            [compressed_kv.shape[0], self.tp_q_head_num_, self.qk_nope_head_dim],
+            dtype=compressed_kv.dtype,
+        )
+        v = self.alloc_tensor(
+            k_nope.shape,
+            dtype=compressed_kv.dtype,
+        )
+        if layer_weight.k_b_proj_.quant_method is not None:
+            quant_method = layer_weight.k_b_proj_.quant_method
+            wk = layer_weight.k_b_proj_.weight[2].reshape(-1, layer_weight.kv_lora_rank).T
+            wk_scale = layer_weight.k_b_proj_.weight[3]
+            wv = (
+                layer_weight.v_b_proj_.weight[0].transpose(0, 1).reshape(layer_weight.kv_lora_rank, -1).T.contiguous().T
+            )
+            wv_scale = layer_weight.v_b_proj_.weight[1]
+            compressed_kv = compressed_kv.contiguous()
+            quant_method.apply(compressed_kv, (wk, wk_scale), out=k_nope.reshape(compressed_kv.shape[0], -1))
+            quant_method.apply(compressed_kv, (wv, wv_scale), out=v.reshape(compressed_kv.shape[0], -1))
+        else:
+            wk = layer_weight.k_b_proj_.weight.view(-1, layer_weight.kv_lora_rank).T
+            wv = layer_weight.v_b_proj_.weight.transpose(0, 1).reshape(layer_weight.kv_lora_rank, -1)
+            torch.mm(compressed_kv, wk, out=k_nope.reshape(compressed_kv.shape[0], -1))
+            torch.mm(compressed_kv, wv, out=v.reshape(compressed_kv.shape[0], -1))
+        return k_nope, v
+
     def _context_attention_kernel_with_CC(
         self,
         q: torch.Tensor,
@@ -161,19 +189,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             )
 
         # CC
-        k_nope = self.alloc_tensor(
-            [compressed_kv.shape[0], q.shape[1], self.qk_nope_head_dim],
-            dtype=compressed_kv.dtype,
-        )
-        v = self.alloc_tensor(
-            k_nope.shape,
-            dtype=compressed_kv.dtype,
-        )
         compressed_kv = compressed_kv.view(-1, layer_weight.kv_lora_rank)
-        wk = layer_weight.k_b_proj_.weight.view(-1, layer_weight.kv_lora_rank)
-        wv = layer_weight.v_b_proj_.weight.transpose(0, 1).reshape(layer_weight.kv_lora_rank, -1)
-        torch.mm(compressed_kv, wk.transpose(0, 1), out=k_nope.reshape(compressed_kv.shape[0], -1))
-        torch.mm(compressed_kv, wv, out=v.reshape(compressed_kv.shape[0], -1))
+        k_nope, v = self._decompress_kv(compressed_kv, layer_weight)
 
         q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out

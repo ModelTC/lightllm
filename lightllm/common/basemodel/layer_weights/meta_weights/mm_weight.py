@@ -4,6 +4,7 @@ from .base_weight import BaseWeightTpl
 from typing import Optional, Tuple, List, Dict, Any
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.quantization.quantize_method import QuantizationMethod
+from lightllm.common.basemodel.triton_kernel.bmm_scaled_fp8 import bmm_scaled_fp8
 
 
 def generate_scale_name(name, weight_scale_suffix, act_scale_suffix):
@@ -413,6 +414,7 @@ class BMMWeightTpl(MMWeightTpl):
         super().__init__(data_type)
 
     def set_quant_method(self, quant_method: QuantizationMethod) -> None:
+        # Deepseek v2 此处暂不量化, ops.scaled_fp8_quant性能不佳，是主要瓶颈，整体不如bf16
         if self.quantized_weight:
             # for the quantized fp8 weight of Deepseek v3
             self.quant_method = quant_method
@@ -420,18 +422,40 @@ class BMMWeightTpl(MMWeightTpl):
     def bmm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
     ) -> torch.Tensor:
-        if self.quant_method is not None:
-            fpweight = self.dequant_weight(self.weight[0], self.weight[1])
-        else:
-            fpweight = self.weight
         if out is None:
-            shape = (input_tensor.shape[0], input_tensor.shape[1], fpweight.shape[2])
+            shape = (
+                input_tensor.shape[0],
+                input_tensor.shape[1],
+                self.weight.shape[2] if self.quant_method is None else self.weight[0].shape[2],
+            )
             dtype = input_tensor.dtype
             device = input_tensor.device
             if use_custom_tensor_mananger:
                 out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
             else:
                 out = torch.empty(shape, dtype=dtype, device=device)
+
+        if self.quant_method is not None:
+            if self.quantized_weight:
+                fpweight = self.dequant_weight(self.weight[0], self.weight[1])
+            else:
+                from lightllm.common.vllm_kernel import _custom_ops as ops
+
+                x_q, x_scale = ops.scaled_fp8_quant(
+                    input_tensor.reshape(-1, input_tensor.shape[-1]).contiguous(),
+                    scale=None,
+                    scale_ub=None,
+                    use_per_token_if_dynamic=True,
+                )
+                return bmm_scaled_fp8(
+                    x_q.reshape(input_tensor.shape),
+                    x_scale.reshape(input_tensor.shape[0], -1, 1),
+                    self.weight[0],
+                    self.weight[1].reshape(self.weight[0].shape[0], -1, 1),
+                    out,
+                )
+        else:
+            fpweight = self.weight
         if self.bias is None:
             return torch.bmm(input_tensor, fpweight, out=out)
         return torch.addbmm(self.bias, input_tensor, fpweight, out=out)
@@ -447,6 +471,18 @@ class BMMWeightTpl(MMWeightTpl):
                     if self.weight_scale.ndim > 1:
                         self.weight_scale = self.weight_scale.cuda(self.device_id_)
                     self.weight = [self.weight.cuda(self.device_id_), self.weight_scale, self.input_scale]
+            else:
+                weight_2d = self.weight.view(-1, self.weight.shape[-1])
+                trans_w = self.weight.transpose(1, 2)
+                weight_2d_T = trans_w.reshape(-1, trans_w.shape[-1])
+                weights = self.quant_method.quantize(weight_2d.to(self.data_type_).cuda(self.device_id_))
+                weights_T = self.quant_method.quantize(weight_2d_T.to(self.data_type_).cuda(self.device_id_))
+                self.weight = (
+                    weights_T[0].T.reshape(self.weight.shape[0], self.weight.shape[2], -1).contiguous().transpose(1, 2),
+                    weights_T[1],
+                    weights[0].T.reshape(self.weight.shape),
+                    weights[1],
+                )
             return
         self.weight = self.weight.cuda(self.device_id_)
 
