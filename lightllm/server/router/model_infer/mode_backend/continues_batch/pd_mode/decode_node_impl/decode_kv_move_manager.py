@@ -105,6 +105,11 @@ class TransProcessObj:
             self.task_in_queue.put(move_tasks.copy(), timeout=10)
             assert self.task_out_queue.get(timeout=60) == "ok"
             logger.info(f"_transfer_kv ok {move_tasks[0].to_decode_log_info()}")
+
+            # 标记 decode 接收到 kv cache 的时间
+            for move_task in move_tasks:
+                move_task.mark_start_time = time.time()
+
             self.move_finished_queue.put_list(move_tasks)
             move_tasks.clear()
 
@@ -162,7 +167,9 @@ class TransProcessObj:
 
                 self.manager._put_kv_received_to_radix_cache(move_tasks.copy())
                 for task in move_tasks.copy():
-                    logger.info(f"{func_name} put kv to radix cache ok, req_id: {task.id()}")
+                    logger.info(
+                        f"{func_name} put kv to radix cache ok, req_id: {task.id()} cost_time {task.get_cost_time()} s"
+                    )
                     self.manager.up_status_in_queue.put(
                         UpKVStatus(group_request_id=task.group_request_id, dp_index=task.decode_dp_index)
                     )
