@@ -56,10 +56,8 @@ class DeTokenizationManager:
                     recv_obj: Union[None, GroupReqIndexes] = await asyncio.wait_for(
                         self.recv_from_router.recv_pyobj(), timeout=0.05
                     )
-                    time_out = False
                 except asyncio.TimeoutError:
                     recv_obj = None
-                    time_out = True
 
                 if isinstance(recv_obj, GroupReqIndexes):
                     for req_index in recv_obj.shm_req_indexes:
@@ -80,13 +78,7 @@ class DeTokenizationManager:
 
                 if recv_obj is None:
                     start_time = time.time()
-
-                    if time_out:
-                        while self.gen_token_out():
-                            pass
-                    else:
-                        self.gen_token_out()
-
+                    self.gen_token_out()
                     cost_time = (time.time() - start_time) * 1000
                     if cost_time > 50:
                         logger.info(f"detokenize batch cost time {cost_time} ms")
