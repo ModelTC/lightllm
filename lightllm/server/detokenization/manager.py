@@ -65,6 +65,11 @@ class DeTokenizationManager:
                         req.link_prompt_ids_shm_array()
                         req.link_logprobs_shm_array()
 
+                        logger.info(
+                            f"detokenization recv req id {req.request_id} "
+                            f"cost time {time.time() - recv_obj.time_mark} s"
+                        )
+
                         # p d 分离模式，decode节点的解码需要做一些特殊的修复。
                         decode_req = DecodeReq(req)
                         if self.is_decode_mode:
