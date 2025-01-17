@@ -50,14 +50,12 @@ class DeTokenizationManager:
         return
 
     async def handle_loop(self):
+
+        asyncio.create_task(self.timer_to_detoken())
+
         while True:
             try:
-                try:
-                    recv_obj: Union[None, GroupReqIndexes] = await asyncio.wait_for(
-                        self.recv_from_router.recv_pyobj(), timeout=0.05
-                    )
-                except asyncio.TimeoutError:
-                    recv_obj = None
+                recv_obj: Union[None, GroupReqIndexes] = await self.recv_from_router.recv_pyobj()
 
                 if isinstance(recv_obj, GroupReqIndexes):
                     for req_index in recv_obj.shm_req_indexes:
@@ -85,6 +83,24 @@ class DeTokenizationManager:
 
             except Exception as e:
                 logger.exception(f"detoken process has exception {str(e)}")
+
+    async def timer_to_detoken(self):
+        """
+        这个函数是定时去执行 get_token_out() 的定时执行机制，主要是为了在CHUNCK PREFILL的时候，
+        有特别长和特别短的请求合并到了一起进行PREFILL，部分请求已经推理出了首个token后，不用等到
+        所有的请求都推理出首个token。通过这种定制执行的机制，将写入到shm req中的输出首token将其
+        detoken出来，不然需要等待触发detoken的 None 数据包发送过来。这样对首包延迟是及其不友好的。
+        """
+        while True:
+            try:
+                start_time = time.time()
+                self.gen_token_out()
+                cost_time = (time.time() - start_time) * 1000
+                if cost_time > 50:
+                    logger.info(f"timer detokenize batch cost time {cost_time} ms")
+                await asyncio.sleep(0.05)
+            except BaseException as e:
+                logger.exception(str(e))
 
     def gen_token_out(self):
         exist_need_detoken = False
