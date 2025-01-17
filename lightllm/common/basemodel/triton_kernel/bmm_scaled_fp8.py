@@ -1,6 +1,10 @@
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
+from test.kernel.base_kernel_config import BaseKernelConfig
+from frozendict import frozendict
+from frozenlist import FrozenList
 
 
 @triton.jit
@@ -81,26 +85,7 @@ def bmm_scaled_fp8_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def bmm_scaled_fp8(a, a_scale, b, b_scale, c):
-    configs = {
-        torch.float8_e4m3fn: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 4,
-            "num_warps": 8,
-        },
-        torch.bfloat16: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 3,
-            "num_warps": 8,
-        },
-    }
-    # Check constraints.
+def bmm_scaled_fp8(a, a_scale, b, b_scale, c, **run_config):
     assert a.shape[0] == b.shape[0], "Incompatible dimensions"
     assert c.shape[0] == b.shape[0], "Incompatible dimensions"
     assert a.shape[2] == b.shape[1], "Incompatible dimensions"
@@ -108,9 +93,33 @@ def bmm_scaled_fp8(a, a_scale, b, b_scale, c):
     M, K = a.shape[1], a.shape[2]
     K, N = b.shape[1], b.shape[2]
     HEAD = a.shape[0]
-    dtype = a.dtype
 
-    # 1D launch kernel where each block gets its own program.
+    if not run_config:
+        M2 = BaseKernelConfig.closest_power_2(M)
+        params = {
+            "B": HEAD,
+            "M": M2,
+            "N": N,
+            "K": K,
+            "out_dtype": str(torch.bfloat16),
+        }
+        search_keys = FrozenList([M2, N])
+        search_keys.freeze(),
+        run_config = BaseKernelConfig.try_to_get_best_config(
+            "bmm_scaled_fp8",
+            frozendict(params),
+            search_keys,
+        )
+        if not run_config:
+            run_config = {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 256,
+                "BLOCK_SIZE_K": 128,
+                "GROUP_SIZE_M": 8,
+                "num_stages": 4,
+                "num_warps": 8,
+            }
+
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         HEAD,
@@ -138,11 +147,35 @@ def bmm_scaled_fp8(a, a_scale, b, b_scale, c):
         a_scale.stride(1),
         b_scale.stride(0),
         b_scale.stride(1),
-        BLOCK_SIZE_M=configs[dtype]["BLOCK_SIZE_M"],
-        BLOCK_SIZE_N=configs[dtype]["BLOCK_SIZE_N"],
-        BLOCK_SIZE_K=configs[dtype]["BLOCK_SIZE_K"],
-        GROUP_SIZE_M=configs[dtype]["GROUP_SIZE_M"],
-        num_stages=configs[dtype]["num_stages"],
-        num_warps=configs[dtype]["num_warps"],
+        BLOCK_SIZE_M=run_config["BLOCK_SIZE_M"],
+        BLOCK_SIZE_N=run_config["BLOCK_SIZE_N"],
+        BLOCK_SIZE_K=run_config["BLOCK_SIZE_K"],
+        GROUP_SIZE_M=run_config["GROUP_SIZE_M"],
+        num_stages=run_config["num_stages"],
+        num_warps=run_config["num_warps"],
     )
     return c
+
+
+if __name__ == "__main__":
+    B, M, N, K = 16, 100, 512, 128
+    dtype = torch.bfloat16
+    a_scale = torch.randn([B, M, 1], device="cuda", dtype=dtype)
+    b_scale = torch.randn([B, N, 1], device="cuda", dtype=dtype)
+    a = torch.randn([B, M, K], device="cuda", dtype=dtype)
+    b = torch.randn([B, K, N], device="cuda", dtype=dtype)
+    c = torch.zeros([B, M, N], device="cuda", dtype=dtype)
+    a = a.to(torch.float8_e4m3fn)
+    b = b.to(torch.float8_e4m3fn).transpose(1, 2).contiguous().transpose(1, 2)
+    aa = a.to(dtype) * a_scale
+    bb = b.to(dtype) * b_scale.transpose(1, 2)
+    o = torch.bmm(aa, bb)
+    bmm_scaled_fp8(a, a_scale, b, b_scale, c)
+    cos = F.cosine_similarity(c, o).mean()
+    assert cos == 1.0
+
+    fn1 = lambda: torch.bmm(aa, bb)
+    fn2 = lambda: bmm_scaled_fp8(a, a_scale, b, b_scale, c)
+    ms1 = triton.testing.do_bench_cudagraph(fn1)
+    ms2 = triton.testing.do_bench_cudagraph(fn2)
+    print(ms1, ms2)
