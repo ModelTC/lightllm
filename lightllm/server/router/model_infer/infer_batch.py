@@ -127,7 +127,6 @@ class InferReq:
             if share_node is not None:
                 self.shared_kv_node = share_node
                 ready_cache_len = share_node.node_prefix_total_len
-                value_tensor = value_tensor.long().cuda()
                 g_core_managers.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
                 self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
 
