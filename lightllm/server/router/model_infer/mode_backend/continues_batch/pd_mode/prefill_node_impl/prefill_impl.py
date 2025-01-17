@@ -123,7 +123,10 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                 key = torch.tensor(key, dtype=torch.int64, device="cpu")
                 value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
                 prefix_len = self.radix_cache.insert(key, value)
-                self.model.mem_manager.free(self.model.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
+                old_prefix_len = 0 if req.shared_kv_node is None else req.shared_kv_node.node_prefix_total_len
+                self.model.mem_manager.free(
+                    self.model.req_manager.req_to_token_indexs[req.req_idx][old_prefix_len:prefix_len]
+                )
                 if req.shared_kv_node is not None:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
