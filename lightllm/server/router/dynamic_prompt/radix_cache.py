@@ -336,7 +336,7 @@ class RadixCache:
 
             self.evict(need_evict_token_num, release_mem)
             mem_index = torch.concat(release_mems)
-            self.mem_manager.free(mem_index.cuda())
+            self.mem_manager.free(mem_index)
         return
 
 

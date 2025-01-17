@@ -127,9 +127,7 @@ class InferReq:
             if share_node is not None:
                 self.shared_kv_node = share_node
                 ready_cache_len = share_node.node_prefix_total_len
-                mem_manager: MemoryManager = g_core_managers.req_manager.mem_manager
                 value_tensor = value_tensor.long().cuda()
-                mem_manager.add_refs(value_tensor)  # 加 refs
                 g_core_managers.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
                 self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
 
@@ -347,13 +345,19 @@ class InferBatch:
             value = g_core_managers.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
             if is_group_finished:
                 prefix_len = g_core_managers.radix_cache.insert(key, value)
-                free_token_index.append(g_core_managers.req_manager.req_to_token_indexs[req.req_idx][:prefix_len])
+                old_prefix_len = 0 if req.shared_kv_node is None else req.shared_kv_node.node_prefix_total_len
+                free_token_index.append(
+                    g_core_managers.req_manager.req_to_token_indexs[req.req_idx][old_prefix_len:prefix_len]
+                )
                 if req.shared_kv_node is not None:
                     assert req.shared_kv_node.node_prefix_total_len <= prefix_len
                     g_core_managers.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
             else:
-                free_token_index.append(g_core_managers.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
+                old_prefix_len = 0 if req.shared_kv_node is None else req.shared_kv_node.node_prefix_total_len
+                free_token_index.append(
+                    g_core_managers.req_manager.req_to_token_indexs[req.req_idx][old_prefix_len : req.cur_kv_len]
+                )
                 if req.shared_kv_node is not None:
                     g_core_managers.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
