@@ -230,6 +230,13 @@ class Req(ctypes.Structure):
         raise NotImplementedError("Subclasses should implement this method")
 
 
+# 由于目前加入了很多异步调度的方法，为了缓解异步调度带来的很多
+# 估计不准确的问题，通过加长输出的长度，进行偏向保守一些的调度
+# 理论上不会多估计太多的 token 占用量, 同时得到较高的token显存
+# 使用率
+ADDED_OUTPUT_LEN = 6
+
+
 class NormalReq(Req):
     _pack_ = 4
 
@@ -246,28 +253,18 @@ class NormalReq(Req):
                 self.sample_params.max_new_tokens, max(int(1.1 * has_out_len), router_max_new_token_len)
             )
 
-        if self.req_status.is_running():
-            return (self.input_len + has_out_len, max(0, cur_max_new_token_len - has_out_len - 1))
-        elif self.req_status.is_waiting():
-            return (self.input_len + 1, max(0, cur_max_new_token_len - 1 - 1))
-        elif self.req_status.is_paused_and_offload():
-            return (self.input_len + has_out_len + 1, max(0, cur_max_new_token_len - has_out_len - 1 - 1))
-        else:
-            raise ValueError("Invalid request status")
+        a_len = max(self.input_len + has_out_len + 1, self.shm_cur_kv_len + 1)
+        b_len = max(0, cur_max_new_token_len - has_out_len - 1) + ADDED_OUTPUT_LEN
+
+        return (a_len, b_len)
 
     def get_decode_need_tokens(self):
-        if self.req_status.is_running():
-            return 1
-        else:
-            raise ValueError("Invalid request status")
+
+        return 1
 
     def get_first_router_need_tokens(self):
-        if self.req_status.is_waiting():
-            return self.input_len
-        elif self.req_status.is_paused_and_offload():
-            return self.input_len + self.shm_cur_output_len
-        else:
-            raise ValueError("Invalid request status")
+
+        return self.input_len + self.shm_cur_output_len
 
 
 class TokenHealingReq(NormalReq):
@@ -283,10 +280,11 @@ class TokenHealingReq(NormalReq):
                     self.shm_prompt_ids.arr[self.input_len : (self.input_len + prefix_token_num)]
                 )
                 break
+
         # 因为原始的输出token数量，会被中间的前缀补全占用decode次数，
-        # 所以默认多添加一些decode步数
-        # token healing mode 下，由于估计的生成token数据对应的生存周期可能会不准确
-        # 所以为了缓解调度带来的显存估计问题，对于生成token的长度 + 3来缓解可能的估计
+        # 所以默认多添加一些decode步数, token healing mode 下，由于
+        # 估计的生成token数据对应的生存周期可能会不准确,所以为了缓解调
+        # 度带来的显存估计问题，对于生成token的长度 + 6来缓解可能的估计
         # 错误问题。
         self.sample_params.max_new_tokens = self.sample_params.max_new_tokens + self.prefix_token_ids.size + 6
         return
@@ -306,55 +304,24 @@ class SplitFuseReq(Req):
                 self.sample_params.max_new_tokens, max(int(1.1 * has_out_len), router_max_new_token_len)
             )
 
-        if self.req_status.is_running():
-            return (
-                self.input_len + has_out_len,
-                max(
-                    0,
-                    (self.input_len + has_out_len - self.shm_cur_kv_len + self.splitfuse_block_size - 1)
-                    // self.splitfuse_block_size
-                    + cur_max_new_token_len
-                    - has_out_len
-                    - 1,
-                ),
-            )
-        elif self.req_status.is_waiting():
-            return (
-                self.input_len,
-                max(
-                    0,
-                    (self.input_len + self.splitfuse_block_size - 1) // self.splitfuse_block_size
-                    + cur_max_new_token_len
-                    - 1,
-                ),
-            )
-        elif self.req_status.is_paused_and_offload():
-            return (
-                self.input_len + has_out_len,
-                max(
-                    0,
-                    (self.input_len + has_out_len + self.splitfuse_block_size - 1) // self.splitfuse_block_size
-                    + cur_max_new_token_len
-                    - has_out_len
-                    - 1,
-                ),
-            )
-        else:
-            raise ValueError("Invalid request status")
+        a_len = max(self.input_len + has_out_len + 1, self.shm_cur_kv_len + 1)
+        b_len = (
+            (self.input_len + has_out_len - self.shm_cur_kv_len + self.splitfuse_block_size - 1)
+            // self.splitfuse_block_size
+            + cur_max_new_token_len
+            - has_out_len
+            - 1
+        )
+        b_len = max(0, b_len) + ADDED_OUTPUT_LEN
+
+        return (a_len, b_len)
 
     def get_decode_need_tokens(self):
         """
         splitfuse 调度模式的实现
         """
-        if self.req_status.is_running():
-            return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.splitfuse_block_size)
-        else:
-            raise ValueError("Invalid request status")
+        return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.splitfuse_block_size)
 
     def get_first_router_need_tokens(self):
-        if self.req_status.is_waiting():
-            return min(self.input_len, self.splitfuse_block_size)
-        elif self.req_status.is_paused_and_offload():
-            return min(self.input_len + self.shm_cur_output_len, self.splitfuse_block_size)
-        else:
-            raise ValueError("Invalid request status")
+
+        return min(self.input_len + self.shm_cur_output_len, self.splitfuse_block_size)
