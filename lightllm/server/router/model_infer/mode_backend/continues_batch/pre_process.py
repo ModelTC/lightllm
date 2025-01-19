@@ -108,7 +108,7 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     g_infer_state_lock.acquire()
     if g_core_managers.radix_cache is not None:
         g_core_managers.radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
-    mem_indexes = g_core_managers.req_manager.mem_manager.alloc(input_ids.shape[0])
+    mem_indexes = g_core_managers.req_manager.mem_manager.alloc(input_ids.shape[0]).cuda()
     g_infer_state_lock.release()
 
     kwargs = {
