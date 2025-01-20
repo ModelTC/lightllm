@@ -191,6 +191,7 @@ class RouterManager:
             req.start_time = group_req_indexes.time_mark
             req_group.append(req)
 
+            logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
         self.req_queue.extend(req_group)
         self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
 
