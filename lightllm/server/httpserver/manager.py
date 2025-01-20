@@ -417,6 +417,8 @@ class HttpServerManager:
         return
 
     async def recycle_resource_loop(self):
+        pre_time_mark = time.time()
+
         while True:
 
             try:
@@ -437,6 +439,16 @@ class HttpServerManager:
                     await self.shm_req_manager.async_put_back_req_obj(req)
                     await self.shm_req_manager.async_release_req_index(req.index_in_shm_mem)
                 await self._release_multimodal_resources(req_status.group_req_objs.multimodal_params)
+
+            # 先保留这个关键得日志，用于方便定位重构中的问题。
+            if time.time() - pre_time_mark > 20:
+                pre_time_mark = time.time()
+                for req_status in self.req_id_to_out_inf.values():
+                    logger.info(
+                        f"left req id {req_status.group_req_objs.group_req_id}"
+                        f"can release {req_status.group_req_objs.shm_req_objs[0].can_released_mark} "
+                        f"refcount {req_status.group_req_objs.shm_req_objs[0].ref_count}"
+                    )
         return
 
     async def handle_loop(self):

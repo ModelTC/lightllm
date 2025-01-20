@@ -44,6 +44,7 @@ class Batch:
             # 确保被回收, 减引用计数
             for req_id in finished_req_ids:
                 req = self.id_to_reqs[req_id]
+                logger.info(f"router release req id {req.request_id}")
                 shm_req_manager.put_back_req_obj(req)
                 req = None
 
