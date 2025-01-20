@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from lightllm.server.router.model_infer.infer_batch import requests_mapping, InferReq, InferBatch, g_core_managers
+from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.server.core.objs import ReqRunStatus
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
@@ -11,11 +11,11 @@ from lightllm.utils.log_utils import init_logger
 logger = init_logger(__name__)
 
 # @calculate_time(show=True, min_cost_ms=1)
-def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
+def prepare_decode_inputs():
     uninit_reqs = []
     run_reqs = []
-    for request_id in batch.request_ids:
-        req: InferReq = requests_mapping[request_id]
+    for request_id in g_infer_context.infer_req_ids:
+        req: InferReq = g_infer_context.requests_mapping[request_id]
         if not req.initialized:
             uninit_reqs.append(req)
         else:
@@ -48,9 +48,9 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
 
     # dynamic prompt cache 准备 token
     g_infer_state_lock.acquire()
-    if g_core_managers.radix_cache is not None:
-        g_core_managers.radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
-    mem_indexes = g_core_managers.req_manager.mem_manager.alloc(input_ids.shape[0]).cuda()
+    if g_infer_context.radix_cache is not None:
+        g_infer_context.radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
+    mem_indexes = g_infer_context.req_manager.mem_manager.alloc(input_ids.shape[0]).cuda()
     g_infer_state_lock.release()
 
     kwargs = {

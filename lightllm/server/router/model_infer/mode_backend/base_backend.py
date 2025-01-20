@@ -9,8 +9,6 @@ from transformers.configuration_utils import PretrainedConfig
 from lightllm.models.cohere.model import CohereTpPartModel
 from lightllm.models.mixtral.model import MixtralTpPartModel
 from lightllm.models.qwen2.model import Qwen2TpPartModel
-from rpyc.utils.classic import obtain
-
 from lightllm.models.bloom.model import BloomTpPartModel
 from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.models.starcoder.model import StarcoderTpPartModel
@@ -41,6 +39,7 @@ from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
 from lightllm.utils.device_utils import set_current_device_id
 from lightllm.server.core.objs import ShmReqManager
+from lightllm.server.router.model_infer.infer_batch import g_infer_context
 import torch.distributed as dist
 
 
@@ -216,11 +215,11 @@ class ModeBackend:
         self.logger.info(f"loaded model class {self.model.__class__}")
         self.init_custom()
 
-        # 注册到全局共享
-        from ..infer_batch import g_core_managers
-
-        g_core_managers.register(
-            req_manager=self.model.req_manager, radix_cache=self.radix_cache, shm_req_manager=self.shm_req_manager
+        g_infer_context.register(
+            req_manager=self.model.req_manager,
+            radix_cache=self.radix_cache,
+            shm_req_manager=self.shm_req_manager,
+            vocab_size=self.model.vocab_size,
         )
         return
 
@@ -230,76 +229,41 @@ class ModeBackend:
     def get_max_total_token_num(self):
         return self.model.mem_manager.size
 
-    # @calculate_time(show=False, min_cost_ms=300)
-    def prefill_batch(self, batch_id):
+    def prefill(self, reqs: List[Tuple]):
+        """This method can be overridden in subclasses."""
         raise NotImplementedError()
 
     # @calculate_time(show=True, min_cost_ms=200)
-    def decode_batch(self, batch_id):
+    def decode(self):
+        """This method can be overridden in subclasses."""
         raise NotImplementedError()
 
-    # @calculate_time(show=True, min_cost_ms=0.1)
-    def add_batch(self, batch_id, reqs):
-        # 当 dp_size 不等于 1 的时候，需要提前从发来的请求参数中
-        # 剔除掉不需要处理的请求参数, deepseekv2 这种特殊的模型
-        # 在 dp 模式下 tp_rank == dp_rank
+    def pause_reqs(self, req_list):
+        if self.dp_size != 1:
+            req_list = [req for req in req_list if req[0] in g_infer_context.requests_mapping]
+
+        g_infer_context.pause_reqs(req_list)
+        return
+
+    # 一些可以复用的单元功能函数
+    def _init_reqs(self, reqs: List[Tuple]):
         if self.dp_size != 1:
             cur_dp_index = self.tp_rank
             reqs = [req for req in reqs if req[3] == cur_dp_index]
 
         g_infer_state_lock.acquire()
-        batch_data = InferBatch.init_batch(
-            batch_id,
-            reqs,
-            self.model.data_type,
-            torch.cuda.current_device(),
-            self.model.vocab_size,
-        )
-        self.cache[batch_id] = batch_data
+        g_infer_context.add_reqs(reqs, init_req_obj=True)
         g_infer_state_lock.release()
-        return
+        req_ids = [e[0] for e in reqs]
+        return req_ids
 
-    # @calculate_time(show=True, min_cost_ms=0.1)
-    def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
-        if self.dp_size != 1:
-            req_id_list = [req_id for req_id in req_id_list if req_id in requests_mapping]
-            finished_req_id_list = [req_id for req_id in finished_req_id_list if req_id in requests_mapping]
+    def _filter_finished_reqs(self):
+        finished_req_ids = []
+        for req_id in g_infer_context.infer_req_ids:
+            req = g_infer_context.requests_mapping[req_id]
 
-        g_infer_state_lock.acquire()
-        batch = self.cache.pop(batch_id)
-        filter_batch = batch.filter(req_id_list, finished_req_id_list)
-        del batch
-        self.cache[batch_id] = filter_batch
-        g_infer_state_lock.release()
-        return
+            if req.finish_status.is_finished() or req.shm_req.router_aborted:
+                finished_req_ids.append(req_id)
 
-    def pause_reqs(self, batch_id, req_list):
-        if self.dp_size != 1:
-            req_list = [req for req in req_list if req[0] in requests_mapping]
-
-        g_infer_state_lock.acquire()
-        batch1 = self.cache.pop(batch_id)
-        batch2 = batch1.pause_reqs(req_list)
-        self.cache[batch_id] = batch2
-        del batch1
-        g_infer_state_lock.release()
-        return
-
-    # @calculate_time(show=True, min_cost_ms=0.1)
-    def merge_batch(self, batch_id1, batch_id2):
-        batch1 = self.cache.pop(batch_id1)
-        batch2 = self.cache.pop(batch_id2)
-        m_batch = InferBatch.merge(batch1, batch2)
-        del batch1
-        del batch2
-        self.cache[batch_id1] = m_batch
-        return
-
-    # @calculate_time(show=True, min_cost_ms=10)
-    def remove_batch(self, batch_id):
-        g_infer_state_lock.acquire()
-        batch = self.cache.pop(batch_id)
-        batch.free_self()
-        del batch
-        g_infer_state_lock.release()
+        g_infer_context.filter(finished_req_ids)
         return

@@ -1,10 +1,12 @@
 import torch
+from typing import List, Tuple
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
+from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 
@@ -15,21 +17,22 @@ class ContinuesBatchBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
 
-    @calculate_time(show=False, min_cost_ms=300)
-    def prefill_batch(self, batch_id):
-        return self.forward(batch_id, is_prefill=True)
+    def prefill(self, reqs: List[Tuple]):
+        req_ids = self._init_reqs(reqs)
+        self.forward(req_ids, is_prefill=True)
+        self._filter_finished_reqs()
+        return
 
-    @calculate_time(show=True, min_cost_ms=200)
-    def decode_batch(self, batch_id):
-        return self.forward(batch_id, is_prefill=False)
+    def decode(self):
+        self.forward(g_infer_context.infer_req_ids, is_prefill=False)
+        self._filter_finished_reqs()
+        return
 
-    def forward(self, batch_id, is_prefill):
-        # special code for return all prompt_logprobs
-        batch: InferBatch = self.cache.pop(batch_id)
+    def forward(self, req_ids: List[int], is_prefill: bool):
         if is_prefill:
-            kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
+            kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
         else:
-            kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
+            kwargs, run_reqs = prepare_decode_inputs(req_ids)
 
         logits = self.model.forward(**kwargs)
 
@@ -71,5 +74,4 @@ class ContinuesBatchBackend(ModeBackend):
 
                 req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
 
-        self.cache[batch.batch_id] = batch
         return

@@ -94,6 +94,7 @@ class Req(ctypes.Structure):
         ("group_req_id", ctypes.c_int),
         ("input_len", ctypes.c_int),
         ("alloc_shm_numpy_len", ctypes.c_int),
+        ("shm_infer_released", ctypes.c_bool),  # 推理进程用于标记请求对象已经被推理进程释放，router进程得到信息后亦可释放shm req对象
         ("shm_cur_kv_len", ctypes.c_int),  # 推理进程记录自己当前占用kv 显存长度
         ("shm_cur_output_len", ctypes.c_int),  # 推理进程记录自己输出长度的计数
         # candetoken_out_len 推理进程修改这个数据，让detokenization进程知道需要detoken的长度，
@@ -104,6 +105,10 @@ class Req(ctypes.Structure):
         ("req_status", ReqRunStatus),
         ("finish_status", FinishStatus),
         ("is_aborted", ctypes.c_bool),
+        # 这个标记变量是router进程读取到is_aborted信息后，将这个router_aborted 变量标记为True，因为推理进程
+        # 直接读取 is_aborted 变量可能会存在异步问题，但是router的执行线程和推理进程之间是线性运行的，所以router
+        # 进程写入的router_aborted信息，所有推理进程可以保证同时读取到的是正确信息，不会出现异步问题。
+        ("router_aborted", ctypes.c_bool),
         # 当FinishStatus 是正常结束状态时，finish_token_index 用于标识结束的
         # token 的index位置
         ("finish_token_index", ctypes.c_int),
@@ -134,6 +139,8 @@ class Req(ctypes.Structure):
         self.req_status = ReqRunStatus()
         self.finish_status = FinishStatus()
         self.is_aborted = False
+        self.router_aborted = False
+        self.shm_infer_released = False
         self.shm_cur_kv_len = 0
         self.shm_cur_output_len = 0
         self.candetoken_out_len = 0

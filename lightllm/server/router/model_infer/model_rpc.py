@@ -135,47 +135,24 @@ class ModelRpcServer:
 
         return
 
-    # @calculate_time(show=True, min_cost_ms=0.1)
-    def init_batch(self, batch_id, reqs):
+    def prefill(self, reqs):
         try:
-            return self.backend.add_batch(batch_id, reqs)
-        except Exception as e:
-            err_msg = str(e)
-            logger.exception(f"Batch add encountered an unexpected ERROR: {err_msg}")
-            raise e
-
-    # @calculate_time(show=False, min_cost_ms=300)
-    def prefill_batch(self, batch_id):
-        try:
-            return self.backend.prefill_batch(batch_id)
+            return self.backend.prefill(reqs)
         except Exception as e:
             err_msg = str(e)
             logger.exception(f"Batch prefill encountered an unexpected ERROR: {err_msg}")
             raise e
 
-    # @calculate_time(show=True, min_cost_ms=200)
-    def decode_batch(self, batch_id):
+    def decode(self):
         try:
-            return self.backend.decode_batch(batch_id)
+            return self.backend.decode()
         except Exception as e:
             err_msg = str(e)
             logger.exception(f"Batch decode encountered an unexpected ERROR: {err_msg}")
             raise e
 
-    # @calculate_time(show=True, min_cost_ms=0.1)
-    def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
-        return self.backend.filter_batch(batch_id, req_id_list, finished_req_id_list)
-
-    def pause_reqs(self, batch_id, req_list):
-        return self.backend.pause_reqs(batch_id, req_list)
-
-    # @calculate_time(show=True, min_cost_ms=0.1)
-    def merge_batch(self, batch_id1, batch_id2):
-        return self.backend.merge_batch(batch_id1, batch_id2)
-
-    # @calculate_time(show=True, min_cost_ms=10)
-    def remove_batch(self, batch_id):
-        return self.backend.remove_batch(batch_id)
+    def pause_reqs(self, req_list):
+        return self.backend.pause_reqs(req_list)
 
     def get_max_total_token_num(self):
         return self.backend.get_max_total_token_num()
@@ -214,88 +191,40 @@ class ModelRpcClient:
             self.model_infer_server.init_model(kvargs)
             return
 
-    async def init_batch(self, batch_id, reqs):
+    async def prefill(self, reqs):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("init_batch", (batch_id, reqs))
-            self.rpc_event.set()
-
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
-            return
-        else:
-            self.model_infer_server.init_batch(batch_id, reqs)
-            return
-
-    async def prefill_batch(self, batch_id):
-        if self.use_rpc:
-            self.rpc_shm_params.write_func_params("prefill_batch", (batch_id,))
+            self.rpc_shm_params.write_func_params("prefill", (reqs,))
             self.rpc_event.set()
 
             await asyncio.to_thread(self.rpc_finished_event.wait)
             self.rpc_finished_event.clear()
             return
         else:
-            self.model_infer_server.prefill_batch(batch_id)
+            self.model_infer_server.prefill(reqs)
             return
 
-    async def decode_batch(self, batch_id):
+    async def decode(self):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("decode_batch", (batch_id,))
+            self.rpc_shm_params.write_func_params("decode", ())
             self.rpc_event.set()
 
             await asyncio.to_thread(self.rpc_finished_event.wait)
             self.rpc_finished_event.clear()
             return
         else:
-            self.model_infer_server.decode_batch(batch_id)
+            self.model_infer_server.decode()
             return
 
-    async def filter_batch(self, batch_id, req_id_list, finished_req_id_list):
+    async def pause_reqs(self, reqs_list):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("filter_batch", (batch_id, req_id_list, finished_req_id_list))
+            self.rpc_shm_params.write_func_params("pause_reqs", (reqs_list,))
             self.rpc_event.set()
 
             self.rpc_finished_event.wait()
             self.rpc_finished_event.clear()
             return
         else:
-            self.model_infer_server.filter_batch(batch_id, req_id_list, finished_req_id_list)
-            return
-
-    async def pause_reqs(self, batch_id, reqs_list):
-        if self.use_rpc:
-            self.rpc_shm_params.write_func_params("filter_batch", (batch_id, reqs_list))
-            self.rpc_event.set()
-
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
-            return
-        else:
-            self.model_infer_server.pause_reqs(batch_id, reqs_list)
-            return
-
-    async def merge_batch(self, batch_id1, batch_id2):
-        if self.use_rpc:
-            self.rpc_shm_params.write_func_params("merge_batch", (batch_id1, batch_id2))
-            self.rpc_event.set()
-
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
-            return
-        else:
-            self.model_infer_server.merge_batch(batch_id1, batch_id2)
-            return
-
-    async def remove_batch(self, batch_id):
-        if self.use_rpc:
-            self.rpc_shm_params.write_func_params("remove_batch", (batch_id,))
-            self.rpc_event.set()
-
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
-            return
-        else:
-            self.model_infer_server.remove_batch(batch_id)
+            self.model_infer_server.pause_reqs(reqs_list)
             return
 
     async def get_max_total_token_num(self):
