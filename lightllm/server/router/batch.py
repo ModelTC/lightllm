@@ -13,10 +13,6 @@ class Batch:
         self.reqs = reqs
         self.id_to_reqs = {req.request_id: req for req in reqs}
         self.dp_size = dp_size
-
-        # 该参数只会在batch init， prefill， decode 后进行更新，并在剔除请求时减少
-        # 在 batch rpc init 之后才会被填充正确的值，初始化为 None
-        self.batch_decode_need_tokens = [None for _ in range(dp_size)]
         return
 
     def input_tokens(self):
@@ -25,39 +21,36 @@ class Batch:
             batch_input_tokens += req.input_len
         return batch_input_tokens
 
-    def mark_and_get_finished_req_and_preupdate_status(self):
-        unfinished_req_ids, finished_req_ids = [], []
+    def get_batch_decode_need_tokens(self):
+        new_batch_decode_need_tokens = [0 for _ in range(self.dp_size)]  # 只有在 splitfuse 模式下有意义
+
         for req in self.reqs:
-            if req.finish_status.is_finished() or req.is_aborted:
-                finished_req_ids.append(req.request_id)
-                req_dp_index = req.sample_params.suggested_dp_index
-                # 标记的时候，也同时更新一些这些请求被移除掉的更新量，有点dirty
-                self.batch_decode_need_tokens[req_dp_index] -= req.get_decode_need_tokens()
-            else:
-                unfinished_req_ids.append(req.request_id)
+            req_dp_index = req.sample_params.suggested_dp_index
+            new_batch_decode_need_tokens[req_dp_index] += req.get_decode_need_tokens()
 
-        return unfinished_req_ids, finished_req_ids
+        return new_batch_decode_need_tokens
 
-    def filter_out_finished_req(self, unfinished_req_ids, finished_req_ids, shm_req_manager: ShmReqManager):
-        # update batch
-        if len(finished_req_ids) != 0:
-            # 确保被回收, 减引用计数
-            for req_id in finished_req_ids:
-                req = self.id_to_reqs[req_id]
+    def filter_out_finished_req(self, shm_req_manager: ShmReqManager):
+        unfinished_req_ids = []
+        for req in self.reqs:
+            # 更新aborted 标记，可以触发推理进程主动退出aborted得请求。
+            if req.is_aborted:
+                req.router_aborted = True
+
+            if req.shm_infer_released:
                 logger.info(f"router release req id {req.request_id}")
                 shm_req_manager.put_back_req_obj(req)
                 req = None
+            else:
+                unfinished_req_ids.append(req.request_id)
 
-            self.reqs = [self.id_to_reqs[req_id] for req_id in unfinished_req_ids]
-            self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        self.reqs = [self.id_to_reqs[req_id] for req_id in unfinished_req_ids]
+        self.id_to_reqs = {req.request_id: req for req in self.reqs}
         return
 
     def pop_req(self, req_id):
         self.reqs = [req for req in self.reqs if req.request_id != req_id]
-        req = self.id_to_reqs[req_id]
         self.id_to_reqs.pop(req_id)
-        req_dp_index = req.sample_params.suggested_dp_index
-        self.batch_decode_need_tokens[req_dp_index] -= req.get_decode_need_tokens()
         return
 
     def is_clear(self):
@@ -67,8 +60,6 @@ class Batch:
         for _req in mini_batch.reqs:
             self.reqs.append(_req)
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
-        for dp_index in range(self.dp_size):
-            self.batch_decode_need_tokens[dp_index] += mini_batch.batch_decode_need_tokens[dp_index]
         return
 
     def dp_merge(self, mini_batch: "Batch"):

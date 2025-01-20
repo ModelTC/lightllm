@@ -4,7 +4,7 @@ import torch
 from .impl import ContinuesBatchBackend
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.core.objs import FinishStatus
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams
+from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 from lightllm.server.tokenizer import get_tokenizer
@@ -51,7 +51,7 @@ class SimpleConstraintBackend(ContinuesBatchBackend):
         from outlines.fsm.guide import RegexGuide
 
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.model.mem_manager)
         run_reqs: List[InferReq] = run_reqs
 
@@ -86,7 +86,7 @@ class SimpleConstraintBackend(ContinuesBatchBackend):
     @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
         run_reqs: List[InferReq] = run_reqs
 

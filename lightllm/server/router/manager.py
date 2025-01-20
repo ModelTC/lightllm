@@ -289,7 +289,6 @@ class RouterManager:
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
                 await self._prefill_batch(new_mini_batch)
                 if not new_mini_batch.is_clear():
-                    await self._merge_batch(self.running_batch, new_mini_batch)
                     self.running_batch.merge(new_mini_batch)
                 return
 
@@ -312,26 +311,19 @@ class RouterManager:
             return
         return
 
-    async def _init_batch(self, batch: Batch):
-        reqs = [r.to_router_rpc_obj() for r in batch.reqs]
-        await self.model_rpc_client.init_batch(batch_id=batch.batch_id, reqs=reqs)
-        self._update_init_status_to_batch(batch)
-        logger.debug(f"Init Batch: {batch.simple_log()} \n")
-        return
-
     async def _prefill_batch(self, batch: Batch):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
-        await self._init_batch(batch)
+        reqs = [r.to_router_rpc_obj() for r in batch.reqs]
         if not self.is_splitfuse_mode:
             # 在 非 splitfuse 模式下，才需要真的执行 prefill 的操作。
             self.overlap_event.set()
-            await self.model_rpc_client.prefill_batch(batch_id=batch.batch_id)
-            self._update_out_status_to_batch(batch)
-            unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
-            self._send_to_detokenization_proc(batch)
-            batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids, self.shm_req_manager)
-            await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
+            await self.model_rpc_client.prefill(reqs)
+            batch.filter_out_finished_req(self.shm_req_manager)
+            # 发个None包触发一下detokenization
+            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+
+        logger.debug(f"Prefill Batch: {batch.simple_log()} \n")
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "prefill"
         )
@@ -341,28 +333,13 @@ class RouterManager:
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
         self.overlap_event.set()
-        await self.model_rpc_client.decode_batch(batch.batch_id)
-
-        self._update_out_status_to_batch(batch)
-        unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status()
-        self._send_to_detokenization_proc(batch)
-        batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids, self.shm_req_manager)
-        await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
+        await self.model_rpc_client.decode()
+        batch.filter_out_finished_req(self.shm_req_manager)
+        # 发个None包触发一下detokenization
+        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
         )
-        return
-
-    async def _filter_batch(self, batch: Batch, unfinished_req_ids, finished_req_ids: List):
-        await self.model_rpc_client.filter_batch(batch.batch_id, unfinished_req_ids, finished_req_ids)
-        return
-
-    async def _merge_batch(self, batch1, batch2):
-        await self.model_rpc_client.merge_batch(batch1.batch_id, batch2.batch_id)
-        return
-
-    async def _remove_batch(self, batch):
-        await self.model_rpc_client.remove_batch(batch.batch_id)
         return
 
     async def _pause_reqs(self, batch: Batch, pasue_reqs):
@@ -370,32 +347,10 @@ class RouterManager:
         await self.model_rpc_client.pause_reqs(batch.batch_id, pasue_reqs_info)
         return
 
-    async def _handle_finish_req(self, batch: Batch, unfinished_req_ids, finished_req_ids):
-        if len(finished_req_ids) != 0:
-            if batch.is_clear():
-                await self._remove_batch(batch)
-            else:
-                await self._filter_batch(batch, unfinished_req_ids, finished_req_ids)
-        return
-
     def _filter_runing_batch(self):
         if self.running_batch is not None and self.running_batch.is_clear():
             self.running_batch = None
             return
-
-    def _update_init_status_to_batch(self, batch: Batch):
-        self._update_out_status_to_batch(batch)
-        return
-
-    def _update_out_status_to_batch(self, batch: Batch):
-        new_batch_decode_need_tokens = [0 for _ in range(self.dp_size)]  # 只有在 splitfuse 模式下有意义
-
-        for req in batch.reqs:
-            req_dp_index = req.sample_params.suggested_dp_index
-            new_batch_decode_need_tokens[req_dp_index] += req.get_decode_need_tokens()
-
-        batch.batch_decode_need_tokens = new_batch_decode_need_tokens
-        return
 
     def _can_decode(self, batch: Batch):
         # p d 分离模式下，目前只能使用保守调度，保证请求放入进行decode的时候
@@ -406,12 +361,7 @@ class RouterManager:
 
         # 下面的判定条件，只在 dp 为 1 的情况下启用
         assert self.dp_size == 1
-        return batch.batch_decode_need_tokens[0] + self.get_used_tokens(0) <= self.max_total_token_num
-
-    def _send_to_detokenization_proc(self, batch: Batch):
-        # 发个空包触发一下detokenization
-        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
-        return
+        return batch.get_batch_decode_need_tokens()[0] + self.get_used_tokens(0) <= self.max_total_token_num
 
     def get_used_tokens(self, dp_index):
         if self.args.use_dynamic_prompt_cache:

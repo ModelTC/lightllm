@@ -7,7 +7,7 @@ from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBac
 from typing import List
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
 from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
@@ -57,7 +57,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
             reqs = [req for req in reqs if req[3] == cur_dp_index]
 
         g_infer_state_lock.acquire()
-        batch_data = InferBatch.init_batch(
+        batch_data = g_infer_context.init_batch(
             batch_id,
             reqs,
             self.model.data_type,
@@ -119,7 +119,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
     @calculate_time(show=True, min_cost_ms=200)
     def decode_batch(self, batch_id):
         # special code for return all prompt_logprobs
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
 
         kwargs, run_reqs, uninit_reqs = prepare_decode_inputs(batch, self.radix_cache)
 

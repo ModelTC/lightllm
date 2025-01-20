@@ -1,7 +1,7 @@
 import torch
 from .impl import ContinuesBatchBackend
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams
+from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs
 from .post_process import sample
 
@@ -15,7 +15,7 @@ class ReturnPromptLogProbBackend(ContinuesBatchBackend):
         # 在 return all_prompt_logprobs 的模式下，不能启用 dynamic prompt cache
         assert self.radix_cache is None
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.model.mem_manager)
 
         prompt_all_logits = self.model.forward(**kwargs)

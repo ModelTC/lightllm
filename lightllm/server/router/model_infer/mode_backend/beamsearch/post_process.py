@@ -1,7 +1,7 @@
 import re
 import torch
 from typing import List, Tuple
-from lightllm.server.router.model_infer.infer_batch import InferBatch, group_mapping, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import _top_p_top_k
@@ -93,7 +93,7 @@ def beam_sample(probs, req_group, is_prefill, eos_id, vocab_size, req_manager):
     next_tokens = (next_inds % vocab_size).detach().cpu().numpy()
     best_score = -float("inf")
     for i in range(2 * best_of):
-        req_obj = requests_mapping[req_group.req_group[beam_id[i]]]
+        req_obj = g_infer_context.requests_mapping[req_group.req_group[beam_id[i]]]
         req_obj.input_token_ids.append(next_tokens[i])
         req_obj.logprobs.append(next_logprobs[i])
         req_obj.update_finish_status(eos_id)

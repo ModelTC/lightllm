@@ -3,7 +3,7 @@ import shutil
 import torch
 from .impl import ContinuesBatchBackend
 from lightllm.server.core.objs import FinishStatus
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams
+from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 from typing import List
@@ -30,7 +30,7 @@ class FirstTokenConstraintBackend(ContinuesBatchBackend):
 
     def forward(self, batch_id, is_prefill):
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         if is_prefill:
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
         else:

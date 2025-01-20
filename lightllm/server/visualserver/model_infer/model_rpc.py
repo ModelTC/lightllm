@@ -6,7 +6,6 @@ import os
 from datetime import timedelta
 from typing import Dict, List, Tuple
 from transformers.configuration_utils import PretrainedConfig
-from lightllm.server.router.model_infer.infer_batch import InferBatch
 from rpyc.utils.classic import obtain
 from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
 from lightllm.models.llava.llava_visual import LlavaVisionModel
@@ -45,7 +44,6 @@ class VisualModelRpcServer(rpyc.Service):
             world_size=self.vit_tp,
         )
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
-        
 
         try:
             self.model_type = model_cfg["model_type"]

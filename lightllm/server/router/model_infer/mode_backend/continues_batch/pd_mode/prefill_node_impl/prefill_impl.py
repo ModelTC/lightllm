@@ -8,7 +8,7 @@ from typing import List
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams, g_infer_context
 from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
@@ -59,7 +59,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         if is_prefill:
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
         else:

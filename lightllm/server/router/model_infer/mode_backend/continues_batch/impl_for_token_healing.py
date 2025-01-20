@@ -1,7 +1,7 @@
 import torch
 from .impl import ContinuesBatchBackend
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams
+from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
 from lightllm.server.tokenizer import get_tokenizer
@@ -38,7 +38,7 @@ class TokenHealingBackend(ContinuesBatchBackend):
         # 在 token_healing 的模式下，暂时不能启用 dynamic prompt cache
         assert self.radix_cache is None
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.model.mem_manager)
 
         logics = self.model.forward(**kwargs)
@@ -79,7 +79,7 @@ class TokenHealingBackend(ContinuesBatchBackend):
         # 当前token headling 不支持 prompt cache
         assert self.radix_cache is None
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
 
         logits = self.model.forward(**kwargs)

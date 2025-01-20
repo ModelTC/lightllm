@@ -1,19 +1,13 @@
 import torch
 import numpy as np
-from lightllm.server.router.model_infer.infer_batch import (
-    requests_mapping,
-    group_mapping,
-    InferReqGroup,
-    InferReq,
-    InferBatch,
-)
+from lightllm.server.router.model_infer.infer_batch import InferReqGroup, InferReq, g_infer_context
 from lightllm.server.core.objs import ReqRunStatus
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.common.mem_manager import MemoryManager
 
 # @calculate_time(show=True, min_cost_ms=1)
-def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multimodal=False):
+def prepare_prefill_inputs(batch, radix_cache: RadixCache, is_multimodal=False):
     run_reqs_group = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
@@ -25,13 +19,13 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
     batch_multimodal_params = []
     b_ready_cache_len = []
     for request_id in batch.request_ids:
-        req: InferReq = requests_mapping[request_id]
+        req: InferReq = g_infer_context.requests_mapping[request_id]
         group_req_id = req.group_req_id
         if request_id != group_req_id:
             continue
         assert req.req_status == ReqRunStatus.RUNNING
 
-        run_reqs_group.append(group_mapping[group_req_id])
+        run_reqs_group.append(g_infer_context.group_mapping[group_req_id])
         batch_multimodal_params.append(req.multimodal_params)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
@@ -80,7 +74,7 @@ def prepare_prefill_inputs(batch: InferBatch, radix_cache: RadixCache, is_multim
 
 
 # @calculate_time(show=True, min_cost_ms=1)
-def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
+def prepare_decode_inputs(batch, radix_cache: RadixCache):
     run_req_groups = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
@@ -91,11 +85,11 @@ def prepare_decode_inputs(batch: InferBatch, radix_cache: RadixCache):
     nopad_b_seq_len = []
     group_tag = {}
     for request_id in batch.request_ids:
-        req: InferReq = requests_mapping[request_id]
+        req: InferReq = g_infer_context.requests_mapping[request_id]
         assert req.req_status == ReqRunStatus.RUNNING
         group_req_id = req.group_req_id
         if group_req_id not in group_tag:
-            run_req_groups.append(group_mapping[group_req_id])
+            run_req_groups.append(g_infer_context.group_mapping[group_req_id])
             group_tag[group_req_id] = True
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)

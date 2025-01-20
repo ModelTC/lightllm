@@ -3,12 +3,10 @@ from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBac
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import (
-    InferBatch,
+    g_infer_context,
     InferReq,
     InferReqGroup,
     InferSamplingParams,
-    requests_mapping,
-    group_mapping,
 )
 from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 from lightllm.utils.log_utils import init_logger
@@ -37,17 +35,17 @@ class DiversehBackend(ModeBackend):
 
     def build_group(self, batch):
         for r_id in batch.request_ids:
-            req = requests_mapping[r_id]
+            req = g_infer_context.requests_mapping[r_id]
             group_req_id = req.group_req_id
             best_of = req.sampling_param.best_of
-            if group_req_id not in group_mapping:
-                group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
-            group_mapping[group_req_id].add_req(r_id)
+            if group_req_id not in g_infer_context.group_mapping:
+                g_infer_context.group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
+            g_infer_context.group_mapping[group_req_id].add_req(r_id)
 
     def forward(self, batch_id, is_prefill):
         # special code for return all prompt_logprobs
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
         if is_prefill:
             self.build_group(batch)
             kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)

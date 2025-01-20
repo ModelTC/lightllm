@@ -1,6 +1,6 @@
 import torch
 from .impl import ContinuesBatchBackend
-from lightllm.server.router.model_infer.infer_batch import InferBatch, InferReq, InferSamplingParams, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from lightllm.server.core.objs import ReqRunStatus, FinishStatus
 
@@ -18,7 +18,7 @@ class RewardModelBackend(ContinuesBatchBackend):
     def forward(self, batch_id, is_prefill):
 
         output_dict = {}
-        batch: InferBatch = self.cache.pop(batch_id)
+        batch = self.cache.pop(batch_id)
 
         kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
 

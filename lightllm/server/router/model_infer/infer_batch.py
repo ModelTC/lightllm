@@ -98,6 +98,8 @@ class InferenceContext:
 
     @torch.no_grad()
     def filter(self, finished_request_ids: List[int]):
+        if len(finished_request_ids) == 0:
+            return
 
         free_req_index = []
         free_token_index = []

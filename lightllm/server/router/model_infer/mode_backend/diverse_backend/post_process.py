@@ -2,7 +2,7 @@ import os
 import re
 import torch
 from typing import List, Tuple
-from lightllm.server.router.model_infer.infer_batch import InferBatch, group_mapping, requests_mapping
+from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import _top_p_top_k
