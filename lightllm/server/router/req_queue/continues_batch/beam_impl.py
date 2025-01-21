@@ -45,7 +45,7 @@ class BeamContinuesBatchQueue(BaseQueue):
 
         # prefill token 计算
         for req in cur_handle_group_reqs:
-            new_batch_first_router_need_tokens += req.cur_output_len
+            new_batch_first_router_need_tokens += req.shm_cur_output_len
         new_batch_first_router_need_tokens += req.input_len
 
         ok_token_num = (
@@ -53,7 +53,7 @@ class BeamContinuesBatchQueue(BaseQueue):
             < self.max_total_tokens
         )
 
-        if not req.req_status.is_paused_and_offload():
+        if not req.is_paused:
             ok_req_num = len(self.cache_len_list) + len(self.pause_req_dict) <= self.running_max_req_size
         else:
             ok_req_num = (
@@ -95,7 +95,7 @@ class BeamContinuesBatchQueue(BaseQueue):
         aborted_count = 0
         cur_group_reqs = []
         for req in self.waiting_req_list:
-            if req.is_aborted and req.req_status.is_waiting():
+            if req.is_aborted and not req.is_paused:
                 aborted_count += 1
                 abort_req_list.append(req)
                 continue
@@ -109,7 +109,7 @@ class BeamContinuesBatchQueue(BaseQueue):
             if ok_insert:
                 can_run_list.extend(cur_group_reqs)
                 for cur_req in cur_group_reqs:
-                    if cur_req.req_status.is_paused_and_offload():
+                    if cur_req.is_paused:
                         self.pause_req_dict.pop(cur_req.request_id)
                 cur_group_reqs = [req]  # 等待判断的组
             else:
@@ -123,7 +123,7 @@ class BeamContinuesBatchQueue(BaseQueue):
             if ok_insert:
                 can_run_list.extend(cur_group_reqs)
                 for req in cur_group_reqs:
-                    if req.req_status.is_paused_and_offload():
+                    if req.is_paused:
                         self.pause_req_dict.pop(req.request_id)
 
         if len(can_run_list) != 0:

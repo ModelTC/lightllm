@@ -39,7 +39,7 @@ class ContinuesBatchQueue(BaseQueue):
                 < self.max_total_tokens
             )
 
-            if not req.req_status.is_paused_and_offload():
+            if not req.is_paused:
                 ok_req_num = len(self.cache_len_list) + len(self.pause_req_dict) <= self.running_max_req_size
             else:
                 # 因为存在重复的项
@@ -77,7 +77,7 @@ class ContinuesBatchQueue(BaseQueue):
         new_batch_first_router_need_tokens = 0  # 主要是对 prefill 大块计算时候的token数量限制
         aborted_count = 0
         for req in self.waiting_req_list:
-            if req.is_aborted and req.req_status.is_waiting():
+            if req.is_aborted and not req.is_paused:
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
                 # 暂停的请求需要恢复后，由 router manager 部分来过滤。暂时保持这种处理方法, 否则会导致管理token和管理req对象的泄漏
                 aborted_count += 1
@@ -88,7 +88,7 @@ class ContinuesBatchQueue(BaseQueue):
             )
             if ok_insert:
                 can_run_list.append(req)
-                if req.req_status.is_paused_and_offload():
+                if req.is_paused:
                     self.pause_req_dict.pop(req.request_id)
             else:
                 break
