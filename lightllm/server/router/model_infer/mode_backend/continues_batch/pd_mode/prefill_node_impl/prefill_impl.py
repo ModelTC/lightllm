@@ -83,7 +83,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
 
-            if req_obj.finish_status.is_finished() and req_obj.shm_req.router_aborted:
+            if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
                 finished_req_ids.append(req_obj.shm_req.request_id)
 
             if self.tp_rank < self.dp_size:
