@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
-from lightllm.server.core.objs import ReqRunStatus
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.common.mem_manager import MemoryManager

@@ -8,7 +8,7 @@ from lightllm.server.router.model_infer.infer_batch import (
     InferReqGroup,
     InferSamplingParams,
 )
-from lightllm.server.core.objs import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.tokenizer import get_tokenizer
 from lightllm.server.router.model_infer.mode_backend.beamsearch.pre_process import (

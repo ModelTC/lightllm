@@ -2,7 +2,7 @@ import torch
 from .impl import ContinuesBatchBackend
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
-from lightllm.server.core.objs import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import FinishStatus
 
 
 class RewardModelBackend(ContinuesBatchBackend):

@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from lightllm.server.router.model_infer.infer_batch import InferReqGroup, InferReq, g_infer_context
-from lightllm.server.core.objs import ReqRunStatus
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.common.mem_manager import MemoryManager
@@ -23,7 +22,6 @@ def prepare_prefill_inputs(batch, radix_cache: RadixCache, is_multimodal=False):
         group_req_id = req.group_req_id
         if request_id != group_req_id:
             continue
-        assert req.req_status == ReqRunStatus.RUNNING
 
         run_reqs_group.append(g_infer_context.group_mapping[group_req_id])
         batch_multimodal_params.append(req.multimodal_params)
@@ -86,7 +84,6 @@ def prepare_decode_inputs(batch, radix_cache: RadixCache):
     group_tag = {}
     for request_id in batch.request_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
-        assert req.req_status == ReqRunStatus.RUNNING
         group_req_id = req.group_req_id
         if group_req_id not in group_tag:
             run_req_groups.append(g_infer_context.group_mapping[group_req_id])

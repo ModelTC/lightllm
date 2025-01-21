@@ -343,8 +343,8 @@ class RouterManager:
         return
 
     async def _pause_reqs(self, batch: Batch, pasue_reqs):
-        pasue_reqs_info = [(r.request_id, r.req_status) for r in pasue_reqs]
-        await self.model_rpc_client.pause_reqs(batch.batch_id, pasue_reqs_info)
+        pasue_req_ids = [r.request_id for r in pasue_reqs]
+        await self.model_rpc_client.pause_reqs(batch.batch_id, pasue_req_ids)
         return
 
     def _filter_runing_batch(self):

@@ -2,7 +2,6 @@ import torch
 import torch.distributed as dist
 import numpy as np
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
-from lightllm.server.core.objs import ReqRunStatus
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.common.mem_manager import MemoryManager
@@ -24,7 +23,6 @@ def prepare_prefill_inputs(batch, radix_cache: RadixCache, is_multimodal=False):
     b_ready_cache_len = []
     for request_id in batch.request_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
-        assert req.req_status == ReqRunStatus.RUNNING
 
         run_reqs.append(req)
         batch_multimodal_params.append(req.multimodal_params)
@@ -101,7 +99,6 @@ def prepare_decode_inputs(batch, radix_cache: RadixCache):
     batch_size = len(batch.request_ids)
     for request_id in batch.request_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
-        assert req.req_status == ReqRunStatus.RUNNING
         run_reqs.append(req)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)

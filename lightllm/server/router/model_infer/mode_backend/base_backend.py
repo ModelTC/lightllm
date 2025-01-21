@@ -238,11 +238,11 @@ class ModeBackend:
         """This method can be overridden in subclasses."""
         raise NotImplementedError()
 
-    def pause_reqs(self, req_list):
+    def pause_reqs(self, req_ids):
         if self.dp_size != 1:
-            req_list = [req for req in req_list if req[0] in g_infer_context.requests_mapping]
+            req_ids = [req_id for req_id in req_ids if req_id in g_infer_context.requests_mapping]
 
-        g_infer_context.pause_reqs(req_list)
+        g_infer_context.pause_reqs(req_ids)
         return
 
     # 一些可以复用的单元功能函数

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Any
 from lightllm.common.req_manager import ReqManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.core.objs import Req, SamplingParams, ReqRunStatus, FinishStatus, ShmReqManager
+from lightllm.server.core.objs import Req, SamplingParams, FinishStatus, ShmReqManager
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNode
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
@@ -64,9 +64,6 @@ class InferenceContext:
 
             if init_req_obj:
                 r_obj.init_all()
-
-            # 初始化之后 所有请求状态置换为 RUNNING 状态
-            r_obj.shm_req.req_status.set_status(ReqRunStatus.RUNNING)
 
         self.infer_req_ids.extend(request_ids)
 
@@ -136,17 +133,16 @@ class InferenceContext:
         return
 
     @torch.no_grad()
-    def pause_reqs(self, pause_reqs: List):
+    def pause_reqs(self, pause_req_ids: List[int]):
         free_token_index = []
-        for request_id, pause_way in pause_reqs:
+        for request_id in pause_req_ids:
             req: InferReq = self.requests_mapping[request_id]
-            req.shm_req.req_status.set_status(pause_way)
             self.infer_req_ids.remove(request_id)
-            if pause_way == ReqRunStatus.PAUSED_AND_OFFLOAD:
-                # 不支持多输出的情况
-                self.free_a_req_mem(free_token_index, req, is_group_finished=True)
-                req.cur_kv_len = 0
-                req.shm_req.shm_cur_kv_len = req.cur_kv_len
+
+            # 不支持多输出的情况的暂停
+            self.free_a_req_mem(free_token_index, req, is_group_finished=True)
+            req.cur_kv_len = 0
+            req.shm_req.shm_cur_kv_len = req.cur_kv_len
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)

@@ -8,7 +8,7 @@ from typing import List
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
-from lightllm.server.core.objs import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
 from .pre_process import prepare_decode_inputs

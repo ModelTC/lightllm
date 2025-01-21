@@ -1,7 +1,6 @@
 import uuid
 from typing import List
 from ...batch import Batch, Req
-from lightllm.server.core.objs import ReqRunStatus
 from lightllm.server.router.req_queue.base_queue import BaseQueue
 
 

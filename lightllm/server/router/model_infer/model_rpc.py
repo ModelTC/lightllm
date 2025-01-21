@@ -151,8 +151,8 @@ class ModelRpcServer:
             logger.exception(f"Batch decode encountered an unexpected ERROR: {err_msg}")
             raise e
 
-    def pause_reqs(self, req_list):
-        return self.backend.pause_reqs(req_list)
+    def pause_reqs(self, req_ids):
+        return self.backend.pause_reqs(req_ids)
 
     def get_max_total_token_num(self):
         return self.backend.get_max_total_token_num()
@@ -215,16 +215,16 @@ class ModelRpcClient:
             self.model_infer_server.decode()
             return
 
-    async def pause_reqs(self, reqs_list):
+    async def pause_reqs(self, req_ids):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("pause_reqs", (reqs_list,))
+            self.rpc_shm_params.write_func_params("pause_reqs", (req_ids,))
             self.rpc_event.set()
 
             self.rpc_finished_event.wait()
             self.rpc_finished_event.clear()
             return
         else:
-            self.model_infer_server.pause_reqs(reqs_list)
+            self.model_infer_server.pause_reqs(req_ids)
             return
 
     async def get_max_total_token_num(self):

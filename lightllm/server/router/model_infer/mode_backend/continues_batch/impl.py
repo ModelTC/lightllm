@@ -4,7 +4,7 @@ from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBac
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
-from lightllm.server.core.objs import ReqRunStatus, FinishStatus
+from lightllm.server.core.objs import FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs

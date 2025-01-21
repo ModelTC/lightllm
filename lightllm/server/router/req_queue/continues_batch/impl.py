@@ -1,7 +1,6 @@
 import uuid
 import numpy as np
 from ...batch import Batch, Req
-from lightllm.server.core.objs import ReqRunStatus
 from lightllm.server.router.req_queue.base_queue import BaseQueue
 from lightllm.common.basemodel.infer_lock import g_router_lock
 
