@@ -150,6 +150,7 @@ class InferenceContext:
             self.free_a_req_mem(free_token_index, req, is_group_finished=True)
             req.cur_kv_len = 0
             req.shm_req.shm_cur_kv_len = req.cur_kv_len
+            req.initialized = False  # 暂停后恢复需要进行重新初始化。
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
