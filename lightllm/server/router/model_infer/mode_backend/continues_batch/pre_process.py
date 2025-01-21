@@ -84,7 +84,6 @@ def prepare_decode_inputs(req_ids: List[int]):
     nopad_b_seq_len = []
     for request_id in req_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
-        assert req.shm_req.req_status.is_running()
         run_reqs.append(req)
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)

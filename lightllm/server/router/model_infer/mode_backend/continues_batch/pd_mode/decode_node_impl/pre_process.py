@@ -28,7 +28,6 @@ def prepare_decode_inputs():
     nopad_b_start_loc = []
     nopad_b_seq_len = []
     for req in run_reqs:
-        assert req.shm_req.req_status.is_running()
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
         input_id = req.get_last_gen_token()
