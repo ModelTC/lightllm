@@ -4,7 +4,7 @@ import threading
 import torch
 import torch.multiprocessing as mp
 import torch.distributed as dist
-from typing import List
+from typing import List, Tuple
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
@@ -48,22 +48,20 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
         return
 
-    @calculate_time(show=False, min_cost_ms=300)
-    def prefill_batch(self, batch_id):
-        ans = self.forward(batch_id, is_prefill=True)
-        return ans
+    def prefill(self, reqs: List[Tuple]):
+        req_ids = self._init_reqs(reqs)
+        self.forward(req_ids, is_prefill=True)
+        self._filter_finished_reqs()
+        return
 
-    @calculate_time(show=True, min_cost_ms=200)
-    def decode_batch(self, batch_id):
-        return self.forward(batch_id, is_prefill=False)
+    def decode(self):
+        pass
+        return
 
-    def forward(self, batch_id, is_prefill):
-        # special code for return all prompt_logprobs
-        batch = self.cache.pop(batch_id)
-        if is_prefill:
-            kwargs, run_reqs = prepare_prefill_inputs(batch, self.radix_cache, self.is_multimodal)
-        else:
-            kwargs, run_reqs = prepare_decode_inputs(batch, self.radix_cache)
+    def forward(self, req_ids: List[int], is_prefill):
+        assert is_prefill is True
+
+        kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
 
         logits = self.model.forward(**kwargs)
 
@@ -91,11 +89,9 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
             req_obj.update_finish_status(self.eos_id)
 
             if self.tp_rank < self.dp_size:
-                # shm_cur_kv_len shm_cur_output_len finish_status
-                # 是router 调度进程需要读的信息
-                # finish_token_index finish_status candetoken_out_len
-                # 是 detokenization 进程需要的信息，注意这些变量的写入顺序
-                # 避免异步协同问题。
+                # shm_cur_kv_len shm_cur_output_len 是 router 调度进程需要读的信息
+                # finish_token_index finish_status candetoken_out_len 是
+                # detokenization 进程需要的信息，注意这些变量的写入顺序避免异步协同问题。
                 req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
                 req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
 
@@ -108,7 +104,6 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         if is_prefill:
             self.prefill_req_handle_and_frozen_tokens(run_reqs)
 
-        self.cache[batch.batch_id] = batch
         return
 
     def prefill_req_handle_and_frozen_tokens(self, run_reqs: List[InferReq]):
