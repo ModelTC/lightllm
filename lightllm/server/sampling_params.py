@@ -1,6 +1,7 @@
 """Sampling parameters for text generation."""
 import os
 from typing import List, Optional, Union, Tuple
+from pydantic import BaseModel
 from transformers import GenerationConfig
 from .req_id_generator import MAX_BEST_OF
 
@@ -43,6 +44,7 @@ class SamplingParams:
         input_penalty: bool = DEFAULT_INPUT_PENALTY,
         regular_constraint: Optional[str] = None,  # Regular expressions constrain the output.
         guided_grammar: Optional[str] = None,  # EBNF constrain the output.
+        guided_json: Optional[Union[str, dict, BaseModel]] = None,  # JSON schema constrain the output.
         # If provided, the engine will construct a logits,
         # processor which only retains scores for the given token ids. Defaults to None.
         # allowed_token_ids only can be used in "--simple_constraint_mode" started server.
@@ -78,6 +80,7 @@ class SamplingParams:
         self.print_eos_token = print_eos_token
         self.regular_constraint = regular_constraint
         self.guided_grammar = guided_grammar
+        self.guided_json = guided_json
         self.allowed_token_ids = allowed_token_ids
         self.group_request_id = group_request_id
         self.move_kv_to_decode_node = move_kv_to_decode_node
@@ -254,6 +257,7 @@ class SamplingParams:
         ret["input_penalty"] = self.input_penalty
         ret["regular_constraint"] = self.regular_constraint
         ret["guided_grammar"] = self.guided_grammar
+        ret["guided_json"] = self.guided_json
         ret["allowed_token_ids"] = self.allowed_token_ids
         ret["move_kv_to_decode_node"] = self.move_kv_to_decode_node
         return ret

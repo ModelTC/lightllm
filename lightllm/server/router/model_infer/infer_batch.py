@@ -1,13 +1,14 @@
 import os
 import copy
 import time
+from pydantic import BaseModel
 import torch
 import torch.distributed as dist
 import numpy as np
 import collections
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
@@ -41,6 +42,7 @@ class InferSamplingParams:
         input_penalty: bool = False,
         regular_constraint: Optional[str] = None,
         guided_grammar: Optional[str] = None,
+        guided_json: Optional[Union[str, dict, BaseModel]] = None,
         allowed_token_ids: Optional[List[int]] = None,
         move_kv_to_decode_node: Optional[bool] = None,
     ) -> None:
@@ -64,6 +66,7 @@ class InferSamplingParams:
         # constraint states
         self.regular_constraint = regular_constraint
         self.guided_grammar = guided_grammar
+        self.guided_json = guided_json
         self.allowed_token_ids = allowed_token_ids
 
         # Outlines constraint states
@@ -85,7 +88,10 @@ class InferSamplingParams:
 
     def has_constraint_setting(self) -> bool:
         return (
-            self.regular_constraint is not None or self.allowed_token_ids is not None or self.guided_grammar is not None
+            self.regular_constraint is not None
+            or self.allowed_token_ids is not None
+            or self.guided_grammar is not None
+            or self.guided_json is not None
         )
 
 

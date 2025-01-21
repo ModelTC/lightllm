@@ -3,6 +3,19 @@ import requests
 import json
 import threading
 
+"""
+python -m lightllm.server.api_server --model_dir /mnt/nvme0/chenjunyi/models/nb10_w8/  \
+                                     --host 0.0.0.0                 \
+                                     --port 9999                   \
+                                     --tp 1                        \
+                                     --nccl_port 65535                \
+				                     --max_req_total_len 200000 \
+                                     --max_total_token_num 400000 \
+                                     --data_type bf16   \
+                                     --trust_remote_code  \
+                                     --output_constraint_mode xgrammar
+"""
+
 
 class RequestThread(threading.Thread):
     def __init__(self, url, headers, data):

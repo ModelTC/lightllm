@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import torch
@@ -32,8 +33,8 @@ class XgrammarBackend(ContinuesBatchBackend):
         eos_token_ids = []
         eos_token_ids.append(self.tokenizer.eos_token_id)
         eos_token_ids.extend(self.args.eos_id)
-        self.tokenizer.eos_token_ids = eos_token_ids
-        logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
+        # self.tokenizer.eos_token_ids = eos_token_ids
+        # logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
         return
 
     @calculate_time(show=False, min_cost_ms=300)
@@ -51,6 +52,9 @@ class XgrammarBackend(ContinuesBatchBackend):
             sample_params = run_obj.sampling_param
             if sample_params.guided_grammar is not None:
                 xgrammar_compiled_grammar = self.xgrammar_compiler.compile_grammar(sample_params.guided_grammar)
+                sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
+            elif sample_params.guided_json is not None:
+                xgrammar_compiled_grammar = self.xgrammar_compiler.compile_json_schema(sample_params.guided_json)
                 sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
             self._mask_req_out_token(i, run_obj, mask, logics[i])
 
@@ -108,7 +112,7 @@ class XgrammarBackend(ContinuesBatchBackend):
 
     def _handle_req_ans(self, req_obj: InferReq, next_token_id, next_token_logprob, output_dict):
         next_token_id = int(next_token_id)
-        if req_obj.sampling_param.guided_grammar is not None:
+        if req_obj.sampling_param.guided_grammar is not None or req_obj.sampling_param.guided_json is not None:
             sample_params = req_obj.sampling_param
             if sample_params.xgrammar_matcher.is_terminated():
                 req_obj.finish_status = FinishStatus.FINISHED_STOP
@@ -131,7 +135,7 @@ class XgrammarBackend(ContinuesBatchBackend):
 
     def _mask_req_out_token(self, i, run_obj: InferReq, mask, logits):
         sample_params = run_obj.sampling_param
-        if sample_params.guided_grammar is not None:
+        if sample_params.guided_grammar is not None or sample_params.guided_json is not None:
             sample_params.xgrammar_matcher.fill_next_token_bitmask(self.xgrammar_token_bitmask)
             xgr.apply_token_bitmask_inplace(logits, self.xgrammar_token_bitmask.to(logits.device))
             mask[i, :] = False
