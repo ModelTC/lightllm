@@ -80,9 +80,9 @@ def test_exponential_decay_length_penalty_initialization():
 def test_decode_node_initialization():
     node = DecodeNode()
     data = {
-        "pd_node_id": 12345678901234567890,  # 示例 UUID
-        "host": "192.168.1.1",
-        "pd_decode_rpyc_port": 8080,
+        "node_id": 12345678901234567890,  # 示例 UUID
+        "ip": "192.168.1.1",
+        "rpyc_port": 8080,
         "max_new_tokens": 10,
     }
     node.initialize(data)

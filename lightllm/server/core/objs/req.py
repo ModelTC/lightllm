@@ -9,38 +9,6 @@ from lightllm.utils.envs_utils import get_unique_server_name
 from typing import List, Any, Union
 
 
-class ReqRunStatus(ctypes.Structure):
-    _pack_ = 4
-    _fields_ = [("status", ctypes.c_int)]
-
-    WAIT_IN_QUEUE = 0
-    RUNNING = 1
-    PAUSED_AND_OFFLOAD = 2
-    RERUNNING_FROM_OFFLOAD = 3
-
-    def __init__(self):
-        self.status = self.WAIT_IN_QUEUE
-
-    def set_status(self, new_status):
-        assert 0 <= new_status <= 3
-        self.status = new_status
-
-    def get_status(self):
-        return self.status
-
-    def is_waiting(self):
-        return self.status == self.WAIT_IN_QUEUE
-
-    def is_running(self):
-        return self.status == self.RUNNING
-
-    def is_paused_and_offload(self):
-        return self.status == self.PAUSED_AND_OFFLOAD
-
-    def is_rerunning(self):
-        return self.status == self.RERUNNING_FROM_OFFLOAD
-
-
 class FinishStatus(ctypes.Structure):
     _pack_ = 4
     _fields_ = [("status", ctypes.c_int)]
@@ -102,7 +70,7 @@ class Req(ctypes.Structure):
         # candetoken_out_len 变量单独传输这个信息。
         ("candetoken_out_len", ctypes.c_int),
         ("prompt_cache_len", ctypes.c_int),
-        ("req_status", ReqRunStatus),
+        ("is_paused", ctypes.c_bool),  # 标记一个Req因为显存资源管理的原因被临时暂停了。
         ("finish_status", FinishStatus),
         ("is_aborted", ctypes.c_bool),
         # 这个标记变量是router进程读取到is_aborted信息后，将这个router_aborted 变量标记为True，因为推理进程
@@ -136,7 +104,7 @@ class Req(ctypes.Structure):
 
         self.request_id = request_id
         self.group_req_id = convert_sub_id_to_group_id(request_id)
-        self.req_status = ReqRunStatus()
+        self.is_paused = False
         self.finish_status = FinishStatus()
         self.is_aborted = False
         self.router_aborted = False
