@@ -36,24 +36,16 @@ class ContinuesBatchBackend(ModeBackend):
 
         logits = self.model.forward(**kwargs)
 
-        # 对于后处理采样，只需要一个进程操作即可，其他进程只需要虚假的结果填充流程即可
-        # 这样可以节省点电费吧。
-        if self.tp_rank < self.dp_size:
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-        else:
-            next_token_ids = [0 for _ in range(len(run_reqs))]
-            next_token_logprobs = [0.0 for _ in range(len(run_reqs))]
+        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same
             req_obj: InferReq = req_obj
             req_obj.cur_kv_len = req_obj.get_cur_total_len()
-            # 只需要有真实采样的进程写入最后结果即可，由于其他进程没有做运算，所以其fake结果
-            # 不能写入。
-            if self.tp_rank < self.dp_size:
-                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
+
+            req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
             req_obj.cur_output_len += 1
 
             req_obj.out_token_id_count[next_token_id] += 1

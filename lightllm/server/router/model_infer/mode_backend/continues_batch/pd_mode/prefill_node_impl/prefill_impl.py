@@ -65,15 +65,9 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
         logits = self.model.forward(**kwargs)
 
-        # 对于后处理采样，只需要一个进程操作即可，其他进程只需要虚假的结果填充流程即可
-        # 这样可以节省点电费吧。
-        if self.tp_rank < self.dp_size:
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-        else:
-            next_token_ids = [0 for _ in range(len(run_reqs))]
-            next_token_logprobs = [0.0 for _ in range(len(run_reqs))]
+        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same
