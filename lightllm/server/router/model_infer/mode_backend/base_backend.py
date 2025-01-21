@@ -246,13 +246,13 @@ class ModeBackend:
         return
 
     # 一些可以复用的单元功能函数
-    def _init_reqs(self, reqs: List[Tuple]):
+    def _init_reqs(self, reqs: List[Tuple], init_req_obj=True):
         if self.dp_size != 1:
             cur_dp_index = self.tp_rank
             reqs = [req for req in reqs if req[3] == cur_dp_index]
 
         g_infer_state_lock.acquire()
-        g_infer_context.add_reqs(reqs, init_req_obj=True)
+        g_infer_context.add_reqs(reqs, init_req_obj=init_req_obj)
         g_infer_state_lock.release()
         req_ids = [e[0] for e in reqs]
         return req_ids
