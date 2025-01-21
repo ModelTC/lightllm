@@ -2,9 +2,66 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-from test.kernel.base_kernel_config import BaseKernelConfig
+
+from lightllm.common.kernel_config import KernelConfigs
 from frozendict import frozendict
-from frozenlist import FrozenList
+from functools import lru_cache
+from typing import Dict
+
+
+class BmmScaledFp8KernelConfig(KernelConfigs):
+    kernel_name: str = "bmm_scaled_fp8"
+
+    def closest_power_2(n: int) -> int:
+        return 1 << (n - 1).bit_length() if n & (n - 1) else n
+
+    @classmethod
+    @lru_cache(maxsize=200)
+    def try_to_get_best_config(
+        cls,
+        B,
+        M,
+        N,
+        K,
+        batch_size,
+        head_dim,
+    ) -> dict:
+        key_params = {
+            "B": B,
+            "M": M,
+            "N": N,
+            "K": K,
+            "out_dtype": str(torch.bfloat16),
+        }
+        finded_config = cls.get_the_config(frozendict(key_params))
+
+        search_keys = [batch_size, head_dim]
+        if finded_config:
+            config = finded_config
+            for key in search_keys:
+                config = config[min(config.keys(), key=lambda x: abs(int(x) - key))]
+        else:
+            config = {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 256,
+                "BLOCK_SIZE_K": 128,
+                "GROUP_SIZE_M": 8,
+                "num_stages": 4,
+                "num_warps": 8,
+            }
+        return config
+
+    @classmethod
+    def save_config(cls, B, M, N, K, config_json: Dict[int, Dict[int, Dict]]):
+        key_params = {
+            "B": B,
+            "M": M,
+            "N": N,
+            "K": K,
+            "out_dtype": str(torch.bfloat16),
+        }
+        key_params = frozendict(key_params)
+        return cls.store_config(key_params, config_json)
 
 
 @triton.jit
@@ -95,30 +152,15 @@ def bmm_scaled_fp8(a, a_scale, b, b_scale, c, **run_config):
     HEAD = a.shape[0]
 
     if not run_config:
-        M2 = BaseKernelConfig.closest_power_2(M)
-        params = {
-            "B": HEAD,
-            "M": M2,
-            "N": N,
-            "K": K,
-            "out_dtype": str(torch.bfloat16),
-        }
-        search_keys = FrozenList([M2, N])
-        search_keys.freeze(),
-        run_config = BaseKernelConfig.try_to_get_best_config(
-            "bmm_scaled_fp8",
-            frozendict(params),
-            search_keys,
+        M2 = BmmScaledFp8KernelConfig.closest_power_2(M)
+        run_config = BmmScaledFp8KernelConfig.try_to_get_best_config(
+            B=HEAD,
+            M=M2,
+            N=N,
+            K=K,
+            batch_size=M2,
+            head_dim=N,
         )
-        if not run_config:
-            run_config = {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 128,
-                "GROUP_SIZE_M": 8,
-                "num_stages": 4,
-                "num_warps": 8,
-            }
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),

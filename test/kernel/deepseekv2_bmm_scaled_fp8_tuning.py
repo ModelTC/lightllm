@@ -8,11 +8,7 @@ from lightllm.utils.tuning_utils import mp_tuning, set_seed, tuning_configs
 import sys
 import os
 
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    + "/lightllm/common/basemodel/triton_kernel/"
-)
-from bmm_scaled_fp8 import bmm_scaled_fp8
+from lightllm.common.basemodel.triton_kernel.bmm_scaled_fp8 import bmm_scaled_fp8, BmmScaledFp8KernelConfig
 
 
 @torch.no_grad()
@@ -64,8 +60,6 @@ def get_test_configs(split_id, split_count, **kwargs):
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")
-
-    from .base_kernel_config import BaseKernelConfig
     import collections
 
     store_json_ans = collections.defaultdict(dict)
@@ -89,17 +83,11 @@ if __name__ == "__main__":
                 },
             )
             store_json_ans[batch_size][head_dim] = ans
-
-            params = {
-                "B": 16,
-                "M": batch_size,
-                "N": head_dim,
-                "K": k,
-                "out_dtype": str(torch.bfloat16),
-            }
-            BaseKernelConfig.save_config(
-                "bmm_scaled_fp8",
-                key_params=params,
+            BmmScaledFp8KernelConfig.save_config(
+                B=16,
+                M=batch_size,
+                N=head_dim,
+                K=k,
                 config_json=store_json_ans,
             )
 
