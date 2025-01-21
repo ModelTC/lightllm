@@ -20,12 +20,10 @@ class ContinuesBatchBackend(ModeBackend):
     def prefill(self, reqs: List[Tuple]):
         req_ids = self._init_reqs(reqs)
         self.forward(req_ids, is_prefill=True)
-        self._filter_finished_reqs()
         return
 
     def decode(self):
         self.forward(g_infer_context.infer_req_ids, is_prefill=False)
-        self._filter_finished_reqs()
         return
 
     def forward(self, req_ids: List[int], is_prefill: bool):
@@ -40,6 +38,8 @@ class ContinuesBatchBackend(ModeBackend):
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
+        finished_req_ids = []
+
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             # prefill and decode is same
             req_obj: InferReq = req_obj
@@ -50,6 +50,9 @@ class ContinuesBatchBackend(ModeBackend):
 
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
+
+            if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
+                finished_req_ids.append(req_obj.shm_req.request_id)
 
             if self.tp_rank < self.dp_size:
                 # shm_cur_kv_len shm_cur_output_len 是 router 调度进程需要读的信息
@@ -64,4 +67,5 @@ class ContinuesBatchBackend(ModeBackend):
 
                 req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
 
+        g_infer_context.filter(finished_req_ids)
         return

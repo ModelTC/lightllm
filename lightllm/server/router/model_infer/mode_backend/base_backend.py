@@ -256,14 +256,3 @@ class ModeBackend:
         g_infer_state_lock.release()
         req_ids = [e[0] for e in reqs]
         return req_ids
-
-    def _filter_finished_reqs(self):
-        finished_req_ids = []
-        for req_id in g_infer_context.infer_req_ids:
-            req = g_infer_context.requests_mapping[req_id]
-
-            if req.finish_status.is_finished() or req.shm_req.router_aborted:
-                finished_req_ids.append(req_id)
-
-        g_infer_context.filter(finished_req_ids)
-        return
