@@ -12,11 +12,14 @@ logger = init_logger(__name__)
 # @calculate_time(show=True, min_cost_ms=1)
 def prepare_decode_inputs():
     uninit_reqs = []
+    finished_reqs = []
     run_reqs = []
     for request_id in g_infer_context.infer_req_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
         if not req.initialized:
             uninit_reqs.append(req)
+        elif req.finish_status.is_finished() or req.shm_req.router_aborted:
+            finished_reqs.append(req)
         else:
             run_reqs.append(req)
 
@@ -62,4 +65,4 @@ def prepare_decode_inputs():
         "b_seq_len": nopad_b_seq_len,
         "is_prefill": False,
     }
-    return kwargs, run_reqs, uninit_reqs
+    return kwargs, uninit_reqs, finished_reqs, run_reqs
