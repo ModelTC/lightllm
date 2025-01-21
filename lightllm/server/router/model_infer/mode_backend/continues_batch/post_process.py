@@ -2,25 +2,12 @@ import torch
 from typing import List
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 from dataclasses import dataclass
-from ...infer_batch import InferReq
-
-
-@dataclass
-class OverlapStream:
-    overlap_stream: torch.cuda.Stream = None
-
-    def get_overlap_stream(self):
-        if self.overlap_stream is None:
-            self.overlap_stream = torch.cuda.Stream()
-        return self.overlap_stream
-
-
-g_single_overlap_stream = OverlapStream()
+from ...infer_batch import InferReq, g_infer_context
 
 
 def sample(logits, reqs, eos_id: List[int] = [2]):
 
-    with torch.cuda.stream(g_single_overlap_stream.get_overlap_stream()):
+    with torch.cuda.stream(g_infer_context.get_overlap_stream()):
         (
             presence_penalties,
             frequency_penalties,
@@ -37,7 +24,7 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
             mask_eos_reqs,
         ) = _get_post_sample_tensors(reqs)
 
-    torch.cuda.current_stream().wait_stream(g_single_overlap_stream.get_overlap_stream())
+    torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
 
     logits = logits.contiguous()
 
