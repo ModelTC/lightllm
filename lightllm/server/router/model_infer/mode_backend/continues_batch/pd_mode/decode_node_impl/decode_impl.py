@@ -68,7 +68,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         if len(run_reqs) != 0:
             logits = self.model.forward(**kwargs)
 
-        if len(uninit_reqs) != 0:
+        if len(uninit_reqs) != 0 or len(finished_reqs) != 0:
             # 利用推理的时间，延迟折叠下一个请求的初始化和退出操作
             with torch.cuda.stream(g_infer_context.get_overlap_stream()):
                 g_infer_state_lock.acquire()
@@ -116,6 +116,8 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         """
         检查请求的 kv len 将可能有问题的请求立即结束掉
         """
+        if len(uninit_reqs) == 0:
+            return
 
         remove_count = 0
         estimated_peak_token_count = 0
