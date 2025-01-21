@@ -20,7 +20,6 @@ def prepare_prefill_inputs(req_ids: List[int], is_multimodal=False):
     b_ready_cache_len = []
     for request_id in req_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
-        assert req.shm_req.req_status.is_running()
 
         run_reqs.append(req)
         batch_multimodal_params.append(req.multimodal_params)
