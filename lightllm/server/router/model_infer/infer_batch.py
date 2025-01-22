@@ -241,6 +241,12 @@ class InferReq:
             else:
                 self.out_token_id_count = collections.defaultdict(int)
 
+        # token healing mode 才被使用的管理对象
+        if self.shm_req.prefix_token_ids.size != 0:
+            self.prefix_token_ids = self.shm_req.prefix_token_ids.get_token_ids()
+        else:
+            self.prefix_token_ids = []
+
         # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
         if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
             input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]

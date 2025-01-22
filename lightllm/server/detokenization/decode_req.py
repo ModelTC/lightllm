@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from lightllm.server.core.objs import Req
 
 
@@ -18,6 +18,14 @@ class DecodeReq:
         self.req = req
         self.input_len = self.req.input_len
         self.prefix_str = ""
+
+    def init_token_healing_prefix_str(self, token_id_to_token: Dict[int, str], tokenizer):
+        tokens = [token_id_to_token[token_id] for token_id in self.req.prefix_token_ids.get_token_ids()]
+        if tokens:
+            self.prefix_str = tokenizer.convert_tokens_to_string(tokens)
+        else:
+            self.prefix_str = ""
+        return
 
     def need_detoken(self):
         if (not self.req.is_aborted) and len(self.output_ids) < self.req.candetoken_out_len:
