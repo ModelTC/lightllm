@@ -204,6 +204,21 @@ class Req(ctypes.Structure):
     def get_first_router_need_tokens(self):
         raise NotImplementedError("Subclasses should implement this method")
 
+    def get_all_prompt_metadata(self):
+        """
+        return_all_prompt_logprobs mode use to return all logprobs cacul ppl
+        """
+        metadata = {}
+        cur_ids = self.shm_prompt_ids.arr[0 : self.input_len]
+        all_prompts = []
+        for index in range(len(cur_ids) - 1):
+            tmp_dict = {int(cur_ids[index + 1]): float(self.shm_logprobs.arr[index + 1])}
+            all_prompts.append([int(cur_ids[index]), tmp_dict])
+
+        metadata["prompt_logprobs"] = all_prompts
+        metadata["prompt_token_ids"] = [int(e) for e in cur_ids]
+        return metadata
+
 
 # 由于目前加入了很多异步调度的方法，为了缓解异步调度带来的很多
 # 估计不准确的问题，通过加长输出的长度，进行偏向保守一些的调度

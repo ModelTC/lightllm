@@ -83,6 +83,23 @@ class CircularQueue(ctypes.Structure):
         self.head = (self.head + 1) % LIGHTLLM_OUT_TOKEN_QUEUE_SIZE
         return result
 
+    def peek(self) -> Tuple[str, int, bool, int]:
+        if self.is_empty():
+            raise Exception("Queue is empty")
+
+        item: QueueItem = self.items[self.head]
+        result = item.get()
+        return result
+
+    def pop_no_ret(self) -> None:
+        """
+        移除一个对象，但是不返回， 与peek配合使用
+        """
+        if self.is_empty():
+            raise Exception("Queue is empty")
+        self.head = (self.head + 1) % LIGHTLLM_OUT_TOKEN_QUEUE_SIZE
+        return
+
     def __len__(self):
         # 计算当前元素数量
         return (self.tail - self.head + LIGHTLLM_OUT_TOKEN_QUEUE_SIZE) % LIGHTLLM_OUT_TOKEN_QUEUE_SIZE

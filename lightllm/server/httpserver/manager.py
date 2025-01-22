@@ -470,13 +470,18 @@ class HttpServerManager:
                 for req in req_status.group_req_objs.shm_req_objs:
                     req_id = req.request_id
                     if not req.out_tokens_queue.is_empty():
-                        text, src_index, special, count_output_tokens = req.out_tokens_queue.pop()
+
+                        text, src_index, special, count_output_tokens = req.out_tokens_queue.peek()
                         metadata = {
                             "id": int(req.shm_prompt_ids.arr[src_index]),
                             "logprob": float(req.shm_logprobs.arr[src_index]),
                             "special": special,
                             "count_output_tokens": count_output_tokens,
                         }
+                        if self.args.return_all_prompt_logprobs:
+                            metadata.update(req.get_all_prompt_metadata())
+                        req.out_tokens_queue.pop_no_ret()
+
                         if req.finish_token_index != src_index:
                             token_list.append((req_id, text, metadata, FinishStatus()))
                         else:
