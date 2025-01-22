@@ -1,7 +1,6 @@
 import torch
 from typing import List, Tuple
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
-from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.core.objs import FinishStatus
@@ -19,29 +18,31 @@ class ContinuesBatchBackend(ModeBackend):
 
     def prefill(self, reqs: List[Tuple]):
         req_ids = self._init_reqs(reqs)
-        self.forward(req_ids, is_prefill=True)
-        return
-
-    def decode(self):
-        self.forward(g_infer_context.infer_req_ids, is_prefill=False)
-        return
-
-    def forward(self, req_ids: List[int], is_prefill: bool):
-        if is_prefill:
-            kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
-        else:
-            kwargs, run_reqs = prepare_decode_inputs(req_ids)
-
+        kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
         logits = self.model.forward(**kwargs)
 
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
+        self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+        return
+
+    def decode(self):
+        kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
+        logits = self.model.forward(**kwargs)
+
+        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+
+        self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+        return
+
+    def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs):
         finished_req_ids = []
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            # prefill and decode is same
             req_obj: InferReq = req_obj
             req_obj.cur_kv_len = req_obj.get_cur_total_len()
 

@@ -1,7 +1,6 @@
 import torch
 from typing import List, Tuple
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
-from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams, g_infer_context
 from lightllm.server.core.objs import FinishStatus
