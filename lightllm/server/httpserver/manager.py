@@ -480,6 +480,9 @@ class HttpServerManager:
                         }
                         if self.args.return_all_prompt_logprobs:
                             metadata.update(req.get_all_prompt_metadata())
+                        if self.args.use_reward_model:
+                            metadata["score"] = float(req.reward_score)
+
                         req.out_tokens_queue.pop_no_ret()
 
                         if req.finish_token_index != src_index:

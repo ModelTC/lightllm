@@ -1,4 +1,5 @@
 import os
+import math
 import ctypes
 import numpy as np
 from .sampling_params import SamplingParams
@@ -88,6 +89,8 @@ class Req(ctypes.Structure):
         # 只有整个流程中的最后一个处理模块，一般是 detokenization 进程，标记这个参数为True后，主管理进程才能真
         # 的释放请求对像。
         ("can_released_mark", ctypes.c_bool),
+        # reward_model 使用的变量
+        ("reward_score", ctypes.c_float),
     ]
 
     def init(
@@ -115,6 +118,7 @@ class Req(ctypes.Structure):
         self.prompt_cache_len = 0
         self.finish_token_index = -1
         self.can_released_mark = False
+        self.reward_score = math.nan
         if isinstance(sample_param, SamplingParams):
             self.sample_params = sample_param
         else:
