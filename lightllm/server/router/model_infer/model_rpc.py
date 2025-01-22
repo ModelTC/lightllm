@@ -1,3 +1,4 @@
+import os
 import asyncio
 import torch.multiprocessing as mp
 import multiprocessing
@@ -58,6 +59,7 @@ class ModelRpcServer:
         return
 
     def rpc_loop(self):
+        error_count = 0
         while True:
             try:
                 self.rpc_event.wait()
@@ -83,6 +85,12 @@ class ModelRpcServer:
 
             except BaseException as e:
                 logger.exception(str(e))
+                error_count += 1
+
+            if error_count >= 3:
+                logger.error("infer process error to exit")
+                os._exit(-1)
+
         return
 
     def init_model(self, kvargs):
