@@ -3,7 +3,7 @@ import os
 import torch.distributed as dist
 from lightllm.server.pd_io_struct import KVMoveTask
 from .mem_manager import MemoryManager
-from typing import List
+from typing import List, Union
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.kv_trans_kernel.kv_trans import kv_trans
 
@@ -15,8 +15,8 @@ class Deepseek2MemoryManager(MemoryManager):
         super().__init__(size, dtype, head_num, head_dim, layer_num, always_copy, mem_fraction)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         self.holding_size = 1 if self.enable_dp else 0
-        self.mem_state[0 : self.holding_size] = 1
         self.can_use_mem_size -= self.holding_size
+        self.mark_start += self.holding_size  # for dp holding size
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
 
     def get_cell_size(self):
@@ -151,18 +151,30 @@ class Deepseek2MemoryManager(MemoryManager):
     def free_all(self):
         self.can_use_mem_size = len(self.mem_state) - self.holding_size
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
-        self.mem_state[:] = 0
-        self.mem_state[0 : self.holding_size] = 1
+        self.mem_state.numpy()[:] = list(range(0, len(self.mem_state)))
+        self.mark_start = 0
+        self.mark_end = len(self.mem_state)
 
     @torch.no_grad()
-    def free(self, free_index):
+    def free(self, free_index: Union[torch.Tensor, List[int]]):
         """_summary_
 
         Args:
             free_index (torch.Tensor): _description_
         """
-        free_index = free_index.long()
-        self.decrease_refs(free_index)
+        end = self.mark_start
+        start = self.mark_start - len(free_index)
+        assert start >= 0, f"error free state start: {self.mark_start} free len {len(free_index)}"
+
+        if isinstance(free_index, list):
+            self.mem_state.numpy()[start:end] = free_index
+        else:
+            self.mem_state[start:end] = free_index
+
+        self.mark_start -= len(free_index)
+        self.can_use_mem_size += len(free_index)
+        self.shared_can_use_token_num.set_value(self.can_use_mem_size)
+
         if self.can_use_mem_size + self.holding_size == len(self.mem_state):
             logger.debug(f"freed all gpu mem size {self.can_use_mem_size}")
             if self.holding_size > 0:
