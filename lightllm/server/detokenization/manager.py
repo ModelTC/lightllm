@@ -4,8 +4,10 @@ import asyncio
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import zmq
 import zmq.asyncio
+import inspect
 from lightllm.server.core.objs import ShmReqManager
 from lightllm.server.core.objs.io_objs import GroupReqIndexes
+from lightllm.utils.graceful_utils import graceful_registry
 from typing import Union, Dict, List
 from .decode import decode_token
 from .decode_mode_fix import decode_mode_fix
@@ -171,9 +173,6 @@ class DeTokenizationManager:
 
 def start_detokenization_process(args, detokenization_port, detokenization_pub_port, pipe_writer):
     # 注册graceful 退出的处理
-    from lightllm.utils.graceful_utils import graceful_registry
-    import inspect
-
     graceful_registry(inspect.currentframe().f_code.co_name)
 
     try:

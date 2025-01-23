@@ -3,6 +3,7 @@ import asyncio
 import torch.multiprocessing as mp
 import multiprocessing
 import threading
+import inspect
 from datetime import timedelta
 from typing import Dict, List, Tuple
 from lightllm.server.router.model_infer.mode_backend import (
@@ -21,6 +22,8 @@ from lightllm.server.router.model_infer.mode_backend import (
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.graceful_utils import graceful_registry
+from lightllm.utils.process_check import start_parent_check_thread
 
 logger = init_logger(__name__)
 
@@ -262,19 +265,13 @@ def _init_env(
     import lightllm.utils.rpyc_fix_utils as _
 
     # 注册graceful 退出的处理
-    from lightllm.utils.graceful_utils import graceful_registry
-    import inspect
-
     graceful_registry(inspect.currentframe().f_code.co_name)
+    start_parent_check_thread()
 
     # 将调度锁注册到全局的共享变量中
     from lightllm.common.basemodel.infer_lock import g_router_lock
 
     g_router_lock.obj = router_lock
-
-    from lightllm.utils.process_check import start_parent_check_thread
-
-    start_parent_check_thread()
 
     model_rpc_server = ModelRpcServer(args, tp_rank, rpc_event, rpc_finished_event, info_queue, mem_queue)
     success_event.set()

@@ -7,6 +7,7 @@ import torch
 import rpyc
 import pickle
 import threading
+import inspect
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import concurrent.futures
@@ -29,6 +30,8 @@ from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.common.basemodel.infer_lock import g_router_lock
 from lightllm.common.mem_manager import ReadOnlyStaticsMemoryManager
+from lightllm.utils.graceful_utils import graceful_registry
+from lightllm.utils.process_check import start_parent_check_thread
 
 logger = init_logger(__name__)
 
@@ -386,14 +389,8 @@ class RouterManager:
 
 
 def start_router_process(args, router_port, detokenization_port, model_rpc_ports, metric_port, pipe_writer):
-    # 注册graceful 退出的处理
-    from lightllm.utils.graceful_utils import graceful_registry
-    import inspect
-
+    # 注册 graceful 退出的处理
     graceful_registry(inspect.currentframe().f_code.co_name)
-
-    from lightllm.utils.process_check import start_parent_check_thread
-
     start_parent_check_thread()
 
     try:

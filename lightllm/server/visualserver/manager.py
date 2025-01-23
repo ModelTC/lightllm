@@ -4,6 +4,7 @@ import asyncio
 import uvloop
 import rpyc
 import pickle
+import inspect
 from typing import List
 from lightllm.server.core.objs.io_objs.group_req import GroupReqIndexes
 from lightllm.server.core.objs import ShmReqManager
@@ -12,6 +13,9 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 from .model_infer.model_rpc import start_model_process, VisualModelRpcClient
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.graceful_utils import graceful_registry
+from lightllm.utils.process_check import start_parent_check_thread
+
 
 logger = init_logger(__name__)
 
@@ -160,10 +164,8 @@ class VisualManager:
 
 def start_visual_process(args, router_port, visual_port, cache_port, model_rpc_ports, pipe_writer):
     # 注册graceful 退出的处理
-    from lightllm.utils.graceful_utils import graceful_registry
-    import inspect
-
     graceful_registry(inspect.currentframe().f_code.co_name)
+    start_parent_check_thread()
 
     try:
         visualserver = VisualManager(args, router_port, visual_port, cache_port, model_rpc_ports)

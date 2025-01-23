@@ -1,21 +1,21 @@
 import torch
 import time
 import sys
+import inspect
 import torch.multiprocessing as mp
 from typing import List, Dict
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.server.pd_io_struct import KVMoveTask
-from lightllm.utils.device_utils import kv_trans_use_p2p, init_p2p
+from lightllm.utils.device_utils import kv_trans_use_p2p
+from lightllm.utils.graceful_utils import graceful_registry
+
 
 logger = init_logger(__name__)
-
 
 # device_index 是用来指示，当前传输进程使用的用于数据传输的显卡id
 # 当模型是多卡推理的时候，需要传输的 kv 需要先移动到 device_index
 # 指定的显卡上，然后再进行传输，因为torch nccl 限制了只能操作一张显卡上的数据
-
-
 def _init_env(
     args,
     device_index: int,
@@ -35,9 +35,6 @@ def _init_env(
 
     try:
         # 注册graceful 退出的处理
-        from lightllm.utils.graceful_utils import graceful_registry
-        import inspect
-
         graceful_registry(inspect.currentframe().f_code.co_name)
         torch.cuda.set_device(device_index)
 

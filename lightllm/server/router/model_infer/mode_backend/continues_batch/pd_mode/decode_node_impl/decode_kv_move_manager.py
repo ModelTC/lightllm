@@ -1,13 +1,13 @@
 import rpyc
 import random
 import asyncio
-import sys
 import os
 import signal
 import collections
 import time
 import psutil
 import threading
+import inspect
 from rpyc.utils.classic import obtain
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Union
@@ -15,14 +15,13 @@ from rpyc import ThreadedServer
 from lightllm.utils.log_utils import init_logger
 from .decode_infer_rpyc import PDDecodeInferRpcServer
 from ..task_queue import TaskQueue
-from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
 from lightllm.server.pd_io_struct import KVMoveTask, UpKVStatus
 from lightllm.utils.retry_utils import retry
 import numpy as np
-import queue
 from rpyc import AsyncResult
 from lightllm.utils.device_utils import kv_trans_use_p2p
+from lightllm.utils.graceful_utils import graceful_registry
 
 logger = init_logger(__name__)
 
@@ -528,9 +527,6 @@ def _init_env(args, info_queue: mp.Queue, mem_queues: List[mp.Queue], event: mp.
     import lightllm.utils.rpyc_fix_utils as _
 
     # 注册graceful 退出的处理
-    from lightllm.utils.graceful_utils import graceful_registry
-    import inspect
-
     graceful_registry(inspect.currentframe().f_code.co_name)
 
     manager = DecodeKVMoveManager(args, info_queue, mem_queues)
@@ -538,7 +534,6 @@ def _init_env(args, info_queue: mp.Queue, mem_queues: List[mp.Queue], event: mp.
     threading.Thread(target=lambda: t.start(), daemon=True).start()
 
     event.set()
-
     manager.timer_loop()
     return
 
