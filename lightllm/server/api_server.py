@@ -43,6 +43,7 @@ from .multimodal_params import MultimodalParams
 from .httpserver.manager import HttpServerManager
 from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
 from .api_lightllm import lightllm_get_score, lightllm_pd_generate_stream
+from .api_cli import make_argument_parser
 from lightllm.utils.envs_utils import get_env_start_args
 
 from .api_models import (
@@ -73,6 +74,39 @@ class G_Objs:
     httpserver_manager: Union[HttpServerManager, HttpServerManagerForPDMaster] = None
     shared_token_load: TokenLoad = None
 
+    def set_args(self, args):
+        self.args = args
+        from .api_lightllm import lightllm_generate, lightllm_generate_stream
+        from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
+
+        if args.use_tgi_api:
+            self.g_generate_func = tgi_generate_impl
+            self.g_generate_stream_func = tgi_generate_stream_impl
+        else:
+            self.g_generate_func = lightllm_generate
+            self.g_generate_stream_func = lightllm_generate_stream
+
+
+        if args.run_mode == "pd_master":
+            self.metric_client = MetricClient(args.metric_port)
+            self.httpserver_manager = HttpServerManagerForPDMaster(
+                args,
+                metric_port=args.metric_port,
+            )
+        else:
+            init_tokenizer(args)  # for openai api
+            SamplingParams.load_generation_cfg(args.model_dir)
+            self.metric_client = MetricClient(args.metric_port)
+            self.httpserver_manager = HttpServerManager(
+                args,
+                router_port=args.router_port,
+                cache_port=args.cache_port,
+                detokenization_pub_port=args.detokenization_pub_port,
+                visual_port=args.visual_port,
+                enable_multimodal=args.enable_multimodal,
+                metric_port=args.metric_port,
+            )
+            self.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load", args.dp)
 
 g_objs = G_Objs()
 
@@ -377,42 +411,17 @@ async def shutdown():
 async def startup_event():
     logger.info("server start up")
     loop = asyncio.get_event_loop()
+    g_objs.set_args(get_env_start_args())
     loop.create_task(g_objs.httpserver_manager.handle_loop())
     logger.info(f"server start up ok, loop use is {asyncio.get_event_loop()}")
     return
 
-
-g_objs.args = get_env_start_args()
-args = g_objs.args
-
-from .api_lightllm import lightllm_generate, lightllm_generate_stream
-from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
-
-if args.use_tgi_api:
-    g_objs.g_generate_func = tgi_generate_impl
-    g_objs.g_generate_stream_func = tgi_generate_stream_impl
-else:
-    g_objs.g_generate_func = lightllm_generate
-    g_objs.g_generate_stream_func = lightllm_generate_stream
-
-
-if args.run_mode == "pd_master":
-    g_objs.metric_client = MetricClient(args.metric_port)
-    g_objs.httpserver_manager = HttpServerManagerForPDMaster(
-        args,
-        metric_port=args.metric_port,
-    )
-else:
-    init_tokenizer(args)  # for openai api
-    SamplingParams.load_generation_cfg(args.model_dir)
-    g_objs.metric_client = MetricClient(args.metric_port)
-    g_objs.httpserver_manager = HttpServerManager(
-        args,
-        router_port=args.router_port,
-        cache_port=args.cache_port,
-        detokenization_pub_port=args.detokenization_pub_port,
-        visual_port=args.visual_port,
-        enable_multimodal=args.enable_multimodal,
-        metric_port=args.metric_port,
-    )
-    g_objs.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load", args.dp)
+if __name__ == "__main__":
+    torch.multiprocessing.set_start_method("spawn")  # this code will not be ok for settings to fork to subprocess
+    parser = make_argument_parser()
+    args = parser.parse_args()
+    from .api_start import pd_master_start, normal_or_p_d_start
+    if args.run_mode == "pd_master":
+        pd_master_start(args)
+    else:
+        normal_or_p_d_start(args)
