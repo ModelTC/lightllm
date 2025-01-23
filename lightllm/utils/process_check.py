@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import psutil
+import signal
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -15,12 +16,23 @@ def is_process_active(pid):
         return False
 
 
+def kill_child_processes(parent_pid):
+    parent = psutil.Process(parent_pid)
+    for child in parent.children(recursive=True):
+        try:
+            os.kill(child.pid, signal.SIGKILL)
+            logger.warning(f"kill pid {child.pid}")
+        except BaseException as e:
+            logger.warning(f"kill pid {child.pid} failed {str(e)}")
+
+
 def check_parent_alive():
     parent_pid = os.getppid()
     while True:
         if not is_process_active(parent_pid):
-            logger.warning("parent is dead, kill self")
-            os._exit(-1)
+            logger.warning(f"parent is dead, kill self {os.getpid()}")
+            kill_child_processes(os.getpid())
+            os.kill(os.getpid(), signal.SIGKILL)
 
         time.sleep(10)
     return
