@@ -15,6 +15,7 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNo
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
+from lightllm.server.multimodal_params import MultimodalParams
 
 logger = init_logger(__name__)
 
@@ -206,11 +207,11 @@ class InferReq:
         shm_req: Req,
         req_idx: int,
         sampling_param: InferSamplingParams = None,
-        multimodal_params=None,
+        multimodal_params: MultimodalParams = None,
     ) -> None:
         self.shm_req = shm_req
         self.sampling_param: InferSamplingParams = sampling_param
-        self.multimodal_params = multimodal_params
+        self.multimodal_params = multimodal_params.to_dict()
         self.req_idx = req_idx
         self.shared_kv_node: TreeNode = None
         self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
