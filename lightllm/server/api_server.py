@@ -86,7 +86,6 @@ class G_Objs:
             self.g_generate_func = lightllm_generate
             self.g_generate_stream_func = lightllm_generate_stream
 
-
         if args.run_mode == "pd_master":
             self.metric_client = MetricClient(args.metric_port)
             self.httpserver_manager = HttpServerManagerForPDMaster(
@@ -107,6 +106,7 @@ class G_Objs:
                 metric_port=args.metric_port,
             )
             self.shared_token_load = TokenLoad(f"{str(args.nccl_port)}_shared_token_load", args.dp)
+
 
 g_objs = G_Objs()
 
@@ -416,11 +416,13 @@ async def startup_event():
     logger.info(f"server start up ok, loop use is {asyncio.get_event_loop()}")
     return
 
+
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")  # this code will not be ok for settings to fork to subprocess
     parser = make_argument_parser()
     args = parser.parse_args()
     from .api_start import pd_master_start, normal_or_p_d_start
+
     if args.run_mode == "pd_master":
         pd_master_start(args)
     else:
