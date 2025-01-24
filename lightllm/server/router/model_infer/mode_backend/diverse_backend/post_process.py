@@ -8,30 +8,32 @@ from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import _top_p_top_k
 
 
-def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List[int] = [2]):
-    logits = logits.contiguous()
-    (
-        presence_penalties,
-        frequency_penalties,
-        repetition_penalties,
-        exponential_decay_length_penalties,
-        temperatures,
-        top_ps,
-        top_ks,
-        p_token_ids,
-        p_token_counts,
-        p_cumsum_seq_len,
-        p_max_len_in_batch,
-        length_penalty_idx,
-        mask_eos_reqs,
-    ) = _get_post_sample_tensors(req_groups, is_prefill)
+def sample(logits, req_groups, is_prefill, eos_id: List[int] = [2]):
+    with torch.cuda.stream(g_infer_context.get_overlap_stream()):
+        (
+            presence_penalties,
+            frequency_penalties,
+            repetition_penalties,
+            exponential_decay_length_penalties,
+            temperatures,
+            top_ps,
+            top_ks,
+            p_token_ids,
+            p_token_counts,
+            p_cumsum_seq_len,
+            p_max_len_in_batch,
+            length_penalty_idx,
+            mask_eos_reqs,
+        ) = _get_post_sample_tensors(req_groups, is_prefill)
+    torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
+
     batch_idx = []
     if is_prefill:
         for i in range(len(req_groups)):
             req_group = req_groups[i]
             best_of = req_group.best_of
             if best_of > 1:
-                req_group.diverse_copy(req_manager, is_prefill)
+                req_group.diverse_copy(g_infer_context.req_manager, is_prefill)
                 batch_idx.extend([i for _ in range(best_of)])
             else:
                 batch_idx.append(i)
@@ -40,7 +42,7 @@ def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List
         batch_logits = logits
 
     apply_penalty(
-        batch_logits,
+        batch_logits.contiguous(),
         presence_penalties,
         frequency_penalties,
         repetition_penalties,
@@ -59,8 +61,8 @@ def sample(logits, req_groups, is_prefill, vocab_size, req_manager, eos_id: List
     probs_sort, probs_idx = _top_p_top_k(probs, top_ps, top_ks)
     sampled_index = torch.multinomial(probs_sort, num_samples=1, replacement=True)
 
-    batch_next_token_ids = torch.gather(probs_idx, dim=1, index=sampled_index).cpu().numpy().reshape(-1)
-    batch_next_token_logprobs = torch.gather(probs_sort, dim=1, index=sampled_index).log().cpu().numpy().reshape(-1)
+    batch_next_token_ids = torch.gather(probs_idx, dim=1, index=sampled_index).reshape(-1)
+    batch_next_token_logprobs = torch.gather(probs_sort, dim=1, index=sampled_index).reshape(-1)
     return batch_next_token_ids, batch_next_token_logprobs
 
 
@@ -85,17 +87,18 @@ def _get_post_sample_tensors(req_groups, is_prefill):
             req_obj = req_group_obj.get_req(j)
             id_to_count = req_obj.out_token_id_count
             sample_param = req_obj.sampling_param
-            presence_penalties.append(sample_param.presence_penalty)
-            frequency_penalties.append(sample_param.frequency_penalty)
-            repetition_penalties.append(sample_param.repetition_penalty)
-            exponential_decay_length_penalties.append(sample_param.exponential_decay_length_penalty[1])
-            out_token_len = len(req_obj.input_token_ids) - req_obj.prompt_len
-            length_penalty_idx.append(max(out_token_len - sample_param.exponential_decay_length_penalty[0], 0))
-            mask_eos_reqs.append(out_token_len < sample_param.min_new_tokens - 1)
+            presence_penalties.append(sample_param.shm_param.presence_penalty)
+            frequency_penalties.append(sample_param.shm_param.frequency_penalty)
+            repetition_penalties.append(sample_param.shm_param.repetition_penalty)
+            exponential_decay_length_penalty = sample_param.shm_param.exponential_decay_length_penalty.to_tuple()
+            exponential_decay_length_penalties.append(exponential_decay_length_penalty[1])
+            out_token_len = req_obj.get_cur_total_len() - req_obj.shm_req.input_len
+            length_penalty_idx.append(max(out_token_len - exponential_decay_length_penalty[0], 0))
+            mask_eos_reqs.append(out_token_len < sample_param.shm_param.min_new_tokens - 1)
 
-            temperatures.append(sample_param.temperature)
-            top_ps.append(sample_param.top_p)
-            top_ks.append(sample_param.top_k)
+            temperatures.append(sample_param.shm_param.temperature)
+            top_ps.append(sample_param.shm_param.top_p)
+            top_ks.append(sample_param.shm_param.top_k)
 
             for token_id, count in id_to_count.items():
                 p_token_ids.append(token_id)

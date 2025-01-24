@@ -77,9 +77,11 @@ class InferenceContext:
 
         return
 
-    def free_a_req_mem(self, free_token_index: List, req: "InferReq", is_group_finished: bool):
+    def free_a_req_mem(
+        self, free_token_index: List, req: "InferReq", is_group_finished: bool, share_input_len: int = 0
+    ):
         if self.radix_cache is None:
-            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len])
+            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][share_input_len : req.cur_kv_len])
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
@@ -113,11 +115,13 @@ class InferenceContext:
             group_req_id = convert_sub_id_to_group_id(req.shm_req.request_id)
             if group_req_id in self.group_mapping:
                 is_group_finished = self.group_mapping[group_req_id].decrease_refs(req.shm_req.request_id)
+                share_input_len = self.group_mapping[group_req_id].share_input_len
                 if is_group_finished:
+                    share_input_len = 0
                     del self.group_mapping[group_req_id]
-                self.free_a_req_mem(free_token_index, req, is_group_finished)
+                self.free_a_req_mem(free_token_index, req, is_group_finished, share_input_len)
             else:
-                self.free_a_req_mem(free_token_index, req, True)
+                self.free_a_req_mem(free_token_index, req, True, 0)
             free_req_index.append(req.req_idx)
             # logger.info(f"infer release req id {req.shm_req.request_id}")
             req.shm_req.shm_infer_released = True
@@ -312,25 +316,21 @@ class InferReq:
 class InferReqGroup:
     def __init__(
         self,
-        group_req_id,
-        best_of=1,
+        group_req_id: int,
+        share_input_len: int,
+        best_of: int = 1,
     ) -> None:
         self.best_of = best_of
         self.refs = best_of
         self.group_req_id = group_req_id
-        self.prev_beamid = [0] * best_of  # Record which beam the current token came from.
-        self.min_score = 1e9  # The min score of beam results
         self.req_group = []
-        self.res = []  # Results already finished
         self.filter_reqs_id = []  # filtered reqs
         self.finish_status = False  # If beamsearch is done
         self.has_beam = False
+        self.share_input_len = share_input_len
 
     def get_req(self, index):
         return g_infer_context.requests_mapping[self.req_group[index]]
-
-    def get_relative_index(self, index):
-        return self.req_group[index] - self.group_req_id
 
     def add_req(self, req_id):
         self.req_group.append(req_id)
@@ -349,43 +349,6 @@ class InferReqGroup:
         self.req_group = new_req_group
         self.best_of = len(self.req_group)
 
-    def add_res(self, output_ids, logprobs, cum_logprob, finish_status):
-        score = cum_logprob / len(output_ids)
-        if len(self.res) < self.best_of or score < self.min_score:
-            self.res.append([score, output_ids, logprobs, finish_status])
-            if len(self.res) > self.best_of:
-                sorted_scores = sorted([(s, idx) for idx, (s, _, _, _) in enumerate(self.res)])
-                del self.res[sorted_scores[0][1]]
-                self.min_score = sorted_scores[1][0]
-            else:
-                self.min_score = min(score, self.min_score)
-
-    def beam_copy(self, req_manager, is_prefill):
-        cache_req = {}
-        cache_req_to_token = {}
-        # record previous status
-        for i, prev_ in enumerate(self.prev_beamid):
-            prev_req = g_infer_context.requests_mapping[self.req_group[prev_]]
-            if prev_ not in cache_req_to_token:
-                cache_req[prev_] = copy.deepcopy(prev_req)
-                prev_tokens = req_manager.req_to_token_indexs[prev_req.req_idx][: len(prev_req.input_token_ids)].clone()
-                cache_req_to_token[prev_] = prev_tokens
-            req = self.get_req(i)
-            if not is_prefill or i == 0:
-                req_manager.mem_manager.free(req_manager.req_to_token_indexs[req.req_idx][: len(req.input_token_ids)])
-
-        # update the InferReq status and mem_manager status for cache sharing
-        for i, req_id in enumerate(self.req_group):
-            prev_ = self.prev_beamid[i]
-            prev_req = cache_req[prev_]
-            req = g_infer_context.requests_mapping[req_id]
-            req.input_token_ids = copy.deepcopy(prev_req.input_token_ids)
-            req.out_token_id_count = copy.deepcopy(req.out_token_id_count)
-            req.logprobs = copy.deepcopy(req.logprobs)
-            req.finish_status = FinishStatus.NO_FINISH
-            req_manager.req_to_token_indexs[req.req_idx][: len(req.input_token_ids)] = cache_req_to_token[prev_]
-            req_manager.mem_manager.add_refs(cache_req_to_token[prev_])
-
     def diverse_copy(self, req_manager, is_prefill):
         # record previous status
         prev_req = g_infer_context.requests_mapping[self.req_group[0]]
@@ -393,23 +356,12 @@ class InferReqGroup:
             prefix_len = prev_req.shared_kv_node.node_prefix_total_len
         else:
             prefix_len = 0
-        cache_token_id = req_manager.req_to_token_indexs[prev_req.req_idx][prefix_len : len(prev_req.input_token_ids)]
+        pre_input_token_ids = prev_req.get_input_token_ids()
+        cache_token_id = req_manager.req_to_token_indexs[prev_req.req_idx][prefix_len : len(pre_input_token_ids)]
         # update the InferReq status and mem_manager status for cache sharing
         for req_id in self.req_group[1:]:
             req = g_infer_context.requests_mapping[req_id]
-            req.finish_status = FinishStatus.NO_FINISH
-            req_manager.req_to_token_indexs[req.req_idx][prefix_len : len(req.input_token_ids)] = cache_token_id
-            assert len(req.input_token_ids) == len(prev_req.input_token_ids)
-            req_manager.mem_manager.add_refs(cache_token_id)
-
-    def update_finish_status(self, best_new_score):
-        if len(self.res) < self.best_of:
-            self.finish_status = False
-        else:
-            req_obj = g_infer_context.requests_mapping[self.req_group[0]]
-            max_new_tokens = req_obj.sampling_param.max_new_tokens
-            has_output_len = req_obj.cur_kv_len + 1 - req_obj.prompt_len  # 这个地方只能用 cur_kv_len 来计算，有beam流程函数存在依赖
-            self.finish_status = best_new_score <= self.min_score or has_output_len >= max_new_tokens
-
-        if self.finish_status:
-            self.res = sorted(self.res, key=lambda i: i[0])
+            req.finish_status.set_status(FinishStatus.NO_FINISH)
+            input_token_ids = req.get_input_token_ids()
+            req_manager.req_to_token_indexs[req.req_idx][prefix_len : len(input_token_ids)] = cache_token_id
+            assert len(input_token_ids) == len(pre_input_token_ids)
