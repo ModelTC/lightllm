@@ -1,11 +1,13 @@
+import sys
 import uvicorn
 import uuid
 import subprocess
 import torch
+import signal
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.server import TokenLoad
 from lightllm.utils.net_utils import alloc_can_use_network_port, PortLocker
-from lightllm.utils.start_utils import start_submodule_processes
+from lightllm.utils.start_utils import process_manager
 from .metrics.manager import start_metric_manager
 from .embed_cache.manager import start_cache_manager
 from .visualserver.manager import start_visual_process
@@ -177,14 +179,29 @@ def normal_or_p_d_start(args):
 
     ports_locker.release_port()
 
+    def signal_handler(sig, frame):
+        logger.info("Received signal to exit, shutting down gracefully...")
+
+        # 关闭 Gunicorn 服务器进程
+        if http_server_process.poll() is None:  # 检查进程是否还在运行
+            http_server_process.send_signal(signal.SIGTERM)  # 发送 SIGTERM
+            http_server_process.wait()  # TODO: 这里会阻塞，导致无法正常退出
+        process_manager.terminate_all_processes()
+        logger.info("All processes have been terminated.")
+        sys.exit(0)
+
+    # 注册信号处理函数
+    signal.signal(signal.SIGINT, signal_handler)  # 捕获 Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # 捕获 kill 命令
+
     if args.enable_multimodal:
-        start_submodule_processes(
+        process_manager.start_submodule_processes(
             start_funcs=[
                 start_cache_manager,
             ],
             start_args=[(cache_port, args)],
         )
-        start_submodule_processes(
+        process_manager.start_submodule_processes(
             start_funcs=[
                 start_visual_process,
             ],
@@ -193,14 +210,14 @@ def normal_or_p_d_start(args):
             ],
         )
 
-    start_submodule_processes(
+    process_manager.start_submodule_processes(
         start_funcs=[
             start_metric_manager,
         ],
         start_args=[(metric_port, args)],
     )
 
-    start_submodule_processes(
+    process_manager.start_submodule_processes(
         start_funcs=[start_router_process, start_detokenization_process],
         start_args=[
             (args, router_port, detokenization_port, model_rpc_ports, metric_port),
@@ -237,7 +254,7 @@ def normal_or_p_d_start(args):
     if args.health_monitor:
         from lightllm.server.health_monitor.manager import start_health_check_process
 
-        start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
+        process_manager.start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
 
     http_server_process.wait()
     return
@@ -257,7 +274,7 @@ def pd_master_start(args):
 
     set_env(args)
 
-    start_submodule_processes(
+    process_manager.start_submodule_processes(
         start_funcs=[
             start_metric_manager,
         ],
@@ -278,6 +295,7 @@ def pd_master_start(args):
         "-",
         "--error-logfile",
         "-",
+        "--preload",
         "lightllm.server.api_server:app",
     ]
 
@@ -286,10 +304,25 @@ def pd_master_start(args):
     if args.health_monitor:
         from lightllm.server.health_monitor.manager import start_health_check_process
 
-        start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
+        process_manager.start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
+
+    def signal_handler(sig, frame):
+        print("Received signal to exit, shutting down gracefully...")
+
+        # 关闭 Gunicorn 服务器进程
+        if http_server_process.poll() is None:  # 检查进程是否还在运行
+            http_server_process.terminate()  # 发送 SIGTERM 信号
+            http_server_process.wait()  # 等待进程结束
+
+        process_manager.terminate_all_processes()
+        print("All processes have been terminated.")
+        sys.exit(0)
+
+    # 注册信号处理函数
+    signal.signal(signal.SIGINT, signal_handler)  # 捕获 Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # 捕获 kill 命令
 
     http_server_process.wait()
-    return
 
 
 if __name__ == "__main__":

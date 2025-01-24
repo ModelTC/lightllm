@@ -392,7 +392,6 @@ async def kv_move_status(websocket: WebSocket):
 async def shutdown():
     logger.info("Received signal to shutdown. Performing graceful shutdown...")
     await asyncio.sleep(3)
-    logger.info("Graceful shutdown completed.")
 
     # 杀掉所有子进程
     import psutil
@@ -402,8 +401,7 @@ async def shutdown():
     children = parent.children(recursive=True)
     for child in children:
         os.kill(child.pid, signal.SIGKILL)
-
-    g_objs.server.should_exit = True
+    logger.info("Graceful shutdown completed.")
     return
 
 
