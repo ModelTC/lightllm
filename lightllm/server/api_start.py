@@ -22,6 +22,30 @@ from .api_cli import make_argument_parser
 logger = init_logger(__name__)
 
 
+def setup_signal_handlers(http_server_process, process_manager):
+    def signal_handler(sig, frame):
+        logger.info("Received signal to exit, shutting down gracefully...")
+
+        # Gracefully terminate the HTTP server process
+        if http_server_process and http_server_process.poll() is None:
+            http_server_process.send_signal(signal.SIGTERM)
+            try:
+                http_server_process.wait(timeout=10)
+                logger.info("HTTP server has exited gracefully.")
+            except subprocess.TimeoutExpired:
+                logger.warning("HTTP server did not exit in time, killing it...")
+                http_server_process.kill()
+
+        # Terminate all processes managed by process_manager
+        process_manager.terminate_all_processes()
+        logger.info("All processes have been terminated.")
+        sys.exit(0)
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+
 def set_env(args):
     import os
 
@@ -179,21 +203,6 @@ def normal_or_p_d_start(args):
 
     ports_locker.release_port()
 
-    def signal_handler(sig, frame):
-        logger.info("Received signal to exit, shutting down gracefully...")
-
-        # 关闭 Gunicorn 服务器进程
-        if http_server_process.poll() is None:  # 检查进程是否还在运行
-            http_server_process.send_signal(signal.SIGTERM)  # 发送 SIGTERM
-            http_server_process.wait()  # TODO: 这里会阻塞，导致无法正常退出
-        process_manager.terminate_all_processes()
-        logger.info("All processes have been terminated.")
-        sys.exit(0)
-
-    # 注册信号处理函数
-    signal.signal(signal.SIGINT, signal_handler)  # 捕获 Ctrl+C
-    signal.signal(signal.SIGTERM, signal_handler)  # 捕获 kill 命令
-
     if args.enable_multimodal:
         process_manager.start_submodule_processes(
             start_funcs=[
@@ -255,7 +264,7 @@ def normal_or_p_d_start(args):
         from lightllm.server.health_monitor.manager import start_health_check_process
 
         process_manager.start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
-
+    setup_signal_handlers(http_server_process, process_manager)
     http_server_process.wait()
     return
 
@@ -306,22 +315,7 @@ def pd_master_start(args):
 
         process_manager.start_submodule_processes(start_funcs=[start_health_check_process], start_args=[(args,)])
 
-    def signal_handler(sig, frame):
-        print("Received signal to exit, shutting down gracefully...")
-
-        # 关闭 Gunicorn 服务器进程
-        if http_server_process.poll() is None:  # 检查进程是否还在运行
-            http_server_process.terminate()  # 发送 SIGTERM 信号
-            http_server_process.wait()  # 等待进程结束
-
-        process_manager.terminate_all_processes()
-        print("All processes have been terminated.")
-        sys.exit(0)
-
-    # 注册信号处理函数
-    signal.signal(signal.SIGINT, signal_handler)  # 捕获 Ctrl+C
-    signal.signal(signal.SIGTERM, signal_handler)  # 捕获 kill 命令
-
+    setup_signal_handlers(http_server_process, process_manager)
     http_server_process.wait()
 
 
