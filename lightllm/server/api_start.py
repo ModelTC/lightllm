@@ -24,26 +24,28 @@ logger = init_logger(__name__)
 
 def setup_signal_handlers(http_server_process, process_manager):
     def signal_handler(sig, frame):
-        logger.info("Received signal to exit, shutting down gracefully...")
-
-        # Gracefully terminate the HTTP server process
-        if http_server_process and http_server_process.poll() is None:
-            http_server_process.send_signal(signal.SIGTERM)
-            try:
-                http_server_process.wait(timeout=10)
-                logger.info("HTTP server has exited gracefully.")
-            except subprocess.TimeoutExpired:
-                logger.warning("HTTP server did not exit in time, killing it...")
+        if sig == signal.SIGINT:
+            logger.info("Received SIGINT (Ctrl+C), forcing immediate exit...")
+            if http_server_process and http_server_process.poll() is None:
                 http_server_process.kill()
 
-        # Terminate all processes managed by process_manager
-        process_manager.terminate_all_processes()
-        logger.info("All processes have been terminated.")
-        sys.exit(0)
+            process_manager.terminate_all_processes(force=True)
+            logger.info("All processes have been forcefully terminated.")
+            sys.exit(0)
+        elif sig == signal.SIGTERM:
+            logger.info("Received SIGTERM, shutting down gracefully...")
+            if http_server_process and http_server_process.poll() is None:
+                http_server_process.send_signal(signal.SIGTERM)
+                try:
+                    http_server_process.wait(timeout=10)
+                    logger.info("HTTP server has exited gracefully.")
+                except subprocess.TimeoutExpired:
+                    logger.warning("HTTP server did not exit in time, killing it...")
+                    http_server_process.kill()
 
-    # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+            process_manager.terminate_all_processes()
+            logger.info("All processes have been terminated gracefully.")
+            sys.exit(0)
 
 
 def set_env(args):
@@ -314,13 +316,3 @@ def pd_master_start(args):
 
     setup_signal_handlers(http_server_process, process_manager)
     http_server_process.wait()
-
-
-if __name__ == "__main__":
-    torch.multiprocessing.set_start_method("spawn")  # this code will not be ok for settings to fork to subprocess
-    parser = make_argument_parser()
-    args = parser.parse_args()
-    if args.run_mode == "pd_master":
-        pd_master_start(args)
-    else:
-        normal_or_p_d_start(args)
