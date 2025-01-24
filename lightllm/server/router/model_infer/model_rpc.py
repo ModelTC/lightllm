@@ -10,7 +10,6 @@ from lightllm.server.router.model_infer.mode_backend import (
     ContinuesBatchBackend,
     ReturnPromptLogProbBackend,
     SplitFuseBackend,
-    BeamSearchBackend,
     DiversehBackend,
     RewardModelBackend,
     TokenHealingBackend,
@@ -103,7 +102,6 @@ class ModelRpcServer:
         is_splitfuse_mode = kvargs.get("is_splitfuse_mode", False)
         return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         use_reward_model = kvargs.get("use_reward_model", False)
-        beam_mode = kvargs.get("beam_mode", False)
         diverse_mode = kvargs.get("diverse_mode", False)
         is_token_healing = kvargs.get("is_token_healing", False)
         is_first_token_constraint_mode = kvargs.get("is_first_token_constraint_mode", False)
@@ -126,8 +124,6 @@ class ModelRpcServer:
             self.backend = SplitFuseBackend()
         elif return_all_prompt_logprobs:
             self.backend = ReturnPromptLogProbBackend()
-        elif beam_mode:
-            self.backend = BeamSearchBackend()
         elif diverse_mode:
             self.backend = DiversehBackend()
         elif is_token_healing:

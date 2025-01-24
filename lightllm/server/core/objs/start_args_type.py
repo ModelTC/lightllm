@@ -39,7 +39,6 @@ class StartArgs:
     use_dynamic_prompt_cache: bool = field(default=False)
     splitfuse_block_size: int = field(default=256)
     splitfuse_mode: bool = field(default=False)
-    beam_mode: bool = field(default=False)
     diverse_mode: bool = field(default=False)
     token_healing_mode: bool = field(default=False)
     simple_constraint_mode: bool = field(default=False)

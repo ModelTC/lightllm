@@ -72,7 +72,6 @@ def normal_or_p_d_start(args):
 
     logger.info(f"use tgi api: {args.use_tgi_api}")
 
-    assert not (args.beam_mode and args.use_dynamic_prompt_cache), "Beam mode incompatible with dynamic prompt cache"
     assert (
         args.mem_fraction > 0 and args.mem_fraction < 1
     ), f"Invalid mem_fraction {args.mem_fraction}, The expected value is between 0 and 1."
@@ -87,7 +86,6 @@ def normal_or_p_d_start(args):
     # 这些模式不能同时设置。
     assert [
         args.splitfuse_mode,
-        args.beam_mode,
         args.diverse_mode,
         args.token_healing_mode,
         args.use_reward_model,
@@ -96,11 +94,10 @@ def normal_or_p_d_start(args):
     ].count(True) <= 1
     # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
     if args.use_dynamic_prompt_cache:
-        assert args.beam_mode is False
         assert args.token_healing_mode is False
 
     # 部分模式还不能支持与高级动态调度算法协同，to do.
-    if args.beam_mode or args.diverse_mode:
+    if args.diverse_mode:
         assert args.router_token_ratio == 0.0
 
     # 检查GPU数量是否足够
