@@ -433,6 +433,11 @@ If you have a project that should be incorporated, please contact via email or c
 
     </details>
 
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=ModelTC/lightllm&type=Timeline)](https://star-history.com/#ModelTC/lightllm&Timeline)
+
 ## Community
 
 For further information and discussion, [join our discord server](https://discord.gg/WzzfwVSguU).
