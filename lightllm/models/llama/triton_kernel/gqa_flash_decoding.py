@@ -12,7 +12,7 @@ def gqa_token_decode_attention_flash_decoding(
     from .gqa_flash_decoding_stage1 import flash_decode_stage1
     from .gqa_flash_decoding_stage2 import flash_decode_stage2
 
-    o_tensor = alloc_tensor_func(q.shape, dtype=q.dtype, device=q.device) if out is None else out
+    o_tensor = alloc_tensor_func(q.shape, q.dtype, q.device) if out is None else out
 
     mid_o = alloc_tensor_func(
         [batch_size, q_head_num, max_len_in_batch // BLOCK_SEQ + 1, head_dim], dtype=torch.float32, device="cuda"

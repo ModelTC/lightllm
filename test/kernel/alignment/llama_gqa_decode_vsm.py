@@ -96,7 +96,7 @@ class TestVSMGQADecoding(unittest.TestCase):
             self.assertGreaterEqual(
                 cos_sim,
                 0.9,
-                f"bs={bs}, group_size={group_size}, seq_len={seq_len_m}, q_head_dim={q_head_dim}, q_head_num={q_head_num}",
+                f"bs={bs},group_size={group_size},seq_len={seq_len_m},q_head_dim={q_head_dim},q_head_num={q_head_num}",
             )
 
 

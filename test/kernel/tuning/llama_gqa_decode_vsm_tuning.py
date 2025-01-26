@@ -57,7 +57,7 @@ def test_decode_attentions(
     args = []
     q_head_dim = q_shape[2]
     q_head_num = q_shape[1]
-    kv_head_dim = kv_shape[2]
+    # kv_head_dim = kv_shape[2]
     kv_head_num = kv_shape[1]
     state.q_head_num = q_head_num
     state.q_head_dim = q_head_dim
