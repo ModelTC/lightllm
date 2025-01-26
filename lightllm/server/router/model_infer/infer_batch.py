@@ -1,13 +1,14 @@
 import os
 import copy
 import time
+from pydantic import BaseModel
 import torch
 import torch.distributed as dist
 import numpy as np
 import collections
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
@@ -40,6 +41,8 @@ class InferSamplingParams:
         stop_sequences: List[List[int]] = [],
         input_penalty: bool = False,
         regular_constraint: Optional[str] = None,
+        guided_grammar: Optional[str] = None,
+        guided_json: Optional[Union[str, dict, BaseModel]] = None,
         allowed_token_ids: Optional[List[int]] = None,
         move_kv_to_decode_node: Optional[bool] = None,
     ) -> None:
@@ -59,11 +62,21 @@ class InferSamplingParams:
         if self.top_k == -1:
             self.top_k = vocab_size
         self.input_penalty = input_penalty
-        # output constraint states
+
+        # constraint states
         self.regular_constraint = regular_constraint
+        self.guided_grammar = guided_grammar
+        self.guided_json = guided_json
+        self.allowed_token_ids = allowed_token_ids
+
+        # Outlines constraint states
         self.regex_guide = None
         self.fsm_current_state: int = 0
-        self.allowed_token_ids = allowed_token_ids
+
+        # Xgrammar constraint states
+        self.xgrammar_compiled_grammar = None
+        self.xgrammar_matcher = None
+
         # p d mode use params
         self.move_kv_to_decode_node = move_kv_to_decode_node
         # this check is not very good to placed here. to do...
@@ -74,7 +87,12 @@ class InferSamplingParams:
         return
 
     def has_constraint_setting(self) -> bool:
-        return self.regular_constraint is not None or self.allowed_token_ids is not None
+        return (
+            self.regular_constraint is not None
+            or self.allowed_token_ids is not None
+            or self.guided_grammar is not None
+            or self.guided_json is not None
+        )
 
 
 class InferReq:
