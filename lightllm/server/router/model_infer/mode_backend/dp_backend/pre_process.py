@@ -62,7 +62,12 @@ def prepare_prefill_inputs(batch, radix_cache: RadixCache, is_multimodal=False):
         radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
     mem_indexes = batch.req_manager.mem_manager.alloc(input_ids.shape[0] - padding_token_num)
     if padding_token_num > 0:
-        padding_indexs = torch.zeros(padding_token_num, dtype=torch.int32, device="cuda")
+        padding_indexs = torch.full(
+            (padding_token_num,),
+            fill_value=batch.req_manager.mem_manager.dp_use_token_index,
+            dtype=torch.int32,
+            device="cuda",
+        )
         mem_indexes = torch.cat((mem_indexes, padding_indexs), dim=0)
     g_infer_state_lock.release()
 
@@ -135,7 +140,12 @@ def prepare_decode_inputs(batch, radix_cache: RadixCache):
         radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
     mem_indexes = batch.req_manager.mem_manager.alloc(input_ids.shape[0] - padding_token_num)
     if padding_token_num > 0:
-        padding_indexs = torch.zeros(padding_token_num, dtype=torch.int32, device="cuda")
+        padding_indexs = torch.full(
+            (padding_token_num,),
+            fill_value=batch.req_manager.mem_manager.dp_use_token_index,
+            dtype=torch.int32,
+            device="cuda",
+        )
         mem_indexes = torch.cat((mem_indexes, padding_indexs), dim=0)
     g_infer_state_lock.release()
 
