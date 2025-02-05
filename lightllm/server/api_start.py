@@ -1,11 +1,9 @@
+import os
 import sys
-import uvicorn
+import time
 import uuid
 import subprocess
-import torch
 import signal
-from lightllm.server.metrics.manager import MetricClient
-from lightllm.server import TokenLoad
 from lightllm.utils.net_utils import alloc_can_use_network_port, PortLocker
 from lightllm.utils.start_utils import process_manager
 from .metrics.manager import start_metric_manager
@@ -15,9 +13,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import set_env_start_args, set_unique_server_name
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
-from .httpserver.manager import HttpServerManager
-from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
-from .api_cli import make_argument_parser
+from lightllm.utils.process_check import is_process_active
 
 logger = init_logger(__name__)
 
@@ -29,23 +25,37 @@ def setup_signal_handlers(http_server_process, process_manager):
             if http_server_process and http_server_process.poll() is None:
                 http_server_process.kill()
 
-            process_manager.terminate_all_processes(force=True)
+            process_manager.terminate_all_processes()
             logger.info("All processes have been forcefully terminated.")
             sys.exit(0)
         elif sig == signal.SIGTERM:
             logger.info("Received SIGTERM, shutting down gracefully...")
             if http_server_process and http_server_process.poll() is None:
                 http_server_process.send_signal(signal.SIGTERM)
-                try:
-                    http_server_process.wait(timeout=10)
-                    logger.info("HTTP server has exited gracefully.")
-                except subprocess.TimeoutExpired:
+
+                start_time = time.time()
+                while (time.time() - start_time) < 60:
+                    if not is_process_active(http_server_process.pid):
+                        logger.info("httpserver exit")
+                        break
+                    time.sleep(1)
+
+                if time.time() - start_time < 60:
+                    logger.info("HTTP server has exited gracefully")
+                else:
                     logger.warning("HTTP server did not exit in time, killing it...")
                     http_server_process.kill()
 
             process_manager.terminate_all_processes()
             logger.info("All processes have been terminated gracefully.")
             sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    logger.info(f"start process pid {os.getpid()}")
+    logger.info(f"http server pid {http_server_process.pid}")
+    return
 
 
 def set_env(args):
@@ -248,7 +258,7 @@ def normal_or_p_d_start(args):
         "-",
         "--error-logfile",
         "-",
-        "lightllm.server.api_server:app",
+        "lightllm.server.api_http:app",
     ]
 
     # 启动子进程
@@ -304,7 +314,7 @@ def pd_master_start(args):
         "--error-logfile",
         "-",
         "--preload",
-        "lightllm.server.api_server:app",
+        "lightllm.server.api_http:app",
     ]
 
     http_server_process = subprocess.Popen(command)
