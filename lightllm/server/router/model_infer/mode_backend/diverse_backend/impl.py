@@ -32,10 +32,7 @@ class DiversehBackend(ModeBackend):
             group_req_id = req.shm_req.group_req_id
             best_of = req.shm_req.sample_params.best_of
             if group_req_id not in g_infer_context.group_mapping:
-                input_len = req.shm_req.input_len
-                g_infer_context.group_mapping[group_req_id] = InferReqGroup(
-                    group_req_id=group_req_id, share_input_len=input_len, best_of=best_of
-                )
+                g_infer_context.group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id, best_of=best_of)
             g_infer_context.group_mapping[group_req_id].add_req(r_id)
 
     def prefill(self, reqs: List[Tuple]):

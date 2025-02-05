@@ -77,11 +77,14 @@ class InferenceContext:
 
         return
 
-    def free_a_req_mem(
-        self, free_token_index: List, req: "InferReq", is_group_finished: bool, share_input_len: int = 0
-    ):
+    def free_a_req_mem(self, free_token_index: List, req: "InferReq", is_group_finished: bool):
         if self.radix_cache is None:
-            free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][share_input_len : req.cur_kv_len])
+            if is_group_finished:
+                free_token_index.append(self.req_manager.req_to_token_indexs[req.req_idx][0 : req.cur_kv_len])
+            else:
+                free_token_index.append(
+                    self.req_manager.req_to_token_indexs[req.req_idx][req.shm_req.input_len : req.cur_kv_len]
+                )
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
@@ -95,9 +98,8 @@ class InferenceContext:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
                     req.shared_kv_node = None
             else:
-                old_prefix_len = 0 if req.shared_kv_node is None else req.shared_kv_node.node_prefix_total_len
                 free_token_index.append(
-                    self.req_manager.req_to_token_indexs[req.req_idx][old_prefix_len : req.cur_kv_len]
+                    self.req_manager.req_to_token_indexs[req.req_idx][req.shm_req.input_len : req.cur_kv_len]
                 )
                 if req.shared_kv_node is not None:
                     self.radix_cache.dec_node_ref_counter(req.shared_kv_node)
@@ -115,13 +117,11 @@ class InferenceContext:
             group_req_id = convert_sub_id_to_group_id(req.shm_req.request_id)
             if group_req_id in self.group_mapping:
                 is_group_finished = self.group_mapping[group_req_id].decrease_refs(req.shm_req.request_id)
-                share_input_len = self.group_mapping[group_req_id].share_input_len
                 if is_group_finished:
-                    share_input_len = 0
                     del self.group_mapping[group_req_id]
-                self.free_a_req_mem(free_token_index, req, is_group_finished, share_input_len)
+                self.free_a_req_mem(free_token_index, req, is_group_finished)
             else:
-                self.free_a_req_mem(free_token_index, req, True, 0)
+                self.free_a_req_mem(free_token_index, req, True)
             free_req_index.append(req.req_idx)
             # logger.info(f"infer release req id {req.shm_req.request_id}")
             req.shm_req.shm_infer_released = True
@@ -317,7 +317,6 @@ class InferReqGroup:
     def __init__(
         self,
         group_req_id: int,
-        share_input_len: int,
         best_of: int = 1,
     ) -> None:
         self.best_of = best_of
@@ -327,7 +326,6 @@ class InferReqGroup:
         self.filter_reqs_id = []  # filtered reqs
         self.finish_status = False  # If beamsearch is done
         self.has_beam = False
-        self.share_input_len = share_input_len
 
     def get_req(self, index):
         return g_infer_context.requests_mapping[self.req_group[index]]
