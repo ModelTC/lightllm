@@ -57,16 +57,17 @@ class InferenceContext:
 
             r_id, r_index, multimodal_params, _ = r
             if r_id not in self.requests_mapping.keys():
-                shm_req = self.shm_req_manager.get_req_obj_by_index(r_index)
                 r_obj = InferReq(
-                    shm_req=shm_req,
+                    req_id=r_id,
                     req_idx=self.req_manager.alloc(),
-                    sampling_param=InferSamplingParams(shm_req, self.vocab_size),
+                    shm_index=r_index,
                     multimodal_params=multimodal_params,
+                    vocab_size=self.vocab_size,
                 )
                 self.requests_mapping[r_id] = r_obj
             else:
                 r_obj: InferReq = self.requests_mapping[r_id]
+                assert r_obj.paused is True
 
             request_ids.append(r_id)
 
@@ -155,7 +156,7 @@ class InferenceContext:
             self.free_a_req_mem(free_token_index, req, is_group_finished=True)
             req.cur_kv_len = 0
             req.shm_req.shm_cur_kv_len = req.cur_kv_len
-            req.initialized = False  # 暂停后恢复需要进行重新初始化。
+            req.paused = True  # 暂停信息标记。
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
@@ -208,65 +209,64 @@ class InferSamplingParams:
 class InferReq:
     def __init__(
         self,
-        shm_req: Req,
+        req_id: int,
         req_idx: int,
-        sampling_param: InferSamplingParams = None,
-        multimodal_params: MultimodalParams = None,
-    ) -> None:
-        self.shm_req = shm_req
-        self.sampling_param: InferSamplingParams = sampling_param
-        self.multimodal_params = multimodal_params.to_dict()
+        shm_index: int,
+        multimodal_params=None,
+        vocab_size: int = -1,
+    ):
+        self.req_id = req_id
         self.req_idx = req_idx
-        self.shared_kv_node: TreeNode = None
-        self.logprobs = []  # logprob of each token, using for beamsearch and diverse_backend
-        self.cum_logprob = 0.0  # cumulative logprob of each token, using for beamsearch and diverse_backend
-
-        self.cur_kv_len = 0
-        self.cur_output_len = 0
-        self.finish_status = FinishStatus()
-        self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
-
-        # 标记是否完整完成初始化
+        self.shm_index = shm_index
+        self.multimodal_params = multimodal_params
+        self.vocab_size = vocab_size
         self.initialized = False
-        return
+        self.paused = False
 
     def init_all(self):
-        """
-        初始化 req 对象的 prompt ids 共享内存绑定以及radix cache的填充等
-        """
-        assert self.initialized is False
-
-        # 区分是否是暂停恢复的请求, 暂停后恢复的请求不需要
-        # link shm。
-        if not hasattr(self.shm_req, "shm_prompt_ids"):
+        if self.initialized is False:
+            self.shm_req = g_infer_context.shm_req_manager.get_req_obj_by_index(self.shm_index)
             self.shm_req.link_prompt_ids_shm_array()
             self.shm_req.link_logprobs_shm_array()
+            self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)
             if self.sampling_param.shm_param.input_penalty:
                 self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
             else:
                 self.out_token_id_count = collections.defaultdict(int)
 
-        # token healing mode 才被使用的管理对象
-        if self.shm_req.prefix_token_ids.size != 0:
-            self.prefix_token_ids = self.shm_req.prefix_token_ids.get_token_ids()
-        else:
-            self.prefix_token_ids = []
+            self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
+            # token healing mode 才被使用的管理对象
+            if self.shm_req.prefix_token_ids.size != 0:
+                self.prefix_token_ids = self.shm_req.prefix_token_ids.get_token_ids()
+            else:
+                self.prefix_token_ids = []
+            self.multimodal_params = self.multimodal_params.to_dict()
+            self.shared_kv_node: TreeNode = None
+            self.cur_kv_len = 0
+            self.cur_output_len = 0
+            self.finish_status = FinishStatus()
 
-        # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
-        if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
-            input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
-            key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
-            key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
-            share_node, kv_len, value_tensor = g_infer_context.radix_cache.match_prefix(key, update_refs=True)
-            if share_node is not None:
-                self.shared_kv_node = share_node
-                ready_cache_len = share_node.node_prefix_total_len
-                g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
-                self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
+        if self.paused or not self.initialized:
+            # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
+            if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
+                input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
+                key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
+                key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
+                share_node, kv_len, value_tensor = g_infer_context.radix_cache.match_prefix(key, update_refs=True)
+                if share_node is not None:
+                    self.shared_kv_node = share_node
+                    ready_cache_len = share_node.node_prefix_total_len
+                    g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
+                    self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64
 
-        self.shm_req.shm_cur_kv_len = self.cur_kv_len
+            self.shm_req.shm_cur_kv_len = self.cur_kv_len
+
         self.initialized = True
+        self.paused = False
         return
+
+    def is_uninitialized(self):
+        return not self.initialized or self.paused
 
     def get_output_len(self):
         return self.cur_output_len

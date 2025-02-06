@@ -12,7 +12,7 @@ def overlap_prepare_inputs():
     decode_run_reqs = []
     for request_id in g_infer_context.infer_req_ids:
         req: InferReq = g_infer_context.requests_mapping[request_id]
-        if not req.initialized:
+        if req.is_uninitialized():
             uninit_reqs.append(req)
         elif req.finish_status.is_finished() or req.shm_req.router_aborted:
             finished_reqs.append(req)

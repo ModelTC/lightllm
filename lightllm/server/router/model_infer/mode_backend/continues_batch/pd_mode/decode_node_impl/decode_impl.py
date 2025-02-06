@@ -134,8 +134,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 req_obj.init_all()
             else:
                 # 对于不合法的请求，直接模拟将其finished掉
-                req_obj.shm_req.link_prompt_ids_shm_array()
-                req_obj.shm_req.link_logprobs_shm_array()
+                req_obj.init_all()
                 req_obj.set_next_gen_token_id(0, 0.0)
                 req_obj.cur_output_len += 1
 
