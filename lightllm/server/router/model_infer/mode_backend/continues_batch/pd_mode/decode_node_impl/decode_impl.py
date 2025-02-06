@@ -123,7 +123,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         estimated_peak_token_count = 0
         for req_obj in uninit_reqs:
             req_obj: InferReq = req_obj  # for easy typing
-            request_id = req_obj.shm_req.request_id
+            request_id = req_obj.req_id
             if request_id in g_success_kv_move_task_cache:
                 task, share_node, _ = g_success_kv_move_task_cache.pop(request_id)
                 task: KVMoveTask = task  # for easy typing
