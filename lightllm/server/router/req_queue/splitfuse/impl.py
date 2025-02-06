@@ -91,6 +91,7 @@ class SplitFuseQueue(BaseQueue):
                 can_run_list.append(req)
                 if req.is_paused:
                     self.pause_req_dict.pop(req.request_id)
+                    req.is_paused = False
             else:
                 break
 

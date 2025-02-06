@@ -111,6 +111,7 @@ class BeamContinuesBatchQueue(BaseQueue):
                 for cur_req in cur_group_reqs:
                     if cur_req.is_paused:
                         self.pause_req_dict.pop(cur_req.request_id)
+                        cur_req.is_paused = False
                 cur_group_reqs = [req]  # 等待判断的组
             else:
                 cur_group_reqs = []
@@ -125,6 +126,7 @@ class BeamContinuesBatchQueue(BaseQueue):
                 for req in cur_group_reqs:
                     if req.is_paused:
                         self.pause_req_dict.pop(req.request_id)
+                        req.is_paused = False
 
         if len(can_run_list) != 0:
             new_batch = Batch(uuid.uuid4().int, can_run_list, dp_size=self.dp_size)
