@@ -70,7 +70,7 @@ class Req(ctypes.Structure):
         # 虽然某种程度上 cur_output_len 也有同样的功能，但是为了避免多进程访问导致的问题，添加
         # candetoken_out_len 变量单独传输这个信息。
         ("candetoken_out_len", ctypes.c_int),
-        ("prompt_cache_len", ctypes.c_int),
+        ("prompt_cache_len", ctypes.c_int),  # 用于记录prompt cache 的命中长度，用于统计
         ("is_paused", ctypes.c_bool),  # 标记一个Req因为显存资源管理的原因被临时暂停了。
         ("finish_status", FinishStatus),
         ("is_aborted", ctypes.c_bool),

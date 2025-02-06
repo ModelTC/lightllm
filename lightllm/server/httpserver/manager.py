@@ -355,6 +355,8 @@ class HttpServerManager:
                     if self.pd_mode == NodeRole.P and is_first_token:
                         metadata["prompt_ids"] = prompt_ids
 
+                    prompt_cache_len = metadata.pop("prompt_cache_len", 0)
+
                     if is_first_token:
                         first_token_cost_ms = (time.time() - start_time) * 1000
                         is_first_token = False
@@ -374,7 +376,7 @@ class HttpServerManager:
                         self.per_token_costs.add(mean_per_token_cost_time_ms)
                         x_request_id = request.headers.get("X-Request-Id", "") if request is not None else ""
                         x_session_id = request.headers.get("X-Session-Id", "") if request is not None else ""
-                        prompt_cache_len = metadata.pop("prompt_cache_len", 0)
+
                         prompt_cache_ratio = prompt_cache_len / prompt_tokens
                         self.metric_client.histogram_observe("lightllm_cache_length", prompt_cache_len)
                         self.metric_client.histogram_observe("lightllm_cache_ratio", prompt_cache_ratio)
@@ -477,6 +479,7 @@ class HttpServerManager:
                             "logprob": float(req.shm_logprobs.arr[src_index]),
                             "special": special,
                             "count_output_tokens": count_output_tokens,
+                            "prompt_cache_len": req.prompt_cache_len,
                         }
                         if self.args.return_all_prompt_logprobs:
                             metadata.update(req.get_all_prompt_metadata())
