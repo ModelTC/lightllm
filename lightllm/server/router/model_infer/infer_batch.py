@@ -40,7 +40,7 @@ class InferenceContext:
         self.shm_req_manager = shm_req_manager
 
         self.requests_mapping = {}
-        self.group_mapping = {}
+        self.group_mapping: Dict[int, InferReqGroup] = {}
         self.infer_req_ids = []
 
         self.vocab_size = vocab_size
@@ -116,7 +116,7 @@ class InferenceContext:
             req: InferReq = self.requests_mapping.pop(request_id)
             group_req_id = convert_sub_id_to_group_id(req.shm_req.request_id)
             if group_req_id in self.group_mapping:
-                is_group_finished = self.group_mapping[group_req_id].decrease_refs(req.shm_req.request_id)
+                is_group_finished = self.group_mapping[group_req_id].remove_req(req.shm_req.request_id)
                 if is_group_finished:
                     del self.group_mapping[group_req_id]
                 self.free_a_req_mem(free_token_index, req, is_group_finished)
@@ -317,39 +317,30 @@ class InferReqGroup:
     def __init__(
         self,
         group_req_id: int,
-        best_of: int = 1,
     ) -> None:
-        self.best_of = best_of
-        self.refs = best_of
         self.group_req_id = group_req_id
-        self.req_group = []
-        self.filter_reqs_id = []  # filtered reqs
-        self.finish_status = False  # If beamsearch is done
-        self.has_beam = False
+        self.req_ids_group = []
 
     def get_req(self, index):
-        return g_infer_context.requests_mapping[self.req_group[index]]
+        return g_infer_context.requests_mapping[self.req_ids_group[index]]
+
+    def get_all_reqs(self):
+        return [g_infer_context.requests_mapping[self.req_ids_group[i]] for i in range(len(self.req_ids_group))]
 
     def add_req(self, req_id):
-        self.req_group.append(req_id)
+        self.req_ids_group.append(req_id)
 
-    def get_cumlogprobs(self):
-        return [g_infer_context.requests_mapping[r_id].cum_logprob for r_id in self.req_group]
+    def remove_req(self, req_id):
+        assert req_id in self.req_ids_group
+        self.req_ids_group.remove(req_id)
+        return len(self.req_ids_group) == 0
 
-    def decrease_refs(self, req_id):
-        self.refs -= 1
-        self.filter_reqs_id.append(req_id)
-        return self.refs == 0
-
-    def update_filter(self):
-        filter_reqs_id_set = set(self.filter_reqs_id)
-        new_req_group = [req_id for req_id in self.req_group if req_id not in filter_reqs_id_set]
-        self.req_group = new_req_group
-        self.best_of = len(self.req_group)
+    def best_of(self):
+        return len(self.req_ids_group)
 
     def diverse_copy(self, req_manager, is_prefill):
         # record previous status
-        prev_req = g_infer_context.requests_mapping[self.req_group[0]]
+        prev_req = g_infer_context.requests_mapping[convert_sub_id_to_group_id(self.req_ids_group[0])]
         if prev_req.shared_kv_node is not None:
             prefix_len = prev_req.shared_kv_node.node_prefix_total_len
         else:
@@ -357,7 +348,9 @@ class InferReqGroup:
         pre_input_token_ids = prev_req.get_input_token_ids()
         cache_token_id = req_manager.req_to_token_indexs[prev_req.req_idx][prefix_len : len(pre_input_token_ids)]
         # update the InferReq status and mem_manager status for cache sharing
-        for req_id in self.req_group[1:]:
+        for req_id in self.req_ids_group[:]:
+            if req_id == convert_sub_id_to_group_id(req_id):
+                continue
             req = g_infer_context.requests_mapping[req_id]
             req.finish_status.set_status(FinishStatus.NO_FINISH)
             input_token_ids = req.get_input_token_ids()
