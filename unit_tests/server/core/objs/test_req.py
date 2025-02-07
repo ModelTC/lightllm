@@ -1,12 +1,12 @@
 import pytest
 
-from lightllm.server.core.objs.req import Req, NormalReq, TokenHealingReq, SplitFuseReq, SamplingParams
+from lightllm.server.core.objs.req import Req, NormalReq, TokenHealingReq, ChunkedPrefillReq, SamplingParams
 
 
 @pytest.fixture
 def req():
     req_instance = Req()
-    req_instance.init(1, [1, 2, 3], {"max_new_tokens": 1}, None, splitfuse_block_size=128)
+    req_instance.init(1, [1, 2, 3], {"max_new_tokens": 1}, None, chunked_prefill_size=128)
     return req_instance
 
 
@@ -38,8 +38,8 @@ def test_token_healing_req_post_init():
 
 
 def test_split_fuse_req_get_tuple_tokens():
-    split_fuse_req = SplitFuseReq()
-    split_fuse_req.init(1, [1, 2, 3], {"max_new_tokens": 1}, None, splitfuse_block_size=256)
+    split_fuse_req = ChunkedPrefillReq()
+    split_fuse_req.init(1, [1, 2, 3], {"max_new_tokens": 1}, None, chunked_prefill_size=256)
     result = split_fuse_req.get_tuple_tokens(False, 10)
     assert isinstance(result, tuple)
 

@@ -144,9 +144,8 @@ def make_argument_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
 
-    parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
-
-    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
+    parser.add_argument("--chunked_prefill_size", type=int, default=8192, help="chunked prefill size")
+    parser.add_argument("--disable_chunked_prefill", action="store_true", help="whether to disable chunked prefill")
     parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
     parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
     parser.add_argument("--simple_constraint_mode", action="store_true", help="output constraint mode")

@@ -83,7 +83,8 @@ class Req(ctypes.Structure):
         ("finish_token_index", ctypes.c_int),
         ("out_tokens_queue", CircularQueue),
         ("sample_params", SamplingParams),
-        ("splitfuse_block_size", ctypes.c_int),  # 只有splitfuse模式才使用的参数
+        ("chunked_prefill_size", ctypes.c_int),  # 只有chunked prefill模式才使用的参数
+        ("remaining_prefill_size", ctypes.c_int),  # 只有chunked prefill模式才使用的参数
         ("prefix_token_ids", PrefixTokenIdsStruct),  # 只有 token_headling 模式使用的参数
         # can_released_mark的作用是：
         # 只有整个流程中的最后一个处理模块，一般是 detokenization 进程，标记这个参数为True后，主管理进程才能真
@@ -99,7 +100,7 @@ class Req(ctypes.Structure):
         prompt_ids: List[int],
         sample_param: Union[dict, SamplingParams],
         tokenizer: Any,
-        splitfuse_block_size=0,
+        chunked_prefill_size: int = 0,
     ):
         # 只是为了有更好的编码辅助类型提示
         self.index_in_shm_mem: int = self.index_in_shm_mem
@@ -124,7 +125,8 @@ class Req(ctypes.Structure):
         else:
             self.sample_params = SamplingParams()
             self.sample_params.init(tokenizer=tokenizer, **sample_param)
-        self.splitfuse_block_size = splitfuse_block_size
+        self.chunked_prefill_size = chunked_prefill_size
+        self.remaining_prefill_size = len(prompt_ids)
         self.prefix_token_ids = PrefixTokenIdsStruct()
 
         self.out_tokens_queue = CircularQueue()
@@ -284,38 +286,10 @@ class TokenHealingReq(NormalReq):
         return
 
 
-class SplitFuseReq(Req):
+class ChunkedPrefillReq(NormalReq):
     _pack_ = 4
 
-    def get_tuple_tokens(self, is_busy, router_max_new_token_len):
-        has_out_len = self.shm_cur_output_len
-        if self.sample_params.ignore_eos:
-            cur_max_new_token_len = self.sample_params.max_new_tokens
-        elif is_busy:
-            cur_max_new_token_len = self.sample_params.max_new_tokens
-        else:
-            cur_max_new_token_len = min(
-                self.sample_params.max_new_tokens, max(int(1.1 * has_out_len), router_max_new_token_len)
-            )
-
-        a_len = max(self.input_len + has_out_len + 1, self.shm_cur_kv_len + 1)
-        b_len = (
-            (self.input_len + has_out_len - self.shm_cur_kv_len + self.splitfuse_block_size - 1)
-            // self.splitfuse_block_size
-            + cur_max_new_token_len
-            - has_out_len
-            - 1
-        )
-        b_len = max(0, b_len) + ADDED_OUTPUT_LEN
-
-        return (a_len, b_len)
-
-    def get_decode_need_tokens(self):
-        """
-        splitfuse 调度模式的实现
-        """
-        return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.splitfuse_block_size)
-
     def get_first_router_need_tokens(self):
-
-        return min(self.input_len + self.shm_cur_output_len, self.splitfuse_block_size)
+        need_tokens = min(self.chunked_prefill_size, self.remaining_prefill_size)
+        self.remaining_prefill_size = max(0, self.remaining_prefill_size - self.chunked_prefill_size)
+        return need_tokens
