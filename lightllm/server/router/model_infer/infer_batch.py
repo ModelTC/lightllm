@@ -375,6 +375,10 @@ class InferBatch:
         if len(group_mapping) == 0:
             group_mapping.clear()
 
+        # # save prompt cache kv buffer
+        # print(f"prompt_cache_token_id : {list(self.radix_cache.root_node.children.values())[0].token_id_key}")
+        # torch.save(self.radix_cache.mem_manager.kv_buffer, f"prompt_cache_rank_{dist.get_rank()}.pt")
+
         if self.radix_cache is not None:
             logger.debug(
                 f"free a batch state:\n"
