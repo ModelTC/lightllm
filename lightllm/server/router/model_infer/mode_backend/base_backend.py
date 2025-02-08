@@ -60,8 +60,8 @@ class ModeBackend:
         self.dp_size = kvargs.get("dp_size", 1)
         self.load_way = kvargs["load_way"]
         self.mode = kvargs["mode"]
-        self.is_splitfuse_mode = kvargs.get("is_splitfuse_mode", False)
-        self.splitfuse_block_size = kvargs.get("splitfuse_block_size", None)
+        self.disable_chunked_prefill = kvargs.get("disable_chunked_prefill", False)
+        self.chunked_prefill_size = kvargs.get("chunked_prefill_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         self.eos_id: List[int] = kvargs.get("eos_id", [2])
