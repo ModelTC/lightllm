@@ -253,7 +253,7 @@ class InferReq:
             self.cur_output_len = 0
             self.finish_status = FinishStatus()
 
-        if self.paused or not self.initialized:
+        if self.paused or not self.initialized or self.is_chunked:
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
             input_token_ids = self.get_input_token_ids()
             if g_infer_context.radix_cache is not None and len(input_token_ids) > 1:
@@ -263,10 +263,10 @@ class InferReq:
                 if share_node is not None:
                     self.shared_kv_node = share_node
                     ready_cache_len = share_node.node_prefix_total_len
-                    g_infer_context.req_manager.req_to_token_indexs[
-                        self.req_idx, self.cur_kv_len : self.cur_kv_len + ready_cache_len
-                    ] = value_tensor
-                    self.cur_kv_len += int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64，用 int(*)转换
+                    g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
+                    self.cur_kv_len = max(
+                        self.cur_kv_len, int(ready_cache_len)
+                    )  # dynamic prompt cache for chunked prefill
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度
 
             self.shm_req.shm_cur_kv_len = self.cur_kv_len
