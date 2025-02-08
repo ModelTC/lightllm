@@ -126,7 +126,7 @@ class Req(ctypes.Structure):
             self.sample_params = SamplingParams()
             self.sample_params.init(tokenizer=tokenizer, **sample_param)
         self.chunked_prefill_size = chunked_prefill_size
-        self.remaining_prefill_size = len(prompt_ids)
+        self.remaining_prefill_size = len(prompt_ids) if chunked_prefill_size > 0 else 0
         self.prefix_token_ids = PrefixTokenIdsStruct()
 
         self.out_tokens_queue = CircularQueue()
@@ -225,6 +225,10 @@ class Req(ctypes.Structure):
         metadata["prompt_token_ids"] = [int(e) for e in cur_ids]
         return metadata
 
+    def update_remaining_prefill_size(self):
+        self.remaining_prefill_size = 0
+        return
+
 
 # 由于目前加入了很多异步调度的方法，为了缓解异步调度带来的很多
 # 估计不准确的问题，通过加长输出的长度，进行偏向保守一些的调度
@@ -291,5 +295,8 @@ class ChunkedPrefillReq(NormalReq):
 
     def get_first_router_need_tokens(self):
         need_tokens = min(self.chunked_prefill_size, self.remaining_prefill_size)
-        self.remaining_prefill_size = max(0, self.remaining_prefill_size - self.chunked_prefill_size)
         return need_tokens
+
+    def update_remaining_prefill_size(self):
+        self.remaining_prefill_size = max(0, self.remaining_prefill_size - self.chunked_prefill_size)
+        return
