@@ -21,29 +21,29 @@ class ContinuesBatchBackend(ModeBackend):
         kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
         logits = self.model.forward(**kwargs)
         run_reqs, logits_idx = self.filter_out_chunked_req(run_reqs)
-        print(logits_idx, run_reqs, len(logits_idx))
+        if len(logits_idx) == 0:
+            return
         logits = logits[logits_idx]
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
         self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
         return
 
     def filter_out_chunked_req(self, run_reqs: List[InferReq]):
-        run_reqs = []
+        new_run_reqs = []
         logits_idx = []
         new_infer_req_ids = []
         for idx, req_obj in enumerate(run_reqs):
+            req_obj.cur_kv_len = len(req_obj.get_input_token_ids())
             req_obj.shm_req.update_remaining_prefill_size()
-            print(req_obj.is_chunked)
             if req_obj.is_chunked:
                 continue
-            run_reqs.append(req_obj)
+            new_run_reqs.append(req_obj)
             logits_idx.append(idx)
             new_infer_req_ids.append(req_obj.req_id)
         g_infer_context.update_infer_req_ids(new_infer_req_ids)
-        return run_reqs, logits_idx
+        return new_run_reqs, logits_idx
 
     def decode(self):
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)

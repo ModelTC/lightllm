@@ -317,6 +317,11 @@ class RouterManager:
         self.overlap_event.set()
         await self.model_rpc_client.prefill(reqs)
         batch.filter_out_finished_req(self.shm_req_manager)
+        chunked_reqs = batch.filter_out_chunked_req()
+        self.req_queue.pretend(chunked_reqs)
+        if len(batch.reqs) == 0:
+            # all requests are chunked requests
+            return
         # 发个None包触发一下detokenization
         self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
 

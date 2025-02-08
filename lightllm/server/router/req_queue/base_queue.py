@@ -35,7 +35,7 @@ class BaseQueue:
         self.waiting_req_list.extend(req_group)
         return
 
-    def prepend(self, req_group: List[Req]):
+    def pretend(self, req_group: List[Req]):
         self.waiting_req_list = req_group + self.waiting_req_list
         return
 

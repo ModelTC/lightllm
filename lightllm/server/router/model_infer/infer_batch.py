@@ -270,13 +270,7 @@ class InferReq:
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度
 
             self.shm_req.shm_cur_kv_len = self.cur_kv_len
-        self.is_chunked = self.shm_req.remaining_prefill_size > (self.shm_req.input_len + self.cur_output_len)
-        print(
-            f"self.is_chunked: {self.is_chunked}",
-            f"inpu_len: {self.shm_req.input_len}",
-            f"cur_output_len: {self.cur_output_len}",
-            f"input_token_ids: {self.get_input_token_ids()}",
-        )
+        self.is_chunked = self.shm_req.remaining_prefill_size > self.shm_req.chunked_prefill_size
         self.initialized = True
         self.paused = False
         return
@@ -291,9 +285,9 @@ class InferReq:
         return self.shm_req.input_len + self.cur_output_len
 
     def get_input_token_ids(self):
-        start = max(0, self.shm_req.input_len + self.cur_output_len - self.shm_req.remaining_prefill_size)
-        end = min(self.get_cur_total_len(), start + self.shm_req.remaining_prefill_size)
-        return self.shm_req.shm_prompt_ids.arr[start:end]
+        chunked_start = max(0, self.shm_req.input_len + self.cur_output_len - self.shm_req.remaining_prefill_size)
+        chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
+        return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 
     def set_next_gen_token_id(self, next_token_id: int, logprob: float):
         index = self.get_cur_total_len()
