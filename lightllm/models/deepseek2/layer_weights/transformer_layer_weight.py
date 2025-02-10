@@ -132,19 +132,19 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         k_b_proj_ = kv_b_proj_.view(self.num_attention_heads, self.qk_nope_head_dim * 2, self.kv_lora_rank)[
             :, : self.qk_nope_head_dim, :
         ]
-        return k_b_proj_.contiguous().to(self.data_type_)
+        return k_b_proj_.contiguous().to(kv_b_proj_.dtype)
 
     def _load_kb_scale(self, kv_b_proj_, block_size):
         k_b_proj_scale_ = kv_b_proj_.view(
             self.num_attention_heads, self.qk_nope_head_dim * 2 // block_size, self.kv_lora_rank // block_size
         )[:, : self.qk_nope_head_dim // block_size, :]
-        return k_b_proj_scale_.contiguous().to(self.data_type_)
+        return k_b_proj_scale_.contiguous().to(kv_b_proj_.dtype)
 
     def _load_vb(self, kv_b_proj_):
         v_b_proj_ = kv_b_proj_.T.view(self.kv_lora_rank, self.num_attention_heads, self.qk_nope_head_dim * 2,)[
             :, :, self.qk_nope_head_dim :
         ].transpose(0, 1)
-        return v_b_proj_.contiguous().to(self.data_type_)
+        return v_b_proj_.contiguous().to(kv_b_proj_.dtype)
 
     def _load_vb_scale(self, kv_b_proj_scale_, block_size):
         v_b_proj_scale_ = kv_b_proj_scale_.T.view(
@@ -152,7 +152,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.num_attention_heads,
             self.qk_nope_head_dim * 2 // block_size,
         )[:, :, self.qk_nope_head_dim // block_size :].transpose(0, 1)
-        return v_b_proj_scale_.contiguous().to(self.data_type_)
+        return v_b_proj_scale_.contiguous().to(kv_b_proj_scale_.dtype)
 
     def load_hf_weights(self, weights):
         if f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight" in weights:
@@ -166,6 +166,8 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight"] = (
                 self._load_vb(kv_b_proj_).transpose(0, 1).reshape(self.kv_lora_rank, -1).transpose(0, 1).contiguous()
             )
+            # print( weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight"].dtype)
+            # print( weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"].dtype)
 
         if (
             self.quant_cfg.quantized_weight
