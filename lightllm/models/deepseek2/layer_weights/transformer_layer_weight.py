@@ -66,6 +66,7 @@ def fuse_vb_o(self, layer_weight):
 class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
+        self.enable_cc_method = os.getenv("ENABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
         return
 
@@ -159,13 +160,17 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             kv_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight"]
             weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight"] = self._load_kb(kv_b_proj_)
             weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"] = self._load_vb(kv_b_proj_)
-
-            weights[f"model.layers.{self.layer_num_}.self_attn.cc_k_b_proj.weight"] = self._load_kb(kv_b_proj_).reshape(
-                -1, self.kv_lora_rank
-            )
-            weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight"] = (
-                self._load_vb(kv_b_proj_).transpose(0, 1).reshape(self.kv_lora_rank, -1).transpose(0, 1).contiguous()
-            )
+            if self.enable_cc_method:
+                weights[f"model.layers.{self.layer_num_}.self_attn.cc_k_b_proj.weight"] = self._load_kb(
+                    kv_b_proj_
+                ).reshape(-1, self.kv_lora_rank)
+                weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight"] = (
+                    self._load_vb(kv_b_proj_)
+                    .transpose(0, 1)
+                    .reshape(self.kv_lora_rank, -1)
+                    .transpose(0, 1)
+                    .contiguous()
+                )
         if (
             self.quant_cfg.quantized_weight
             and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix in weights
@@ -183,17 +188,17 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             weights[
                 f"model.layers.{self.layer_num_}.self_attn.v_b_proj." + self.weight_scale_suffix
             ] = self._load_vb_scale(kv_b_proj_scale_, block_size)
-
-            weights[
-                f"model.layers.{self.layer_num_}.self_attn.cc_k_b_proj." + self.weight_scale_suffix
-            ] = self._load_kb_scale(kv_b_proj_scale_, block_size).reshape(-1, self.kv_lora_rank // block_size)
-            weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj." + self.weight_scale_suffix] = (
-                self._load_vb_scale(kv_b_proj_scale_, block_size)
-                .transpose(0, 1)
-                .reshape(self.kv_lora_rank // block_size, -1)
-                .transpose(0, 1)
-                .contiguous()
-            )
+            if self.enable_cc_method:
+                weights[
+                    f"model.layers.{self.layer_num_}.self_attn.cc_k_b_proj." + self.weight_scale_suffix
+                ] = self._load_kb_scale(kv_b_proj_scale_, block_size).reshape(-1, self.kv_lora_rank // block_size)
+                weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj." + self.weight_scale_suffix] = (
+                    self._load_vb_scale(kv_b_proj_scale_, block_size)
+                    .transpose(0, 1)
+                    .reshape(self.kv_lora_rank // block_size, -1)
+                    .transpose(0, 1)
+                    .contiguous()
+                )
 
         return super().load_hf_weights(weights)
 
@@ -253,21 +258,21 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             weight_scale_suffix=self.weight_scale_suffix,
             act_scale_suffix=self.act_scale_suffix,
         )
-
-        self.cc_k_b_proj_ = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.cc_k_b_proj.weight",
-            self.data_type_,
-            split_n_embed=self.tp_q_head_num_ * self.qk_nope_head_dim,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
-        )
-        self.cc_v_b_proj_ = ROWMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight",
-            self.data_type_,
-            split_n_embed=self.tp_q_head_num_ * self.qk_nope_head_dim,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
-        )
+        if self.enable_cc_method:
+            self.cc_k_b_proj_ = ROWMMWeight(
+                f"model.layers.{self.layer_num_}.self_attn.cc_k_b_proj.weight",
+                self.data_type_,
+                split_n_embed=self.tp_q_head_num_ * self.qk_nope_head_dim,
+                weight_scale_suffix=self.weight_scale_suffix,
+                act_scale_suffix=self.act_scale_suffix,
+            )
+            self.cc_v_b_proj_ = ROWMMWeight(
+                f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight",
+                self.data_type_,
+                split_n_embed=self.tp_q_head_num_ * self.qk_nope_head_dim,
+                weight_scale_suffix=self.weight_scale_suffix,
+                act_scale_suffix=self.act_scale_suffix,
+            )
 
         self.o_weight_ = COLMMWeight(
             f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
