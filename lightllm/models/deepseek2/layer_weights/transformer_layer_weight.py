@@ -166,9 +166,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight"] = (
                 self._load_vb(kv_b_proj_).transpose(0, 1).reshape(self.kv_lora_rank, -1).transpose(0, 1).contiguous()
             )
-            # print( weights[f"model.layers.{self.layer_num_}.self_attn.cc_v_b_proj.weight"].dtype)
-            # print( weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"].dtype)
-
         if (
             self.quant_cfg.quantized_weight
             and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix in weights
