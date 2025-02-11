@@ -22,7 +22,7 @@ import torch
 from lightllm.common.vllm_kernel import _custom_ops as ops
 from typing import Callable, List, Optional, Tuple
 
-use_cuda_grouped_topk = os.environ.get("LIGHTLLM_CUDA_GROUPED_TOPK", "false").lower()
+use_cuda_grouped_topk = os.getenv("LIGHTLLM_CUDA_GROUPED_TOPK", "False").upper() in ["ON", "TRUE", "1"]
 
 
 def fused_topk(
@@ -149,7 +149,7 @@ def select_experts(
     if use_grouped_topk:
         assert topk_group is not None
         assert num_expert_group is not None
-        if use_cuda_grouped_topk == "true":
+        if use_cuda_grouped_topk:
             topk_weights, topk_ids = cuda_grouped_topk(
                 hidden_states=hidden_states,
                 gating_output=router_logits,
