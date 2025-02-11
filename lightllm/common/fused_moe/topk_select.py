@@ -22,7 +22,8 @@ import torch
 from lightllm.common.vllm_kernel import _custom_ops as ops
 from typing import Callable, List, Optional, Tuple
 
-use_cuda_grouped_topk = os.environ.get("GROUPED_TOPK_CUDA", "false").lower()
+use_cuda_grouped_topk = os.environ.get("LIGHTLLM_CUDA_GROUPED_TOPK", "false").lower()
+
 
 def fused_topk(
     hidden_states: torch.Tensor,
@@ -63,7 +64,7 @@ def grouped_topk(
     topk_group: int = 0,
     scoring_func: str = "softmax",
 ):
-    
+
     assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
     if scoring_func == "sigmoid":
         scores = torch.sigmoid(gating_output)
@@ -91,8 +92,9 @@ def grouped_topk(
 
     return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
 
+
 # This is used by the Deepseek-V2 model
-def grouped_topk_cuda(
+def cuda_grouped_topk(
     hidden_states: torch.Tensor,
     gating_output: torch.Tensor,
     correction_bias: torch.Tensor,
@@ -105,27 +107,26 @@ def grouped_topk_cuda(
 
     assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
     num_tokens = gating_output.shape[0]
-    num_experts = gating_output.shape[-1]
     topk_weights = torch.empty(num_tokens, topk, device=hidden_states.device, dtype=torch.float32)
     topk_indices = torch.empty(num_tokens, topk, device=hidden_states.device, dtype=torch.int32)
     token_expert_indices = torch.empty(num_tokens, topk_group, device=hidden_states.device, dtype=torch.int32)
-    group_scores  = torch.empty(num_tokens, num_expert_group, device=hidden_states.device, dtype=torch.float32)
-    if correction_bias is None: 
-        correction_bias = torch.zeros_like(gating_output,dtype=torch.float32)
+    group_scores = torch.empty(num_tokens, num_expert_group, device=hidden_states.device, dtype=torch.float32)
+    if correction_bias is None:
+        correction_bias = torch.zeros_like(gating_output, dtype=torch.float32)
     ops.grouped_topk(
-            topk_weights, 
-            correction_bias, 
-            topk_indices, 
-            token_expert_indices, 
-            gating_output.float(), 
-            num_expert_group, 
-            topk_group, 
-            topk, 
-            renormalize, 
-            scoring_func,
-            group_scores
+        topk_weights,
+        correction_bias,
+        topk_indices,
+        token_expert_indices,
+        gating_output.float(),
+        num_expert_group,
+        topk_group,
+        topk,
+        renormalize,
+        scoring_func,
+        group_scores,
     )
-    
+
     return topk_weights, topk_indices
 
 
@@ -141,14 +142,15 @@ def select_experts(
     scoring_func: str = "softmax",
     custom_routing_function: Optional[Callable] = None,
 ):
-    from lightllm.common.fused_moe.topk_select import fused_topk, grouped_topk
+    from lightllm.common.fused_moe.topk_select import fused_topk
+    from lightllm.common.fused_moe.grouped_topk import triton_grouped_topk
+
     # DeekSeekv2 uses grouped_top_k
     if use_grouped_topk:
         assert topk_group is not None
         assert num_expert_group is not None
         if use_cuda_grouped_topk == "true":
-            from lightllm.common.vllm_kernel import _custom_ops as ops
-            topk_weights, topk_ids = grouped_topk_cuda(
+            topk_weights, topk_ids = cuda_grouped_topk(
                 hidden_states=hidden_states,
                 gating_output=router_logits,
                 correction_bias=correction_bias,
@@ -159,7 +161,7 @@ def select_experts(
                 scoring_func=scoring_func,
             )
         else:
-            topk_weights, topk_ids = grouped_topk(
+            topk_weights, topk_ids = triton_grouped_topk(
                 hidden_states=hidden_states,
                 gating_output=router_logits,
                 correction_bias=correction_bias,
