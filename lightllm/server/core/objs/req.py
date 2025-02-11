@@ -290,13 +290,38 @@ class TokenHealingReq(NormalReq):
         return
 
 
-class ChunkedPrefillReq(NormalReq):
+class SplitFuseReq(Req):
     _pack_ = 4
 
-    def get_first_router_need_tokens(self):
-        need_tokens = min(self.chunked_prefill_size, self.remaining_prefill_size)
-        return need_tokens
+    def get_tuple_tokens(self, is_busy, router_max_new_token_len):
+        has_out_len = self.shm_cur_output_len
+        if self.sample_params.ignore_eos:
+            cur_max_new_token_len = self.sample_params.max_new_tokens
+        elif is_busy:
+            cur_max_new_token_len = self.sample_params.max_new_tokens
+        else:
+            cur_max_new_token_len = min(
+                self.sample_params.max_new_tokens, max(int(1.1 * has_out_len), router_max_new_token_len)
+            )
 
-    def update_remaining_prefill_size(self):
-        self.remaining_prefill_size = max(0, self.remaining_prefill_size - self.chunked_prefill_size)
-        return
+        a_len = max(self.input_len + has_out_len + 1, self.shm_cur_kv_len + 1)
+        b_len = (
+            (self.input_len + has_out_len - self.shm_cur_kv_len + self.splitfuse_block_size - 1)
+            // self.splitfuse_block_size
+            + cur_max_new_token_len
+            - has_out_len
+            - 1
+        )
+        b_len = max(0, b_len) + ADDED_OUTPUT_LEN
+
+        return (a_len, b_len)
+
+    def get_decode_need_tokens(self):
+        """
+        splitfuse 调度模式的实现
+        """
+        return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.splitfuse_block_size)
+
+    def get_first_router_need_tokens(self):
+
+        return min(self.input_len + self.shm_cur_output_len, self.splitfuse_block_size)

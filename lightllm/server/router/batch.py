@@ -48,18 +48,6 @@ class Batch:
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
         return
 
-    def filter_out_chunked_req(self):
-        chunked_reqs = []
-        nochunked_reqs = []  # not chunked req or chunked req which completed prefill
-        for req in self.reqs:
-            if req.remaining_prefill_size > 0:
-                chunked_reqs.append(req)
-            else:
-                nochunked_reqs.append(req)
-        self.reqs = nochunked_reqs
-        self.id_to_reqs = {req.request_id: req for req in self.reqs}
-        return chunked_reqs
-
     def pop_req(self, req_id):
         self.reqs = [req for req in self.reqs if req.request_id != req_id]
         self.id_to_reqs.pop(req_id)
