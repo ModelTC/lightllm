@@ -2,7 +2,6 @@ import json
 import os
 from functools import lru_cache
 from .envs_utils import get_env_start_args
-from transformers.configuration_utils import PretrainedConfig
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -54,7 +53,7 @@ def get_dtype(model_path: str):
 @lru_cache(maxsize=None)
 def get_fixed_kv_len():
     start_args = get_env_start_args()
-    model_cfg, _ = PretrainedConfig.get_config_dict(start_args.model_dir)
+    model_cfg = get_config_json(start_args.model_dir)
     if "prompt_cache_token_ids" in model_cfg:
         return len(model_cfg["prompt_cache_token_ids"])
     else:
