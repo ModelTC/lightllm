@@ -4,7 +4,7 @@ from ...batch import Batch, Req
 from lightllm.server.router.req_queue.base_queue import BaseQueue
 
 
-class SplitFuseQueue(BaseQueue):
+class ChunkedPrefillQueue(BaseQueue):
     def __init__(self, args, router, dp_index, dp_size) -> None:
         super().__init__(args, router, dp_index, dp_size)
 
@@ -70,7 +70,7 @@ class SplitFuseQueue(BaseQueue):
         # 得到当前batch 往前 decode 一次，需要的token量，在 splitfuse 模式下才有用，因为splitfuse
         # 模式下 类似prefill 和 deocde 是在一起进行的，所以需要合并考虑历史当前Batch
         new_batch_first_router_need_tokens = (
-            0 if current_batch is None else current_batch.batch_decode_need_tokens[self.dp_index]
+            0 if current_batch is None else current_batch.get_batch_decode_need_tokens()[self.dp_index]
         )
 
         self._init_cache_list(current_batch, is_busy)
