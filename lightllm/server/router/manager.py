@@ -317,8 +317,6 @@ class RouterManager:
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
-        # Prefill operation on chunkedprefill mode do not need to execute here.
-        # It is executed in the _decode_batch.
         self.overlap_event.set()
         await self.model_rpc_client.prefill(reqs)
         batch.filter_out_finished_req(self.shm_req_manager)
