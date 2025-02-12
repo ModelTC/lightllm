@@ -60,7 +60,7 @@ class ModeBackend:
         self.dp_size = kvargs.get("dp_size", 1)
         self.load_way = kvargs["load_way"]
         self.mode = kvargs["mode"]
-        self.disable_chunked_prefill = kvargs.get("disable_chunked_prefill", False)
+        self.enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)
         self.chunked_prefill_size = kvargs.get("chunked_prefill_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)

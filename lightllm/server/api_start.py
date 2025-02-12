@@ -125,7 +125,7 @@ def normal_or_p_d_start(args):
     else:
         args.visual_nccl_ports = args.visual_nccl_ports[: args.visual_dp]
 
-    if args.disable_chunked_prefill:
+    if not args.enable_chunked_prefill:
         # 普通模式下
         if args.batch_max_tokens is None:
             args.batch_max_tokens = args.max_req_total_len

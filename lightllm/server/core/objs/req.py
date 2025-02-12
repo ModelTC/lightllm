@@ -290,7 +290,7 @@ class TokenHealingReq(NormalReq):
         return
 
 
-class SplitFuseReq(Req):
+class ChunkedPrefillReq(Req):
     _pack_ = 4
 
     def get_tuple_tokens(self, is_busy, router_max_new_token_len):

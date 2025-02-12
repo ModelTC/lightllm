@@ -76,6 +76,7 @@ class RouterManager:
 
         self.is_token_healing = self.args.token_healing_mode
         self.chunked_prefill_size = args.chunked_prefill_size
+        self.enable_chunked_prefill = args.enable_chunked_prefill
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
@@ -314,16 +315,14 @@ class RouterManager:
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
-        self.overlap_event.set()
-        await self.model_rpc_client.prefill(reqs)
-        batch.filter_out_finished_req(self.shm_req_manager)
-        chunked_reqs = batch.filter_out_chunked_req()
-        self.req_queue.pretend(chunked_reqs)
-        if len(batch.reqs) == 0:
-            # all requests are chunked requests
-            return
-        # 发个None包触发一下detokenization
-        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+        # Prefill operation on chunkedprefill mode do not need to execute here.
+        # It is executed in the _decode_batch.
+        if not self.enable_chunked_prefill:
+            self.overlap_event.set()
+            await self.model_rpc_client.prefill(reqs)
+            batch.filter_out_finished_req(self.shm_req_manager)
+            # 发个None包触发一下detokenization
+            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
 
         logger.debug(f"Prefill Batch: {batch.simple_log()} \n")
         self.metric_client.histogram_observe(

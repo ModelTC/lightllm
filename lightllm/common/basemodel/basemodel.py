@@ -57,9 +57,8 @@ class TpPartBaseModel:
         self.return_all_prompt_logics = kvargs.get("return_all_prompt_logics", False)
         assert not (self.is_token_healing and self.return_all_prompt_logics), "can not be true in same time"
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
-        enable_chunked_prefill = not kvargs.get("disable_chunked_prefill", False)  # chunked prefill is default on.
+        enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)  # chunked prefill is default on.
         self.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache or enable_chunked_prefill
-        print(f"enable_chunked_prefill: {self.use_dynamic_prompt_cache}")
         self.data_type = kvargs.get("data_type", "float16")
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
