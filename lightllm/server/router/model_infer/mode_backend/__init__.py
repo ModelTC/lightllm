@@ -1,6 +1,7 @@
 from .continues_batch.impl import ContinuesBatchBackend
 from .continues_batch.impl_for_return_all_prompt_logprobs import ReturnPromptLogProbBackend
 from .continues_batch.impl_for_reward_model import RewardModelBackend
+from .chunked_prefill.impl import ChunkedPrefillBackend
 from .splitfuse.impl import SplitFuseBackend
 from .diverse_backend.impl import DiversehBackend
 from .continues_batch.impl_for_token_healing import TokenHealingBackend

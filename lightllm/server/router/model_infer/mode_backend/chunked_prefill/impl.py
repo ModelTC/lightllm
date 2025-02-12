@@ -7,35 +7,39 @@ from lightllm.server.core.objs import FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
-from .post_process import sample
+from ..continues_batch.post_process import sample
+
 
 logger = init_logger(__name__)
 
 
-class ContinuesBatchBackend(ModeBackend):
+class ChunkedPrefillBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
+        self.forward_step = 0
+        self.max_wait_step = 10
 
     def prefill(self, reqs: List[Tuple]):
-        req_ids = self._init_reqs(reqs)
-        kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
-        logits = self.model.forward(**kwargs)
-
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
-        self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+        self._init_reqs(reqs)
         return
 
     def decode(self):
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
-        logits = self.model.forward(**kwargs)
+        self.forward_batch(kwargs, run_reqs)
+        if len(run_reqs) == 0 or self.forward_step % self.max_wait_step == 0:
+            # run prefill
+            kwargs, run_reqs = prepare_prefill_inputs(g_infer_context.infer_req_ids)
+            self.forward_batch(kwargs, run_reqs)
+        self.forward_step += 1
+        return
 
+    def forward_batch(self, kwargs, run_reqs):
+        if len(run_reqs) == 0:
+            return
+        logits = self.model.forward(**kwargs)
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
         self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
         return
 
@@ -44,7 +48,10 @@ class ContinuesBatchBackend(ModeBackend):
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             req_obj: InferReq = req_obj
-            req_obj.cur_kv_len = req_obj.get_cur_total_len()
+
+            req_obj.cur_kv_len = len(req_obj.get_input_token_ids())
+            if req_obj.cur_kv_len < req_obj.get_cur_total_len():
+                return
 
             req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
             req_obj.cur_output_len += 1

@@ -136,6 +136,8 @@ class RouterManager:
             "max_seq_length": self.args.max_req_total_len + 8,  # 留一点余量
             "nccl_port": self.args.nccl_port,
             "is_first_token_constraint_mode": self.args.first_token_constraint_mode,
+            "enable_chunked_prefill": self.enable_chunked_prefill,
+            "chunked_prefill_size": self.chunked_prefill_size,
             "is_token_healing": self.args.token_healing_mode,
             "return_all_prompt_logprobs": self.args.return_all_prompt_logprobs,
             "use_reward_model": self.args.use_reward_model,
@@ -317,12 +319,11 @@ class RouterManager:
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
         # Prefill operation on chunkedprefill mode do not need to execute here.
         # It is executed in the _decode_batch.
-        if not self.enable_chunked_prefill:
-            self.overlap_event.set()
-            await self.model_rpc_client.prefill(reqs)
-            batch.filter_out_finished_req(self.shm_req_manager)
-            # 发个None包触发一下detokenization
-            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+        self.overlap_event.set()
+        await self.model_rpc_client.prefill(reqs)
+        batch.filter_out_finished_req(self.shm_req_manager)
+        # 发个None包触发一下detokenization
+        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
 
         logger.debug(f"Prefill Batch: {batch.simple_log()} \n")
         self.metric_client.histogram_observe(

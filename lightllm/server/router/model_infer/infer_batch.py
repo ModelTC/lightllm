@@ -67,7 +67,7 @@ class InferenceContext:
                 self.requests_mapping[r_id] = r_obj
             else:
                 r_obj: InferReq = self.requests_mapping[r_id]
-                assert r_obj.paused or r_obj.is_chunked
+                assert r_obj.paused
 
             request_ids.append(r_id)
 
@@ -161,7 +161,6 @@ class InferenceContext:
             self.free_a_req_mem(free_token_index, req, is_group_finished=True)
             req.cur_kv_len = 0
             req.shm_req.shm_cur_kv_len = req.cur_kv_len
-            req.shm_req.remaining_prefill_size = req.get_cur_total_len()  # paused req for chunked prefill
             req.paused = True  # 暂停信息标记。
 
         if len(free_token_index) != 0:
@@ -228,7 +227,6 @@ class InferReq:
         self.vocab_size = vocab_size
         self.initialized = False
         self.paused = False
-        self.is_chunked = False
 
     def init_all(self):
         if self.initialized is False:
@@ -249,13 +247,13 @@ class InferReq:
                 self.prefix_token_ids = []
             self.multimodal_params = self.multimodal_params.to_dict()
             self.shared_kv_node: TreeNode = None
-            self.cur_kv_len = self.shm_req.shm_cur_kv_len
+            self.cur_kv_len = 0
             self.cur_output_len = 0
             self.finish_status = FinishStatus()
 
-        if self.paused or not self.initialized or self.is_chunked:
+        if self.paused or not self.initialized:
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
-            input_token_ids = self.get_input_token_ids()
+            input_token_ids = self.get_input_token_ids(return_all=True)
             if g_infer_context.radix_cache is not None and len(input_token_ids) > 1:
                 input_token_ids = input_token_ids[:-1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
                 key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
@@ -270,7 +268,6 @@ class InferReq:
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度
 
             self.shm_req.shm_cur_kv_len = self.cur_kv_len
-        self.is_chunked = self.shm_req.remaining_prefill_size > self.shm_req.chunked_prefill_size
         self.initialized = True
         self.paused = False
         return
@@ -284,8 +281,10 @@ class InferReq:
     def get_cur_total_len(self):
         return self.shm_req.input_len + self.cur_output_len
 
-    def get_input_token_ids(self):
-        chunked_start = max(0, self.shm_req.input_len + self.cur_output_len - self.shm_req.remaining_prefill_size)
+    def get_input_token_ids(self, return_all=False):
+        if return_all:
+            return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
+        chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 

@@ -84,7 +84,6 @@ class Req(ctypes.Structure):
         ("out_tokens_queue", CircularQueue),
         ("sample_params", SamplingParams),
         ("chunked_prefill_size", ctypes.c_int),  # 只有chunked prefill模式才使用的参数
-        ("remaining_prefill_size", ctypes.c_int),  # 只有chunked prefill模式才使用的参数
         ("prefix_token_ids", PrefixTokenIdsStruct),  # 只有 token_headling 模式使用的参数
         # can_released_mark的作用是：
         # 只有整个流程中的最后一个处理模块，一般是 detokenization 进程，标记这个参数为True后，主管理进程才能真
@@ -125,8 +124,6 @@ class Req(ctypes.Structure):
         else:
             self.sample_params = SamplingParams()
             self.sample_params.init(tokenizer=tokenizer, **sample_param)
-        self.chunked_prefill_size = chunked_prefill_size
-        self.remaining_prefill_size = len(prompt_ids) if chunked_prefill_size > 0 else 0
         self.prefix_token_ids = PrefixTokenIdsStruct()
 
         self.out_tokens_queue = CircularQueue()
@@ -134,7 +131,7 @@ class Req(ctypes.Structure):
         self.alloc_shm_numpy_len = self.input_len + self.sample_params.max_new_tokens + 1024  # + 1024 for safe
         self.create_logprobs_shm_array()
         self.create_prompt_ids_shm_array()
-
+        self.chunked_prefill_size = chunked_prefill_size if chunked_prefill_size > 0 else self.input_len
         self.shm_prompt_ids.arr[0 : len(prompt_ids)] = prompt_ids
 
         self.post_init()
@@ -225,10 +222,6 @@ class Req(ctypes.Structure):
         metadata["prompt_token_ids"] = [int(e) for e in cur_ids]
         return metadata
 
-    def update_remaining_prefill_size(self):
-        self.remaining_prefill_size = 0
-        return
-
 
 # 由于目前加入了很多异步调度的方法，为了缓解异步调度带来的很多
 # 估计不准确的问题，通过加长输出的长度，进行偏向保守一些的调度
@@ -306,8 +299,8 @@ class ChunkedPrefillReq(Req):
 
         a_len = max(self.input_len + has_out_len + 1, self.shm_cur_kv_len + 1)
         b_len = (
-            (self.input_len + has_out_len - self.shm_cur_kv_len + self.splitfuse_block_size - 1)
-            // self.splitfuse_block_size
+            (self.input_len + has_out_len - self.shm_cur_kv_len + self.chunked_prefill_size - 1)
+            // self.chunked_prefill_size
             + cur_max_new_token_len
             - has_out_len
             - 1
@@ -318,10 +311,10 @@ class ChunkedPrefillReq(Req):
 
     def get_decode_need_tokens(self):
         """
-        splitfuse 调度模式的实现
+        chunkedprefill 调度模式的实现
         """
-        return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.splitfuse_block_size)
+        return min(self.input_len + self.shm_cur_output_len - self.shm_cur_kv_len, self.chunked_prefill_size)
 
     def get_first_router_need_tokens(self):
 
-        return min(self.input_len + self.shm_cur_output_len, self.splitfuse_block_size)
+        return min(self.input_len + self.shm_cur_output_len, self.chunked_prefill_size)

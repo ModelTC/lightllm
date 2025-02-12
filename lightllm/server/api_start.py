@@ -91,8 +91,12 @@ def normal_or_p_d_start(args):
     if args.static_quant:
         assert args.quant_type == "vllm-w8a8", "Only static parameter loading for vllm-w8a8 is supported."
 
+    if not args.enable_chunked_prefill:
+        args.chunked_prefill_size = 0
+
     # 这些模式不能同时设置。
     assert [
+        args.enable_chunked_prefill,
         args.diverse_mode,
         args.token_healing_mode,
         args.use_reward_model,
@@ -137,7 +141,7 @@ def normal_or_p_d_start(args):
             args.batch_max_tokens = min(args.max_req_total_len, 2 * args.chunked_prefill_size)
 
         assert (
-            args.batch_max_tokens > args.chunked_prefill_size
+            args.batch_max_tokens >= args.chunked_prefill_size
         ), "chunked prefill mode, batch_max_tokens must >= chunked_prefill_size"
 
     # help to manage data stored on Ceph

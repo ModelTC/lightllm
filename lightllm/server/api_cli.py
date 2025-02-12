@@ -103,7 +103,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
                         do not set it and keep the default value as 1.""",
     )
     parser.add_argument(
-        "--max_req_total_len", type=int, default=2048 + 1024, help="the max value for req_input_len + req_output_len"
+        "--max_req_total_len", type=int, default=16384, help="the max value for req_input_len + req_output_len"
     )
     parser.add_argument(
         "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
