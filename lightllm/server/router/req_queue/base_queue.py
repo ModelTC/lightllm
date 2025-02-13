@@ -35,10 +35,6 @@ class BaseQueue:
         self.waiting_req_list.extend(req_group)
         return
 
-    def pretend(self, req_group: List[Req]):
-        self.waiting_req_list = req_group + self.waiting_req_list
-        return
-
     def get_paused_req_num(self):
         return len(self.pause_req_dict)
 
