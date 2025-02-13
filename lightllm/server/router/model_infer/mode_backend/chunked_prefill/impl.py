@@ -6,6 +6,7 @@ from lightllm.server.router.model_infer.infer_batch import InferReq, InferSampli
 from lightllm.server.core.objs import FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
+from lightllm.utils.envs_utils import get_env_start_args
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..continues_batch.post_process import sample
 
@@ -17,7 +18,8 @@ class ChunkedPrefillBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
         self.forward_step = 0
-        self.max_wait_step = 10
+        args = get_env_start_args()
+        self.max_wait_step = args.router_max_wait_tokens
 
     def prefill(self, reqs: List[Tuple]):
         self._init_reqs(reqs)
