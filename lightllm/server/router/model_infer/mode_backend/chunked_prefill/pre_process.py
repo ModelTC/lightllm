@@ -59,7 +59,7 @@ def prepare_prefill_inputs(req_ids: List[int], is_multimodal=False):
     g_infer_state_lock.release()
 
     kwargs = {
-        "batch_size": len(req_ids),
+        "batch_size": len(run_reqs),
         "total_token_num": nopad_total_token_num,
         "max_len_in_batch": nopad_max_len_in_batch,
         "input_ids": input_ids,
@@ -119,7 +119,7 @@ def prepare_decode_inputs(req_ids: List[int]):
     g_infer_state_lock.release()
 
     kwargs = {
-        "batch_size": len(req_ids),
+        "batch_size": len(run_reqs),
         "total_token_num": nopad_total_token_num,
         "max_len_in_batch": nopad_max_len_in_batch,
         "input_ids": input_ids,

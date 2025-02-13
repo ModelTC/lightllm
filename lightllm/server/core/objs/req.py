@@ -131,7 +131,7 @@ class Req(ctypes.Structure):
         self.alloc_shm_numpy_len = self.input_len + self.sample_params.max_new_tokens + 1024  # + 1024 for safe
         self.create_logprobs_shm_array()
         self.create_prompt_ids_shm_array()
-        self.chunked_prefill_size = chunked_prefill_size if chunked_prefill_size > 0 else self.input_len
+        self.chunked_prefill_size = chunked_prefill_size
         self.shm_prompt_ids.arr[0 : len(prompt_ids)] = prompt_ids
 
         self.post_init()

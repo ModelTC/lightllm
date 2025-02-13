@@ -17,8 +17,6 @@ class BaseQueue:
         assert args.batch_max_tokens is not None
         self.batch_max_tokens = args.batch_max_tokens
         self.running_max_req_size = args.running_max_req_size  # Maximum number of concurrent requests
-        self.chunked_prefill_size = args.chunked_prefill_size  # Maximum number of tokens that can be prefilled
-        self.enable_chunked_prefill = args.enable_chunked_prefill
         self.waiting_req_list: List[Req] = []  # List of queued requests
         self.router_token_ratio = args.router_token_ratio  # ratio to determine whether the router is busy
         self.router_max_new_token_len = args.router_max_new_token_len

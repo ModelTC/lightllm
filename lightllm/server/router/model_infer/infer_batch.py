@@ -67,7 +67,7 @@ class InferenceContext:
                 self.requests_mapping[r_id] = r_obj
             else:
                 r_obj: InferReq = self.requests_mapping[r_id]
-                assert r_obj.paused
+                assert r_obj.paused is True
 
             request_ids.append(r_id)
 
@@ -248,21 +248,20 @@ class InferReq:
 
         if self.paused or not self.initialized:
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
-            input_token_ids = self.get_input_token_ids(return_all=True)
-            if g_infer_context.radix_cache is not None and len(input_token_ids) > 1:
-                input_token_ids = input_token_ids[:-1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
+            if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
+                input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
                 key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
+                key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
                 share_node, kv_len, value_tensor = g_infer_context.radix_cache.match_prefix(key, update_refs=True)
                 if share_node is not None:
                     self.shared_kv_node = share_node
                     ready_cache_len = share_node.node_prefix_total_len
                     g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
-                    self.cur_kv_len = max(
-                        self.cur_kv_len, int(ready_cache_len)
-                    )  # dynamic prompt cache for chunked prefill
+                    self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64，用 int(*)转换
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度
 
             self.shm_req.shm_cur_kv_len = self.cur_kv_len
+
         self.initialized = True
         self.paused = False
         return
@@ -276,9 +275,10 @@ class InferReq:
     def get_cur_total_len(self):
         return self.shm_req.input_len + self.cur_output_len
 
-    def get_input_token_ids(self, return_all=False):
-        if return_all:
-            return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
+    def get_input_token_ids(self):
+        return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
+
+    def get_chuncked_input_token_ids(self):
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
