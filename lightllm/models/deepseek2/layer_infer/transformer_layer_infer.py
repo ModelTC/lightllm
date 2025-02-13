@@ -5,6 +5,7 @@ import torch.distributed as dist
 import numpy as np
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv
+from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv_fp8 import destindex_copy_kv_fp8
 from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import (
     context_attention_fwd,
     context_attention_fwd_no_prompt_cache,
@@ -422,16 +423,13 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         return
 
     def _copy_kv_to_mem_cache_fp8(self, buffer, mem_index, mem_manager):
-        quant_method = vLLMFP8w8a8QuantizationMethod()
-        quant, scale = quant_method.quantize_scaled_mm_fp8(buffer.reshape(-1, buffer.shape[-1]))
-        destindex_copy_kv(
-            quant.T.unsqueeze(1)[:, :, : self.kv_lora_rank].view(torch.uint8),
-            quant.T.unsqueeze(1)[:, :, self.kv_lora_rank :].view(torch.uint8),
+        destindex_copy_kv_fp8(
+            buffer[:, :, : self.kv_lora_rank],
+            buffer[:, :, self.kv_lora_rank :],
             mem_index,
-            mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank],
-            mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank : -2],
-            mem_manager.kv_buffer[self.layer_num_][:, :, -2:],
-            scale.to(buffer.dtype).view(torch.uint8),
+            mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank].view(torch.float8_e4m3fn),
+            mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank : -2].view(torch.float8_e4m3fn),
+            mem_manager.kv_buffer[self.layer_num_][:, :, -2:].view(buffer.dtype),
         )
         return
 
