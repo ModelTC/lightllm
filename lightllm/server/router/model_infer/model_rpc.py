@@ -9,7 +9,6 @@ from typing import Dict, List, Tuple
 from lightllm.server.router.model_infer.mode_backend import (
     ContinuesBatchBackend,
     ReturnPromptLogProbBackend,
-    SplitFuseBackend,
     ChunkedPrefillBackend,
     DiversehBackend,
     RewardModelBackend,
@@ -100,7 +99,6 @@ class ModelRpcServer:
         # 填充真正的 rank_id 参数
         kvargs["rank_id"] = self.tp_rank
         self.world_size = kvargs["world_size"]
-        is_splitfuse_mode = kvargs.get("is_splitfuse_mode", False)
         enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)
         return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         use_reward_model = kvargs.get("use_reward_model", False)
@@ -124,8 +122,6 @@ class ModelRpcServer:
             self.backend = ChunkedPrefillBackend()
         elif use_reward_model:
             self.backend = RewardModelBackend()
-        elif is_splitfuse_mode:
-            self.backend = SplitFuseBackend()
         elif return_all_prompt_logprobs:
             self.backend = ReturnPromptLogProbBackend()
         elif diverse_mode:
