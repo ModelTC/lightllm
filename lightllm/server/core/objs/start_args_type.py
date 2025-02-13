@@ -35,7 +35,7 @@ class StartArgs:
     log_stats_interval: int = field(default=10)
     router_token_ratio: float = field(default=0.0)
     router_max_new_token_len: int = field(default=1024)
-    router_max_wait_tokens: int = field(default=10)
+    router_max_wait_tokens: int = field(default=6)
     use_dynamic_prompt_cache: bool = field(default=False)
     chunked_prefill_size: int = field(default=256)
     enable_chunked_prefill: bool = field(default=False)

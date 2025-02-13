@@ -138,7 +138,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--router_max_wait_tokens",
         type=int,
-        default=10,
+        default=6,
         help="schedule new requests after every router_max_wait_tokens decode steps.",
     )
 

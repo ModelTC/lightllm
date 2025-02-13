@@ -7,6 +7,7 @@ from .out_token_circlequeue import CircularQueue
 from .shm_array import ShmArray
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.utils.envs_utils import get_unique_server_name
+from lightllm.utils.envs_utils import get_env_start_args
 from typing import List, Any, Union
 
 
@@ -286,6 +287,10 @@ class TokenHealingReq(NormalReq):
 class ChunkedPrefillReq(Req):
     _pack_ = 4
 
+    def post_init(self):
+        args = get_env_start_args()
+        self.max_waiting_token = args.router_max_wait_tokens
+
     def get_tuple_tokens(self, is_busy, router_max_new_token_len):
         has_out_len = self.shm_cur_output_len
         if self.sample_params.ignore_eos:
@@ -301,6 +306,7 @@ class ChunkedPrefillReq(Req):
         b_len = (
             (self.input_len + has_out_len - self.shm_cur_kv_len + self.chunked_prefill_size - 1)
             // self.chunked_prefill_size
+            * (self.max_waiting_token + 1)
             + cur_max_new_token_len
             - has_out_len
             - 1
