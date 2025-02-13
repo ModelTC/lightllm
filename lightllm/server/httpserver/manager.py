@@ -183,7 +183,7 @@ class HttpServerManager:
                     prompt_ids,
                     sampling_params,
                     self.tokenizer,
-                    chunked_prefill_size=get_env_start_args().chunked_prefill_size,
+                    chunked_prefill_size=self.args.chunked_prefill_size,
                 )
                 req_objs.append(req_obj)
 
