@@ -23,6 +23,7 @@ class ChunkedPrefillBackend(ModeBackend):
 
     def prefill(self, reqs: List[Tuple]):
         self._init_reqs(reqs)
+        self.forward_step = 0  # prefill first
         return
 
     def decode(self):
@@ -51,7 +52,7 @@ class ChunkedPrefillBackend(ModeBackend):
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             req_obj: InferReq = req_obj
 
-            req_obj.cur_kv_len = len(req_obj.get_input_token_ids())
+            req_obj.cur_kv_len = len(req_obj.get_chuncked_input_token_ids())
             if req_obj.cur_kv_len < req_obj.get_cur_total_len():
                 return
 

@@ -29,7 +29,7 @@ def prepare_prefill_inputs(req_ids: List[int], is_multimodal=False):
         nopad_b_req_idx.append(req.req_idx)
         nopad_b_start_loc.append(start_loc)
 
-        input_token_ids = req.get_input_token_ids()
+        input_token_ids = req.get_chuncked_input_token_ids()
         seq_len = len(input_token_ids)
         input_token_len = seq_len - req.cur_kv_len
         input_id = input_token_ids[req.cur_kv_len :]
