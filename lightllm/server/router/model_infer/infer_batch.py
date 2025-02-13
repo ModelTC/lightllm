@@ -146,11 +146,6 @@ class InferenceContext:
         return
 
     @torch.no_grad()
-    def update_infer_req_ids(self, new_infer_req_ids: List[int]):
-        self.infer_req_ids = new_infer_req_ids
-        return
-
-    @torch.no_grad()
     def pause_reqs(self, pause_req_ids: List[int]):
         free_token_index = []
         for request_id in pause_req_ids:
