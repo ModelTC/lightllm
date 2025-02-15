@@ -4,6 +4,7 @@ from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
 import torch.nn.functional as F
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
+from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel import w8a8_block_fp8_matmul
 
 try:
     HAS_VLLM = True
@@ -171,7 +172,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
 class vLLMFP8w8a8B128QuantizationMethod(vLLMBaseQuantizationMethod):
     def __init__(self):
         super().__init__()
-        self.blcok_size = 128
+        self.block_size = 128
 
     def quantize(self, weight: torch.Tensor):
         if self.is_moe:
@@ -200,5 +201,18 @@ class vLLMFP8w8a8B128QuantizationMethod(vLLMBaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        torch.ops._C.cutlass_scaled_mm(out, qinput_tensor, qweight, input_scale, weight_scale, bias)
+        if n == 576:
+            w8a8_block_fp8_matmul(
+                qinput_tensor,
+                qweight,
+                input_scale,
+                weight_scale,
+                out,
+                (self.block_size, self.block_size),
+                dtype=input_tensor.dtype,
+            )
+        else:
+            qweight = qweight.t().contiguous().t()
+            input_scale = input_scale.t().contiguous().t()
+            torch.ops._C.cutlass_scaled_mm(out, qinput_tensor, qweight, input_scale, weight_scale, bias)
         return out
