@@ -3,6 +3,7 @@ import torch
 from .quantize_method import QuantizationMethod
 from .registry import QUANTMETHODS
 import torch.nn.functional as F
+from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 
 try:
     HAS_VLLM = True
@@ -119,7 +120,21 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def apply_scaled_mm_fp8(
         self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
     ):
-        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+        qweight, weight_scale, input_scale = weights
+        if weight_scale.shape == 2:
+            # block-wise
+            m, k = input_tensor.shape
+            if input_scale is None:
+                input_scale = self.cache_manager.alloc_tensor(
+                    (m, k // self.block_size), torch.float32, device=input_tensor.device, is_graph_out=False
+                )
+                qinput_tensor = self.cache_manager.alloc_tensor(
+                    (m, k), qweight.dtype, device=qweight.device, is_graph_out=False
+                )
+                per_token_group_quant_fp8(input_tensor, self.block_size, qinput_tensor, input_scale)
+        qinput_tensor, input_scale = ops.scaled_fp8_quant(
+            input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True
+        )
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
         if out is None:
@@ -129,7 +144,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
+        torch.ops._C.cutlass_scaled_mm(out, qinput_tensor, qweight, input_scale, weight_scale, bias)
         return out
 
     def apply_pingpong_fp8(
