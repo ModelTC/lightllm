@@ -154,3 +154,122 @@ def _fwd_kernel_calcu_index_and_block_seq(
     tl.store(mid_o_batch_start_index_ptr + tl.arange(0, 2048), batch_start_index, mask=tl.arange(0, 2048) < batch_size)
     tl.store(mid_o_decode_att_block_seq_ptr, block_seq)
     return
+
+
+if __name__ == "__main__":
+    import torch
+    import numpy as np
+    import torch.nn.functional as F
+    from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
+    from lightllm.common.req_manager import ReqManager
+    import flashinfer
+    import lightllm_ppl_mla
+
+    Z, N_CTX, H, D_HEAD, ROPE_HEAD = 200, 16384, 16, 512, 64
+    dtype = torch.bfloat16
+    sm_scale = 1.0 / ((D_HEAD + ROPE_HEAD) ** 0.5)
+    q_nope = torch.randn((Z, H, D_HEAD), dtype=dtype, device="cuda")
+    q_rope = torch.randn((Z, H, ROPE_HEAD), dtype=dtype, device="cuda")
+
+    kv = torch.randn((Z * N_CTX, 1, D_HEAD + ROPE_HEAD), dtype=dtype, device="cuda")
+    kv_scale = torch.randn((Z * N_CTX, 1, 1), dtype=dtype, device="cuda")
+    kv_fp8 = kv.to(torch.float8_e4m3fn)
+
+    max_input_len = Z * N_CTX
+    req_to_token_indexs = torch.randperm(max_input_len, dtype=torch.int32).cuda().view(Z, N_CTX)
+    b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda") * N_CTX
+    b_start_loc = torch.arange(Z).cuda().int() * N_CTX
+    b_start_loc[0] = 0
+    b_req_idx = torch.arange(Z).cuda().int()
+    req_to_token_indexs = torch.arange(Z * N_CTX, dtype=torch.int32).cuda().view(req_to_token_indexs.shape)
+    kv_starts = torch.cat([b_start_loc, b_start_loc[-1:] + b_seq_len[-1:]], dim=0)
+
+    o = torch.zeros((Z, H, D_HEAD), dtype=dtype, device="cuda")
+    o1 = torch.zeros((Z, H, D_HEAD), dtype=dtype, device="cuda")
+
+    infer_state = Deepseek2InferStateInfo()
+    infer_state.batch_size = Z
+    infer_state.max_len_in_batch = N_CTX
+    infer_state.total_token_num = Z * N_CTX
+    infer_state.req_manager = ReqManager(Z, N_CTX, None)
+    infer_state.req_manager.req_to_token_indexs = req_to_token_indexs
+    infer_state.b_req_idx = b_req_idx
+    infer_state.b_seq_len = b_seq_len
+    infer_state.kv_starts = kv_starts
+
+    kv_nope = kv[:, :, :D_HEAD]
+    kv_rope = kv[:, :, D_HEAD:]
+    fn1 = lambda: gqa_token_decode_attention_flash_decoding(
+        q_nope,
+        q_rope,
+        kv_nope,
+        kv_rope,
+        infer_state,
+        H,
+        D_HEAD,
+        ROPE_HEAD,
+        D_HEAD,
+        sm_scale,
+        o,
+    )
+    fn1()
+
+    q = torch.cat([q_nope, q_rope], dim=-1)
+    fn2 = lambda: lightllm_ppl_mla.decode_mla(
+        o1,
+        q,
+        kv,
+        req_to_token_indexs,
+        kv_starts,
+        b_req_idx,
+        sm_scale,
+        D_HEAD + ROPE_HEAD,
+        D_HEAD,
+    )
+    fn2()
+
+    batch_size = Z
+    head_dim_ckv = D_HEAD
+    head_dim_kpe = ROPE_HEAD
+    num_heads = H
+    page_size = 1
+    workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(0)
+    q_indptr = torch.arange(0, batch_size + 1).to(0).int()
+    kv_indptr = infer_state.kv_starts
+    kv_indices = torch.arange(Z * N_CTX).cuda().int()
+    kv_lens = b_seq_len
+    wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(
+        workspace_buffer,
+        backend="fa2",
+        use_cuda_graph=True,
+        qo_indptr=q_indptr,
+        kv_indices=kv_indices,
+        kv_indptr=kv_indptr,
+        kv_len_arr=kv_lens,
+    )
+    wrapper.plan(
+        q_indptr,
+        kv_indptr,
+        kv_indices,
+        kv_lens,
+        num_heads,
+        head_dim_ckv,
+        head_dim_kpe,
+        page_size,
+        False,  # causal
+        sm_scale,
+        q_nope.dtype,
+        kv.dtype,
+    )
+    o2 = wrapper.run(q_nope, q_rope, kv_nope, kv_rope, return_lse=False)
+    fn3 = lambda: wrapper.run(q_nope, q_rope, kv_nope, kv_rope, return_lse=False)
+
+    cos_sim1 = F.cosine_similarity(o, o1).mean()
+    cos_sim2 = F.cosine_similarity(o, o2).mean()
+    print(cos_sim1, cos_sim2)
+    ms1 = triton.testing.do_bench_cudagraph(fn1)
+    ms2 = triton.testing.do_bench_cudagraph(fn2)
+    ms3 = triton.testing.do_bench_cudagraph(fn3)
+    print(ms1)
+    print(ms2)
+    print(ms3)
