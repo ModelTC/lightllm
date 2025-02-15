@@ -178,7 +178,7 @@ async def tgi_generate_stream_impl(request: Request, httpserver_manager: HttpSer
                         "finish_reason": finish_status.get_finish_reason(),
                     }
 
-            yield ("data:" + json.dumps(ret, ensure_ascii=False) + "\n\n").encode("utf-8")
+            yield ("data: " + json.dumps(ret.dict(), ensure_ascii=False) + "\n\n").encode("utf-8")
 
     background_tasks = BackgroundTasks()
     return StreamingResponse(stream_results(), media_type="text/event-stream", background=background_tasks)
