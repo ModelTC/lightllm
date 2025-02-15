@@ -187,7 +187,7 @@ class vLLMFP8w8a8B128QuantizationMethod(vLLMBaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        if n == 576:
+        if n % 128 != 0:
             w8a8_block_fp8_matmul(
                 qinput_tensor,
                 qweight,
