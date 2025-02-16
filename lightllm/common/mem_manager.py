@@ -57,7 +57,6 @@ class MemoryManager:
     def profile_size(self, mem_fraction):
         if self.size is not None:
             return
-        import torch.distributed as dist
 
         tp_rank = dist.get_rank()
         world_size = dist.get_world_size()
@@ -96,7 +95,6 @@ class MemoryManager:
         assert dp_size == 1
 
         # 先将数据发送到指定的一张卡上的buffer，再发送。
-        import torch.distributed as dist
 
         move_token_indexes = []
         for task in move_tasks:
@@ -138,7 +136,6 @@ class MemoryManager:
         assert dp_size == 1
 
         # 先将数据接受到指定的一张卡上的buffer，再复制到其他的卡上。
-        import torch.distributed as dist
 
         move_token_indexes = []
         for task in move_tasks:
@@ -173,7 +170,6 @@ class MemoryManager:
         assert dp_size == 1
 
         # 先将数据发送到指定的一张卡上的buffer，再发送。
-        import torch.distributed as dist
 
         move_token_indexes = []
         for task in move_tasks:
@@ -202,7 +198,6 @@ class MemoryManager:
         assert dp_size == 1
 
         # 先将数据接受到指定的一张卡上的buffer，再复制到其他的卡上。
-        import torch.distributed as dist
 
         move_token_indexes = []
         for task in move_tasks:

@@ -195,7 +195,6 @@ def normal_or_p_d_start(args):
     args.visual_port = visual_port
     args.cache_port = cache_port
     args.metric_port = metric_port
-    logger.info(f"router_port: {router_port}, detokenization_port: {detokenization_port}, detokenization_pub_port: {detokenization_pub_port}, visual_port: {visual_port}, cache_port: {cache_port}, metric_port: {metric_port}")
 
     # 申请在 p d 分离模式下，会用的端口
     args.pd_tp_infer_rpyc_ports = can_use_ports[0 : args.tp]

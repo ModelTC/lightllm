@@ -175,7 +175,7 @@ class HttpServerManager:
         # 请求的 id 可以由外部传入，也可以由内部生成，但是由外部传入的时候，要自己保证全局唯一性
         # 否则会造成异常问题。目前限制 NORMAL 模式都使用内部id替换， P 和 D 模式按需设置
         if self.pd_mode == NodeRole.NORMAL:
-            if multinode_remote_request_id == None:
+            if multinode_remote_request_id is None:
                 group_request_id = self.id_gen.generate_id()
                 for sender in self.multinode_req_manager:
                     sender.send_pyobj((group_request_id, prompt, sampling_params, multimodal_params, request_headers), protocol=pickle.HIGHEST_PROTOCOL)
