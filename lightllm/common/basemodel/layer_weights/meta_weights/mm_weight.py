@@ -76,7 +76,7 @@ class MMWeightTpl(BaseWeightTpl):
                     if self.weight_scale.ndim > 1:
                         self.weight_scale = self.weight_scale.transpose(0, 1).cuda(get_current_device_id())
                     self.weight = [
-                        self.weight.transpose(0, 1).cuda(),
+                        self.weight.transpose(0, 1).cuda(get_current_device_id()),
                         self.weight_scale,
                         self.input_scale,
                     ]
@@ -151,7 +151,7 @@ class ROWMMWeight(MMWeight):
 
         if self.act_scale_name is not None and self.act_scale_name in weights:
             input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda()
+            self.input_scale = input_scale.cuda(get_current_device_id())
 
         if weight is None and weight_scale is None and input_scale is None:
             return
@@ -213,7 +213,7 @@ class COLMMWeight(MMWeight):
 
         if self.static_activation and self.act_scale_name in weights:
             input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda()
+            self.input_scale = input_scale.cuda(get_current_device_id())
 
         if weight is None and weight_scale is None and input_scale is None:
             return
@@ -291,13 +291,13 @@ class MultiROWMMWeight(MultiMMWeight):
             delattr(self, "weights")
 
         if self.weight_scale is None and (None not in self.weight_scales):
-            self.weight_scale = torch.cat(self.weight_scales, dim=0).cuda()
+            self.weight_scale = torch.cat(self.weight_scales, dim=0).cuda(get_current_device_id())
             self._post_load_weights()
             delattr(self, "weight_scales")
 
         if self.static_activation and self.input_scale is None and (None not in self.input_scales):
             input_scales = torch.stack(self.input_scales, dim=0)
-            self.input_scale = torch.max(input_scales).cuda()
+            self.input_scale = torch.max(input_scales).cuda(get_current_device_id())
             self._post_load_weights()
             delattr(self, "input_scales")
 
@@ -528,7 +528,7 @@ class ROWBMMWeight(BMMWeight):
 
         if self.act_scale_name is not None and self.act_scale_name in weights:
             input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda()
+            self.input_scale = input_scale.cuda(get_current_device_id())
 
         if weight is None and weight_scale is None and input_scale is None:
             return
