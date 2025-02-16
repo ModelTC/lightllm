@@ -8,6 +8,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.utils.profile_max_tokens import get_available_gpu_memory, get_total_gpu_memory
 from lightllm.common.kv_trans_kernel.kv_trans import kv_trans
+from lightllm.utils.device_utils import get_current_device_id
 
 logger = init_logger(__name__)
 
@@ -38,7 +39,7 @@ class MemoryManager:
         assert nccl_port is not None
         logger.info(f"mem manger get nccl port: {str(nccl_port)}")
 
-        rank_id = dist.get_rank()
+        rank_id = get_current_device_id()
         self.shared_can_use_token_num = SharedInt(f"{str(nccl_port)}_mem_manger_can_use_token_num_{rank_id}")
 
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)

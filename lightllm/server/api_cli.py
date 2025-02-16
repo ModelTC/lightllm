@@ -93,6 +93,15 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--running_max_req_size", type=int, default=1000, help="the max size for forward requests in the same time"
     )
+    parser.add_argument("--nnodes", type=int, default=1, help="the number of nodes")
+    parser.add_argument("--node_rank", type=int, default=0, help="the rank of the current node")
+    parser.add_argument("--child_ips", type=str, default=None, help="the ips of the child nodes, only provide if this is the parent node")
+    parser.add_argument(
+        "--multinode_httpmanager_port", type=int, default=19998, help="the port for multinode http manager, default is 19998"
+    )
+    parser.add_argument(
+        "--multinode_router_port", type=int, default=19999, help="the port for multinode router, default is 19999"
+    )
     parser.add_argument("--tp", type=int, default=1, help="model tp parral size, the default is 1")
     parser.add_argument(
         "--dp",
@@ -104,6 +113,9 @@ def make_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--max_req_total_len", type=int, default=16384, help="the max value for req_input_len + req_output_len"
+    )
+    parser.add_argument(
+        "--nccl_host", type=str, default="127.0.0.1", help="the nccl_host to build a distributed environment for PyTorch"
     )
     parser.add_argument(
         "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
@@ -215,6 +227,12 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
     parser.add_argument("--disable_cudagraph", action="store_true", help="Disable the cudagraph of the decoding stage")
+    parser.add_argument(
+        "--cudagraph_step_length",
+        type=int,
+        default=1,
+        help="""How many batch sizes to between each step capturing cuda graph.""",
+    )
     parser.add_argument(
         "--graph_max_batch_size",
         type=int,

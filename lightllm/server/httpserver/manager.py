@@ -10,9 +10,10 @@ import datetime
 import websockets
 import pickle
 import ujson as json
+import multiprocessing
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-from typing import Union, List, Tuple, Dict
+from typing import Union, List, Tuple, Dict, Optional
 from ..tokenizer import get_tokenizer
 from ..pd_io_struct import NodeRole, ObjType
 from ..embed_cache.utils import get_shm_name_data, create_shm
@@ -49,6 +50,26 @@ class HttpServerManager:
         context = zmq.asyncio.Context(2)
         self.send_to_router = context.socket(zmq.PUSH)
         self.send_to_router.connect(f"{args.zmq_mode}127.0.0.1:{router_port}")
+        
+        self.multinode_req_manager = None
+        self.child_node_events = {}
+        self.waiting_objs = []
+        self.child_node_lock = asyncio.Lock()
+        if args.nnodes > 1:
+            if args.node_rank == 0:
+                self.multinode_req_manager = []
+                for child_ip in args.child_ips.split(","):
+                    if ":" in child_ip:
+                        child_ip = child_ip.split(":")[0]
+                    context = zmq.asyncio.Context(2)
+                    self.multinode_req_manager.append(context.socket(zmq.PUSH))
+                    self.multinode_req_manager[-1].connect(f"tcp://{child_ip}:{args.multinode_httpmanager_port}")
+                    logger.info(f"HttpServerManager connected to child node at {child_ip}:{args.multinode_httpmanager_port}")
+            else:
+                context = zmq.asyncio.Context(2)
+                self.multinode_req_manager = context.socket(zmq.PULL)
+                self.multinode_req_manager.bind(f"tcp://*:{args.multinode_httpmanager_port}")
+                logger.info(f"HttpServerManager listening for child node requests on *:{args.multinode_httpmanager_port}")
 
         self.enable_multimodal = enable_multimodal
         if self.enable_multimodal:
@@ -124,6 +145,20 @@ class HttpServerManager:
     def tokens(self, prompt):
         prompt_ids = self.tokenizer.encode(prompt)
         return len(prompt_ids)
+    
+    async def loop_for_request(self):
+        assert self.args.node_rank > 0
+        tasks = []
+        while True:
+            request_id, prompt, sampling_params, multimodal_params, request_headers = await self.multinode_req_manager.recv_pyobj()
+            results_generator = self.generate(prompt, sampling_params, multimodal_params, None, request_headers, request_id)
+            async def generate_wrapper(results_generator):
+                async for _, _, _, _ in results_generator:
+                    pass
+            tasks.append(asyncio.create_task(generate_wrapper(results_generator)))
+            # cleanup
+            while len(tasks) > 0 and tasks[0].done():
+                tasks.pop(0)
 
     async def generate(
         self,
@@ -131,12 +166,21 @@ class HttpServerManager:
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
         request: Request,
+        request_headers = None,
+        multinode_remote_request_id: Optional[int] = None,
     ) -> Tuple[int, str, dict, FinishStatus]:
         start_time = time.time()
+        if request_headers is None:
+            request_headers = request.headers if request is not None else None
         # 请求的 id 可以由外部传入，也可以由内部生成，但是由外部传入的时候，要自己保证全局唯一性
         # 否则会造成异常问题。目前限制 NORMAL 模式都使用内部id替换， P 和 D 模式按需设置
         if self.pd_mode == NodeRole.NORMAL:
-            group_request_id = self.id_gen.generate_id()
+            if multinode_remote_request_id == None:
+                group_request_id = self.id_gen.generate_id()
+                for sender in self.multinode_req_manager:
+                    sender.send_pyobj((group_request_id, prompt, sampling_params, multimodal_params, request_headers), protocol=pickle.HIGHEST_PROTOCOL)
+            else:
+                group_request_id = multinode_remote_request_id
             sampling_params.group_request_id = group_request_id
         elif self.pd_mode == NodeRole.P or self.pd_mode == NodeRole.D:
             assert sampling_params.group_request_id is not None, "p d mode, group_request_id must be setting"
@@ -149,7 +193,7 @@ class HttpServerManager:
                 multimodal_params.verify_and_preload()
 
             # 记录请求到达的相关信息
-            await self._log_req_header(request, group_request_id)
+            await self._log_req_header(request_headers, group_request_id)
             # 监控
             self.metric_client.counter_inc("lightllm_request_count")
 
@@ -194,7 +238,8 @@ class HttpServerManager:
             await self.transfer_to_next_module(req_status.group_req_objs)
 
             results_generator = self._wait_to_token_package(
-                start_time, prompt_ids, group_request_id, sampling_params, req_status, request
+                start_time, prompt_ids, group_request_id, sampling_params, req_status, # request,
+                request_headers,
             )
             async for sub_req_id, request_output, metadata, finish_status in results_generator:
                 # p d 模式下，将 token 数据放入到转发队列中
@@ -209,10 +254,10 @@ class HttpServerManager:
             raise e
         return
 
-    async def _log_req_header(self, request: Request, group_request_id: int):
+    async def _log_req_header(self, request_headers, group_request_id: int):
 
-        x_request_id = request.headers.get("X-Request-Id", "") if request is not None else ""
-        x_session_id = request.headers.get("X-Session-Id", "") if request is not None else ""
+        x_request_id = request_headers.get("X-Request-Id", "") if request_headers is not None else ""
+        x_session_id = request_headers.get("X-Session-Id", "") if request_headers is not None else ""
 
         format_in_time = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")
         logger.info(
@@ -323,7 +368,8 @@ class HttpServerManager:
         group_request_id: int,
         sampling_params: SamplingParams,
         req_status: "ReqStatus",
-        request: Request,
+        request_headers,
+        # request: Request,
     ):
 
         event = req_status.event
@@ -339,9 +385,10 @@ class HttpServerManager:
             except asyncio.TimeoutError:
                 pass
 
-            if request is not None and await request.is_disconnected():
-                await self.abort(group_request_id)
-                raise Exception(f"req_id {group_request_id} disconnected")
+            # TODO: abort() for multinode
+            # if request is not None and await request.is_disconnected():
+            #     await self.abort(group_request_id)
+            #     raise Exception(f"req_id {group_request_id} disconnected")
 
             async with req_status.lock:
                 event.clear()
@@ -373,8 +420,8 @@ class HttpServerManager:
                         total_cost_time_ms = (time.time() - start_time) * 1000
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
                         self.per_token_costs.add(mean_per_token_cost_time_ms)
-                        x_request_id = request.headers.get("X-Request-Id", "") if request is not None else ""
-                        x_session_id = request.headers.get("X-Session-Id", "") if request is not None else ""
+                        x_request_id = request_headers.get("X-Request-Id", "") if request_headers is not None else ""
+                        x_session_id = request_headers.get("X-Session-Id", "") if request_headers is not None else ""
 
                         prompt_cache_ratio = prompt_cache_len / prompt_tokens
                         self.metric_client.histogram_observe("lightllm_cache_length", prompt_cache_len)
@@ -459,6 +506,9 @@ class HttpServerManager:
         if self.pd_mode.is_P_or_D():
             self.forwarding_queue = AsyncQueue()
             asyncio.create_task(self.pd_handle_loop())
+        
+        if self.args.node_rank > 0:
+            asyncio.create_task(self.loop_for_request())
 
         while True:
             try:

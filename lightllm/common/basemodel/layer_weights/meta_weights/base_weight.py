@@ -9,7 +9,7 @@ class BaseWeight(ABC):
         pass
 
     @abstractmethod
-    def load_hf_weights(self, weights):
+    def load_hf_weights(self, weights, local_tp_rank):
         pass
 
     @abstractmethod
@@ -23,7 +23,7 @@ class BaseWeightTpl(BaseWeight):
         self.tp_rank_ = get_rank()
         self.device_id_ = get_current_device_id()
 
-    def load_hf_weights(self, weights):
+    def load_hf_weights(self, weights, local_tp_rank):
         pass
 
     def verify_load(self):

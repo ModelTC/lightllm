@@ -27,6 +27,30 @@ class BaseQueue:
         self.router_max_new_token_len = args.router_max_new_token_len
         self.pause_req_dict: Dict[int, Req] = {}  # List of paused requests
 
+    @property
+    def waiting_req_id_list(self):
+        return [req.request_id for req in self.waiting_req_list]
+    
+    def all_contain(self, id_list: List[int]):
+        return all([_id in self.waiting_req_id_list for _id in id_list])
+
+    def arrange(self, id_list: List[int]):
+        id2index_list = {}
+        for index, req in enumerate(self.waiting_req_list):
+           id2index_list[req.request_id] = index
+        return [self.waiting_req_list[id2index_list[id]] for id in id_list]
+    
+    def pop_list(self, req_list):
+        id2index_list = {}
+        for index, req in enumerate(self.waiting_req_list):
+           id2index_list[req.request_id] = index
+        remove_target = []
+        for req in req_list:
+            remove_target.append(self.waiting_req_list[id2index_list[req.request_id]])
+        for req in remove_target:
+            self.waiting_req_list.remove(req)
+        return
+    
     def append(self, req: Req):
         req.sample_params.suggested_dp_index = self.dp_index
         self.waiting_req_list.append(req)

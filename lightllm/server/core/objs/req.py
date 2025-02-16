@@ -95,6 +95,9 @@ class Req(ctypes.Structure):
         # 请求回复累计概率和
         ("cumlogprob", ctypes.c_float),
     ]
+    
+    def get_str(self):
+        return f"request_id:{self.request_id}, input_len:{self.input_len}, shm_cur_kv_len:{self.shm_cur_kv_len}, shm_cur_output_len:{self.shm_cur_output_len}, finish_status:{self.finish_status.is_finished()}"
 
     def init(
         self,

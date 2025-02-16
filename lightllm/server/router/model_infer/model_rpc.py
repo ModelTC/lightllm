@@ -31,7 +31,10 @@ class ModelRpcServer:
     def __init__(
         self,
         args,
-        tp_rank: int,
+        tp_rank: int, 
+        local_tp_rank: int, 
+        world_size: int, 
+        local_world_size: int,
         rpc_event: multiprocessing.Event,
         rpc_finished_event: multiprocessing.Event,
         info_queue: mp.Queue,
@@ -39,7 +42,8 @@ class ModelRpcServer:
     ):
         super().__init__()
         self.args = args
-        self.world_size = self.args.tp
+        self.world_size = world_size
+        self.local_world_size = local_world_size
         self.info_queue = info_queue
         self.mem_queue = mem_queue
         self.rpc_event = rpc_event
@@ -49,10 +53,12 @@ class ModelRpcServer:
         self.rpc_shm_params.create_or_link_shm()
         self.rpc_shm_results = RpcShmResults()
         self.rpc_shm_results.create_or_link_shm()
-        self.rpc_shm_sync_status = ShmSyncStatusArray(self.world_size)
+        self.rpc_shm_sync_status = ShmSyncStatusArray(self.local_world_size)
         self.rpc_shm_sync_status.create_or_link_shm()
 
         self.tp_rank = tp_rank
+        self.local_tp_rank = local_tp_rank
+        logger.info(f"Initialized RPC server for tp_rank {self.tp_rank}.")
 
         # 多卡才是跨进程的
         if self.args.tp != 1:
@@ -68,21 +74,21 @@ class ModelRpcServer:
                 func_name, args = self.rpc_shm_params.read_func_params()
 
                 ans = getattr(self, func_name)(*args)
-                if ans is not None and self.tp_rank == 0:
+                if ans is not None and self.local_tp_rank == 0:
                     self.rpc_shm_results.write_func_result(func_name=func_name, ret=ans)
 
                 # 下面得执行顺序不可随意交换, 否则容易出现同步或者死锁问题。
-                self.rpc_shm_sync_status.add_mark(self.tp_rank)
+                self.rpc_shm_sync_status.add_mark(self.local_tp_rank)
                 while not self.rpc_shm_sync_status.run_finished():
                     pass
 
                 self.rpc_event.clear()
 
-                self.rpc_shm_sync_status.add_mark1(self.tp_rank)
+                self.rpc_shm_sync_status.add_mark1(self.local_tp_rank)
                 while not self.rpc_shm_sync_status.run_finished1():
                     pass
 
-                if self.tp_rank == 0:
+                if self.local_tp_rank == 0:
                     self.rpc_finished_event.set()
 
             except BaseException as e:
@@ -251,6 +257,9 @@ class ModelRpcClient:
 def _init_env(
     args,
     tp_rank,
+    local_tp_rank,
+    world_size,
+    local_world_size,
     info_queue,
     mem_queue,
     router_lock,
@@ -269,7 +278,7 @@ def _init_env(
 
     g_router_lock.obj = router_lock
 
-    model_rpc_server = ModelRpcServer(args, tp_rank, rpc_event, rpc_finished_event, info_queue, mem_queue)
+    model_rpc_server = ModelRpcServer(args, tp_rank, local_tp_rank, world_size, local_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue)
     success_event.set()
 
     model_rpc_server.loop_thread.join()
@@ -279,9 +288,11 @@ def _init_env(
 async def start_model_process(
     args,
     tp_rank,
+    local_tp_rank,
     rpc_event,
     rpc_finished_event,
     world_size,
+    local_world_size,
     info_queue: mp.Queue,
     mem_queue: mp.Queue,
     router_lock: mp.Queue,
@@ -290,12 +301,12 @@ async def start_model_process(
 
     # 单卡时不使用 rpc
     if world_size == 1:
-        return ModelRpcServer(args, tp_rank, rpc_event, rpc_finished_event, info_queue, mem_queue)
+        return ModelRpcServer(args, tp_rank, local_tp_rank, world_size, local_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue)
 
     success_event = mp.Event()
     proc = mp.Process(
         target=_init_env,
-        args=(args, tp_rank, info_queue, mem_queue, router_lock, rpc_event, rpc_finished_event, success_event),
+        args=(args, tp_rank, local_tp_rank, world_size, local_world_size, info_queue, mem_queue, router_lock, rpc_event, rpc_finished_event, success_event),
     )
     proc.start()
     success_event.wait(timeout=40)

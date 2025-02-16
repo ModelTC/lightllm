@@ -161,6 +161,9 @@ def normal_or_p_d_start(args):
 
         args.data_type = get_dtype(args.model_dir)
         assert args.data_type in ["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"]
+    
+    if args.child_ips is not None:
+        assert args.nnodes > 1 and args.node_rank == 0, "child_ips should be set only when nnodes > 1 and node_rank == 0"
 
     already_uesd_ports = args.visual_nccl_ports + [args.nccl_port, args.port]
     if args.run_mode == "decode":
@@ -192,6 +195,7 @@ def normal_or_p_d_start(args):
     args.visual_port = visual_port
     args.cache_port = cache_port
     args.metric_port = metric_port
+    logger.info(f"router_port: {router_port}, detokenization_port: {detokenization_port}, detokenization_pub_port: {detokenization_pub_port}, visual_port: {visual_port}, cache_port: {cache_port}, metric_port: {metric_port}")
 
     # 申请在 p d 分离模式下，会用的端口
     args.pd_tp_infer_rpyc_ports = can_use_ports[0 : args.tp]

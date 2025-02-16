@@ -41,13 +41,17 @@ class RouterManager:
         self.args = args
         self.model_weightdir = args.model_dir
         self.world_size = args.tp
+        self.nnodes = args.nnodes
+        self.node_rank = args.node_rank
         self.dp_size = args.dp
         self.load_way = args.load_way
         self.mode = args.mode
         self.max_total_token_num = args.max_total_token_num
         self.shm_req_manager = ShmReqManager()
         # 用共享内存进行共享，router 模块读取进行精确的调度估计
-        self.read_only_statics_mem_manager = ReadOnlyStaticsMemoryManager(args.nccl_port, args.tp)
+        size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
+        local_world_size = size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
+        self.read_only_statics_mem_manager = ReadOnlyStaticsMemoryManager(args.nccl_port, local_world_size)
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
         self.radix_cache_client = None
 
@@ -73,6 +77,24 @@ class RouterManager:
         self.send_to_detokenization = context.socket(zmq.PUSH)
         self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
+        
+        self.multinode_req_manager = None
+        self.multinode_req_queue_lock = asyncio.Lock()
+        if args.nnodes > 1:
+            if args.node_rank == 0:
+                self.multinode_req_manager = []
+                for child_ip in args.child_ips.split(","):
+                    if ":" in child_ip:
+                        child_ip = child_ip.split(":")[0]
+                    context = zmq.asyncio.Context(2)
+                    self.multinode_req_manager.append(context.socket(zmq.PUSH))
+                    self.multinode_req_manager[-1].connect(f"tcp://{child_ip}:{args.multinode_router_port}")
+                    logger.info(f"RouterManager connected to child node at {child_ip}:{args.multinode_router_port}")
+            else:
+                context = zmq.asyncio.Context(2)
+                self.multinode_req_manager = context.socket(zmq.PULL)
+                self.multinode_req_manager.bind(f"tcp://*:{args.multinode_router_port}")
+                logger.info(f"RouterManager listening for child node requests on *:{args.multinode_router_port}")
 
         self.is_token_healing = self.args.token_healing_mode
         self.chunked_prefill_size = args.chunked_prefill_size
@@ -103,13 +125,17 @@ class RouterManager:
         self.rpc_event = multiprocessing.Event()
         self.rpc_finished_event = multiprocessing.Event()
 
-        for rank_id in range(self.world_size):
+        size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
+        local_world_size = size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
+        for rank_id in range(self.node_rank * size_per_node, min(self.world_size, (self.node_rank + 1) * size_per_node)):
             rpc_model = await start_model_process(
                 args=self.args,
                 tp_rank=rank_id,
+                local_tp_rank=rank_id % size_per_node,
                 rpc_event=self.rpc_event,
                 rpc_finished_event=self.rpc_finished_event,
                 world_size=self.world_size,
+                local_world_size=local_world_size,
                 info_queue=self.info_queue,
                 mem_queue=self.mem_queues[rank_id],
                 router_lock=self.router_lock,
@@ -134,6 +160,7 @@ class RouterManager:
             "mode": self.mode,
             "max_req_num": self.args.running_max_req_size + 8,
             "max_seq_length": self.args.max_req_total_len + 8,  # 留一点余量
+            "nccl_host": self.args.nccl_host,
             "nccl_port": self.args.nccl_port,
             "is_first_token_constraint_mode": self.args.first_token_constraint_mode,
             "enable_chunked_prefill": self.enable_chunked_prefill,
@@ -153,6 +180,7 @@ class RouterManager:
             "quant_type": self.args.quant_type,
             "quant_cfg": self.args.quant_cfg,
             "pd_rpyc_ports": self.args.pd_tp_infer_rpyc_ports,  # 非 pd 模式可以不设置
+            "cudagraph_step_length": self.args.cudagraph_step_length,
         }
 
         await self.model_rpc_client.init_model(kvargs=kvargs)
@@ -185,7 +213,7 @@ class RouterManager:
 
         return
 
-    def add_req(self, group_req_indexes: GroupReqIndexes):
+    async def add_req(self, group_req_indexes: GroupReqIndexes):
         req_group = []
         for req_index in group_req_indexes.shm_req_indexes:
             req = self.shm_req_manager.get_req_obj_by_index(req_index)
@@ -194,9 +222,9 @@ class RouterManager:
             req_group.append(req)
 
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
-        self.req_queue.extend(req_group)
+        async with self.multinode_req_queue_lock:
+            self.req_queue.extend(req_group)
         self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
-
         return
 
     async def loop_for_fwd(
@@ -247,14 +275,36 @@ class RouterManager:
     async def get_schedule_result(self, running_batch: Batch):
         if self.schedule_task is None:
 
-            def get_new_batch():
+            async def get_new_batch():
+                if self.nnodes == 1:
+                    current_waiting_list = self.req_queue.waiting_req_list
+                else:
+                    if self.node_rank == 0:
+                        async with self.multinode_req_queue_lock:
+                            current_waiting_list = [req for req in self.req_queue.waiting_req_list]
+                            current_waiting_id_list = [req.request_id for req in current_waiting_list]
+                        for sender in self.multinode_req_manager:
+                            sender.send_pyobj(current_waiting_id_list, protocol=pickle.HIGHEST_PROTOCOL)
+                    else:
+                        current_waiting_id_list = await self.multinode_req_manager.recv_pyobj()
+                        while True:
+                            async with self.multinode_req_queue_lock:
+                                if self.req_queue.all_contain(current_waiting_id_list):
+                                    break
+                            await asyncio.sleep(0.001)
+                        async with self.multinode_req_queue_lock:
+                            current_waiting_list = self.req_queue.arrange(current_waiting_id_list)
                 self.overlap_event.wait(timeout=0.020)
                 self.overlap_event.clear()
-                time.sleep(0.003)  # 这里是为了保证能正确进入推理的流程，保证折叠成功。
-                new_batch = self.req_queue.generate_new_batch(running_batch)
+                # time.sleep(0.003)  # 这里是为了保证能正确进入推理的流程，保证折叠成功。
+                await asyncio.sleep(0.003)
+                async with self.multinode_req_queue_lock:
+                    new_batch, poped_req_list, remain_req_list = self.req_queue.generate_new_batch(running_batch, current_waiting_list)
+                    self.req_queue.pop_list(poped_req_list)
                 return new_batch
 
-            self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
+            self.schedule_task = asyncio.create_task(get_new_batch())
+            # self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
             return None
         else:
             result = await self.schedule_task
@@ -335,8 +385,9 @@ class RouterManager:
         self.overlap_event.set()
         await self.model_rpc_client.decode()
         batch.filter_out_finished_req(self.shm_req_manager)
-        # 发个None包触发一下detokenization
-        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+        if self.node_rank == 0:
+            # 发个None包触发一下detokenization
+            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
         )
@@ -377,7 +428,7 @@ class RouterManager:
         while True:
             recv_req: GroupReqIndexes = await self.recv_from_httpserver.recv_pyobj()
             if isinstance(recv_req, GroupReqIndexes):
-                self.add_req(recv_req)
+                await self.add_req(recv_req)
             else:
                 assert False, f"Error Req Inf {recv_req}"
 

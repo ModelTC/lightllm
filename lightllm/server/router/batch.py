@@ -72,7 +72,7 @@ class Batch:
         return
 
     def __repr__(self):
-        return f"batch_id={self.batch_id}, " f"reqs={self.reqs}, "
+        return f"batch_id={self.batch_id}, " f"reqs={[req.get_str() for req in self.reqs]}, "
 
     def simple_log(self):
         return f"batch_id={self.batch_id}, time:{time.time()}s req_ids:{[req.request_id for req in self.reqs]}"
