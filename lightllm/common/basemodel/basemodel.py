@@ -37,6 +37,7 @@ class TpPartBaseModel:
 
     def __init__(self, kvargs):
         self.run_mode = kvargs["run_mode"]
+        self.local_tp_rank = kvargs["local_tp_rank"]
         self.tp_rank_ = kvargs["tp_rank"]
         self.world_size_ = kvargs["world_size"]
         self.weight_dir_ = kvargs["weight_dir"]
@@ -63,6 +64,7 @@ class TpPartBaseModel:
         self.quant_type = kvargs.get("quant_type", None)
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
+        self.cudagraph_step_length = kvargs.get("cudagraph_step_length", 1)
 
         self._init_datatype()
         self._init_config()
