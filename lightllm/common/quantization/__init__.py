@@ -27,6 +27,7 @@ class Quantcfg:
         self.static_activation = activation_scheme == "static"
         self.hf_quantization_config = hf_quantization_config
         self.hf_quantization_method = hf_quantization_config["quant_method"]
+        self._mapping_quant_method()
 
     def _mapping_quant_method(self):
         if self.hf_quantization_method == "fp8":
