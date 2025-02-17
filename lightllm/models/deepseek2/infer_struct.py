@@ -18,6 +18,14 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
             self.kv_starts = torch.cat([self.b_start_loc, self.b_start_loc[-1:] + self.b_seq_len[-1:]], dim=0)
             self.total_token_num_tensor = torch.sum(self.b_seq_len)
 
+        if self.use_dynamic_prompt_cache:
+            self.b_kv_start_loc = torch.cat(
+                [
+                    torch.zeros([1], device=self.b_seq_len.device, dtype=self.b_seq_len.dtype),
+                    self.b_seq_len[0:-1].cumsum(0),
+                ]
+            )
+
         if self.enable_dp:
             rank = dist.get_rank()
             world_size = dist.get_world_size()
