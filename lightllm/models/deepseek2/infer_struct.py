@@ -19,7 +19,7 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
             self.total_token_num_tensor = torch.sum(self.b_seq_len)
 
         if self.is_prefill:
-            self.b_kv_start_loc = self.b_seq_len.cumsum() - self.b_seq_len
+            self.b_kv_start_loc = self.b_seq_len.cumsum(dim=0) - self.b_seq_len
 
         if self.enable_dp:
             rank = dist.get_rank()
