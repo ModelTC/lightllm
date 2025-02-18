@@ -58,7 +58,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             if mscale_all_dim:
                 mscale = get_deepseek_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
-        self.enable_cc_method = os.getenv("ENABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
+        self.enable_cc_method = not os.getenv("DISABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         if self.enable_dp:
@@ -182,6 +182,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_req_idx,
                 infer_state.b_seq_len,
                 infer_state.req_manager.req_to_token_indexs,
+                infer_state.b_kv_start_loc,
                 kv_scale,
                 k_scale,
             )
