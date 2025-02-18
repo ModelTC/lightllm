@@ -165,7 +165,7 @@ if __name__ == "__main__":
     import flashinfer
     import lightllm_ppl_mla
 
-    Z, N_CTX, H, D_HEAD, ROPE_HEAD = 200, 16384, 16, 512, 64
+    Z, N_CTX, H, D_HEAD, ROPE_HEAD = 10, 1024, 16, 512, 64
     dtype = torch.bfloat16
     sm_scale = 1.0 / ((D_HEAD + ROPE_HEAD) ** 0.5)
     q_nope = torch.randn((Z, H, D_HEAD), dtype=dtype, device="cuda")
@@ -181,11 +181,11 @@ if __name__ == "__main__":
     b_start_loc = torch.arange(Z).cuda().int() * N_CTX
     b_start_loc[0] = 0
     b_req_idx = torch.arange(Z).cuda().int()
-    req_to_token_indexs = torch.arange(Z * N_CTX, dtype=torch.int32).cuda().view(req_to_token_indexs.shape)
     kv_starts = torch.cat([b_start_loc, b_start_loc[-1:] + b_seq_len[-1:]], dim=0)
 
     o = torch.zeros((Z, H, D_HEAD), dtype=dtype, device="cuda")
     o1 = torch.zeros((Z, H, D_HEAD), dtype=dtype, device="cuda")
+    o2 = torch.zeros((Z, H, D_HEAD), dtype=dtype, device="cuda")
 
     infer_state = Deepseek2InferStateInfo()
     infer_state.batch_size = Z
@@ -212,7 +212,6 @@ if __name__ == "__main__":
         sm_scale,
         o,
     )
-    fn1()
 
     q = torch.cat([q_nope, q_rope], dim=-1)
     fn2 = lambda: lightllm_ppl_mla.decode_mla(
@@ -226,7 +225,6 @@ if __name__ == "__main__":
         D_HEAD + ROPE_HEAD,
         D_HEAD,
     )
-    fn2()
 
     batch_size = Z
     head_dim_ckv = D_HEAD
@@ -234,9 +232,11 @@ if __name__ == "__main__":
     num_heads = H
     page_size = 1
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(0)
-    q_indptr = torch.arange(0, batch_size + 1).to(0).int()
+    q_indptr = torch.arange(batch_size + 1).to(0).int()
     kv_indptr = infer_state.kv_starts
     kv_indices = torch.arange(Z * N_CTX).cuda().int()
+    for b, sl, start in zip(b_req_idx, b_seq_len, b_start_loc):
+        kv_indices[start : start + sl] = req_to_token_indexs[b][:sl]
     kv_lens = b_seq_len
     wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(
         workspace_buffer,
@@ -261,15 +261,15 @@ if __name__ == "__main__":
         q_nope.dtype,
         kv.dtype,
     )
-    o2 = wrapper.run(q_nope, q_rope, kv_nope, kv_rope, return_lse=False)
-    fn3 = lambda: wrapper.run(q_nope, q_rope, kv_nope, kv_rope, return_lse=False)
+    fn3 = lambda: wrapper.run(q_nope, q_rope, kv_nope, kv_rope, out=o2, return_lse=False)
 
-    cos_sim1 = F.cosine_similarity(o, o1).mean()
-    cos_sim2 = F.cosine_similarity(o, o2).mean()
-    print(cos_sim1, cos_sim2)
     ms1 = triton.testing.do_bench_cudagraph(fn1)
     ms2 = triton.testing.do_bench_cudagraph(fn2)
     ms3 = triton.testing.do_bench_cudagraph(fn3)
     print(ms1)
     print(ms2)
     print(ms3)
+
+    cos_sim1 = F.cosine_similarity(o, o1).mean()
+    cos_sim2 = F.cosine_similarity(o, o2).mean()
+    print(cos_sim1, cos_sim2)

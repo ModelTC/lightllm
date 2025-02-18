@@ -68,6 +68,11 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.num_heads = network_config["num_attention_heads"]
         self.num_kv_heads = network_config["num_key_value_heads"]
         self.enable_opt_decoding_mha = os.getenv("ENABLE_OPT_DECODE_MHA", "False").upper() in ["ON", "TRUE", "1"]
+        self.enable_flashinfer_decode_mla = os.getenv("ENABLE_FLASHINFER_DECODE_MLA", "False").upper() in [
+            "ON",
+            "TRUE",
+            "1",
+        ]
         return
 
     def _bind_func(self):
@@ -370,7 +375,17 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_req_idx,
                 self.softmax_scale,
                 q.shape[-1],
-                q_nope.shape[-1],
+                self.kv_lora_rank,
+            )
+            return o_tensor
+        elif self.enable_flashinfer_decode_mla:
+            infer_state.wrapper.run(
+                q_nope,
+                q_rope,
+                kv[:, :, : -self.qk_rope_head_dim],
+                kv[:, :, -self.qk_rope_head_dim :],
+                out=o_tensor,
+                return_lse=False,
             )
             return o_tensor
         else:
