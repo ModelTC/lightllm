@@ -54,12 +54,11 @@ def gen_random_data(
 ) -> Tuple[List[str], List[int], List[int]]:
     prompts = []
     input_lens = []
-    output_lens = []
+    output_lens = get_output_length(input_num, output_len)
     for i in range(input_num):
         input_text = gen_random_input_text(input_len, tokenizer)
         prompts.append(input_text)
         input_lens.append(input_len)
-        output_lens.append(output_len)
     print("Generate random data finish.")
     return prompts, input_lens, output_lens
 
