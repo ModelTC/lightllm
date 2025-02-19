@@ -60,6 +60,7 @@ def gen_random_data(
         prompts.append(input_text)
         input_lens.append(input_len)
         output_lens.append(output_len)
+    print("Generate random data finish.")
     return prompts, input_lens, output_lens
 
 
@@ -143,8 +144,8 @@ def post_stream_triton(url: str, text_input: str, max_new_tokens: int) -> List[f
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", type=str, default="")
-    parser.add_argument("--num_clients", type=int, default=0)
+    parser.add_argument("--url", type=str, default="http://127.0.0.1:8000/generate_stream")
+    parser.add_argument("--num_clients", type=int, default=100)
     parser.add_argument("--tokenizer_path", type=str, default=None)
     parser.add_argument("--input_num", type=int, default=2000)
     parser.add_argument("--input_len", type=int, default=1024)
@@ -161,6 +162,7 @@ def main():
             print(json.dumps(content, indent=4))
         return
 
+    assert args.tokenizer_path is not None
     model_name.append(args.tokenizer_path)
     seed_all(args.seed)
     url = args.url
