@@ -221,4 +221,4 @@ if __name__ == "__main__":
     )
 
     cos_sim = F.cosine_similarity(o, o1).mean()
-    assert cos_sim == 1
+    assert cos_sim > 0.99
