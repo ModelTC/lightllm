@@ -49,12 +49,13 @@ class ModeBackend:
         pass
 
     def init_model(self, kvargs):
-
         self.args = kvargs.get("args", None)
         # p d 分离模式下会有特殊的一些初始化, 所以需要传递
         # 模式参数到模型的初始化过程中进行控制
         self.run_mode = "normal" if self.args is None else self.args.run_mode
         self.is_multimodal = False
+        self.nnodes = self.args.nnodes
+        self.node_rank = self.args.node_rank
         self.tp_rank = kvargs["rank_id"]
         self.world_size = kvargs["world_size"]
         self.dp_size = kvargs.get("dp_size", 1)
@@ -81,17 +82,19 @@ class ModeBackend:
             assert self.dp_size == self.world_size, "Currently only self-sustaining dp_size == tp_size"
             os.environ["ENABLE_DP"] = "1"
 
-        torch.cuda.set_device(self.tp_rank)
-        set_current_device_id(self.tp_rank)
+        size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
+        self.local_tp_rank = self.tp_rank - size_per_node * self.node_rank
+        torch.cuda.set_device(self.local_tp_rank)
+        set_current_device_id(self.local_tp_rank)
 
         dist.init_process_group(
             "nccl",
-            init_method=f'tcp://127.0.0.1:{kvargs["nccl_port"]}',
+            init_method=f'tcp://{kvargs["nccl_host"]}:{kvargs["nccl_port"]}',
             rank=self.tp_rank,
             world_size=self.world_size,
         )
         # warmup nccl communicator
-        _a = torch.zeros([1]).to(f"cuda:{self.tp_rank}")
+        _a = torch.zeros([1]).to(f"cuda:{self.local_tp_rank}")
         dist.all_reduce(_a)
         del _a
 
@@ -112,6 +115,7 @@ class ModeBackend:
         model_cfg, _ = PretrainedConfig.get_config_dict(self.weight_dir)
 
         model_kvargs = {
+            "local_tp_rank": self.local_tp_rank,
             "tp_rank": self.tp_rank,
             "world_size": self.world_size,
             "weight_dir": self.weight_dir,
@@ -133,6 +137,7 @@ class ModeBackend:
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
             "run_mode": self.run_mode,
+            "cudagraph_step_length": kvargs.get("cudagraph_step_length", 1),
         }
 
         try:

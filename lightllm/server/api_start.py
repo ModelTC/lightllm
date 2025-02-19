@@ -164,6 +164,9 @@ def normal_or_p_d_start(args):
 
         args.data_type = get_dtype(args.model_dir)
         assert args.data_type in ["fp16", "float16", "bf16", "bfloat16", "fp32", "float32"]
+    
+    if args.child_ips is not None:
+        assert args.nnodes > 1 and args.node_rank == 0, "child_ips should be set only when nnodes > 1 and node_rank == 0"
 
     already_uesd_ports = args.visual_nccl_ports + [args.nccl_port, args.port]
     if args.run_mode == "decode":

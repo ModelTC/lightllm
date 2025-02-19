@@ -25,6 +25,8 @@ import pickle
 from .build_prompt import build_prompt, init_tokenizer
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+import aiohttp
+import copy
 import ujson as json
 from http import HTTPStatus
 import uuid

@@ -4,6 +4,7 @@ from .base_weight import BaseWeightTpl
 from typing import Optional, Tuple, List, Dict, Any
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.quantization.quantize_method import QuantizationMethod
+from lightllm.utils.device_utils import get_current_device_id
 
 
 def generate_scale_name(name, weight_scale_suffix, act_scale_suffix):
@@ -73,16 +74,16 @@ class MMWeightTpl(BaseWeightTpl):
                     and (not self.static_activation or self.input_scale is not None)
                 ):
                     if self.weight_scale.ndim > 1:
-                        self.weight_scale = self.weight_scale.transpose(0, 1).cuda(self.device_id_)
+                        self.weight_scale = self.weight_scale.transpose(0, 1).cuda(get_current_device_id())
                     self.weight = [
-                        self.weight.transpose(0, 1).cuda(self.device_id_),
+                        self.weight.transpose(0, 1).cuda(get_current_device_id()),
                         self.weight_scale,
                         self.input_scale,
                     ]
             else:
-                self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(self.device_id_))
+                self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(get_current_device_id()))
             return
-        self.weight = self.weight.to(self.data_type_).transpose(0, 1).cuda(self.device_id_)
+        self.weight = self.weight.to(self.data_type_).transpose(0, 1).cuda(get_current_device_id())
 
 
 class MMWeight(MMWeightTpl):
@@ -129,7 +130,7 @@ class ROWMMWeight(MMWeight):
             self.weight = weight[self.start : self.end]
         if self.bias_name in weights:
             bias = weights[self.bias_name].to(self.data_type_)[self.start : self.end]
-            self.bias = bias.cuda(self.device_id_)
+            self.bias = bias.cuda(get_current_device_id())
 
         if self.weight_scale_name is not None and self.weight_scale_name in weights:
             block_size = 1
@@ -150,7 +151,7 @@ class ROWMMWeight(MMWeight):
 
         if self.act_scale_name is not None and self.act_scale_name in weights:
             input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda()
+            self.input_scale = input_scale.cuda(get_current_device_id())
 
         if weight is None and weight_scale is None and input_scale is None:
             return
@@ -194,7 +195,7 @@ class COLMMWeight(MMWeight):
             self.weight = weight[:, self.start : self.end]
         if self.bias_name in weights:
             bias = weights[self.bias_name]
-            self.bias = (bias / self.world_size_).to(self.data_type_).cuda(self.device_id_)
+            self.bias = (bias / self.world_size_).to(self.data_type_).cuda(get_current_device_id())
 
         if self.quantized_weight and self.weight_scale_name in weights:
             block_size = 1
@@ -212,7 +213,7 @@ class COLMMWeight(MMWeight):
 
         if self.static_activation and self.act_scale_name in weights:
             input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda()
+            self.input_scale = input_scale.cuda(get_current_device_id())
 
         if weight is None and weight_scale is None and input_scale is None:
             return
@@ -290,19 +291,19 @@ class MultiROWMMWeight(MultiMMWeight):
             delattr(self, "weights")
 
         if self.weight_scale is None and (None not in self.weight_scales):
-            self.weight_scale = torch.cat(self.weight_scales, dim=0).cuda()
+            self.weight_scale = torch.cat(self.weight_scales, dim=0).cuda(get_current_device_id())
             self._post_load_weights()
             delattr(self, "weight_scales")
 
         if self.static_activation and self.input_scale is None and (None not in self.input_scales):
             input_scales = torch.stack(self.input_scales, dim=0)
-            self.input_scale = torch.max(input_scales).cuda()
+            self.input_scale = torch.max(input_scales).cuda(get_current_device_id())
             self._post_load_weights()
             delattr(self, "input_scales")
 
         if self.has_bias:
             if self.bias is None and (None not in self.biases):
-                self.bias = torch.cat(self.biases, dim=0).cuda(self.device_id_)
+                self.bias = torch.cat(self.biases, dim=0).cuda(get_current_device_id())
                 delattr(self, "biases")
         return self
 
@@ -445,10 +446,10 @@ class BMMWeightTpl(MMWeightTpl):
                     and (not self.static_activation or self.input_scale is not None)
                 ):
                     if self.weight_scale.ndim > 1:
-                        self.weight_scale = self.weight_scale.cuda(self.device_id_)
-                    self.weight = [self.weight.cuda(self.device_id_), self.weight_scale, self.input_scale]
+                        self.weight_scale = self.weight_scale.cuda(get_current_device_id())
+                    self.weight = [self.weight.cuda(get_current_device_id()), self.weight_scale, self.input_scale]
             return
-        self.weight = self.weight.cuda(self.device_id_)
+        self.weight = self.weight.cuda(get_current_device_id())
 
 
 class BMMWeight(BMMWeightTpl):
@@ -513,7 +514,7 @@ class ROWBMMWeight(BMMWeight):
             self.weight = weight[self.start : self.end]
         if self.bias_name in weights:
             bias = weights[self.bias_name].to(self.data_type_)[self.start : self.end]
-            self.bias = bias.cuda(self.device_id_)
+            self.bias = bias.cuda(get_current_device_id())
 
         if self.weight_scale_name is not None and self.weight_scale_name in weights:
             weight_scale = weights[self.weight_scale_name]
@@ -527,7 +528,7 @@ class ROWBMMWeight(BMMWeight):
 
         if self.act_scale_name is not None and self.act_scale_name in weights:
             input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda()
+            self.input_scale = input_scale.cuda(get_current_device_id())
 
         if weight is None and weight_scale is None and input_scale is None:
             return

@@ -5,12 +5,12 @@ from safetensors import safe_open
 import lightllm.utils.petrel_helper as utils
 
 
-def load_func(file_, use_safetensors=False, pre_post_layer=None, transformer_layer_list=None, weight_dir=None):
+def load_func(file_, local_tp_rank, use_safetensors=False, pre_post_layer=None, transformer_layer_list=None, weight_dir=None):
     # fix bug for 多线程加载的时候，每个线程内部的cuda device 会切回 0， 修改后来保证不会出现bug
     import torch.distributed as dist
 
-    tp_rank = dist.get_rank()
-    torch.cuda.set_device(tp_rank)
+    # tp_rank = dist.get_rank()
+    torch.cuda.set_device(local_tp_rank)
 
     if use_safetensors:
         weights = safe_open(os.path.join(weight_dir, file_), "pt", "cpu")
@@ -27,7 +27,7 @@ def load_func(file_, use_safetensors=False, pre_post_layer=None, transformer_lay
     gc.collect()
 
 
-def load_hf_weights(data_type, weight_dir, pre_post_layer=None, transformer_layer_list=None, weight_dict=None):
+def load_hf_weights(data_type, weight_dir, local_tp_rank, pre_post_layer=None, transformer_layer_list=None, weight_dict=None):
     if isinstance(data_type, str):
         data_type = torch.float16 if data_type == "fp16" else torch.float32
     if pre_post_layer is not None:
@@ -36,10 +36,10 @@ def load_hf_weights(data_type, weight_dir, pre_post_layer=None, transformer_laye
         assert transformer_layer_list[0].data_type_ == data_type, "type is not right"
     if weight_dict:
         if pre_post_layer is not None:
-            pre_post_layer.load_hf_weights(weight_dict)
+            pre_post_layer.load_hf_weights(weight_dict, local_tp_rank)
         if transformer_layer_list is not None:
             for layer in transformer_layer_list:
-                layer.load_hf_weights(weight_dict)
+                layer.load_hf_weights(weight_dict, local_tp_rank)
         del weight_dict
         return
     use_safetensors = True
@@ -54,6 +54,7 @@ def load_hf_weights(data_type, weight_dir, pre_post_layer=None, transformer_laye
 
     partial_func = partial(
         load_func,
+        local_tp_rank=local_tp_rank,
         use_safetensors=use_safetensors,
         pre_post_layer=pre_post_layer,
         transformer_layer_list=transformer_layer_list,
