@@ -59,9 +59,7 @@ class HttpServerManager:
         if args.nnodes > 1:
             if args.node_rank == 0:
                 self.multinode_req_manager = []
-                for child_ip in args.child_ips.split(","):
-                    if ":" in child_ip:
-                        child_ip = child_ip.split(":")[0]
+                for child_ip in args.child_ips:
                     context = zmq.asyncio.Context(2)
                     self.multinode_req_manager.append(context.socket(zmq.PUSH))
                     self.multinode_req_manager[-1].connect(f"tcp://{child_ip}:{args.multinode_httpmanager_port}")

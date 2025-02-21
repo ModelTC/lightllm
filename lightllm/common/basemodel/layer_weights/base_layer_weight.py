@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import threading
 from lightllm.common.basemodel.layer_weights.meta_weights import BaseWeight
-from lightllm.utils.device_utils import get_current_device_id
+from lightllm.utils.dist_utils import get_current_device_id
 
 
 class BaseLayerWeight:

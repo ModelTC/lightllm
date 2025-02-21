@@ -76,7 +76,6 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         ]
         load_hf_weights(
             self.data_type,
-            local_tp_rank=self.local_tp_rank,
             weight_dir=self.weight_dir_,
             pre_post_layer=self.pre_post_weight,
             transformer_layer_list=self.trans_layers_weight,

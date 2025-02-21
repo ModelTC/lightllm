@@ -4,7 +4,7 @@ from .base_weight import BaseWeightTpl
 from typing import Optional, Tuple, List, Dict, Any
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.quantization.quantize_method import QuantizationMethod
-from lightllm.utils.device_utils import get_current_device_id
+from lightllm.utils.dist_utils import get_current_device_id
 
 
 def generate_scale_name(name, weight_scale_suffix, act_scale_suffix):
