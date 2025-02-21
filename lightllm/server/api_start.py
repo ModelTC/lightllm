@@ -4,6 +4,7 @@ import time
 import uuid
 import subprocess
 import signal
+import socket
 from lightllm.utils.net_utils import alloc_can_use_network_port, PortLocker
 from lightllm.utils.start_utils import process_manager
 from .metrics.manager import start_metric_manager
@@ -207,6 +208,30 @@ def normal_or_p_d_start(args):
     # p d 分离模式下，decode节点的调度间隙是0
     if args.run_mode == "decode":
         args.router_max_wait_tokens = 0
+
+    # 传输子node的ip
+    if args.nnodes > 1:
+        import zmq
+
+        if args.node_rank == 0:
+            args.child_ips = None
+            args.child_ips = []
+            for i in range(1, args.nnodes):
+                context = zmq.Context(2)
+                comm_socket = context.socket(zmq.PULL)
+                comm_socket.bind(f"tcp://*:{args.multinode_httpmanager_port + i}")
+                print(f"binding port {args.multinode_httpmanager_port + i}")
+                args.child_ips.append(comm_socket.recv_pyobj())
+                comm_socket.close()
+            print(f"Received child IPs: {args.child_ips}")
+        else:
+            local_ip = socket.gethostbyname(socket.gethostname())
+            context = zmq.Context(2)
+            comm_socket = context.socket(zmq.PUSH)
+            comm_socket.connect(f"tcp://{args.nccl_host}:{args.multinode_httpmanager_port + args.node_rank}")
+            print(f"connecting to {args.nccl_host}:{args.multinode_httpmanager_port + args.node_rank}")
+            comm_socket.send_pyobj(local_ip)
+            comm_socket.close()
 
     set_env(args)
     logger.info(f"all start args:{args}")
