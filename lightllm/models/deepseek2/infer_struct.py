@@ -9,17 +9,109 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
     def __init__(self):
         super().__init__()
         self.kv_starts = None
+        self.wrapper = None
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
+        self.enable_flashinfer_prefilled = os.getenv("ENABLE_FLASHINFER_PREFILLED", "False").upper() in [
+            "ON",
+            "TRUE",
+            "1",
+        ]
+        self.enable_flashinfer_decode_mla = os.getenv("ENABLE_FLASHINFER_DECODE_MLA", "False").upper() in [
+            "ON",
+            "TRUE",
+            "1",
+        ]
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         super().init_some_extra_state(model, input_ids)
-        # 只有 decode 阶段使用 ppl 的优化算子才会有这个管理变量
+
         if not self.is_prefill:
             self.kv_starts = torch.cat([self.b_start_loc, self.b_start_loc[-1:] + self.b_seq_len[-1:]], dim=0)
             self.total_token_num_tensor = torch.sum(self.b_seq_len)
+            if self.enable_flashinfer_decode_mla:
+                import flashinfer
+                from lightllm.models.deepseek2.triton_kernel.repack_kv_index import repack_kv_index
 
-        if self.is_prefill:
+                self.tp_q_head_num = (
+                    model.tp_q_head_num_ * model.world_size_ if self.enable_dp else model.tp_q_head_num_
+                )
+                self.kv_lora_rank = model.kv_lora_rank
+                self.qk_rope_head_dim = model.qk_rope_head_dim
+                self.qk_nope_head_dim = model.qk_nope_head_dim
+                self.softmax_scale = model.softmax_scale
+                self.q_data_type = model.data_type
+                self.kv_data_type = model.data_type
+
+                self.q_indptr = torch.arange(self.batch_size + 1, dtype=torch.int32).to(input_ids.device)
+                self.kv_indices = torch.empty(self.batch_size * model.max_seq_length, dtype=torch.int32).to(
+                    input_ids.device
+                )
+                repack_kv_index(
+                    self.req_manager.req_to_token_indexs,
+                    self.b_req_idx,
+                    self.b_seq_len,
+                    self.b_start_loc,
+                    self.max_len_in_batch,
+                    self.kv_indices,
+                )
+                if not self.wrapper:
+                    workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(input_ids.device)
+                    self.wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(
+                        workspace_buffer,
+                        backend="fa2",
+                        use_cuda_graph=True,
+                        qo_indptr=self.q_indptr,
+                        kv_indices=self.kv_indices,
+                        kv_indptr=self.kv_starts,
+                        kv_len_arr=self.b_seq_len,
+                    )
+                self.wrapper.plan(
+                    self.q_indptr,
+                    self.kv_starts,
+                    self.kv_indices,
+                    self.b_seq_len,
+                    self.tp_q_head_num,
+                    self.kv_lora_rank,
+                    self.qk_rope_head_dim,
+                    1,
+                    False,  # causal
+                    self.softmax_scale,
+                    self.q_data_type,
+                    self.kv_data_type,
+                )
+        else:
             self.b_kv_start_loc = self.b_seq_len.cumsum(dim=0) - self.b_seq_len
+            if self.enable_flashinfer_prefilled:
+                import flashinfer
+
+                self.tp_q_head_num = (
+                    model.tp_q_head_num_ * model.world_size_ if self.enable_dp else model.tp_q_head_num_
+                )
+                self.qk_rope_head_dim = model.qk_rope_head_dim
+                self.qk_nope_head_dim = model.qk_nope_head_dim
+                self.softmax_scale = model.softmax_scale
+                self.q_data_type = model.data_type
+
+                q_starts = torch.cat(
+                    [self.b_start_loc, self.b_start_loc[-1:] + (self.b_seq_len - self.b_ready_cache_len)[-1:]], dim=0
+                ).int()
+                kv_starts = torch.cat(
+                    [self.b_kv_start_loc, self.b_kv_start_loc[-1:] + self.b_seq_len[-1:]], dim=0
+                ).int()
+                if not self.wrapper:
+                    workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(0)
+                    self.wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(workspace_buffer, "NHD")
+                self.wrapper.plan(
+                    qo_indptr=q_starts,
+                    kv_indptr=kv_starts,
+                    num_qo_heads=self.tp_q_head_num,
+                    num_kv_heads=self.tp_q_head_num,
+                    head_dim_qk=self.qk_nope_head_dim + self.qk_rope_head_dim,
+                    head_dim_vo=self.qk_nope_head_dim,
+                    q_data_type=self.q_data_type,
+                    causal=True,
+                    sm_scale=self.softmax_scale,
+                )
 
         if self.enable_dp:
             rank = dist.get_rank()
@@ -35,4 +127,23 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
             self.start_idx = self.all_start_idx[rank]
             self.end_idx = self.all_end_idx[rank]
 
+        return
+
+    def copy_for_cuda_graph(self, new_infer_state):
+        super().copy_for_cuda_graph(new_infer_state)
+        if self.enable_flashinfer_decode_mla:
+            self.wrapper.plan(
+                self.q_indptr,
+                self.kv_starts,
+                self.kv_indices,
+                self.b_seq_len,
+                self.tp_q_head_num,
+                self.kv_lora_rank,
+                self.qk_rope_head_dim,
+                1,
+                False,  # causal
+                self.softmax_scale,
+                self.q_data_type,
+                self.kv_data_type,
+            )
         return

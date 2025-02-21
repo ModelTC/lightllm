@@ -5,6 +5,7 @@ import torch.distributed as dist
 import numpy as np
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv
+from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv_fp8 import destindex_copy_kv_fp8
 from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import (
     context_attention_fwd,
     context_attention_fwd_no_prompt_cache,
@@ -67,6 +68,16 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.num_heads = network_config["num_attention_heads"]
         self.num_kv_heads = network_config["num_key_value_heads"]
         self.enable_opt_decoding_mha = os.getenv("ENABLE_OPT_DECODE_MHA", "False").upper() in ["ON", "TRUE", "1"]
+        self.enable_flashinfer_prefilled = os.getenv("ENABLE_FLASHINFER_PREFILLED", "False").upper() in [
+            "ON",
+            "TRUE",
+            "1",
+        ]
+        self.enable_flashinfer_decode_mla = os.getenv("ENABLE_FLASHINFER_DECODE_MLA", "False").upper() in [
+            "ON",
+            "TRUE",
+            "1",
+        ]
         return
 
     def _bind_func(self):
@@ -217,22 +228,28 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         out=None,
     ) -> torch.Tensor:
         k_nope, k_rope, v = self._decompress_kv(kv, infer_state, layer_weight, False)
-        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
-        o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
-        context_attention_fwd_with_v(
-            q_nope,
-            q_rope,
-            k_nope,
-            k_rope,
-            v,
-            o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
-            infer_state.b_start_loc,
-            infer_state.b_kv_start_loc,
-            infer_state.b_seq_len,
-            infer_state.b_ready_cache_len,
-            infer_state.max_len_in_batch,
-            self.softmax_scale,
+        o_tensor = (
+            self.alloc_tensor((q.shape[0], q.shape[1], self.qk_nope_head_dim), dtype=q.dtype) if out is None else out
         )
+        if self.enable_flashinfer_prefilled:
+            k = torch.cat([k_nope, torch.repeat_interleave(k_rope, self.tp_q_head_num_, dim=-2)], dim=-1)
+            infer_state.wrapper.run(q, k, v, out=o_tensor)
+        else:
+            q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+            context_attention_fwd_with_v(
+                q_nope,
+                q_rope,
+                k_nope,
+                k_rope,
+                v,
+                o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
+                infer_state.b_start_loc,
+                infer_state.b_kv_start_loc,
+                infer_state.b_seq_len,
+                infer_state.b_ready_cache_len,
+                infer_state.max_len_in_batch,
+                self.softmax_scale,
+            )
         return o_tensor
 
     def _context_attention_kernel_with_CC_fp8(
@@ -246,20 +263,24 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         k_nope, k_rope, v = self._decompress_kv(kv, infer_state, layer_weight, True)
         q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
-        context_attention_fwd_with_v(
-            q_nope,
-            q_rope,
-            k_nope,
-            k_rope,
-            v,
-            o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
-            infer_state.b_start_loc,
-            infer_state.b_kv_start_loc,
-            infer_state.b_seq_len,
-            infer_state.b_ready_cache_len,
-            infer_state.max_len_in_batch,
-            self.softmax_scale,
-        )
+        if self.enable_flashinfer_prefilled:
+            k = torch.cat([k_nope, torch.repeat_interleave(k_rope, self.tp_q_head_num_, dim=-2)], dim=-1)
+            infer_state.wrapper.run(q, k, v, out=o_tensor)
+        else:
+            context_attention_fwd_with_v(
+                q_nope,
+                q_rope,
+                k_nope,
+                k_rope,
+                v,
+                o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
+                infer_state.b_start_loc,
+                infer_state.b_kv_start_loc,
+                infer_state.b_seq_len,
+                infer_state.b_ready_cache_len,
+                infer_state.max_len_in_batch,
+                self.softmax_scale,
+            )
         return o_tensor
 
     def _context_attention_kernel_origin(
@@ -371,7 +392,17 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.b_req_idx,
                 self.softmax_scale,
                 q.shape[-1],
-                q_nope.shape[-1],
+                self.kv_lora_rank,
+            )
+            return o_tensor
+        elif self.enable_flashinfer_decode_mla:
+            infer_state.wrapper.run(
+                q_nope,
+                q_rope,
+                kv[:, :, : -self.qk_rope_head_dim],
+                kv[:, :, -self.qk_rope_head_dim :],
+                out=o_tensor,
+                return_lse=False,
             )
             return o_tensor
         else:
@@ -424,16 +455,13 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         return
 
     def _copy_kv_to_mem_cache_fp8(self, buffer, mem_index, mem_manager):
-        quant_method = vLLMFP8w8a8QuantizationMethod()
-        quant, scale = quant_method.quantize_scaled_mm_fp8(buffer.reshape(-1, buffer.shape[-1]))
-        destindex_copy_kv(
-            quant.T.unsqueeze(1)[:, :, : self.kv_lora_rank].view(torch.uint8),
-            quant.T.unsqueeze(1)[:, :, self.kv_lora_rank :].view(torch.uint8),
+        destindex_copy_kv_fp8(
+            buffer[:, :, : self.kv_lora_rank],
+            buffer[:, :, self.kv_lora_rank :],
             mem_index,
-            mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank],
-            mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank : -2],
-            mem_manager.kv_buffer[self.layer_num_][:, :, -2:],
-            scale.to(buffer.dtype).view(torch.uint8),
+            mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank].view(torch.float8_e4m3fn),
+            mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank : -2].view(torch.float8_e4m3fn),
+            mem_manager.kv_buffer[self.layer_num_][:, :, -2:].view(buffer.dtype),
         )
         return
 

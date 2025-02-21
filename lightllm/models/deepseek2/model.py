@@ -8,6 +8,7 @@ from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.common.deepseek2_mem_manager import Deepseek2MemoryManager
 from lightllm.common.deepseek2_fp8kv_mem_manager import Deepseek2FP8KVMemoryManager
 from lightllm.utils.log_utils import init_logger
+from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 
 
 logger = init_logger(__name__)
@@ -37,6 +38,15 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.q_lora_rank = self.config["q_lora_rank"]
         self.kv_lora_rank = self.config["kv_lora_rank"]
         self.head_dim_ = self.kv_lora_rank + self.qk_rope_head_dim
+        self.tp_q_head_num_ = self.config["num_attention_heads"] // self.world_size_
+        self.softmax_scale = (self.qk_nope_head_dim + self.qk_rope_head_dim) ** (-0.5)
+        if self.config["rope_scaling"] is not None:
+            rope_scaling = self.config["rope_scaling"]
+            mscale_all_dim = rope_scaling.get("mscale_all_dim", 0)
+            scaling_factor = rope_scaling["factor"]
+            if mscale_all_dim:
+                mscale = get_deepseek_mscale(scaling_factor, mscale_all_dim)
+                self.softmax_scale = self.softmax_scale * mscale * mscale
 
     def _init_custom(self):
         self._init_to_get_yarn_rotary()
