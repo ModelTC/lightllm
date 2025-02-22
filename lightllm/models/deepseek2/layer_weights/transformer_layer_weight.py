@@ -19,6 +19,63 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
 )
 from functools import partial
 
+import triton
+import triton.language as tl
+from triton import Config
+
+
+def weight_dequant(x: torch.Tensor, s: torch.Tensor, block_size: int = 128) -> torch.Tensor:
+    """
+    Dequantizes the given weight tensor using the provided scale tensor.
+
+    Args:
+        x (torch.Tensor): The quantized weight tensor of shape (M, N).
+        s (torch.Tensor): The scale tensor of shape (M, N).
+        block_size (int, optional): The block size to use for dequantization. Defaults to 128.
+
+    Returns:
+        torch.Tensor: The dequantized weight tensor of the same shape as `x`.
+
+    Raises:
+        AssertionError: If `x` or `s` are not contiguous or if their dimensions are not 2.
+    """
+    assert x.is_contiguous() and s.is_contiguous(), "Input tensors must be contiguous"
+    assert x.dim() == 2 and s.dim() == 2, "Input tensors must have 2 dimensions"
+    M, N = x.size()
+    y = torch.empty_like(x, dtype=torch.get_default_dtype())
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE"]), triton.cdiv(N, meta["BLOCK_SIZE"]))
+    weight_dequant_kernel[grid](x, s, y, M, N, BLOCK_SIZE=block_size)
+    return y
+
+
+@triton.jit
+def weight_dequant_kernel(x_ptr, s_ptr, y_ptr, M, N, BLOCK_SIZE: tl.constexpr):
+    """
+    Dequantizes weights using the provided scaling factors and stores the result.
+
+    Args:
+        x_ptr (tl.pointer): Pointer to the quantized weights.
+        s_ptr (tl.pointer): Pointer to the scaling factors.
+        y_ptr (tl.pointer): Pointer to the output buffer for dequantized weights.
+        M (int): Number of rows in the weight matrix.
+        N (int): Number of columns in the weight matrix.
+        BLOCK_SIZE (tl.constexpr): Size of the block for tiling.
+
+    Returns:
+        None
+    """
+    pid_m = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+    n = tl.cdiv(N, BLOCK_SIZE)
+    offs_m = pid_m * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    offs_n = pid_n * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    x = tl.load(x_ptr + offs, mask=mask).to(tl.float32)
+    s = tl.load(s_ptr + pid_m * n + pid_n)
+    y = x * s
+    tl.store(y_ptr + offs, y, mask=mask)
+
 
 class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
     def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
@@ -116,8 +173,12 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
     def load_hf_weights(self, weights):
         if f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight" in weights:
             kv_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight"]
-            weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight"] = self._load_kb(kv_b_proj_)
-            weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"] = self._load_vb(kv_b_proj_)
+            f_kv_b_proj_ = weight_dequant(
+                kv_b_proj_, weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix]
+            )
+            weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight"] = self._load_kb(f_kv_b_proj_)
+            weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"] = self._load_vb(f_kv_b_proj_)
+
         if (
             self.quant_cfg.quantized_weight
             and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix in weights
@@ -184,15 +245,15 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
             self.data_type_,
             split_n_embed=self.tp_q_head_num_,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+            # weight_scale_suffix=self.weight_scale_suffix,
+            # act_scale_suffix=self.act_scale_suffix,
         )
         self.v_b_proj_ = ROWBMMWeight(
             f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
             self.data_type_,
             split_n_embed=self.tp_q_head_num_,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+            # weight_scale_suffix=self.weight_scale_suffix,
+            # act_scale_suffix=self.act_scale_suffix,
         )
         if self.enable_cc_method:
             self.cc_kv_b_proj_ = ROWMMWeight(
