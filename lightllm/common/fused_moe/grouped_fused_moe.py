@@ -464,10 +464,10 @@ def grouped_matmul(
         token_input_scale,
         expert_to_weights_scale,
         expert_to_weights_scale.stride(0)
-        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim == 2
+        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim >= 1
         else 0,
         expert_to_weights_scale.stride(1)
-        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim == 2
+        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim >= 2
         else 0,
         expert_to_weights_scale.stride(2)
         if expert_to_weights_scale is not None and expert_to_weights_scale.ndim == 3
@@ -532,10 +532,10 @@ def grouped_matmul(
         token_input_scale,
         expert_to_weights_scale,
         expert_to_weights_scale.stride(0)
-        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim == 2
+        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim >= 1
         else 0,
         expert_to_weights_scale.stride(1)
-        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim == 2
+        if expert_to_weights_scale is not None and expert_to_weights_scale.ndim >= 2
         else 0,
         expert_to_weights_scale.stride(2)
         if expert_to_weights_scale is not None and expert_to_weights_scale.ndim == 3
