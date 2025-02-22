@@ -73,16 +73,16 @@ class MMWeightTpl(BaseWeightTpl):
                     and (not self.static_activation or self.input_scale is not None)
                 ):
                     if self.weight_scale.ndim > 1:
-                        self.weight_scale = self.weight_scale.transpose(0, 1).cuda(self.device_id_)
+                        self.weight_scale = self.weight_scale.cuda(self.device_id_).transpose(0, 1)
                     self.weight = [
-                        self.weight.transpose(0, 1).cuda(self.device_id_),
+                        self.weight.cuda(self.device_id_).transpose(0, 1),
                         self.weight_scale,
                         self.input_scale,
                     ]
             else:
                 self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(self.device_id_))
             return
-        self.weight = self.weight.to(self.data_type_).transpose(0, 1).cuda(self.device_id_)
+        self.weight = self.weight.to(self.data_type_).cuda(self.device_id_).transpose(0, 1)
 
 
 class MMWeight(MMWeightTpl):
