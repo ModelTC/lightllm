@@ -217,8 +217,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
         context_attention_fwd_with_v(
-            q_nope.contiguous(),
-            q_rope.contiguous(),
+            q_nope,
+            q_rope,
             k_nope,
             k_rope,
             v,
