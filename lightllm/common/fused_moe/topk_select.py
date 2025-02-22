@@ -93,6 +93,7 @@ def grouped_topk(
     return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
 
 
+# biased_grouped_topk adapt from sgl-project/sglang/python/sglang/srt/layers/moe/topk.py
 def biased_grouped_topk(
     hidden_states: torch.Tensor,
     gating_output: torch.Tensor,
@@ -196,7 +197,12 @@ def select_experts(
                 scoring_func=scoring_func,
             )
         else:
-            topk_weights, topk_ids = biased_grouped_topk(
+            group_score_topk_num = 1
+            # for deepseek v3
+            if topk_group == 4 and num_expert_group == 8 and top_k == 8:
+                group_score_topk_num = 2
+
+            topk_weights, topk_ids = triton_grouped_topk(
                 hidden_states=hidden_states,
                 gating_output=router_logits,
                 correction_bias=correction_bias,
@@ -205,7 +211,9 @@ def select_experts(
                 num_expert_group=num_expert_group,
                 topk_group=topk_group,
                 scoring_func=scoring_func,
+                group_score_used_topk_num=group_score_topk_num,
             )
+
     elif custom_routing_function is None:
         topk_weights, topk_ids = fused_topk(
             hidden_states=hidden_states, gating_output=router_logits, topk=top_k, renormalize=renormalize

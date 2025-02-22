@@ -118,6 +118,7 @@ def grouped_topk_kernel(
     EXPERT_GROUP_NUM: tl.constexpr,  # tl.next_power_two_of(group_num)
     EXPERT_GROUP_SIZE: tl.constexpr,  # tl.next_power_two_of(group_expert_num)
     RENORMALIZE: tl.constexpr,
+    GROUP_SCORE_USED_TOPK_NUM: tl.constexpr,
 ):
     token_index = tl.program_id(axis=0)
     offs_n = tl.arange(0, EXPERT_BLOCK_SIZE)
@@ -148,7 +149,15 @@ def grouped_topk_kernel(
         other=-10000000.0,
     )  # [group, group_size]
 
-    group_value = tl.max(group_scores, axis=1)  # [group,]
+    group_value = tl.sum(
+        tl.where(
+            (offs_group < group_num)[:, None] & (offs_group_v < GROUP_SCORE_USED_TOPK_NUM)[None, :],
+            tl.sort(group_scores, dim=1, descending=True),
+            0.0,
+        ),
+        axis=1,
+    )
+
     sorted_group_value = tl.sort(group_value, descending=True)
     group_topk_value = tl.sum(tl.where(offs_group == group_topk_num - 1, sorted_group_value, 0.0))
     mask_group_scores = tl.where(
@@ -198,6 +207,7 @@ def triton_grouped_topk(
     num_expert_group: int = 0,
     topk_group: int = 0,
     scoring_func: str = "softmax",
+    group_score_used_topk_num=2,
 ):
 
     if correction_bias is not None:
@@ -239,6 +249,7 @@ def triton_grouped_topk(
         EXPERT_GROUP_NUM=triton.next_power_of_2(num_expert_group),
         EXPERT_GROUP_SIZE=triton.next_power_of_2(total_expert_num // num_expert_group),
         RENORMALIZE=renormalize,
+        GROUP_SCORE_USED_TOPK_NUM=group_score_used_topk_num,
         num_warps=1,
         num_stages=1,
     )
