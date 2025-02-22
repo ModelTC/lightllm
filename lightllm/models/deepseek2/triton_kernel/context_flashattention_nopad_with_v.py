@@ -165,7 +165,7 @@ def context_attention_fwd_with_v(
     if q_nope.dtype == torch.float32:
         BLOCK = BLOCK // 4
 
-    sm_scale = softmax_scale
+    sm_scale = softmax_scale * 1.4426950408889634
     batch, head = b_seq_len.shape[0], q_nope.shape[1]
 
     grid = (batch, head, triton.cdiv(max_input_len, BLOCK))  # batch, head,
