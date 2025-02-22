@@ -450,8 +450,8 @@ def grouped_matmul(
         else:
             _m, _k = token_inputs.shape
             assert _k % block_size_k == 0
-            input_scale = alloc_tensor_func((_m, _k // block_size_k), torch.float32, device=token_inputs.device)
-            qinput_tensor = alloc_tensor_func((_m, _k), expert_weights.dtype, device=token_inputs.device)
+            input_scale = alloc_tensor_func((_m, _k // block_size_k), dtype=torch.float32, device=token_inputs.device)
+            qinput_tensor = alloc_tensor_func((_m, _k), dtype=expert_weights.dtype, device=token_inputs.device)
             per_token_group_quant_fp8(token_inputs, block_size_k, qinput_tensor, input_scale)
             token_inputs, token_input_scale = qinput_tensor, input_scale
 
