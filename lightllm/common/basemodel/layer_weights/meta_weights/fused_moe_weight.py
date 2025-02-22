@@ -167,7 +167,7 @@ class FusedMoeWeight(BaseWeight):
         expert_gate_up_proj_last = None
         expert_down_proj_last = None
         if self.e_score_correction_bias_name in weights:
-            self.e_score_correction_bias = self._cuda(self.e_score_correction_bias_name)
+            self.e_score_correction_bias = self._cuda(weights[self.e_score_correction_bias_name])
 
         for i_experts_ep in range(n_expert_ep):
             expert_up_proj = None
