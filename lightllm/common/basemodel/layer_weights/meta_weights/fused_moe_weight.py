@@ -82,8 +82,7 @@ class FusedMoeWeight(BaseWeight):
         w2, w2_scale = self.w2
         use_fp8_w8a8 = self.quant_method is not None
 
-        # from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
-        from vllm.model_executor.layers.fused_moe.fused_moe import fused_experts_impl
+        from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
 
         fused_experts_impl(
             hidden_states=input_tensor,
@@ -95,7 +94,6 @@ class FusedMoeWeight(BaseWeight):
             use_fp8_w8a8=use_fp8_w8a8,
             w1_scale=w1_scale,
             w2_scale=w2_scale,
-            block_shape=[128, 128],
         )
         return
 
