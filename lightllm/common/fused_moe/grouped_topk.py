@@ -6,10 +6,11 @@ from triton.language.standard import _log2, sum, zeros_like
 
 
 @triton.jit
-def _compare_and_swap(x, ids, flip, i: tl.core.constexpr, n_dims: tl.core.constexpr):
+def _compare_and_swap(x, x_1, ids, flip, i: tl.core.constexpr, n_dims: tl.core.constexpr):
     n_outer: tl.core.constexpr = x.numel >> n_dims
     shape: tl.core.constexpr = [n_outer * 2 ** i, 2, 2 ** (n_dims - i - 1)]
     y = tl.core.reshape(x, shape)
+    y_1 = tl.core.reshape(x_1, shape)
     # slice left/right with 'stride' 2**(n_dims - i - 1)
     mask = tl.core.arange(0, 2)[None, :, None]
     left = tl.core.broadcast_to(sum(y * (1 - mask), 1)[:, None, :], shape)
@@ -17,6 +18,10 @@ def _compare_and_swap(x, ids, flip, i: tl.core.constexpr, n_dims: tl.core.conste
     left = tl.core.reshape(left, x.shape)
     right = tl.core.reshape(right, x.shape)
 
+    left_1 = tl.core.broadcast_to(sum(y_1 * (1 - mask), 1)[:, None, :], shape)
+    right_1 = tl.core.broadcast_to(sum(y_1 * mask, 1)[:, None, :], shape)
+    left_1 = tl.core.reshape(left_1, x_1.shape)
+    right_1 = tl.core.reshape(right_1, x_1.shape)
     # idx
     y_idx = tl.core.reshape(ids, shape)
     left_idx = tl.core.broadcast_to(sum(y_idx * (1 - mask), 1)[:, None, :], shape)
@@ -36,11 +41,18 @@ def _compare_and_swap(x, ids, flip, i: tl.core.constexpr, n_dims: tl.core.conste
 
     new_ids = ids ^ tl.core.where(cond, left_idx ^ right_idx, zeros_like(ids))
 
-    return ret.to(x.dtype, bitcast=True), new_ids
+    # swap x_1
+    idtype_1 = tl.core.get_int_dtype(bitwidth=x_1.dtype.primitive_bitwidth, signed=True)
+    ileft_1 = left_1.to(idtype_1, bitcast=True)
+    iright_1 = right_1.to(idtype_1, bitcast=True)
+    ix_1 = x_1.to(idtype, bitcast=True)
+    ret_1 = ix_1 ^ tl.core.where(cond, ileft_1 ^ iright_1, zeros_like(ix_1))
+
+    return ret.to(x.dtype, bitcast=True), ret_1.to(x_1.dtype, bitcast=True), new_ids
 
 
 @triton.jit
-def _bitonic_merge(x, ids, stage: tl.core.constexpr, order: tl.core.constexpr, n_dims: tl.core.constexpr):
+def _bitonic_merge(x, x_1, ids, stage: tl.core.constexpr, order: tl.core.constexpr, n_dims: tl.core.constexpr):
     """
     order_type 0 == ascending
     order_type 1 == descending
@@ -60,12 +72,12 @@ def _bitonic_merge(x, ids, stage: tl.core.constexpr, order: tl.core.constexpr, n
         flip = order
     # perform `stage` rounds of `compare-and-swap`
     for i in tl.core.static_range(stage):
-        x, ids = _compare_and_swap(x, ids, flip, i + (n_dims - stage), n_dims)
-    return x, ids
+        x, x_1, ids = _compare_and_swap(x, x_1, ids, flip, i + (n_dims - stage), n_dims)
+    return x, x_1, ids
 
 
 @triton.jit
-def argsort(x, ids, dim: tl.core.constexpr = None, descending: tl.core.constexpr = tl.core.CONSTEXPR_0):
+def argsort(x, x_1, ids, dim: tl.core.constexpr = None, descending: tl.core.constexpr = tl.core.CONSTEXPR_0):
     # handle default dimension or check that it is the most minor dim
     _dim: tl.core.constexpr = len(x.shape) - 1 if dim is None else dim
     tl.core.static_assert(_dim == len(x.shape) - 1, "only minor dimension is currently supported")
@@ -73,8 +85,8 @@ def argsort(x, ids, dim: tl.core.constexpr = None, descending: tl.core.constexpr
     n_dims: tl.core.constexpr = _log2(x.shape[_dim])
 
     for i in tl.core.static_range(1, n_dims + 1):
-        x, ids = _bitonic_merge(x, ids, i, 2 if i < n_dims else descending, n_dims)
-    return x, ids
+        x, x_1, ids = _bitonic_merge(x, x_1, ids, i, 2 if i < n_dims else descending, n_dims)
+    return x, x_1, ids
 
 
 @triton.jit
@@ -115,12 +127,14 @@ def grouped_topk_kernel(
         other=-10000000.0,
     ).to(tl.float32)
     if IS_SIGMOID:
-        scores = tl.sigmoid(hidden_states)
+        old_scores = tl.sigmoid(hidden_states)
     else:
-        scores = tl.softmax(hidden_states)
+        old_scores = tl.softmax(hidden_states)
 
     if HAS_CORRECTION_BIAS:
-        scores += tl.load(correction_bias_ptr + offs_n, mask=offs_n < total_expert_num, other=-10000000.0)
+        scores = old_scores + tl.load(correction_bias_ptr + offs_n, mask=offs_n < total_expert_num, other=-10000000.0)
+    else:
+        scores = old_scores
 
     offs_group = tl.arange(0, EXPERT_GROUP_NUM)
     offs_group_v = tl.arange(0, EXPERT_GROUP_SIZE)
@@ -155,7 +169,7 @@ def grouped_topk_kernel(
     mask_scores = tl.load(
         scores_buffer_ptr + scores_stride_m * token_index + offs_n, mask=offs_n < total_expert_num, other=-10000000.0
     )
-    sorted_scores, sorted_indexes = argsort(mask_scores, offs_n, descending=True)
+    _, sorted_scores, sorted_indexes = argsort(mask_scores, old_scores, offs_n, descending=True)
 
     if RENORMALIZE:
         sum_scores = tl.sum(tl.where(offs_n < topk_num, sorted_scores, 0.0))

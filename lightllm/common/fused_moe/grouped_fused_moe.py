@@ -417,7 +417,6 @@ def grouped_matmul(
         if expert_to_weights_scale.ndim == 3:
             block_size_n = expert_weights.shape[1] // expert_to_weights_scale.shape[1]
             block_size_k = expert_weights.shape[2] // expert_to_weights_scale.shape[2]
-
     if not run_config:
         run_config = MoeGroupedGemmKernelConfig.try_to_get_best_config(
             M=token_inputs.shape[0],
@@ -579,7 +578,6 @@ def fused_experts_impl(
     assert w1.is_contiguous(), "Expert weights1 must be contiguous"
     assert w2.is_contiguous(), "Expert weights2 must be contiguous"
     assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
-
     num_tokens, _ = hidden_states.shape
     E, N, _ = w1.shape
     CHUNK_SIZE = FFN_MOE_CHUNK_SIZE

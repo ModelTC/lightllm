@@ -82,7 +82,8 @@ class FusedMoeWeight(BaseWeight):
         w2, w2_scale = self.w2
         use_fp8_w8a8 = self.quant_method is not None
 
-        from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
+        # from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl
+        from vllm.model_executor.layers.fused_moe.fused_moe import fused_experts_impl
 
         fused_experts_impl(
             hidden_states=input_tensor,
@@ -94,6 +95,7 @@ class FusedMoeWeight(BaseWeight):
             use_fp8_w8a8=use_fp8_w8a8,
             w1_scale=w1_scale,
             w2_scale=w2_scale,
+            block_shape=[128, 128],
         )
         return
 
@@ -223,6 +225,8 @@ class FusedMoeWeight(BaseWeight):
         if os.environ.get("ETP_MODE_ENABLED") == "true":
             self._load_hf_weights_etp(weights)
         else:
+            if self.e_score_correction_bias_name in weights:
+                self.e_score_correction_bias = self._cuda(weights[self.e_score_correction_bias_name])
             for i_experts in range(self.n_routed_experts):
                 w1_weight = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.weight"
                 w2_weight = f"{self.weight_prefix}.{i_experts}.{self.w2_weight_name}.weight"

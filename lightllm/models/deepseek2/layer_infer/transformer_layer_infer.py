@@ -32,6 +32,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.tp_v_head_num_ = 1
         self.qk_nope_head_dim = network_config["qk_nope_head_dim"]
         self.qk_rope_head_dim = network_config["qk_rope_head_dim"]
+        self.v_head_dim = network_config["v_head_dim"]
         self.q_lora_rank = network_config["q_lora_rank"]
         self.kv_lora_rank = network_config["kv_lora_rank"]
 
@@ -204,8 +205,14 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             k_nope.shape,
             dtype=compressed_kv.dtype,
         )
-        layer_weight.cc_k_b_proj_.mm(compressed_kv, out=k_nope.reshape(compressed_kv.shape[0], -1))
-        layer_weight.cc_v_b_proj_.mm(compressed_kv, out=v.reshape(compressed_kv.shape[0], -1))
+        kv_nope = self.alloc_tensor(
+            [compressed_kv.shape[0], self.tp_q_head_num_, (self.qk_nope_head_dim + self.v_head_dim)],
+            dtype=compressed_kv.dtype,
+        )
+        layer_weight.cc_kv_b_proj_.mm(compressed_kv, out=kv_nope.reshape(compressed_kv.shape[0], -1))
+        k_nope, v = torch.split(kv_nope, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
+        # layer_weight.cc_k_b_proj_.mm(compressed_kv, out=k_nope.reshape(compressed_kv.shape[0], -1))
+        # layer_weight.cc_v_b_proj_.mm(compressed_kv, out=v.reshape(compressed_kv.shape[0], -1))
         return k_nope, k_rope, v
 
     def _context_attention_kernel_with_CC(
@@ -220,8 +227,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
         o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
         context_attention_fwd_with_v(
-            q_nope,
-            q_rope,
+            q_nope.contiguous(),
+            q_rope.contiguous(),
             k_nope,
             k_rope,
             v,
