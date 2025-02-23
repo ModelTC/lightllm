@@ -1,6 +1,6 @@
 import torch
 from .base_weight import BaseWeightTpl
-from lightllm.utils.device_utils import get_current_device_id
+from lightllm.utils.dist_utils import get_current_device_id
 
 
 class NormWeight(BaseWeightTpl):

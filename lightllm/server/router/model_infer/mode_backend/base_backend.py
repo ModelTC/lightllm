@@ -3,6 +3,7 @@ import asyncio
 import numpy as np
 import rpyc
 import torch
+import socket
 from datetime import timedelta
 from typing import Dict, List, Tuple
 from transformers.configuration_utils import PretrainedConfig
@@ -37,7 +38,7 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
-from lightllm.utils.device_utils import set_current_device_id
+from lightllm.utils.dist_utils import _init_distributed_env
 from lightllm.server.core.objs import ShmReqManager
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 import torch.distributed as dist
@@ -84,19 +85,7 @@ class ModeBackend:
 
         size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
         self.local_tp_rank = self.tp_rank - size_per_node * self.node_rank
-        torch.cuda.set_device(self.local_tp_rank)
-        set_current_device_id(self.local_tp_rank)
-
-        dist.init_process_group(
-            "nccl",
-            init_method=f'tcp://{kvargs["nccl_host"]}:{kvargs["nccl_port"]}',
-            rank=self.tp_rank,
-            world_size=self.world_size,
-        )
-        # warmup nccl communicator
-        _a = torch.zeros([1]).to(f"cuda:{self.local_tp_rank}")
-        dist.all_reduce(_a)
-        del _a
+        _init_distributed_env(kvargs)
 
         from lightllm.distributed import custom_comm_ops
 

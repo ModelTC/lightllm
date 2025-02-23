@@ -50,7 +50,9 @@ class RouterManager:
         self.shm_req_manager = ShmReqManager()
         # 用共享内存进行共享，router 模块读取进行精确的调度估计
         size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
-        local_world_size = size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
+        local_world_size = (
+            size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
+        )
         self.read_only_statics_mem_manager = ReadOnlyStaticsMemoryManager(args.nccl_port, local_world_size)
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
         self.radix_cache_client = None
@@ -77,15 +79,13 @@ class RouterManager:
         self.send_to_detokenization = context.socket(zmq.PUSH)
         self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
-        
+
         self.multinode_req_manager = None
         self.multinode_req_queue_lock = asyncio.Lock()
         if args.nnodes > 1:
             if args.node_rank == 0:
                 self.multinode_req_manager = []
-                for child_ip in args.child_ips.split(","):
-                    if ":" in child_ip:
-                        child_ip = child_ip.split(":")[0]
+                for child_ip in args.child_ips:
                     context = zmq.asyncio.Context(2)
                     self.multinode_req_manager.append(context.socket(zmq.PUSH))
                     self.multinode_req_manager[-1].connect(f"tcp://{child_ip}:{args.multinode_router_port}")
@@ -126,8 +126,12 @@ class RouterManager:
         self.rpc_finished_event = multiprocessing.Event()
 
         size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
-        local_world_size = size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
-        for rank_id in range(self.node_rank * size_per_node, min(self.world_size, (self.node_rank + 1) * size_per_node)):
+        local_world_size = (
+            size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
+        )
+        for rank_id in range(
+            self.node_rank * size_per_node, min(self.world_size, (self.node_rank + 1) * size_per_node)
+        ):
             rpc_model = await start_model_process(
                 args=self.args,
                 tp_rank=rank_id,
@@ -299,7 +303,9 @@ class RouterManager:
                 # time.sleep(0.003)  # 这里是为了保证能正确进入推理的流程，保证折叠成功。
                 await asyncio.sleep(0.003)
                 async with self.multinode_req_queue_lock:
-                    new_batch, poped_req_list, remain_req_list = self.req_queue.generate_new_batch(running_batch, current_waiting_list)
+                    new_batch, poped_req_list, remain_req_list = self.req_queue.generate_new_batch(
+                        running_batch, current_waiting_list
+                    )
                     self.req_queue.pop_list(poped_req_list)
                 return new_batch
 

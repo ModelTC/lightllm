@@ -16,7 +16,7 @@ from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrain
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.utils.device_utils import set_current_device_id
+from lightllm.utils.dist_utils import set_current_device_id
 from lightllm.utils.graceful_utils import graceful_registry
 
 

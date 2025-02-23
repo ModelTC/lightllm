@@ -5,7 +5,7 @@ import torch
 from transformers import AutoModelForCausalLM
 import argparse
 from lightllm.common.build_utils import repair_config
-from lightllm.utils.device_utils import get_current_device_id
+from lightllm.utils.dist_utils import get_current_device_id
 
 data_type_dict = {"float32": 4, "float16": 2, "bfloat16": 2, "fp32": 4, "fp16": 2, "bf16": 2, "int8": 1, "int4": 0.5}
 
