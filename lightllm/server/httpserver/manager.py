@@ -434,7 +434,7 @@ class HttpServerManager:
                         unfinished_count -= 1
 
                     # 所有子请求完成后，就删除占用的资源
-                    if unfinished_count == 0 and request is not None:
+                    if unfinished_count == 0:
                         total_cost_time_ms = (time.time() - start_time) * 1000
                         mean_per_token_cost_time_ms = (total_cost_time_ms - first_token_cost_ms) / out_token_counter
                         self.per_token_costs.add(mean_per_token_cost_time_ms)

@@ -391,9 +391,8 @@ class RouterManager:
         self.overlap_event.set()
         await self.model_rpc_client.decode()
         batch.filter_out_finished_req(self.shm_req_manager)
-        if self.node_rank == 0:
-            # 发个None包触发一下detokenization
-            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+        # 发个None包触发一下detokenization
+        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
         )
