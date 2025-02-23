@@ -76,14 +76,15 @@ class MMWeightTpl(BaseWeightTpl):
                     if self.weight_scale.ndim > 1:
                         self.weight_scale = self.weight_scale.transpose(0, 1).cuda(get_current_device_id())
                     self.weight = [
-                        self.weight.transpose(0, 1).cuda(get_current_device_id()),
+                        self.weight.cuda(get_current_device_id()).transpose(0, 1),
                         self.weight_scale,
                         self.input_scale,
                     ]
             else:
                 self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(get_current_device_id()))
             return
-        self.weight = self.weight.to(self.data_type_).transpose(0, 1).cuda(get_current_device_id())
+        # 让 k dim 更连续，大多数split k 算法的算子可能能更快
+        self.weight = self.weight.to(self.data_type_).cuda(get_current_device_id()).transpose(0, 1)
 
 
 class MMWeight(MMWeightTpl):
@@ -501,7 +502,8 @@ class ROWBMMWeight(BMMWeight):
         weight = weight.to(self.data_type_)
         block_size = weight.shape[-1] // scale.shape[-1]
         w_shape = weight.shape
-        scale = scale.unsqueeze(-1).repeat(1, 1, 1, block_size).reshape(w_shape[0], w_shape[1], -1)
+        s_shape = scale.shape
+        scale = scale.unsqueeze(-1).repeat(1, 1, 1, block_size).reshape(s_shape[0], s_shape[1], -1)
         scale = scale.unsqueeze(2).repeat(1, 1, block_size, 1).reshape(w_shape)
         return (weight * scale).to(self.data_type_)
 
