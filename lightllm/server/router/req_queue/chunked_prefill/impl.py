@@ -96,7 +96,6 @@ class ChunkedPrefillQueue(BaseQueue):
             new_batch = Batch(uuid.uuid4().int, can_run_list, dp_size=self.dp_size)
             for req in abort_req_list:
                 self.router.shm_req_manager.put_back_req_obj(req)
-            self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]
             poped_req_list = from_req_list[: len(can_run_list) + aborted_count]
             remain_req_list = from_req_list[len(can_run_list) + aborted_count :]
             return new_batch, poped_req_list, remain_req_list
