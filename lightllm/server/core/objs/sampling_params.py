@@ -15,6 +15,7 @@ REGULAR_CONSTRAINT_MAX_LENGTH = int(os.getenv("LIGHTLLM_REGULAR_CONSTRAINT_MAX_L
 GRAMMAR_CONSTRAINT_MAX_LENGTH = int(os.getenv("LIGHTLLM_GRAMMAR_CONSTRAINT_MAX_LENGTH", 2048))
 JSON_SCHEMA_MAX_LENGTH = int(os.getenv("LIGHTLLM_JSON_SCHEMA_MAX_LENGTH", 2048))
 
+
 class StopSequence(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
@@ -77,7 +78,7 @@ class StopSequenceGroups(ctypes.Structure):
 class RegularConstraint(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("constraint", ctypes.c_byte * REGULAR_CONSTRAINT_MAX_LENGTH),
+        ("constraint", ctypes.c_ubyte * REGULAR_CONSTRAINT_MAX_LENGTH),
         ("length", ctypes.c_int),
     ]
 
@@ -102,7 +103,7 @@ class RegularConstraint(ctypes.Structure):
 class GuidedGrammar(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("constraint", ctypes.c_byte * GRAMMAR_CONSTRAINT_MAX_LENGTH),
+        ("constraint", ctypes.c_ubyte * GRAMMAR_CONSTRAINT_MAX_LENGTH),
         ("length", ctypes.c_int),
     ]
 
@@ -122,7 +123,7 @@ class GuidedGrammar(ctypes.Structure):
 class GuidedJsonSchema(ctypes.Structure):
     _pack_ = 4
     _fields_ = [
-        ("constraint", ctypes.c_byte * JSON_SCHEMA_MAX_LENGTH),
+        ("constraint", ctypes.c_ubyte * JSON_SCHEMA_MAX_LENGTH),
         ("length", ctypes.c_int),
     ]
 

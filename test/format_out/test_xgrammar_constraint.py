@@ -4,7 +4,7 @@ import json
 import threading
 from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("/mnt/nvme0/chenjunyi/models/nb10_w8/")
+tokenizer = AutoTokenizer.from_pretrained("/mnt/nvme0/models/Meta-Llama-3.1-8B-Instruct")
 
 
 class RequestThread(threading.Thread):
@@ -97,8 +97,10 @@ person_schema = r"""{
 system_prompt = open("system.md", "r").read()
 user_input = open("user.md", "r").read()
 
+# user_input = """generate a person information for me, for example, {'name': 'John', 'age': 25}."""
+
 messages = [
-    {"role": "system", "content": system_prompt,},
+    {"role": "system", "content": system_prompt},
     {"role": "user", "content": user_input},
 ]
 
@@ -110,7 +112,7 @@ for i in range(1):
         # 'temperature': 0.1,
         "parameters": {
             "do_sample": False,
-            "guided_json": json_schema_str,
+            "guided_grammar": json_grammar_ebnf_str,
             "max_new_tokens": 200,
         },
     }

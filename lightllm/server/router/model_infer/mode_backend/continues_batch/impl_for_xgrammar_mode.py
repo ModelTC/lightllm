@@ -33,7 +33,7 @@ class XgrammarBackend(ContinuesBatchBackend):
         eos_token_ids = []
         eos_token_ids.append(self.tokenizer.eos_token_id)
         eos_token_ids.extend(self.args.eos_id)
-        # self.tokenizer.eos_token_ids = eos_token_ids
+        self.tokenizer.eos_token_ids = eos_token_ids
         # logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
         return
 
@@ -41,7 +41,6 @@ class XgrammarBackend(ContinuesBatchBackend):
     def prefill(self, reqs: List[Tuple]):
         req_ids = self._init_reqs(reqs)
         kwargs, run_reqs = prepare_prefill_inputs(req_ids, is_multimodal=self.is_multimodal)
-        run_reqs: List[InferReq] = reqs
 
         logics = self.model.forward(**kwargs)
 
@@ -59,7 +58,7 @@ class XgrammarBackend(ContinuesBatchBackend):
 
         # fix the logics with -inf to a large negative value
         logics[logics == float("-inf")] = -1000000.0
-        logics[mask] = -1000000.0
+        # logics[mask] = -1000000.0
 
         next_token_ids, next_token_probs = sample(logics, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
@@ -81,7 +80,7 @@ class XgrammarBackend(ContinuesBatchBackend):
             mask = torch.ones_like(logits, dtype=torch.bool)
             for i, run_obj in enumerate(run_reqs):
                 self._mask_req_out_token(i, run_obj, mask, logits[i])
-            logits[mask] = -1000000.0
+            # logits[mask] = -1000000.0
 
         logits[logits == float("-inf")] = -1000000.0
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
@@ -90,7 +89,7 @@ class XgrammarBackend(ContinuesBatchBackend):
 
         self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
         return
-    
+
     def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs):
         finished_req_ids = []
 
@@ -105,7 +104,10 @@ class XgrammarBackend(ContinuesBatchBackend):
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
 
-            if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
+            matcher = req_obj.sampling_param.xgrammar_matcher
+            assert matcher.accept_token(next_token_id)
+
+            if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted or matcher.is_terminated():
                 finished_req_ids.append(req_obj.shm_req.request_id)
 
             if self.tp_rank < self.dp_size:
