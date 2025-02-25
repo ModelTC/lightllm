@@ -7,13 +7,11 @@ from typing import final
 
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
 from lightllm.common.basemodel.infer_struct import InferStateInfo
-from lightllm.common.basemodel.splitfuse_infer_struct import SplitFuseInferStateInfo
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.infer_utils import init_req_to_token_indexes
 from lightllm.common.build_utils import repair_config
 from lightllm.common.basemodel.triton_kernel.copy_kv_index_to_req import copy_kv_index_to_req
-from lightllm.common.basemodel.triton_kernel.splitfuse_copy_kv_index_to_req import splitfuse_copy_kv_index_to_req
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.common.quantization import Quantcfg
@@ -36,7 +34,6 @@ class TpPartBaseModel:
 
     # infer state class
     infer_state_class = InferStateInfo
-    splitfuse_infer_state_class = SplitFuseInferStateInfo
 
     def __init__(self, kvargs):
         self.run_mode = kvargs["run_mode"]
@@ -57,6 +54,8 @@ class TpPartBaseModel:
         self.return_all_prompt_logics = kvargs.get("return_all_prompt_logics", False)
         assert not (self.is_token_healing and self.return_all_prompt_logics), "can not be true in same time"
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
+        enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)  # chunked prefill is default on.
+        self.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache or enable_chunked_prefill
         self.data_type = kvargs.get("data_type", "float16")
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
@@ -99,6 +98,7 @@ class TpPartBaseModel:
         repair_config(self.config, same_names=["num_hidden_layers", "n_layer"])
         if self.finetune_config:
             self.config["vocab_size"] = self.finetune_config.vocab_size
+
         return
 
     @final
@@ -112,7 +112,7 @@ class TpPartBaseModel:
         return
 
     def _init_quant(self):
-        self.quant_cfg = Quantcfg(self.config["n_layer"], self.quant_type, self.quant_cfg_path)
+        self.quant_cfg = Quantcfg(self.config, self.quant_type, self.quant_cfg_path)
         logger.info(f"Initial quantization. " f"The default quantization method is {self.quant_cfg.quant_type}")
 
     def _init_weights(self):
@@ -235,6 +235,8 @@ class TpPartBaseModel:
         multimodal_params=None,
         is_prefill=True,
     ):
+        assert mem_indexes.is_cuda
+
         if is_prefill:
             return self._prefill(
                 batch_size,
@@ -365,81 +367,6 @@ class TpPartBaseModel:
             predict_logics = self._token_forward(input_ids, infer_state)
         return predict_logics
 
-    @torch.no_grad()
-    def splitfuse_forward(
-        self,
-        input_ids,
-        mem_indexes,
-        decode_req_num,
-        decode_total_token_num,
-        decode_b_req_idx: torch.Tensor,
-        decode_b_start_loc: torch.Tensor,
-        decode_b_seq_len: torch.Tensor,
-        decode_max_len_in_batch,
-        prefill_req_num,
-        prefill_b_req_idx: torch.Tensor,
-        prefill_b_split_start_loc: torch.Tensor,
-        prefill_b_split_ready_cache_len: torch.Tensor,
-        prefill_max_split_seq_len_in_batch,
-        prefill_b_seq_len: torch.Tensor,
-    ):
-
-        infer_state = self.splitfuse_infer_state_class()
-        infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
-        infer_state.batch_size = decode_req_num + prefill_req_num
-
-        infer_state.decode_req_num = decode_req_num
-        infer_state.decode_total_token_num = decode_total_token_num
-        infer_state.decode_b_req_idx = decode_b_req_idx
-        infer_state.decode_b_start_loc = decode_b_start_loc
-        infer_state.decode_b_seq_len = decode_b_seq_len
-        infer_state.decode_max_len_in_batch = decode_max_len_in_batch
-
-        infer_state.prefill_req_num = prefill_req_num
-        infer_state.prefill_b_req_idx = prefill_b_req_idx
-        infer_state.prefill_b_split_start_loc = prefill_b_split_start_loc
-        infer_state.prefill_b_split_ready_cache_len = prefill_b_split_ready_cache_len
-        infer_state.prefill_max_split_seq_len_in_batch = prefill_max_split_seq_len_in_batch
-        infer_state.prefill_b_seq_len = prefill_b_seq_len
-        # infer_state.event = [torch.cuda.Event() for _ in range(self.layers_num)]
-
-        infer_state.mem_manager = self.mem_manager
-        infer_state.req_manager = self.req_manager
-
-        alloc_size = len(input_ids)
-        infer_state.mem_is_contiguous = False
-        infer_state.mem_index = mem_indexes
-        infer_state.kv_buffer = torch.empty(
-            (alloc_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-            dtype=self.data_type,
-            device="cuda",
-        )
-
-        # decode 部分
-        if decode_req_num != 0:
-            copy_kv_index_to_req(
-                self.req_manager.req_to_token_indexs,
-                decode_b_req_idx,
-                decode_b_seq_len,
-                infer_state.mem_index[0:decode_req_num],
-            )
-
-        # split prefill 部分
-        if prefill_req_num != 0:
-            splitfuse_copy_kv_index_to_req(
-                self.req_manager.req_to_token_indexs,
-                prefill_b_req_idx,
-                prefill_b_split_ready_cache_len,
-                prefill_b_seq_len,
-                infer_state.mem_index[decode_req_num:],
-            )
-
-        infer_state.init_some_extra_state(self, input_ids)
-        infer_state.create_inner_decode_infer_status()
-        infer_state.create_inner_prefill_infer_status()
-        predict_logics = self._splitfuse_forward(input_ids, infer_state)
-        return predict_logics
-
     @final
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
         g_cache_manager.cache_env_in()
@@ -467,17 +394,6 @@ class TpPartBaseModel:
         return predict_logics
 
     @final
-    def _splitfuse_forward(self, input_ids, infer_state: SplitFuseInferStateInfo):
-        g_cache_manager.cache_env_in()
-        cuda_input_ids = input_ids
-        input_embs = self.pre_infer.splitfuse_forward(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(0, self.layers_num):
-            input_embs = self.layers_infer[i].splitfuse_forward(input_embs, infer_state, self.trans_layers_weight[i])
-        predict_logics = self.post_infer.splitfuse_forward(input_embs, infer_state, self.pre_post_weight)
-        g_cache_manager.cache_env_out()
-        return predict_logics
-
-    @final
     @torch.no_grad()
     def _check_max_len_infer(self):
         disable_check_max_len_infer = os.getenv("DISABLE_CHECK_MAX_LEN_INFER", None) is not None
@@ -489,8 +405,8 @@ class TpPartBaseModel:
         try:
             logger.info("begin check max_len infer")
             dummy_input_ids = torch.ones(self.batch_max_tokens, dtype=torch.int32, device="cuda")
-            b_req_idx = self.req_manager.alloc(1).int()
-            mem_indexes = self.mem_manager.alloc(len(dummy_input_ids))
+            b_req_idx = torch.tensor([self.req_manager.alloc()], dtype=torch.int32, device="cuda")
+            mem_indexes = self.mem_manager.alloc(len(dummy_input_ids)).cuda()
             b_seq_len = torch.ones(1, dtype=torch.int32, device="cuda")
             b_seq_len[:] = self.batch_max_tokens
             b_ready_cache_len = torch.zeros(1, dtype=torch.int32, device="cuda")

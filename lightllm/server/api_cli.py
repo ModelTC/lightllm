@@ -13,6 +13,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--httpserver_workers", type=int, default=1)
     parser.add_argument(
         "--zmq_mode",
         type=str,
@@ -55,7 +56,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tokenizer_mode",
         type=str,
-        default="slow",
+        default="fast",
         help="""tokenizer load mode, can be slow, fast or auto, slow mode load fast but run slow,
           slow mode is good for debug and test, fast mode get best performance, auto mode will
           try to use fast mode, if failed will use slow mode""",
@@ -102,7 +103,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
                         do not set it and keep the default value as 1.""",
     )
     parser.add_argument(
-        "--max_req_total_len", type=int, default=2048 + 1024, help="the max value for req_input_len + req_output_len"
+        "--max_req_total_len", type=int, default=16384, help="the max value for req_input_len + req_output_len"
     )
     parser.add_argument(
         "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
@@ -113,10 +114,11 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=[],
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
-                        | triton_gqa_attention | triton_gqa_flashdecoding,
+                        | triton_gqa_attention | triton_gqa_flashdecoding | triton_fp8kv,
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
+                        triton_fp8kv mode use float8 to store kv cache, currently only for deepseek2;
                         ppl_int8kv mode use int8 to store kv cache, and use ppl fast kernel;
                         ppl_fp16 mode use ppl fast fp16 decode attention kernel;
                         you need to read source code to make sure the supported detail mode for all models""",
@@ -137,16 +139,14 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--router_max_wait_tokens",
         type=int,
-        default=10,
+        default=6,
         help="schedule new requests after every router_max_wait_tokens decode steps.",
     )
 
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
 
-    parser.add_argument("--splitfuse_block_size", type=int, default=256, help="splitfuse block size")
-
-    parser.add_argument("--splitfuse_mode", action="store_true", help="use splitfuse mode")
-    parser.add_argument("--beam_mode", action="store_true", help="use beamsearch mode")
+    parser.add_argument("--chunked_prefill_size", type=int, default=8192, help="chunked prefill size")
+    parser.add_argument("--enable_chunked_prefill", action="store_true", help="whether to disable chunked prefill")
     parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
     parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
 
@@ -166,6 +166,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
     )
+    parser.add_argument("--disable_custom_allreduce", action="store_true", help="Whether to disable cutom allreduce.")
     parser.add_argument(
         "--cache_capacity", type=int, default=200, help="cache server capacity for multimodal resources"
     )
@@ -232,7 +233,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--graph_max_len_in_batch",
         type=int,
-        default=8192,
+        default=0,
         help="""Maximum sequence length that can be captured by the cuda graph for decodign stage.
                 The default value is 8192. It will turn into eagar mode if encounters a larger value. """,
     )
@@ -242,7 +243,8 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="""Quantization method: ppl-w4a16-128 | flashllm-w6a16
                         | ao-int4wo-[32,64,128,256] | ao-int8wo | ao-fp8w8a16 | ao-fp6w6a16
-                        | vllm-w8a8 | vllm-fp8w8a8""",
+                        | vllm-w8a8 | vllm-fp8w8a8 | vllm-fp8w8a8-b128
+                        | triton-fp8w8a8-block128""",
     )
     parser.add_argument(
         "--quant_cfg",

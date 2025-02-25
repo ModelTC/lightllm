@@ -2,11 +2,11 @@ import torch
 from lightllm.models.deepseek2.layer_infer.transformer_layer_infer import Deepseek2TransformerLayerInfer
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
-from lightllm.models.deepseek2.splitfuse_infer_struct import DeepSeekv2SplitFuseInferStateInfo
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
 
 from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.common.deepseek2_mem_manager import Deepseek2MemoryManager
+from lightllm.common.deepseek2_fp8kv_mem_manager import Deepseek2FP8KVMemoryManager
 from lightllm.utils.log_utils import init_logger
 
 
@@ -22,9 +22,6 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
 
     # infer state class
     infer_state_class = Deepseek2InferStateInfo
-
-    # split fuse state class
-    splitfuse_infer_state_class = DeepSeekv2SplitFuseInferStateInfo
 
     def __init__(self, kvargs):
         super().__init__(kvargs)
@@ -48,7 +45,10 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         return super()._verify_params()
 
     def _init_mem_manager(self):
-        self.mem_manager = Deepseek2MemoryManager(
+        manager_class = Deepseek2MemoryManager
+        if "triton_fp8kv" in self.mode:
+            manager_class = Deepseek2FP8KVMemoryManager
+        self.mem_manager = manager_class(
             self.max_total_token_num,
             dtype=self.data_type,
             head_num=1,

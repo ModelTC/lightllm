@@ -53,6 +53,16 @@ After downloading the Llama-2-7b-chat model, use the following command in the te
 .. note::
     The ``--model_dir`` parameter in the above command should be changed to the actual path of your model on your machine. 
 
+For the DeepSeek-R1 model on H200, it can be launched with the following command:
+
+.. code-block:: console
+
+    $ LOADWORKER=8 python -m lightllm.server.api_server --model_dir ~/models/DeepSeek-R1 --tp 8 --graph_max_batch_size 100
+
+.. note::
+    LOADWORKER specifies the thread for model loading, which can enhance the speed of model loading. The --graph_max_batch_size parameter specifies the number of cudagraphs to be captured, which will capture graphs for batch sizes ranging from 1 to 100.
+
+
 3. (Optional) Test the Model Service
 --------------------------------------
 
@@ -70,5 +80,12 @@ In a new terminal, use the following command to test the model service:
     $            }
     $           }'
 
+
+For DeepSeek-R1 benchmark, use the following command to test the model service:
+
+.. code-block:: console
+
+    $ cd test
+    $ python benchmark_client.py --num_clients 100 --input_num 2000 --tokenizer_path /nvme/DeepSeek-R1/ --url http://127.0.01:8000/generate_stream
 
 

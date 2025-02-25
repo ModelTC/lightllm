@@ -1,11 +1,9 @@
-import uuid
-import asyncio
-import numpy as np
 from typing import List, Dict
 from lightllm.utils.infer_utils import calculate_time
-from lightllm.server.io_struct import Batch, Req
-from lightllm.server.io_struct import ReqRunStatus, FinishStatus
+from ..batch import Batch, Req
+from lightllm.server.core.objs import FinishStatus
 from lightllm.common.basemodel.infer_lock import g_router_lock
+from lightllm.utils.config_utils import get_fixed_kv_len
 
 
 class BaseQueue:
@@ -16,14 +14,18 @@ class BaseQueue:
         from lightllm.server.router.manager import RouterManager
 
         self.router: RouterManager = router
-        self.max_total_tokens = args.max_total_token_num
+        # max_total_token_num - get_fixed_kv_len() 是为了减去被特定
+        # 推理模式预先占用了部分token kv 资源，这会导致整体可用的kv 资源
+        # 在极端情况下减少，在非特定模式下，get_fixed_kv_len() 返回的都是
+        # 0， 不会有任何影响。
+        self.max_total_tokens = args.max_total_token_num - get_fixed_kv_len()
         assert args.batch_max_tokens is not None
         self.batch_max_tokens = args.batch_max_tokens
-        self.running_max_req_size = args.running_max_req_size  # 最大并非请求数量
-        self.waiting_req_list: List[Req] = []  # 当前等待队列
-        self.router_token_ratio = args.router_token_ratio  # 调度繁忙
+        self.running_max_req_size = args.running_max_req_size  # Maximum number of concurrent requests
+        self.waiting_req_list: List[Req] = []  # List of queued requests
+        self.router_token_ratio = args.router_token_ratio  # ratio to determine whether the router is busy
         self.router_max_new_token_len = args.router_max_new_token_len
-        self.pause_req_dict: Dict[int, Req] = {}  # 用于保存队列中被暂停的请求，暂停原因为 ReqRunStatus.PAUSED_AND_OFFLOAD
+        self.pause_req_dict: Dict[int, Req] = {}  # List of paused requests
 
     def append(self, req: Req):
         req.sample_params.suggested_dp_index = self.dp_index
@@ -44,9 +46,7 @@ class BaseQueue:
 
     def back_to_wait_list(self, req_list: List[Req]):
         for req in req_list:
-            if req.req_status in [
-                ReqRunStatus.PAUSED_AND_OFFLOAD,
-            ]:
+            if req.is_paused:
                 self.pause_req_dict[req.request_id] = req
         self.waiting_req_list = req_list + self.waiting_req_list
         return

@@ -3,15 +3,18 @@ import torch
 import torch.functional as F
 import torch.distributed as dist
 import numpy as np
-from lightllm.common.basemodel.splitfuse_infer_struct import SplitFuseInferStateInfo
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad import (
     context_attention_fwd,
     context_attention_fwd_no_prompt_cache,
 )
+from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad_fp8 import context_attention_fwd_fp8
+from lightllm.models.deepseek2.triton_kernel.context_flashattention_nopad_with_v import context_attention_fwd_with_v
+from lightllm.models.deepseek2.triton_kernel.sample_kv import sample_kv
 
 from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding import gqa_token_decode_attention_flash_decoding
+from lightllm.models.deepseek2.triton_kernel.gqa_flash_decoding_fp8 import gqa_token_decode_attention_flash_decoding_fp8
 from lightllm.models.llama.layer_infer.transformer_layer_infer import LlamaTransformerLayerInfer
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
@@ -20,6 +23,7 @@ from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 import os
+from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
@@ -28,6 +32,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.tp_v_head_num_ = 1
         self.qk_nope_head_dim = network_config["qk_nope_head_dim"]
         self.qk_rope_head_dim = network_config["qk_rope_head_dim"]
+        self.v_head_dim = network_config["v_head_dim"]
         self.q_lora_rank = network_config["q_lora_rank"]
         self.kv_lora_rank = network_config["kv_lora_rank"]
 
@@ -54,6 +59,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             if mscale_all_dim:
                 mscale = get_deepseek_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
+        self.enable_cc_method = not os.getenv("DISABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, tp_rank, world_size, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         if self.enable_dp:
@@ -64,12 +70,12 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.enable_opt_decoding_mha = os.getenv("ENABLE_OPT_DECODE_MHA", "False").upper() in ["ON", "TRUE", "1"]
         return
 
-    def _bind_attention(self):
-        self._context_attention_kernel = partial(Deepseek2TransformerLayerInfer._context_attention_kernel_origin, self)
-        self._token_attention_kernel = partial(
-            Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
-        )
-        self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
+    def _bind_func(self):
+        super()._bind_func()
+        self._bind_ffn()
+        return
+
+    def _bind_ffn(self):
         if self.is_moe:
             if self.enable_dp:
                 if os.environ.get("MOE_MODE", "TP") == "TP":
@@ -81,6 +87,36 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                     self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
         else:
             self._ffn = partial(LlamaTransformerLayerInfer._ffn, self)
+
+    def _bind_attention(self):
+        if "triton_fp8kv" in self.mode:
+            self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_fp8, self)
+            self._token_attention_kernel = partial(
+                Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding_fp8, self
+            )
+        else:
+            self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
+            self._token_attention_kernel = partial(
+                Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashdecoding, self
+            )
+        if self.enable_cc_method:
+            if "triton_fp8kv" in self.mode:
+                self._context_attention_kernel = partial(
+                    Deepseek2TransformerLayerInfer._context_attention_kernel_with_CC_fp8, self
+                )
+            else:
+                self._context_attention_kernel = partial(
+                    Deepseek2TransformerLayerInfer._context_attention_kernel_with_CC, self
+                )
+        else:
+            if "triton_fp8kv" in self.mode:
+                self._context_attention_kernel = partial(
+                    Deepseek2TransformerLayerInfer._context_attention_kernel_origin_fp8, self
+                )
+            else:
+                self._context_attention_kernel = partial(
+                    Deepseek2TransformerLayerInfer._context_attention_kernel_origin, self
+                )
 
     def _get_qkv(
         self,
@@ -123,6 +159,106 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         o_tensor = layer_weight.o_weight_.mm(input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
         return o_tensor
 
+    def _decompress_kv(
+        self, kv, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, is_fp8
+    ):
+        if infer_state.use_dynamic_prompt_cache:
+            if is_fp8:
+                kv = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, :-2].view(torch.float8_e4m3fn)
+                kv_scale = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, -2:].view(torch.bfloat16)
+                k_scale = self.alloc_tensor([infer_state.total_token_num, 1], dtype=kv_scale.dtype)
+            else:
+                kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
+                kv_scale = None
+                k_scale = None
+
+            compressed_kv = self.alloc_tensor(
+                [infer_state.total_token_num, 1, layer_weight.kv_lora_rank], dtype=kv.dtype
+            )
+            k_rope = self.alloc_tensor([infer_state.total_token_num, 1, self.qk_rope_head_dim], dtype=kv.dtype)
+            sample_kv(
+                kv,
+                compressed_kv,
+                k_rope,
+                infer_state.b_req_idx,
+                infer_state.b_seq_len,
+                infer_state.req_manager.req_to_token_indexs,
+                infer_state.b_kv_start_loc,
+                kv_scale,
+                k_scale,
+            )
+            if k_scale is not None:
+                compressed_kv = compressed_kv.to(k_scale.dtype) * k_scale.unsqueeze(-1)
+                k_rope = k_rope.to(k_scale.dtype) * k_scale.unsqueeze(-1)
+        else:
+            compressed_kv, k_rope = torch.split(  # (b*s, 1, kv_lora + qk_r)
+                kv, [layer_weight.kv_lora_rank, layer_weight.qk_rope_head_dim], dim=-1
+            )
+
+        # CC
+        compressed_kv = compressed_kv.view(-1, layer_weight.kv_lora_rank).contiguous()
+        kv_nope = self.alloc_tensor(
+            [compressed_kv.shape[0], self.tp_q_head_num_, (self.qk_nope_head_dim + self.v_head_dim)],
+            dtype=compressed_kv.dtype,
+        )
+        layer_weight.cc_kv_b_proj_.mm(compressed_kv, out=kv_nope.reshape(compressed_kv.shape[0], -1))
+        k_nope, v = torch.split(kv_nope, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
+        return k_nope, k_rope, v
+
+    def _context_attention_kernel_with_CC(
+        self,
+        q: torch.Tensor,
+        kv,
+        infer_state: Deepseek2InferStateInfo,
+        layer_weight: Deepseek2TransformerLayerWeight,
+        out=None,
+    ) -> torch.Tensor:
+        k_nope, k_rope, v = self._decompress_kv(kv, infer_state, layer_weight, False)
+        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+        o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
+        context_attention_fwd_with_v(
+            q_nope,
+            q_rope,
+            k_nope,
+            k_rope,
+            v,
+            o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
+            infer_state.b_start_loc,
+            infer_state.b_kv_start_loc,
+            infer_state.b_seq_len,
+            infer_state.b_ready_cache_len,
+            infer_state.max_len_in_batch,
+            self.softmax_scale,
+        )
+        return o_tensor
+
+    def _context_attention_kernel_with_CC_fp8(
+        self,
+        q: torch.Tensor,
+        kv,
+        infer_state: Deepseek2InferStateInfo,
+        layer_weight: Deepseek2TransformerLayerWeight,
+        out=None,
+    ) -> torch.Tensor:
+        k_nope, k_rope, v = self._decompress_kv(kv, infer_state, layer_weight, True)
+        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+        o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
+        context_attention_fwd_with_v(
+            q_nope,
+            q_rope,
+            k_nope,
+            k_rope,
+            v,
+            o_tensor.view(-1, self.tp_q_head_num_, q_nope.shape[-1]),
+            infer_state.b_start_loc,
+            infer_state.b_kv_start_loc,
+            infer_state.b_seq_len,
+            infer_state.b_ready_cache_len,
+            infer_state.max_len_in_batch,
+            self.softmax_scale,
+        )
+        return o_tensor
+
     def _context_attention_kernel_origin(
         self,
         q: torch.Tensor,
@@ -141,6 +277,50 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 q_rope,
                 kv[:, :, : -self.qk_rope_head_dim],
                 kv[:, :, -self.qk_rope_head_dim :],
+                o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
+                infer_state.b_req_idx,
+                infer_state.b_start_loc,
+                infer_state.b_seq_len,
+                infer_state.b_ready_cache_len,
+                infer_state.max_len_in_batch,
+                infer_state.req_manager.req_to_token_indexs,
+                self.softmax_scale,
+            )
+        else:
+            context_attention_fwd_no_prompt_cache(
+                q_nope,
+                q_rope,
+                kv[:, :, : -self.qk_rope_head_dim],
+                kv[:, :, -self.qk_rope_head_dim :],
+                o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
+                infer_state.b_start_loc,
+                infer_state.b_seq_len,
+                infer_state.max_len_in_batch,
+                self.softmax_scale,
+            )
+
+        return o_tensor
+
+    def _context_attention_kernel_origin_fp8(
+        self,
+        q: torch.Tensor,
+        kv,
+        infer_state: Deepseek2InferStateInfo,
+        layer_weight: Deepseek2TransformerLayerWeight,
+        out=None,
+    ) -> torch.Tensor:
+        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+        q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
+        o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype) if out is None else out
+        if infer_state.use_dynamic_prompt_cache:
+            kv = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, :-2].view(torch.float8_e4m3fn)
+            kv_scale = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, -2:].view(torch.bfloat16)
+            context_attention_fwd_fp8(
+                q_nope,
+                q_rope,
+                kv[:, :, : -self.qk_rope_head_dim],
+                kv[:, :, -self.qk_rope_head_dim :],
+                kv_scale,
                 o_tensor.view(-1, self.tp_q_head_num_, self.kv_lora_rank),
                 infer_state.b_req_idx,
                 infer_state.b_start_loc,
@@ -207,37 +387,28 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 alloc_tensor_func=self.alloc_tensor,
             )
 
-    def _splitfuse_attention_kernel(
-        self, q, infer_state: SplitFuseInferStateInfo, layer_weight, out=None
-    ) -> torch.Tensor:
-        q_nope = q[:, :, : -self.qk_rope_head_dim]
-        # split fuse moe can not use with acc mode.
-        o_tensor = (
-            self.alloc_tensor((q_nope.shape[0], q_nope.shape[1], self.kv_lora_rank), dtype=q_nope.dtype)
-            if out is None
-            else out
-        )
-        infer_state.start_event.record(torch.cuda.default_stream())
-        if infer_state.decode_req_num > 0:
-            o_tensor[0 : infer_state.decode_req_num, :] = self._token_attention_kernel(
-                q[0 : infer_state.decode_req_num],
-                infer_state.inner_decode_infer_status,
-                layer_weight,
-            )
-        if infer_state.prefill_req_num > 0:
-            infer_state.parrall_stream.wait_event(infer_state.start_event)
-            with torch.cuda.stream(infer_state.parrall_stream):
-                self._context_attention_kernel(
-                    q[infer_state.decode_req_num :],
-                    infer_state.mem_manager.kv_buffer[self.layer_num_],
-                    infer_state.inner_prefill_infer_status,
-                    layer_weight,
-                    out=o_tensor[infer_state.decode_req_num :, :],
-                )
-            infer_state.end_event.record(infer_state.parrall_stream)
-            torch.cuda.default_stream().wait_event(infer_state.end_event)
+    def _token_gqa_decode_attention_flashdecoding_fp8(
+        self, q, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, out=None
+    ):
+        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+        q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
 
-        return o_tensor
+        kv = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, :-2].view(torch.float8_e4m3fn)
+        kv_scale = infer_state.mem_manager.kv_buffer[self.layer_num_][:, :, -2:].view(torch.bfloat16)
+        return gqa_token_decode_attention_flash_decoding_fp8(
+            q_nope,
+            q_rope,
+            kv[:, :, : -self.qk_rope_head_dim],
+            kv[:, :, -self.qk_rope_head_dim :],
+            kv_scale,
+            infer_state,
+            self.tp_q_head_num_,
+            self.kv_lora_rank,
+            self.qk_rope_head_dim,
+            self.qk_nope_head_dim,
+            self.softmax_scale,
+            alloc_tensor_func=self.alloc_tensor,
+        )
 
     def _copy_kv_to_mem_cache_normal(self, buffer, mem_index, mem_manager):
         destindex_copy_kv(
@@ -246,6 +417,20 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             mem_index,
             mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank],
             mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank :],
+        )
+        return
+
+    def _copy_kv_to_mem_cache_fp8(self, buffer, mem_index, mem_manager):
+        quant_method = vLLMFP8w8a8QuantizationMethod()
+        quant, scale = quant_method.quantize_scaled_mm_fp8(buffer.reshape(-1, buffer.shape[-1]))
+        destindex_copy_kv(
+            quant.T.unsqueeze(1)[:, :, : self.kv_lora_rank].view(torch.uint8),
+            quant.T.unsqueeze(1)[:, :, self.kv_lora_rank :].view(torch.uint8),
+            mem_index,
+            mem_manager.kv_buffer[self.layer_num_][:, :, : self.kv_lora_rank],
+            mem_manager.kv_buffer[self.layer_num_][:, :, self.kv_lora_rank : -2],
+            mem_manager.kv_buffer[self.layer_num_][:, :, -2:],
+            scale.to(buffer.dtype).view(torch.uint8),
         )
         return
 
