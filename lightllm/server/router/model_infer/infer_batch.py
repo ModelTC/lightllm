@@ -195,10 +195,15 @@ class InferSamplingParams:
 
         # output constraint states
         self.regular_constraint = self.shm_param.regular_constraint.to_str()
+        self.guided_grammar = self.shm_param.guided_grammar.to_str()
+        self.guided_json = self.shm_param.guided_json.to_str()
         if len(self.regular_constraint) == 0:
             self.regular_constraint = None
+        if len(self.guided_grammar) == 0:
+            self.guided_grammar = None
+        if len(self.guided_json) == 0:
+            self.guided_json = None
 
-        self.regex_guide = None
         self.fsm_current_state: int = 0
         self.allowed_token_ids = self.shm_param.allowed_token_ids.to_list()
         if len(self.allowed_token_ids) == 0:

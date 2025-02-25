@@ -12,7 +12,8 @@ STOP_SEQUENCE_MAX_LENGTH = int(os.getenv("LIGHTLLM_STOP_SEQUENCE_MAX_LENGTH", 25
 ALLOWED_TOKEN_IDS_MAX_LENGTH = int(os.getenv("LIGHTLLM_ALLOWED_TOKEN_IDS_MAX_LENGTH", 256))
 MAX_STOP_SEQUENCES = int(os.getenv("LIGHTLLM_MAX_STOP_SEQUENCES", 10))
 REGULAR_CONSTRAINT_MAX_LENGTH = int(os.getenv("LIGHTLLM_REGULAR_CONSTRAINT_MAX_LENGTH", 2048))
-
+GRAMMAR_CONSTRAINT_MAX_LENGTH = int(os.getenv("LIGHTLLM_GRAMMAR_CONSTRAINT_MAX_LENGTH", 2048))
+JSON_SCHEMA_MAX_LENGTH = int(os.getenv("LIGHTLLM_JSON_SCHEMA_MAX_LENGTH", 2048))
 
 class StopSequence(ctypes.Structure):
     _pack_ = 4
@@ -92,6 +93,46 @@ class RegularConstraint(ctypes.Structure):
             interegular.parse_pattern(constraint)
         except Exception as e:
             raise ValueError(f"regular_expression '{constraint}' has parse_pattern_error: {str(e)}")
+        return
+
+    def to_str(self):
+        return bytes(self.constraint[0 : self.length]).decode("utf-8").rstrip("\x00")
+
+
+class GuidedGrammar(ctypes.Structure):
+    _pack_ = 4
+    _fields_ = [
+        ("constraint", ctypes.c_byte * GRAMMAR_CONSTRAINT_MAX_LENGTH),
+        ("length", ctypes.c_int),
+    ]
+
+    def initialize(self, constraint: str):
+        constraint_bytes = constraint.encode("utf-8")
+        assert len(constraint_bytes) < GRAMMAR_CONSTRAINT_MAX_LENGTH, "Guided grammar is too long."
+
+        ctypes.memmove(self.constraint, constraint_bytes, len(constraint_bytes))
+        self.length = len(constraint_bytes)
+        # TODO: Later we can add a grammar parser to check the grammar
+        return
+
+    def to_str(self):
+        return bytes(self.constraint[0 : self.length]).decode("utf-8").rstrip("\x00")
+
+
+class GuidedJsonSchema(ctypes.Structure):
+    _pack_ = 4
+    _fields_ = [
+        ("constraint", ctypes.c_byte * JSON_SCHEMA_MAX_LENGTH),
+        ("length", ctypes.c_int),
+    ]
+
+    def initialize(self, constraint: str):
+        constraint_bytes = constraint.encode("utf-8")
+        assert len(constraint_bytes) < JSON_SCHEMA_MAX_LENGTH, "Guided json schema is too long."
+
+        ctypes.memmove(self.constraint, constraint_bytes, len(constraint_bytes))
+        self.length = len(constraint_bytes)
+        # TODO: Later we can add a json schema parser to check the schema
         return
 
     def to_str(self):
@@ -191,6 +232,8 @@ class SamplingParams(ctypes.Structure):
         # Whether to count input tokens for presence_penalty, frequency_penalty and repetition_penalty
         ("input_penalty", ctypes.c_bool),
         ("regular_constraint", RegularConstraint),
+        ("guided_grammar", GuidedGrammar),
+        ("guided_json", GuidedJsonSchema),
         # If provided, the engine will construct a logits,
         # processor which only retains scores for the given token ids. Defaults to None.
         # allowed_token_ids only can be used in "--simple_constraint_mode" started server.
@@ -250,6 +293,16 @@ class SamplingParams(ctypes.Structure):
         regular_constraint = kwargs.get("regular_constraint", "")
         self.regular_constraint = RegularConstraint()
         self.regular_constraint.initialize(regular_constraint)
+
+        # Initialize guided_grammar
+        guided_grammar = kwargs.get("guided_grammar", "")
+        self.guided_grammar = GuidedGrammar()
+        self.guided_grammar.initialize(guided_grammar)
+
+        # Initialize guided_json
+        guided_json = kwargs.get("guided_json", "")
+        self.guided_json = GuidedJsonSchema()
+        self.guided_json.initialize(guided_json)
 
         # Initialize stop_sequence_groups
         stop_sequences = kwargs.get("stop_sequences", [])
@@ -342,6 +395,8 @@ class SamplingParams(ctypes.Structure):
             "best_of": self.best_of,
             "input_penalty": self.input_penalty,
             "regular_constraint": self.regular_constraint.to_str(),
+            "guided_grammar": self.guided_grammar.to_str(),
+            "guided_json": self.guided_json.to_str(),
             "allowed_token_ids": self.allowed_token_ids.to_list(),
             "group_request_id": self.group_request_id,
             "move_kv_to_decode_node": self.move_kv_to_decode_node.to_dict(),

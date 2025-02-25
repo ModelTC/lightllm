@@ -22,7 +22,7 @@ class RequestThread(threading.Thread):
             print("Error:", response.status_code, response.text)
 
 
-url = "http://localhost:9999/generate"
+url = "http://0.0.0.0:8888/generate"
 headers = {"Content-Type": "application/json"}
 json_grammar_ebnf_str = r"""
 root ::= basic_array | basic_object
@@ -98,10 +98,7 @@ system_prompt = open("system.md", "r").read()
 user_input = open("user.md", "r").read()
 
 messages = [
-    {
-        "role": "system",
-        "content": system_prompt,
-    },
+    {"role": "system", "content": system_prompt,},
     {"role": "user", "content": user_input},
 ]
 
