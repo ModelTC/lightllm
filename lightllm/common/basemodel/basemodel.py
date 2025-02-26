@@ -36,6 +36,7 @@ class TpPartBaseModel:
     infer_state_class = InferStateInfo
 
     def __init__(self, kvargs):
+        self.infer_state = self.infer_state_class()
         self.run_mode = kvargs["run_mode"]
         self.tp_rank_ = kvargs["tp_rank"]
         self.world_size_ = kvargs["world_size"]
@@ -330,7 +331,9 @@ class TpPartBaseModel:
         b_seq_len,
         multimodal_params,
     ):
-        infer_state = self.infer_state_class()
+        infer_state = self.infer_state
+        if self.graph is None or self.graph.need_capture(batch_size) or infer_state.is_prefill:
+            infer_state = self.infer_state_class()
         infer_state.is_prefill = False
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num
