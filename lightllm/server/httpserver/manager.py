@@ -121,8 +121,10 @@ class HttpServerManager:
                         img.token_num = None
         return
 
-    def tokens(self, prompt):
-        prompt_ids = self.tokenizer.encode(prompt)
+    def tokens(self, prompt, kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        prompt_ids = self.tokenizer.encode(prompt, None, **kwargs)
         return len(prompt_ids)
 
     async def generate(
