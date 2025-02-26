@@ -4,7 +4,6 @@ import numpy as np
 import torch.distributed as dist
 from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from lightllm.utils.envs_utils import enable_env_vars
-import flashinfer
 from lightllm.models.deepseek2.triton_kernel.repack_kv_index import repack_kv_index
 
 
@@ -18,6 +17,8 @@ class Deepseek2FlashInferStateInfo(Deepseek2InferStateInfo):
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         super().init_some_extra_state(model, input_ids)
         self.flashinfer_extra_state = model.flashinfer_extra_state
+        
+        import flashinfer
 
         if not self.is_prefill:
             if enable_env_vars("ENABLE_FLASHINFER_DECODE_MLA"):
