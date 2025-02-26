@@ -51,7 +51,7 @@ def _fwd_kernel_destindex_copy_kv(
 
 
 @torch.no_grad()
-def destindex_copy_kv(KV_nope, KV_rope, DestLoc, O_nope, O_rope, O_scale=None, KV_scale=None):
+def destindex_copy_kv(KV_nope, KV_rope, DestLoc, O_nope, O_rope):
     seq_len = DestLoc.shape[0]
     kv_nope_head_dim = KV_nope.shape[2]
     kv_rope_head_dim = KV_rope.shape[2]
