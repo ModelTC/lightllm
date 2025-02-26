@@ -21,6 +21,7 @@ from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 from lightllm.models.deepseek2.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
+from lightllm.models.deepseek2.flashinfer_struct import Deepseek2FlashInferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 import os
@@ -224,7 +225,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self,
         q: torch.Tensor,
         kv,
-        infer_state: Deepseek2InferStateInfo,
+        infer_state: Deepseek2FlashInferStateInfo,
         layer_weight: Deepseek2TransformerLayerWeight,
         out=None,
     ) -> torch.Tensor:
@@ -240,7 +241,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self,
         q: torch.Tensor,
         kv,
-        infer_state: Deepseek2InferStateInfo,
+        infer_state: Deepseek2FlashInferStateInfo,
         layer_weight: Deepseek2TransformerLayerWeight,
         out=None,
     ) -> torch.Tensor:
@@ -393,7 +394,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         return o_tensor
 
     def _token_gqa_decode_attention_flashinfer(
-        self, q, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, out=None
+        self, q, infer_state: Deepseek2FlashInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, out=None
     ):
         q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
         q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)

@@ -23,7 +23,8 @@ class FlashInferStateExtraInfo:
         self.qk_nope_head_dim = model.qk_nope_head_dim
         self.qk_rope_head_dim = model.qk_rope_head_dim
         self.kv_lora_rank = model.kv_lora_rank
-        self.data_type = model.data_type
+        self.q_data_type = model.data_type
+        self.kv_data_type = model.data_type
         self.workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(model.tp_rank_)
         self.max_seq_length = model.max_seq_length
         self.softmax_scale = (self.qk_nope_head_dim + self.qk_rope_head_dim) ** (-0.5)
@@ -65,7 +66,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.kv_lora_rank = self.config["kv_lora_rank"]
         self.head_dim_ = self.kv_lora_rank + self.qk_rope_head_dim
         if self.enable_flashinfer:
-            self.flashinfer_state = FlashInferStateExtraInfo(self)
+            self.flashinfer_extra_state = FlashInferStateExtraInfo(self)
 
     def _init_custom(self):
         self._init_to_get_yarn_rotary()
