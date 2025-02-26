@@ -1,7 +1,6 @@
 import os
 import copy
 import time
-from pydantic import BaseModel
 import torch
 import torch.distributed as dist
 import numpy as np

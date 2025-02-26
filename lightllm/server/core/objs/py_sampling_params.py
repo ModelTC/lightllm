@@ -4,7 +4,6 @@
 """
 import os
 from typing import List, Optional, Union, Tuple
-from pydantic import BaseModel
 from transformers import GenerationConfig
 from lightllm.server.req_id_generator import MAX_BEST_OF
 
@@ -49,7 +48,7 @@ class SamplingParams:
         input_penalty: bool = DEFAULT_INPUT_PENALTY,
         regular_constraint: Optional[str] = None,  # Regular expressions constrain the output.
         guided_grammar: Optional[str] = None,  # EBNF constrain the output.
-        guided_json: Optional[Union[str, dict, BaseModel]] = None,  # JSON schema constrain the output.
+        guided_json: Optional[Union[str, dict]] = None,  # JSON schema constrain the output.
         # If provided, the engine will construct a logits,
         # processor which only retains scores for the given token ids. Defaults to None.
         # allowed_token_ids only can be used in "--output_constraint_mode outlines" started server.
