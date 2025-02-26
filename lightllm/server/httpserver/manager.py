@@ -122,8 +122,7 @@ class HttpServerManager:
         return
 
     def tokens(self, prompt, kwargs=None):
-        if kwargs is None:
-            kwargs = {}
+        kwargs = {} if kwargs is None else kwargs
         prompt_ids = self.tokenizer.encode(prompt, None, **kwargs)
         return len(prompt_ids)
 

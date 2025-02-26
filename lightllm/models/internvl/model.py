@@ -58,7 +58,7 @@ class InternvlTokenizer:
         input_ids = []
         image_id = 0
         start_idx = 0
-        while multimodal_params:
+        while True:
             try:
                 start_idx = origin_ids.index(self.image_start_id, start_idx)
                 if start_idx + 1 >= len(origin_ids):
