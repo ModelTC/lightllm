@@ -2,7 +2,6 @@ import os
 import shutil
 import torch
 from typing import List, Tuple
-import xgrammar as xgr
 
 from .impl import ContinuesBatchBackend
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
@@ -22,6 +21,8 @@ class XgrammarBackend(ContinuesBatchBackend):
         super().__init__()
 
     def init_custom(self):
+        import xgrammar as xgr
+
         self.tokenizer = get_tokenizer(
             self.args.model_dir, self.args.tokenizer_mode, trust_remote_code=self.args.trust_remote_code
         )
@@ -33,18 +34,17 @@ class XgrammarBackend(ContinuesBatchBackend):
         eos_token_ids = []
         eos_token_ids.append(self.tokenizer.eos_token_id)
         eos_token_ids.extend(self.args.eos_id)
-        self.tokenizer.eos_token_ids = eos_token_ids
-        # logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
         return
 
     @calculate_time(show=False, min_cost_ms=300)
     def prefill(self, reqs: List[Tuple]):
+        import xgrammar as xgr
+
         req_ids = self._init_reqs(reqs)
         kwargs, run_reqs = prepare_prefill_inputs(req_ids, is_multimodal=self.is_multimodal)
 
         logics = self.model.forward(**kwargs)
 
-        mask = torch.ones_like(logics, dtype=torch.bool)
         for i, run_obj in enumerate(run_reqs):
             run_obj: InferReq = run_obj
             sample_params = run_obj.sampling_param
@@ -54,11 +54,10 @@ class XgrammarBackend(ContinuesBatchBackend):
             elif sample_params.guided_json is not None:
                 xgrammar_compiled_grammar = self.xgrammar_compiler.compile_json_schema(sample_params.guided_json)
                 sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
-            self._mask_req_out_token(i, run_obj, mask, logics[i])
+            self._mask_req_out_token(i, run_obj, logics[i])
 
         # fix the logics with -inf to a large negative value
         logics[logics == float("-inf")] = -1000000.0
-        # logics[mask] = -1000000.0
 
         next_token_ids, next_token_probs = sample(logics, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
@@ -70,6 +69,8 @@ class XgrammarBackend(ContinuesBatchBackend):
 
     @calculate_time(show=True, min_cost_ms=200)
     def decode(self):
+        import xgrammar as xgr
+
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
         run_reqs: List[InferReq] = run_reqs
 
@@ -77,10 +78,8 @@ class XgrammarBackend(ContinuesBatchBackend):
 
         all_has_no_constraint = all([not e.sampling_param.has_constraint_setting() for e in run_reqs])
         if not all_has_no_constraint:
-            mask = torch.ones_like(logits, dtype=torch.bool)
             for i, run_obj in enumerate(run_reqs):
-                self._mask_req_out_token(i, run_obj, mask, logits[i])
-            # logits[mask] = -1000000.0
+                self._mask_req_out_token(i, run_obj, logits[i])
 
         logits[logits == float("-inf")] = -1000000.0
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
@@ -91,6 +90,8 @@ class XgrammarBackend(ContinuesBatchBackend):
         return
 
     def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs):
+        import xgrammar as xgr
+
         finished_req_ids = []
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
@@ -126,14 +127,11 @@ class XgrammarBackend(ContinuesBatchBackend):
         g_infer_context.filter(finished_req_ids)
         return
 
-    def _mask_req_out_token(self, i, run_obj: InferReq, mask, logits):
+    def _mask_req_out_token(self, i, run_obj: InferReq, logits):
+        import xgrammar as xgr
+
         sample_params = run_obj.sampling_param
         if sample_params.guided_grammar is not None or sample_params.guided_json is not None:
             sample_params.xgrammar_matcher.fill_next_token_bitmask(self.xgrammar_token_bitmask)
             xgr.apply_token_bitmask_inplace(logits, self.xgrammar_token_bitmask.to(logits.device))
-            mask[i, :] = False
-        elif sample_params.allowed_token_ids is not None:
-            mask[i, sample_params.allowed_token_ids] = False
-        else:
-            mask[i, :] = False
         return

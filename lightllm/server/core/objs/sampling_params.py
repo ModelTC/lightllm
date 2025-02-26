@@ -107,16 +107,27 @@ class GuidedGrammar(ctypes.Structure):
         ("length", ctypes.c_int),
     ]
 
-    def initialize(self, constraint: str):
+    def initialize(self, constraint: str, tokenizer):
         constraint_bytes = constraint.encode("utf-8")
         assert len(constraint_bytes) < GRAMMAR_CONSTRAINT_MAX_LENGTH, "Guided grammar is too long."
 
         ctypes.memmove(self.constraint, constraint_bytes, len(constraint_bytes))
         self.length = len(constraint_bytes)
-        # TODO: Later we can add a grammar parser to check the grammar
+        try:
+            if self.length > 0:
+                import xgrammar as xgr
+
+                tokenizer_info = xgr.TokenizerInfo.from_huggingface(tokenizer)
+                xgrammar_compiler = xgr.GrammarCompiler(tokenizer_info, max_threads=8)
+                print(constraint)
+                xgrammar_compiler.compile_grammar(constraint)
+        except Exception as e:
+            raise ValueError(f"guided_grammar '{constraint}' has compile_grammar_error: {str(e)}")
         return
 
     def to_str(self):
+        if self.length == 0:
+            return ""
         return bytes(self.constraint[0 : self.length]).decode("utf-8").rstrip("\x00")
 
 
@@ -127,16 +138,26 @@ class GuidedJsonSchema(ctypes.Structure):
         ("length", ctypes.c_int),
     ]
 
-    def initialize(self, constraint: str):
+    def initialize(self, constraint: str, tokenizer):
         constraint_bytes = constraint.encode("utf-8")
         assert len(constraint_bytes) < JSON_SCHEMA_MAX_LENGTH, "Guided json schema is too long."
 
         ctypes.memmove(self.constraint, constraint_bytes, len(constraint_bytes))
         self.length = len(constraint_bytes)
-        # TODO: Later we can add a json schema parser to check the schema
+        try:
+            if self.length > 0:
+                import xgrammar as xgr
+
+                tokenizer_info = xgr.TokenizerInfo.from_huggingface(tokenizer)
+                xgrammar_compiler = xgr.GrammarCompiler(tokenizer_info, max_threads=8)
+                xgrammar_compiler.compile_json_schema(constraint)
+        except Exception as e:
+            raise ValueError(f"guided_grammar '{constraint}' has compile_grammar_error: {str(e)}")
         return
 
     def to_str(self):
+        if self.length == 0:
+            return ""
         return bytes(self.constraint[0 : self.length]).decode("utf-8").rstrip("\x00")
 
 
@@ -237,7 +258,7 @@ class SamplingParams(ctypes.Structure):
         ("guided_json", GuidedJsonSchema),
         # If provided, the engine will construct a logits,
         # processor which only retains scores for the given token ids. Defaults to None.
-        # allowed_token_ids only can be used in "--simple_constraint_mode" started server.
+        # allowed_token_ids only can be used in "--output_constraint_mode outlines" started server.
         ("allowed_token_ids", AllowedTokenIds),
         ("stop_sequences", StopSequenceGroups),
         ("exponential_decay_length_penalty", ExponentialDecayLengthPenalty),
@@ -298,12 +319,12 @@ class SamplingParams(ctypes.Structure):
         # Initialize guided_grammar
         guided_grammar = kwargs.get("guided_grammar", "")
         self.guided_grammar = GuidedGrammar()
-        self.guided_grammar.initialize(guided_grammar)
+        self.guided_grammar.initialize(guided_grammar, tokenizer)
 
         # Initialize guided_json
         guided_json = kwargs.get("guided_json", "")
         self.guided_json = GuidedJsonSchema()
-        self.guided_json.initialize(guided_json)
+        self.guided_json.initialize(guided_json, tokenizer)
 
         # Initialize stop_sequence_groups
         stop_sequences = kwargs.get("stop_sequences", [])
@@ -370,13 +391,26 @@ class SamplingParams(ctypes.Structure):
             )
 
         self._verify_allowed_token_ids()
+        self._verify_grammar_constraint()
 
+        return
+
+    def _verify_grammar_constraint(self):
+        if self.guided_grammar.length != 0:
+            if self.regular_constraint.length != 0:
+                raise ValueError("guided_grammar and regular_constraint can not be used in same time")
+            if self.guided_json.length != 0:
+                raise ValueError("guided_grammar and guided_json can not be used in same time")
         return
 
     def _verify_allowed_token_ids(self):
         if self.allowed_token_ids.size != 0:
             if self.regular_constraint.length != 0:
                 raise ValueError("allowed_token_ids and regular_constraint can not be used in same time")
+            if self.guided_grammar.length != 0:
+                raise ValueError("allowed_token_ids and guided_grammar can not be used in same time")
+            if self.guided_json.length != 0:
+                raise ValueError("allowed_token_ids and guided_json can not be used in same time")
         return
 
     def to_dict(self):

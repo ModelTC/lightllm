@@ -52,7 +52,7 @@ class SamplingParams:
         guided_json: Optional[Union[str, dict, BaseModel]] = None,  # JSON schema constrain the output.
         # If provided, the engine will construct a logits,
         # processor which only retains scores for the given token ids. Defaults to None.
-        # allowed_token_ids only can be used in "--simple_constraint_mode" started server.
+        # allowed_token_ids only can be used in "--output_constraint_mode outlines" started server.
         allowed_token_ids: Optional[List[int]] = None,
         # p d mode used params
         group_request_id: Optional[int] = None,

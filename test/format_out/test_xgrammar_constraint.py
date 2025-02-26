@@ -112,7 +112,7 @@ for i in range(1):
         # 'temperature': 0.1,
         "parameters": {
             "do_sample": False,
-            "guided_grammar": json_grammar_ebnf_str,
+            # "guided_json": json_schema_str,
             "max_new_tokens": 200,
         },
     }
