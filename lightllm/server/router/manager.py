@@ -82,24 +82,10 @@ class RouterManager:
         if args.nnodes > 1:
             self.mulitnode_group = dist.init_process_group(
                 backend="gloo",
-                init_method=f"tcp://{args.nccl_host}:{args.multinode_router_port + 10}",
+                init_method=f"tcp://{args.nccl_host}:{args.multinode_router_gloo_port}",
                 world_size=args.nnodes,
                 rank=args.node_rank,
             )
-        if args.nnodes > 1:
-            if args.node_rank == 0:
-                self.multinode_req_manager = []
-                context = zmq.asyncio.Context(len(args.child_ips))
-
-                for child_ip in args.child_ips:
-                    self.multinode_req_manager.append(context.socket(zmq.PUSH))
-                    self.multinode_req_manager[-1].connect(f"tcp://{child_ip}:{args.multinode_router_port}")
-                    logger.info(f"RouterManager connected to child node at {child_ip}:{args.multinode_router_port}")
-            else:
-                context = zmq.asyncio.Context(1)
-                self.multinode_req_manager = context.socket(zmq.PULL)
-                self.multinode_req_manager.bind(f"tcp://*:{args.multinode_router_port}")
-                logger.info(f"RouterManager listening for child node requests on *:{args.multinode_router_port}")
 
         self.is_token_healing = self.args.token_healing_mode
         self.chunked_prefill_size = args.chunked_prefill_size

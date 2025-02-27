@@ -24,7 +24,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pd_master_ip",
         type=str,
-        default="127.0.0.1",
+        default="0.0.0.0",
         help="when run_mode set to prefill or decode, you need set this pd_mater_ip",
     )
     parser.add_argument(
@@ -102,7 +102,10 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="the port for multinode http manager, default is 20000",
     )
     parser.add_argument(
-        "--multinode_router_port", type=int, default=20001, help="the port for multinode router, default is 20001"
+        "--multinode_router_gloo_port",
+        type=int,
+        default=20001,
+        help="the gloo port for multinode router, default is 20001",
     )
     parser.add_argument("--tp", type=int, default=1, help="model tp parral size, the default is 1")
     parser.add_argument(
@@ -120,7 +123,8 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--nccl_host",
         type=str,
         default="127.0.0.1",
-        help="the nccl_host to build a distributed environment for PyTorch",
+        help="""The nccl_host to build a distributed environment for PyTorch.
+        When deploying in multi-node manner, the value should be set to the IP of the master node""",
     )
     parser.add_argument(
         "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
