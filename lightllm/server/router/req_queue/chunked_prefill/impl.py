@@ -56,7 +56,7 @@ class ChunkedPrefillQueue(BaseQueue):
             return False, new_batch_first_router_need_tokens
 
     # @calculate_time(show=True, min_cost_ms=10)
-    def generate_new_batch(self, current_batch: Batch, from_req_list):
+    def generate_new_batch(self, current_batch: Batch, current_waiting_num):
 
         # 如果当前已经被调度的请求数量超过了上限，直接不调度新的请求了。
         exist_req_num = self.get_batch_dp_req_size(current_batch) + len(self.pause_req_dict)
@@ -74,7 +74,7 @@ class ChunkedPrefillQueue(BaseQueue):
         can_run_list = []
         abort_req_list = []
         aborted_count = 0
-        for req in from_req_list:
+        for req in self.waiting_req_list[:current_waiting_num]:
             if req.is_aborted and not req.is_paused:
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
                 # 暂停的请求需要恢复后，由 router manager 部分来过滤。暂时保持这种处理方法, 否则会导致管理token的泄漏
@@ -96,11 +96,10 @@ class ChunkedPrefillQueue(BaseQueue):
             new_batch = Batch(uuid.uuid4().int, can_run_list, dp_size=self.dp_size)
             for req in abort_req_list:
                 self.router.shm_req_manager.put_back_req_obj(req)
-            poped_req_list = from_req_list[: len(can_run_list) + aborted_count]
-            remain_req_list = from_req_list[len(can_run_list) + aborted_count :]
-            return new_batch, poped_req_list, remain_req_list
+            self.waiting_req_list = self.waiting_req_list[len(can_run_list) + aborted_count :]
+            return new_batch
         else:
-            return None, [], from_req_list
+            return None
 
     def _calcu_batch_token_load_batch_not_none(self, current_batch: Batch):
         is_busy = self.is_busy()
