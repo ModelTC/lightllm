@@ -4,7 +4,6 @@ import time
 import uuid
 import subprocess
 import signal
-import socket
 from lightllm.utils.net_utils import alloc_can_use_network_port, PortLocker
 from lightllm.utils.start_utils import process_manager
 from .metrics.manager import start_metric_manager
@@ -15,6 +14,7 @@ from lightllm.utils.envs_utils import set_env_start_args, set_unique_server_name
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
 from lightllm.utils.process_check import is_process_active
+from lightllm.utils.multinode_utils import send_and_receive_node_ip
 
 logger = init_logger(__name__)
 
@@ -163,8 +163,7 @@ def normal_or_p_d_start(args):
     # 提前锁定端口，防止在单个机器上启动多个实列的时候，要到模型启动的时候才能
     # 捕获到端口设置冲突的问题
     ports_locker = PortLocker(already_uesd_ports)
-    print(already_uesd_ports)
-    # ports_locker.lock_port()
+    ports_locker.lock_port()
 
     can_use_ports = alloc_can_use_network_port(
         num=6 + args.tp + args.tp + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
@@ -200,30 +199,7 @@ def normal_or_p_d_start(args):
     if args.run_mode == "decode":
         args.router_max_wait_tokens = 0
 
-    # 传输子node的ip
-    if args.nnodes > 1:
-        import zmq
-
-        if args.node_rank == 0:
-            args.child_ips = None
-            args.child_ips = []
-            for i in range(1, args.nnodes):
-                context = zmq.Context(2)
-                comm_socket = context.socket(zmq.PULL)
-                comm_socket.bind(f"tcp://*:{args.multinode_httpmanager_port + i + 100}")
-                print(f"binding port {args.multinode_httpmanager_port + i + 100}")
-                args.child_ips.append(comm_socket.recv_pyobj())
-                comm_socket.close()
-            print(f"Received child IPs: {args.child_ips}")
-        else:
-            local_ip = socket.gethostbyname(socket.gethostname())
-            context = zmq.Context(2)
-            comm_socket = context.socket(zmq.PUSH)
-            comm_socket.connect(f"tcp://{args.nccl_host}:{args.multinode_httpmanager_port + args.node_rank + 100}")
-            print(f"connecting to {args.nccl_host}:{args.multinode_httpmanager_port + args.node_rank + 100}")
-            comm_socket.send_pyobj(local_ip)
-            comm_socket.close()
-
+    send_and_receive_node_ip(args)  # 多机用于收发node ip
     set_env_start_args(args)
     logger.info(f"all start args:{args}")
 
