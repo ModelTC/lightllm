@@ -26,6 +26,7 @@ def _init_distributed_env(kvargs):
     local_tp_rank = kvargs["rank_id"] - size_per_node * kvargs["args"].node_rank
     set_current_device_id(local_tp_rank)
     torch.cuda.set_device(local_tp_rank)
+    print(local_tp_rank)
     if kvargs["world_size"] > 1:
         dist.init_process_group(
             "nccl",

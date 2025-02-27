@@ -25,6 +25,7 @@ from lightllm.server.core.objs import SamplingParams
 from lightllm.server.core.objs.io_objs import GroupReqObjs
 from fastapi import Request
 from lightllm.server.core.objs.shm_req_manager import ShmReqManager
+from lightllm.server.core.objs.ordered_req_manager import OrderedRequestManager
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.metrics.manager import MetricClient
@@ -56,6 +57,7 @@ class HttpServerManager:
         self.waiting_objs = []
         self.child_node_lock = asyncio.Lock()
         self.nnodes = args.nnodes
+        self.order_req_manager = OrderedRequestManager()
         if args.nnodes > 1:
             if args.node_rank == 0:
                 self.multinode_req_manager = []
@@ -154,15 +156,11 @@ class HttpServerManager:
         tasks = []
         while True:
             (
-                request_id,
                 prompt,
                 sampling_params,
                 multimodal_params,
-                request_headers,
             ) = await self.multinode_req_manager.recv_pyobj()
-            results_generator = self.generate(
-                prompt, sampling_params, multimodal_params, None, request_headers, request_id
-            )
+            results_generator = self.generate(prompt, sampling_params, multimodal_params, None)
 
             async def generate_wrapper(results_generator):
                 async for _, _, _, _ in results_generator:
@@ -179,24 +177,22 @@ class HttpServerManager:
         sampling_params: SamplingParams,
         multimodal_params: MultimodalParams,
         request: Request,
-        request_headers=None,
-        multinode_remote_request_id: Optional[int] = None,
     ) -> Tuple[int, str, dict, FinishStatus]:
         start_time = time.time()
-        if request_headers is None:
-            request_headers = request.headers if request is not None else None
+        request_headers = request.headers if request is not None else {}
         # 请求的 id 可以由外部传入，也可以由内部生成，但是由外部传入的时候，要自己保证全局唯一性
         # 否则会造成异常问题。目前限制 NORMAL 模式都使用内部id替换， P 和 D 模式按需设置
         if self.pd_mode == NodeRole.NORMAL:
-            if multinode_remote_request_id is None:
+            if sampling_params.group_request_id == -1:
                 group_request_id = self.id_gen.generate_id()
                 for sender in self.multinode_req_manager:
+                    sampling_params.group_request_id = group_request_id
                     sender.send_pyobj(
-                        (group_request_id, prompt, sampling_params, multimodal_params, request_headers),
+                        (prompt, sampling_params, multimodal_params),
                         protocol=pickle.HIGHEST_PROTOCOL,
                     )
             else:
-                group_request_id = multinode_remote_request_id
+                group_request_id = sampling_params.group_request_id
             sampling_params.group_request_id = group_request_id
         elif self.pd_mode == NodeRole.P or self.pd_mode == NodeRole.D:
             assert sampling_params.group_request_id is not None, "p d mode, group_request_id must be setting"
@@ -251,7 +247,8 @@ class HttpServerManager:
             self.req_id_to_out_inf[group_request_id] = req_status
 
             # 将请求转发给其他节点
-            await self.transfer_to_next_module(req_status.group_req_objs)
+            await self.order_req_manager.add_request(req_status.group_req_objs)
+            await self.transfer_to_next_module()
 
             results_generator = self._wait_to_token_package(
                 start_time,
@@ -276,8 +273,8 @@ class HttpServerManager:
 
     async def _log_req_header(self, request_headers, group_request_id: int):
 
-        x_request_id = request_headers.get("X-Request-Id", "") if request_headers is not None else ""
-        x_session_id = request_headers.get("X-Session-Id", "") if request_headers is not None else ""
+        x_request_id = request_headers.get("X-Request-Id", "")
+        x_session_id = request_headers.get("X-Session-Id", "")
 
         format_in_time = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")
         logger.info(
@@ -342,8 +339,8 @@ class HttpServerManager:
 
     async def transfer_to_next_module(
         self,
-        group_req_objs: GroupReqObjs,
     ):
+        group_req_objs: GroupReqObjs = await self.order_req_manager.get_next_request()
         if self.pd_mode == NodeRole.P:
             if self.enable_multimodal:
                 self.send_to_visual.send_pyobj(

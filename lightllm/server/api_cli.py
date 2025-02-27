@@ -98,11 +98,11 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--multinode_httpmanager_port",
         type=int,
-        default=40000,
-        help="the port for multinode http manager, default is 40000",
+        default=20000,
+        help="the port for multinode http manager, default is 20000",
     )
     parser.add_argument(
-        "--multinode_router_port", type=int, default=40001, help="the port for multinode router, default is 40001"
+        "--multinode_router_port", type=int, default=20001, help="the port for multinode router, default is 20001"
     )
     parser.add_argument("--tp", type=int, default=1, help="model tp parral size, the default is 1")
     parser.add_argument(

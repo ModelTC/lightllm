@@ -39,6 +39,7 @@ from lightllm.server.router.model_infer.infer_batch import InferReq, InferSampli
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
 from lightllm.utils.dist_utils import _init_distributed_env
+from lightllm.utils.envs_utils import get_unique_server_name
 from lightllm.server.core.objs import ShmReqManager
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 import torch.distributed as dist
@@ -73,8 +74,6 @@ class ModeBackend:
         self.logger = init_logger(__name__)
 
         self.weight_dir = kvargs["weight_dir"]
-        nccl_port_str = str(kvargs["nccl_port"])
-        self.shared_token_load = TokenLoad(f"{nccl_port_str}_shared_token_load", self.dp_size)
         # p d 分离模式，decode节点才会使用的参数
         self.pd_rpyc_ports = kvargs.get("pd_rpyc_ports", None)
         max_total_token_num = kvargs["max_total_token_num"]
@@ -87,6 +86,8 @@ class ModeBackend:
         self.local_tp_rank = self.tp_rank - size_per_node * self.node_rank
         _init_distributed_env(kvargs)
 
+        self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", self.dp_size)
+
         from lightllm.distributed import custom_comm_ops
 
         custom_comm_ops.set_custom_reduce()
@@ -94,7 +95,7 @@ class ModeBackend:
 
         # 为 p d 分离模式添加的全局锁管理，用于做一些同步操作。 一定需要在
         # init_process_group 之后调用
-        g_infer_state_lock.obj = InferStateLock(name=nccl_port_str)
+        g_infer_state_lock.obj = InferStateLock(name=get_unique_server_name())
         g_infer_state_lock.dp_size = self.dp_size
         self.infer_state_lock = g_infer_state_lock
         # 防止InferStateLock 中的全局共享信息被重复异常初始化,导致同步异常的问题。
@@ -201,7 +202,7 @@ class ModeBackend:
         set_random_seed(2147483647)
         self.radix_cache = (
             RadixCache(
-                str(kvargs["nccl_port"]), self.model.mem_manager.size, self.tp_rank, mem_manager=self.model.mem_manager
+                get_unique_server_name(), self.model.mem_manager.size, self.tp_rank, mem_manager=self.model.mem_manager
             )
             if self.use_dynamic_prompt_cache
             else None
