@@ -12,8 +12,6 @@ from lightllm.server.core.objs.sampling_params import (
     STOP_SEQUENCE_MAX_LENGTH,
     REGULAR_CONSTRAINT_MAX_LENGTH,
     ALLOWED_TOKEN_IDS_MAX_LENGTH,
-    GRAMMAR_CONSTRAINT_MAX_LENGTH,
-    JSON_SCHEMA_MAX_LENGTH,
 )
 
 grammar_str = r"""root ::= (expr "=" term)+
@@ -86,7 +84,7 @@ def test_guided_grammar_initialization():
     assert grammar.to_str() == grammar_str
 
     with pytest.raises(AssertionError):
-        grammar.initialize("a" * (GRAMMAR_CONSTRAINT_MAX_LENGTH + 1), None)
+        grammar.initialize("a" * (REGULAR_CONSTRAINT_MAX_LENGTH + 1), None)
 
 
 def test_guided_json_schema_initialization():
@@ -95,7 +93,7 @@ def test_guided_json_schema_initialization():
     assert schema.to_str() == schema_str
 
     with pytest.raises(AssertionError):
-        schema.initialize("a" * (JSON_SCHEMA_MAX_LENGTH + 1), None)
+        schema.initialize("a" * (REGULAR_CONSTRAINT_MAX_LENGTH + 1), None)
 
 
 def test_allowed_token_ids_initialization():
