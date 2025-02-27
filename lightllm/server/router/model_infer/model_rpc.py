@@ -32,9 +32,9 @@ class ModelRpcServer:
     def __init__(
         self,
         args,
-        tp_rank: int, 
-        local_tp_rank: int, 
-        world_size: int, 
+        tp_rank: int,
+        local_tp_rank: int,
+        world_size: int,
         local_world_size: int,
         rpc_event: multiprocessing.Event,
         rpc_finished_event: multiprocessing.Event,
@@ -286,7 +286,9 @@ def _init_env(
 
     g_router_lock.obj = router_lock
 
-    model_rpc_server = ModelRpcServer(args, tp_rank, local_tp_rank, world_size, local_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue)
+    model_rpc_server = ModelRpcServer(
+        args, tp_rank, local_tp_rank, world_size, local_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue
+    )
     success_event.set()
 
     model_rpc_server.loop_thread.join()
@@ -309,12 +311,34 @@ async def start_model_process(
 
     # 单卡时不使用 rpc
     if world_size == 1:
-        return ModelRpcServer(args, tp_rank, local_tp_rank, world_size, local_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue)
+        return ModelRpcServer(
+            args,
+            tp_rank,
+            local_tp_rank,
+            world_size,
+            local_world_size,
+            rpc_event,
+            rpc_finished_event,
+            info_queue,
+            mem_queue,
+        )
 
     success_event = mp.Event()
     proc = mp.Process(
         target=_init_env,
-        args=(args, tp_rank, local_tp_rank, world_size, local_world_size, info_queue, mem_queue, router_lock, rpc_event, rpc_finished_event, success_event),
+        args=(
+            args,
+            tp_rank,
+            local_tp_rank,
+            world_size,
+            local_world_size,
+            info_queue,
+            mem_queue,
+            router_lock,
+            rpc_event,
+            rpc_finished_event,
+            success_event,
+        ),
     )
     proc.start()
     success_event.wait(timeout=40)
