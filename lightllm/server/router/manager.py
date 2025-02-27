@@ -77,12 +77,10 @@ class RouterManager:
         self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
 
-        self.multinode_req_manager = None
-        self.multinode_req_queue_lock = asyncio.Lock()
         if args.nnodes > 1:
             self.mulitnode_group = dist.init_process_group(
-                backend="gloo",
-                init_method=f"tcp://{args.nccl_host}:{args.multinode_router_gloo_port}",
+                backend="nccl",
+                init_method=f"tcp://{args.nccl_host}:{args.multinode_router_nccl_port}",
                 world_size=args.nnodes,
                 rank=args.node_rank,
             )
@@ -217,8 +215,7 @@ class RouterManager:
             req_group.append(req)
 
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
-        async with self.multinode_req_queue_lock:
-            self.req_queue.extend(req_group)
+        self.req_queue.extend(req_group)
         self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
         return
 
