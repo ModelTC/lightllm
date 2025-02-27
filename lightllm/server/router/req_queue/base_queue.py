@@ -27,6 +27,10 @@ class BaseQueue:
         self.router_max_new_token_len = args.router_max_new_token_len
         self.pause_req_dict: Dict[int, Req] = {}  # List of paused requests
 
+    @property
+    def waiting_req_id_list(self):
+        return [req.request_id for req in self.waiting_req_list]
+
     def append(self, req: Req):
         req.sample_params.suggested_dp_index = self.dp_index
         self.waiting_req_list.append(req)
@@ -69,7 +73,7 @@ class BaseQueue:
 
         return len([req for req in current_batch.reqs if req.sample_params.suggested_dp_index == self.dp_index])
 
-    def generate_new_batch(self, current_batch: Batch):
+    def generate_new_batch(self, current_batch: Batch, current_waiting_num: int = -1):
         raise NotImplementedError()
 
     def calcu_batch_token_load(self, current_batch: Batch):
