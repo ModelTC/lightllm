@@ -119,7 +119,6 @@ class GuidedGrammar(ctypes.Structure):
 
                 tokenizer_info = xgr.TokenizerInfo.from_huggingface(tokenizer)
                 xgrammar_compiler = xgr.GrammarCompiler(tokenizer_info, max_threads=8)
-                print(constraint)
                 xgrammar_compiler.compile_grammar(constraint)
         except Exception as e:
             raise ValueError(f"guided_grammar '{constraint}' has compile_grammar_error: {str(e)}")
