@@ -56,10 +56,9 @@ class MemoryManager:
         if self.size is not None:
             return
 
-        tp_rank = dist.get_rank()
         world_size = dist.get_world_size()
         total_memory = get_total_gpu_memory()
-        available_memory = get_available_gpu_memory(tp_rank, world_size) - total_memory * (1 - mem_fraction)
+        available_memory = get_available_gpu_memory(world_size) - total_memory * (1 - mem_fraction)
         cell_size = self.get_cell_size()
         self.size = int(available_memory * 1024 ** 3 / cell_size)
         logger.info(
