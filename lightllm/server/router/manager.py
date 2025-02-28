@@ -51,7 +51,7 @@ class RouterManager:
         self.max_total_token_num = args.max_total_token_num
         self.shm_req_manager = ShmReqManager()
         # 用共享内存进行共享，router 模块读取进行精确的调度估计
-        self.read_only_statics_mem_manager = ReadOnlyStaticsMemoryManager(self.world_size)
+        self.read_only_statics_mem_manager = ReadOnlyStaticsMemoryManager()
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
         self.radix_cache_client = None
 

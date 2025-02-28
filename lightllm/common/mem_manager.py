@@ -300,12 +300,15 @@ class ReadOnlyStaticsMemoryManager:
     读取一些统计信息
     """
 
-    def __init__(self, global_world_size) -> None:
-        self.gobal_world_size = global_world_size
-        self.shared_tp_infos = [
-            SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank}")
-            for rank in range(global_world_size)
-        ]
+    def __init__(self) -> None:
+        args = get_env_start_args()
+        node_world_size = args.tp // args.nnodes
+        rank_start = args.node_rank * node_world_size
+        rank_end = (args.node_rank + 1) * node_world_size
+        self.shared_tp_infos = {
+            rank: SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank}")
+            for rank in range(rank_start, rank_end)
+        }
 
     def get_unrefed_token_num(self, dp_rank: int):
         args = get_env_start_args()
