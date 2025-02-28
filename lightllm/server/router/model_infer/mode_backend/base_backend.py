@@ -127,7 +127,6 @@ class ModeBackend:
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
             "run_mode": self.run_mode,
-            "cudagraph_step_length": kvargs.get("cudagraph_step_length", 1),
         }
 
         try:

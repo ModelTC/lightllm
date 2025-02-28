@@ -173,7 +173,6 @@ class RouterManager:
             "quant_type": self.args.quant_type,
             "quant_cfg": self.args.quant_cfg,
             "pd_rpyc_ports": self.args.pd_tp_infer_rpyc_ports,  # 非 pd 模式可以不设置
-            "cudagraph_step_length": self.args.cudagraph_step_length,
         }
 
         await self.model_rpc_client.init_model(kvargs=kvargs)

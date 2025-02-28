@@ -98,7 +98,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--multinode_httpmanager_port",
         type=int,
-        default=20000,
+        default=12345,
         help="the port for multinode http manager, default is 20000",
     )
     parser.add_argument(
@@ -244,12 +244,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_monitor_auth", action="store_true", help="Whether to open authentication for push_gateway"
     )
     parser.add_argument("--disable_cudagraph", action="store_true", help="Disable the cudagraph of the decoding stage")
-    parser.add_argument(
-        "--cudagraph_step_length",
-        type=int,
-        default=1,
-        help="""How many batch sizes to between each step capturing cuda graph.""",
-    )
+
     parser.add_argument(
         "--graph_max_batch_size",
         type=int,
