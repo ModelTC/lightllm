@@ -5,6 +5,7 @@ import asyncio
 import uvloop
 import rpyc
 import time
+import copy
 import hashlib
 import datetime
 import websockets
@@ -199,6 +200,10 @@ class HttpServerManager:
             assert False, "dead code path"
 
         try:
+            old_multimodal_params = None
+            if self.nnodes > 1 and self.node_rank == 0 and self.args.dp == 1:
+                old_multimodal_params = copy.deepcopy(multimodal_params)
+
             if self.pd_mode.is_P_or_NORMAL():
                 multimodal_params.verify_and_preload()
 
@@ -245,7 +250,7 @@ class HttpServerManager:
             self.req_id_to_out_inf[group_request_id] = req_status
 
             await self.transfer_to_next_module_or_node(
-                prompt, sampling_params, multimodal_params, req_status.group_req_objs
+                prompt, sampling_params, old_multimodal_params, req_status.group_req_objs
             )
 
             results_generator = self._wait_to_token_package(
