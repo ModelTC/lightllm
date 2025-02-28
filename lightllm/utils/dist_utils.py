@@ -13,6 +13,7 @@ import torch
 # node_world_size 指一个推理节点的使用的卡数，如两机 tp 推理，如果两机器8卡，则 node_world_size 为 8.
 # rank_in_node 指在一个node内的rank序号，如两机8卡推理，每机上的rank序号都是0-8
 
+
 def set_environ(environ_name, value):
     os.environ[environ_name] = str(value)
 
@@ -37,8 +38,7 @@ def _init_distributed_env(kvargs):
     set_current_rank_in_node(get_global_rank() % node_world_size)
     set_node_world_size(node_world_size)
 
-
-    device_id = kvargs["rank_id"] % size_per_node
+    device_id = kvargs["rank_id"] % get_node_world_size()
     set_current_device_id(device_id)
     torch.cuda.set_device(device_id)
     if kvargs["world_size"] > 1:
@@ -113,7 +113,7 @@ def get_current_device_id():
     return int(get_environ("LIGHTLLM_CURRENT_DEVICE_ID"))
 
 
-def set_current_rank_in_node(rank:int):
+def set_current_rank_in_node(rank: int):
     set_environ("LIGHTLLM_CURRENT_RANK_IN_NODE", rank)
 
 

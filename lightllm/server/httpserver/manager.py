@@ -249,7 +249,8 @@ class HttpServerManager:
 
             # 将请求转发给其他节点
             await self.order_req_manager.add_request(req_status.group_req_objs)
-            await self.transfer_to_next_module()
+            async with self.order_req_manager.lock:
+                await self.transfer_to_next_module()
 
             results_generator = self._wait_to_token_package(
                 start_time,
