@@ -73,13 +73,14 @@ class MMWeightTpl(BaseWeightTpl):
                     and (not self.static_activation or self.input_scale is not None)
                 ):
                     if self.weight_scale.ndim > 1:
-                        self.weight_scale = self.weight_scale.transpose(0, 1).cuda(self.device_id_)
+                        self.weight_scale = self.weight_scale.cuda(self.device_id_).transpose(0, 1)
                     self.weight = [
                         self.weight.transpose(0, 1).cuda(self.device_id_),
-                        self.weight_scale,
+                        self.weight_scale.cuda(self.device_id_),
                         self.input_scale,
                     ]
             else:
+                import pdb;pdb.set_trace()
                 self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(self.device_id_))
             return
         self.weight = self.weight.to(self.data_type_).transpose(0, 1).cuda(self.device_id_)
@@ -101,6 +102,8 @@ class MMWeight(MMWeightTpl):
         self.weight_name = weight_name
         self.bias_name = bias_name
         self.has_bias = bias_name is not None
+        weight_scale_suffix = "weight_scale"
+        act_scale_suffix = "input_scale"
         self.weight_scale_name, self.act_scale_name = generate_scale_name(
             weight_name, weight_scale_suffix, act_scale_suffix
         )
@@ -139,7 +142,7 @@ class ROWMMWeight(MMWeight):
 
             weight_scale = weights[self.weight_scale_name]
             # per channel or block-wise
-            if weight_scale.shape[0] > 1:
+            if isinstance(weight_scale, torch.Tensor) and weight_scale.numel() > 1:
                 scale_start = (self.start + block_size - 1) // block_size
                 scale_end = (self.end + block_size - 1) // block_size
                 weight_scale = weight_scale.to(torch.float)[scale_start:scale_end]
@@ -257,6 +260,8 @@ class MultiMMWeight(MMWeightTpl):
         self.bias_names = bias_names
         self.weight_scale_names = []
         self.act_scale_names = []
+        weight_scale_suffix = "weight_scale"
+        act_scale_suffix = "input_scale"
         for weight_name in weight_names:
             weight_scale_name, act_scale_name = generate_scale_name(weight_name, weight_scale_suffix, act_scale_suffix)
             self.weight_scale_names.append(weight_scale_name)
@@ -290,7 +295,8 @@ class MultiROWMMWeight(MultiMMWeight):
             delattr(self, "weights")
 
         if self.weight_scale is None and (None not in self.weight_scales):
-            self.weight_scale = torch.cat(self.weight_scales, dim=0).cuda()
+            #self.weight_scale = torch.cat(fixed_scales, dim=0).cuda()
+            self.weight_scale = self.weight_scales[0]
             self._post_load_weights()
             delattr(self, "weight_scales")
 
@@ -322,7 +328,7 @@ class MultiROWMMWeight(MultiMMWeight):
                         block_size = self.quant_method.block_size
                 weight_scale = weights[self.weight_scale_names[i]]
                 # block-wise or per-channel
-                if weight_scale.shape[0] > 1:
+                if isinstance(weight_scale, torch.Tensor) and weight_scale.numel() > 1:
                     weight_scale = weight_scale[self.starts[i] // block_size : self.ends[i] // block_size].to(
                         torch.float
                     )
@@ -466,6 +472,8 @@ class BMMWeight(BMMWeightTpl):
         self.end = split_n_embed * (self.tp_rank_ + 1)
         self.weight_name = weight_name
         self.bias_name = bias_name
+        weight_scale_suffix = "weight_scale"
+        act_scale_suffix = "input_scale"
         self.weight_scale_name, self.act_scale_name = generate_scale_name(
             weight_name, weight_scale_suffix, act_scale_suffix
         )
@@ -518,7 +526,8 @@ class ROWBMMWeight(BMMWeight):
         if self.weight_scale_name is not None and self.weight_scale_name in weights:
             weight_scale = weights[self.weight_scale_name]
             # per channel or block-wise
-            if weight_scale.shape[0] > 1:
+            if isinstance(weight_scale, torch.Tensor) and weight_scale.numel() > 1:
+            #if weight_scale.shape[0] > 1:
                 weight_scale = weight_scale.to(torch.float)[self.start : self.end]
             else:
                 # per tensor

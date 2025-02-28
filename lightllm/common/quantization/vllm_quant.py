@@ -74,8 +74,12 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         self.is_moe = False
         # PINGPONG_FP8_GEMM is per tensor quant way.
         self.use_pingpong_fp8_gemm = os.getenv("ENABLE_PINGPONG_FP8_GEMM", "0").upper() in ["ON", "TRUE", "1"]
-
-        if self.use_pingpong_fp8_gemm:
+        self.use_static_true = os.getenv("ENABLE_STATIC_TRUE", "0").upper() in ["ON", "TRUE", "1"] 
+        
+        if self.use_static_true:
+            self.quantize = self.quantize_static_true
+            self.apply = self.apply_scaled_weight
+        elif self.use_pingpong_fp8_gemm:
             self.quantize = self.quantize_pingpong_fp8
             self.apply = self.apply_pingpong_fp8
         else:
@@ -84,6 +88,11 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
 
     def quantize(self, weight: torch.Tensor):
         raise Exception("This function needs to be bound.")
+
+    def quantize_static_true(self, weight: torch.Tensor):
+        if isinstance(weight, tuple):
+            return (weight[0].transpose(0, 1).cuda(self.device_id_),) + weight[1:]
+        return weight.cuda(self.device_id_), None
 
     def quantize_scaled_mm_fp8(self, weight: torch.Tensor):
         if self.is_moe:
@@ -152,7 +161,33 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         from fp8_pingpong_gemm import cutlass_scaled_mm
 
         return cutlass_scaled_mm(x_q, weights[0], x_scale, weights[1], out)
-
+    
+    def apply_scaled_weight(
+        self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
+    ):
+        if len(weights) == 3:
+            qweight, weight_scale, input_scale = weights
+        elif len(weights) == 2:
+            qweight, weight_scale = weights
+        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=input_scale, scale_ub=None, use_per_token_if_dynamic=False)
+        m = input_tensor.shape[0]
+        n = qweight.shape[1]
+        if out is None:
+            if use_custom_tensor_mananger:
+                out = self.cache_manager.alloc_tensor(
+                    (m, n), input_tensor.dtype, device=input_tensor.device, is_graph_out=False
+                )
+            else:
+                out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
+        
+        N = x_q.size(0)      # x_q 的第 0 维
+        M = qweight.size(1)  # qweight 的第 1 维
+        x_scale = x_scale.reshape(1).expand(N, 1)
+        weight_scale = weight_scale.reshape(1).expand(M, 1)
+        x_scale = x_scale.contiguous()
+        weight_scale = weight_scale.contiguous() 
+        torch.ops._C.cutlass_scaled_mm(out, x_q, qweight, x_scale, weight_scale, bias)
+        return out
 
 @QUANTMETHODS.register(["vllm-fp8w8a8-b128"])
 class vLLMFP8w8a8B128QuantizationMethod(vLLMBaseQuantizationMethod):

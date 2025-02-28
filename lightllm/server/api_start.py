@@ -88,8 +88,8 @@ def normal_or_p_d_start(args):
         args.mem_fraction > 0 and args.mem_fraction < 1
     ), f"Invalid mem_fraction {args.mem_fraction}, The expected value is between 0 and 1."
 
-    if args.static_quant:
-        assert args.quant_type == "vllm-w8a8", "Only static parameter loading for vllm-w8a8 is supported."
+    #if args.static_quant:
+    #    assert args.quant_type == "vllm-w8a8", "Only static parameter loading for vllm-w8a8 is supported."
 
     if not args.enable_chunked_prefill:
         args.chunked_prefill_size = 0
