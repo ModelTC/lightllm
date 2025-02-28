@@ -113,12 +113,10 @@ class RouterManager:
         ]
         self.rpc_event = multiprocessing.Event()
         self.rpc_finished_event = multiprocessing.Event()
-        
+
         assert (self.world_size % self.nnodes) == 0
         node_world_size = self.world_size // self.nnodes
-        for rank_id in range(
-            self.node_rank * node_world_size, (self.node_rank + 1) * node_world_size)
-        ):
+        for rank_id in range(self.node_rank * node_world_size, (self.node_rank + 1) * node_world_size):
             rpc_model = await start_model_process(
                 args=self.args,
                 rank=rank_id,
