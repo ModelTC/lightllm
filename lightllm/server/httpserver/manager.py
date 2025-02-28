@@ -25,7 +25,6 @@ from lightllm.server.core.objs import SamplingParams
 from lightllm.server.core.objs.io_objs import GroupReqObjs
 from fastapi import Request
 from lightllm.server.core.objs.shm_req_manager import ShmReqManager
-from lightllm.server.core.objs.ordered_req_manager import OrderedRequestManager
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.metrics.manager import MetricClient
@@ -57,7 +56,8 @@ class HttpServerManager:
         self.waiting_objs = []
         self.child_node_lock = asyncio.Lock()
         self.nnodes = args.nnodes
-        self.order_req_manager = OrderedRequestManager()
+        self.node_rank = args.node_rank
+        self.transfer_lock = asyncio.Lock()
         if args.nnodes > 1:
             if args.node_rank == 0:
                 self.multinode_req_manager = []
@@ -155,12 +155,14 @@ class HttpServerManager:
     async def loop_for_request(self):
         assert self.args.node_rank > 0
         tasks = []
+        self.request_order_queue = []
         while True:
             (
                 prompt,
                 sampling_params,
                 multimodal_params,
             ) = await self.multinode_req_manager.recv_pyobj()
+            self.request_order_queue.append(sampling_params.group_request_id)
             results_generator = self.generate(prompt, sampling_params, multimodal_params, None)
 
             async def generate_wrapper(results_generator):
@@ -186,12 +188,6 @@ class HttpServerManager:
         if self.pd_mode == NodeRole.NORMAL:
             if sampling_params.group_request_id == -1:
                 group_request_id = self.id_gen.generate_id()
-                for sender in self.multinode_req_manager:
-                    sampling_params.group_request_id = group_request_id
-                    sender.send_pyobj(
-                        (prompt, sampling_params, multimodal_params),
-                        protocol=pickle.HIGHEST_PROTOCOL,
-                    )
             else:
                 group_request_id = sampling_params.group_request_id
             sampling_params.group_request_id = group_request_id
@@ -247,10 +243,9 @@ class HttpServerManager:
             req_status = ReqStatus(group_request_id, multimodal_params, req_objs, start_time)
             self.req_id_to_out_inf[group_request_id] = req_status
 
-            # 将请求转发给其他节点
-            await self.order_req_manager.add_request(req_status.group_req_objs)
-            async with self.order_req_manager.lock:
-                await self.transfer_to_next_module()
+            await self.transfer_to_next_module_or_node(
+                prompt, sampling_params, multimodal_params, req_status.group_req_objs
+            )
 
             results_generator = self._wait_to_token_package(
                 start_time,
@@ -339,10 +334,43 @@ class HttpServerManager:
 
         return prompt_ids
 
+    async def transfer_to_next_module_or_node(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams,
+        multimodal_params: MultimodalParams,
+        group_req_objs: Optional[GroupReqObjs] = None,
+    ):
+        if self.nnodes > 1 and self.node_rank == 0 and self.args.dp == 1:
+            async with self.transfer_lock:
+                for sender in self.multinode_req_manager:
+                    sender.send_pyobj(
+                        (prompt, sampling_params, multimodal_params),
+                        protocol=pickle.HIGHEST_PROTOCOL,
+                    )
+                await self.transfer_to_next_module(group_req_objs)
+            return
+
+        if self.nnodes > 1 and self.node_rank > 0 and self.args.dp == 1:
+            while True:
+                if self.request_order_queue and self.request_order_queue[0] != group_req_objs.group_req_id:
+                    await asyncio.sleep(0.002)
+                    continue
+                else:
+                    async with self.transfer_lock:
+                        await self.transfer_to_next_module(group_req_objs)
+                        self.request_order_queue.pop(0)
+                    break
+            return
+
+        await self.transfer_to_next_module(group_req_objs)
+        return
+
     async def transfer_to_next_module(
         self,
+        group_req_objs: Optional[GroupReqObjs] = None,
     ):
-        group_req_objs: GroupReqObjs = await self.order_req_manager.get_next_request()
+
         if self.pd_mode == NodeRole.P:
             if self.enable_multimodal:
                 self.send_to_visual.send_pyobj(
