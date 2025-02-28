@@ -77,9 +77,9 @@ class RouterManager:
         self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
         self.model_rpc_ports = model_rpc_ports
 
-        if args.nnodes > 1:
+        if args.nnodes > 1 and args.dp == 1:
             self.mulitnode_group = dist.init_process_group(
-                backend="nccl",
+                backend="gloo",
                 init_method=f"tcp://{args.nccl_host}:{args.multinode_router_nccl_port}",
                 world_size=args.nnodes,
                 rank=args.node_rank,
@@ -267,12 +267,13 @@ class RouterManager:
         if self.schedule_task is None:
 
             def get_new_batch():
-                current_waiting_id_list = self.req_queue.waiting_req_id_list
-                current_waiting_num = len(current_waiting_id_list)
-                current_waiting_num_tensor = torch.tensor(current_waiting_num, dtype=torch.int32, device="cuda")
-                # 使用 all_reduce 获取最小值
-                dist.all_reduce(current_waiting_num_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
-                current_waiting_num = current_waiting_num_tensor.item()
+                current_waiting_num = None
+                if self.nnodes > 1 and self.args.dp == 1:
+                    # 使用 all_reduce 获取最小值
+                    current_waiting_num = len(self.req_queue.waiting_req_list)
+                    current_waiting_num_tensor = torch.tensor(current_waiting_num, dtype=torch.int32, device="cpu")
+                    dist.all_reduce(current_waiting_num_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
+                    current_waiting_num = current_waiting_num_tensor.item()
 
                 self.overlap_event.wait(timeout=0.020)
                 self.overlap_event.clear()

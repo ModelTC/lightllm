@@ -41,17 +41,17 @@ def _init_distributed_env(kvargs):
     device_id = kvargs["rank_id"] % get_node_world_size()
     set_current_device_id(device_id)
     torch.cuda.set_device(device_id)
-    if kvargs["world_size"] > 1:
-        dist.init_process_group(
-            "nccl",
-            init_method=f'tcp://{kvargs["nccl_host"]}:{kvargs["nccl_port"]}',
-            rank=kvargs["rank_id"],
-            world_size=kvargs["world_size"],
-        )
-        # warmup nccl communicator
-        _a = torch.zeros([1]).to(f"cuda:{device_id}")
-        dist.all_reduce(_a)
-        del _a
+    dist.init_process_group(
+        "nccl",
+        init_method=f'tcp://{kvargs["nccl_host"]}:{kvargs["nccl_port"]}',
+        rank=kvargs["rank_id"],
+        world_size=kvargs["world_size"],
+    )
+    # if kvargs["world_size"] > 1:
+    # warmup nccl communicator
+    _a = torch.zeros([1]).to(f"cuda:{device_id}")
+    dist.all_reduce(_a)
+    del _a
 
 
 def set_global_rank(global_rank: int):
