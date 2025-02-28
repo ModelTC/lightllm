@@ -57,7 +57,8 @@ class HttpServerManager:
         self.child_node_lock = asyncio.Lock()
         self.nnodes = args.nnodes
         self.node_rank = args.node_rank
-        self.transfer_lock = asyncio.Lock()
+        self.transfer_lock = asyncio.Lock()  # the lock for transfer to next module in multi node mode.
+        self.disable_abort = args.nnodes > 1 and args.dp == 1  # mulitnode dp=1 mode, disable abort
         if args.nnodes > 1:
             if args.node_rank == 0:
                 self.multinode_req_manager = []
@@ -341,6 +342,7 @@ class HttpServerManager:
         multimodal_params: MultimodalParams,
         group_req_objs: Optional[GroupReqObjs] = None,
     ):
+        # 多节点纯tp 运行模式下，保证请求能保持相同的顺序转发到其他节点和当前节点next module.
         if self.nnodes > 1 and self.node_rank == 0 and self.args.dp == 1:
             async with self.transfer_lock:
                 for sender in self.multinode_req_manager:
@@ -431,7 +433,7 @@ class HttpServerManager:
             except asyncio.TimeoutError:
                 pass
 
-            if request is not None and await request.is_disconnected() and self.nnodes == 1:
+            if not self.disable_abort and request is not None and await request.is_disconnected():
                 await self.abort(group_request_id)
                 raise Exception(f"req_id {group_request_id} disconnected")
 
