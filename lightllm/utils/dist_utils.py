@@ -25,6 +25,26 @@ def get_environ(environ_name):
     return value
 
 
+def _init_vision_distributed_env(kvargs):
+    world_size = kvargs["vit_tp"]
+    set_global_rank(kvargs["tp_rank_id"])
+    set_global_world_size(world_size)
+    visual_gpu_ids = kvargs["visual_gpu_ids"]
+    device_id = visual_gpu_ids[kvargs["vit_rank_id"]]
+    set_current_device_id(device_id)
+    torch.cuda.set_device(device_id)
+    dist.init_process_group(
+        "nccl",
+        init_method=f'tcp://127.0.0.1:{kvargs["visual_nccl_port"]}',
+        rank=kvargs["tp_rank_id"],
+        world_size=world_size,
+    )
+    # warmup nccl communicator
+    _a = torch.zeros([1]).to(f"cuda:{device_id}")
+    dist.all_reduce(_a)
+    del _a
+
+
 def _init_distributed_env(kvargs):
     assert kvargs["world_size"] % kvargs["args"].nnodes == 0, "world_size should be divided by nnodes"
     node_world_size = kvargs["world_size"] // kvargs["args"].nnodes
@@ -47,7 +67,6 @@ def _init_distributed_env(kvargs):
         rank=kvargs["rank_id"],
         world_size=kvargs["world_size"],
     )
-    # if kvargs["world_size"] > 1:
     # warmup nccl communicator
     _a = torch.zeros([1]).to(f"cuda:{device_id}")
     dist.all_reduce(_a)
