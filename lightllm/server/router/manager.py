@@ -113,22 +113,19 @@ class RouterManager:
         ]
         self.rpc_event = multiprocessing.Event()
         self.rpc_finished_event = multiprocessing.Event()
-
-        size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
-        local_world_size = (
-            size_per_node if self.node_rank < self.nnodes - 1 else self.world_size - self.node_rank * size_per_node
-        )
+        
+        assert (self.world_size % self.nnodes) == 0
+        node_world_size = self.world_size // self.nnodes
         for rank_id in range(
-            self.node_rank * size_per_node, min(self.world_size, (self.node_rank + 1) * size_per_node)
+            self.node_rank * node_world_size, (self.node_rank + 1) * node_world_size)
         ):
             rpc_model = await start_model_process(
                 args=self.args,
-                tp_rank=rank_id,
-                local_tp_rank=rank_id % size_per_node,
+                rank=rank_id,
+                rank_in_node=rank_id % node_world_size,
+                node_world_size=node_world_size,
                 rpc_event=self.rpc_event,
                 rpc_finished_event=self.rpc_finished_event,
-                world_size=self.world_size,
-                local_world_size=local_world_size,
                 info_queue=self.info_queue,
                 mem_queue=self.mem_queues[rank_id],
                 router_lock=self.router_lock,
