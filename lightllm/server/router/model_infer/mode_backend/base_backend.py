@@ -107,7 +107,6 @@ class ModeBackend:
         model_cfg, _ = PretrainedConfig.get_config_dict(self.weight_dir)
 
         model_kvargs = {
-            "local_tp_rank": self.local_tp_rank,
             "tp_rank": self.tp_rank,
             "world_size": self.world_size,
             "weight_dir": self.weight_dir,
