@@ -276,7 +276,6 @@ class RouterManager:
                 new_batch = self.req_queue.generate_new_batch(running_batch, current_waiting_num)
                 return new_batch
 
-            # self.schedule_task = asyncio.create_task(get_new_batch())
             self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
             return None
         else:
