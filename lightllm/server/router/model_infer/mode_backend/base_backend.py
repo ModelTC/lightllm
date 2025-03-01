@@ -42,6 +42,9 @@ from lightllm.utils.dist_utils import _init_distributed_env
 from lightllm.utils.envs_utils import get_unique_server_name
 from lightllm.server.core.objs import ShmReqManager
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
+from lightllm.utils.dist_utils import get_global_rank, get_global_world_size, get_dp_size
+from lightllm.utils.dist_utils import get_dp_world_size, get_current_dp_rank, get_current_rank_in_dp
+from lightllm.utils.dist_utils import get_current_device_id, get_current_rank_in_node, get_node_world_size
 import torch.distributed as dist
 
 
@@ -82,9 +85,8 @@ class ModeBackend:
             assert self.dp_size == self.world_size, "Currently only self-sustaining dp_size == tp_size"
             os.environ["ENABLE_DP"] = "1"
 
-        size_per_node = (self.world_size + self.nnodes - 1) // self.nnodes
-        self.local_tp_rank = self.tp_rank - size_per_node * self.node_rank
         _init_distributed_env(kvargs)
+        self.init_rank_infos()
 
         self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", self.dp_size)
 
@@ -273,3 +275,27 @@ class ModeBackend:
         self.radix_cache.match_prefix(
             torch.tensor(model_cfg["prompt_cache_token_ids"], dtype=torch.int64, device="cpu"), update_refs=True
         )
+
+    def init_rank_infos(self):
+        self.node_world_size = get_node_world_size()
+        self.rank_in_node = get_current_rank_in_node()
+        self.current_device_id = get_current_device_id()
+        self.rank_in_dp = get_current_rank_in_dp()
+        self.dp_rank = get_current_dp_rank()
+        self.dp_world_size = get_dp_world_size()
+        self.global_rank = get_global_rank()
+        self.global_world_size = get_global_world_size()
+        self.dp_size = get_dp_size()
+
+        if self.nnodes > 1 and self.dp_size == 1:
+            if self.rank_in_node == 0:
+                self.is_master_in_dp = True
+            else:
+                self.is_master_in_dp = False
+        else:
+            if self.rank_in_dp == 0:
+                self.is_master_in_dp = True
+            else:
+                self.is_master_in_dp = False
+        return
+
