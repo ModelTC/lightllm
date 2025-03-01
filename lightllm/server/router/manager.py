@@ -399,7 +399,6 @@ class RouterManager:
         while True:
             recv_req: GroupReqIndexes = await self.recv_from_httpserver.recv_pyobj()
             if isinstance(recv_req, GroupReqIndexes):
-                print(f"Recv Req {recv_req} {recv_req.group_req_id}")
                 await self.add_req(recv_req)
             else:
                 assert False, f"Error Req Inf {recv_req}"
