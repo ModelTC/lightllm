@@ -267,7 +267,9 @@ class RouterManager:
                 if self.nnodes > 1 and self.args.dp == 1:
                     # 使用 all_reduce 获取最小值
                     limit_router_queue_length = len(self.req_queue.waiting_req_list)
-                    limit_router_queue_length_tensor = torch.tensor(limit_router_queue_length, dtype=torch.int32, device="cpu")
+                    limit_router_queue_length_tensor = torch.tensor(
+                        limit_router_queue_length, dtype=torch.int32, device="cpu"
+                    )
                     dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
                     limit_router_queue_length = limit_router_queue_length_tensor.item()
 

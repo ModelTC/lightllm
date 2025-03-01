@@ -74,12 +74,12 @@ class ChunkedPrefillQueue(BaseQueue):
         can_run_list = []
         abort_req_list = []
         aborted_count = 0
-        
+
         if limit_router_queue_length is None:
             waiting_queue = self.waiting_req_list
         else:
             waiting_queue = self.waiting_req_list[:limit_router_queue_length]
-        
+
         for req in waiting_queue:
             if req.is_aborted and not req.is_paused:
                 # 由于管理的复杂性，只有没有被调度运行过的请求可以因为abort直接在队列中忽略掉.
