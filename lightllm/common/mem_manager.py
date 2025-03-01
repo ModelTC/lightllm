@@ -302,6 +302,7 @@ class ReadOnlyStaticsMemoryManager:
 
     def __init__(self) -> None:
         args = get_env_start_args()
+        self.global_world_size = args.tp
         node_world_size = args.tp // args.nnodes
         rank_start = args.node_rank * node_world_size
         rank_end = (args.node_rank + 1) * node_world_size
@@ -317,5 +318,5 @@ class ReadOnlyStaticsMemoryManager:
             rank_id = args.tp // args.nnodes * args.node_rank
             return self.shared_tp_infos[rank_id].get_value()
         dp_size = args.dp
-        dp_world_size = self.gobal_world_size // dp_size
+        dp_world_size = self.global_world_size // dp_size
         return self.shared_tp_infos[dp_rank * dp_world_size].get_value()
