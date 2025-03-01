@@ -200,7 +200,7 @@ class RouterManager:
 
         return
 
-    async def add_req(self, group_req_indexes: GroupReqIndexes):
+    def add_req(self, group_req_indexes: GroupReqIndexes):
         req_group = []
         for req_index in group_req_indexes.shm_req_indexes:
             req = self.shm_req_manager.get_req_obj_by_index(req_index)
@@ -211,6 +211,7 @@ class RouterManager:
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
         self.req_queue.extend(req_group)
         self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
+
         return
 
     async def loop_for_fwd(
@@ -262,18 +263,18 @@ class RouterManager:
         if self.schedule_task is None:
 
             def get_new_batch():
-                current_waiting_num = None
+                limit_router_queue_length = None
                 if self.nnodes > 1 and self.args.dp == 1:
                     # 使用 all_reduce 获取最小值
-                    current_waiting_num = len(self.req_queue.waiting_req_list)
-                    current_waiting_num_tensor = torch.tensor(current_waiting_num, dtype=torch.int32, device="cpu")
-                    dist.all_reduce(current_waiting_num_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
-                    current_waiting_num = current_waiting_num_tensor.item()
+                    limit_router_queue_length = len(self.req_queue.waiting_req_list)
+                    limit_router_queue_length_tensor = torch.tensor(limit_router_queue_length, dtype=torch.int32, device="cpu")
+                    dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
+                    limit_router_queue_length = limit_router_queue_length_tensor.item()
 
                 self.overlap_event.wait(timeout=0.020)
                 self.overlap_event.clear()
                 time.sleep(0.003)
-                new_batch = self.req_queue.generate_new_batch(running_batch, current_waiting_num)
+                new_batch = self.req_queue.generate_new_batch(running_batch, limit_router_queue_length)
                 return new_batch
 
             self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
@@ -399,7 +400,7 @@ class RouterManager:
         while True:
             recv_req: GroupReqIndexes = await self.recv_from_httpserver.recv_pyobj()
             if isinstance(recv_req, GroupReqIndexes):
-                await self.add_req(recv_req)
+                self.add_req(recv_req)
             else:
                 assert False, f"Error Req Inf {recv_req}"
 
@@ -408,7 +409,6 @@ class RouterManager:
 
 
 def start_router_process(args, router_port, detokenization_port, model_rpc_ports, metric_port, pipe_writer):
-
     # 注册 graceful 退出的处理
     graceful_registry(inspect.currentframe().f_code.co_name)
     start_parent_check_thread()
