@@ -80,7 +80,7 @@ class RouterManager:
         if args.nnodes > 1 and args.dp == 1:
             self.mulitnode_group = dist.init_process_group(
                 backend="gloo",
-                init_method=f"tcp://{args.nccl_host}:{args.multinode_router_nccl_port}",
+                init_method=f"tcp://{args.nccl_host}:{args.multinode_router_gloo_port}",
                 world_size=args.nnodes,
                 rank=args.node_rank,
             )

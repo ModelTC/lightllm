@@ -102,7 +102,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="the port for multinode http manager, default is 20000",
     )
     parser.add_argument(
-        "--multinode_router_nccl_port",
+        "--multinode_router_gloo_port",
         type=int,
         default=20001,
         help="the gloo port for multinode router, default is 20001",
