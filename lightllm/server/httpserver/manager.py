@@ -53,9 +53,6 @@ class HttpServerManager:
         self.send_to_router.connect(f"{args.zmq_mode}127.0.0.1:{router_port}")
 
         self.multinode_req_manager = None
-        self.child_node_events = {}
-        self.waiting_objs = []
-        self.child_node_lock = asyncio.Lock()
         self.nnodes = args.nnodes
         self.node_rank = args.node_rank
         self.transfer_lock = asyncio.Lock()  # the lock for transfer to next module in multi node mode.
@@ -176,6 +173,26 @@ class HttpServerManager:
             while len(tasks) > 0 and tasks[0].done():
                 tasks.pop(0)
 
+    def alloc_req_id(self, sampling_params):
+        # 请求的 id 可以由外部传入，也可以由内部生成，但是由外部传入的时候，要自己保证全局唯一性
+        # 否则会造成异常问题。目前限制 NORMAL 模式都使用内部id替换， P 和 D 模式按需设置
+        if self.pd_mode == NodeRole.NORMAL:
+            if not (self.nnodes > 1 and self.args.dp == 1):
+                group_request_id = self.id_gen.generate_id()
+            else:
+                if self.node_rank == 0:
+                    group_request_id = self.id_gen.generate_id()
+                else:
+                    assert sampling_params.group_request_id != -1
+                    group_request_id = sampling_params.group_request_id
+            sampling_params.group_request_id = group_request_id
+        elif self.pd_mode == NodeRole.P or self.pd_mode == NodeRole.D:
+            assert sampling_params.group_request_id is not None, "p d mode, group_request_id must be setting"
+            group_request_id = sampling_params.group_request_id
+        else:
+            assert False, "dead code path"
+        return group_request_id
+
     async def generate(
         self,
         prompt: Union[str, List[int]],
@@ -185,19 +202,7 @@ class HttpServerManager:
     ) -> Tuple[int, str, dict, FinishStatus]:
         start_time = time.time()
         request_headers = request.headers if request is not None else {}
-        # 请求的 id 可以由外部传入，也可以由内部生成，但是由外部传入的时候，要自己保证全局唯一性
-        # 否则会造成异常问题。目前限制 NORMAL 模式都使用内部id替换， P 和 D 模式按需设置
-        if self.pd_mode == NodeRole.NORMAL:
-            if sampling_params.group_request_id == -1:
-                group_request_id = self.id_gen.generate_id()
-            else:
-                group_request_id = sampling_params.group_request_id
-            sampling_params.group_request_id = group_request_id
-        elif self.pd_mode == NodeRole.P or self.pd_mode == NodeRole.D:
-            assert sampling_params.group_request_id is not None, "p d mode, group_request_id must be setting"
-            group_request_id = sampling_params.group_request_id
-        else:
-            assert False, "dead code path"
+        group_request_id = self.alloc_req_id(sampling_params)
 
         try:
             old_multimodal_params = None
