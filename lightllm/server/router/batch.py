@@ -36,12 +36,14 @@ class Batch:
             # 更新aborted 标记，可以触发推理进程主动退出aborted得请求。
             if req.is_aborted:
                 req.router_aborted = True
+
             if req.shm_infer_released:
                 logger.info(f"router release req id {req.request_id}")
                 shm_req_manager.put_back_req_obj(req)
                 req = None
             else:
                 unfinished_req_ids.append(req.request_id)
+
         self.reqs = [self.id_to_reqs[req_id] for req_id in unfinished_req_ids]
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
         return
@@ -70,7 +72,7 @@ class Batch:
         return
 
     def __repr__(self):
-        return f"batch_id={self.batch_id}, " f"reqs={[req.get_str() for req in self.reqs]}, "
+        return f"batch_id={self.batch_id}, " f"reqs={self.reqs}, "
 
     def simple_log(self):
         return f"batch_id={self.batch_id}, time:{time.time()}s req_ids:{[req.request_id for req in self.reqs]}"
