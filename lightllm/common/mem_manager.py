@@ -8,7 +8,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.utils.profile_max_tokens import get_available_gpu_memory, get_total_gpu_memory
 from lightllm.common.kv_trans_kernel.kv_trans import kv_trans
-from lightllm.utils.dist_utils import get_global_rank
+from lightllm.utils.dist_utils import get_current_rank_in_node
 from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
 
 
@@ -37,8 +37,8 @@ class MemoryManager:
         # 用共享内存进行共享，router 模块读取进行精确的调度估计, nccl port 作为一个单机中单实列的标记。防止冲突。
         from lightllm.utils.envs_utils import get_unique_server_name
 
-        rank_id = get_global_rank()
-        self.shared_can_use_token_num = SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank_id}")
+        rank_in_node = get_current_rank_in_node()
+        self.shared_can_use_token_num = SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank_in_node}")
 
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
         self._init_buffers(
@@ -303,20 +303,16 @@ class ReadOnlyStaticsMemoryManager:
     def __init__(self) -> None:
         args = get_env_start_args()
         self.global_world_size = args.tp
-        node_world_size = args.tp // args.nnodes
-        rank_start = args.node_rank * node_world_size
-        rank_end = (args.node_rank + 1) * node_world_size
-        self.shared_tp_infos = {
-            rank: SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank}")
-            for rank in range(rank_start, rank_end)
-        }
+        self.node_world_size = args.tp // args.nnodes
+        self.dp_world_size = self.global_world_size  // args.dp
+        # 兼容多机 dp size=1 纯 tp 模式的情况
+        self.is_multinode_tp = args.dp == 1 and args.nnodes > 1
+        self.shared_tp_infos = [
+            SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank_in_node}")
+            for rank_in_node in range(0, self.node_world_size, self.dp_world_size)
+        ]
 
-    def get_unrefed_token_num(self, dp_rank: int):
-        args = get_env_start_args()
-        if args.dp == 1 and args.nnodes > 1:
-            # 兼容多机 dp size=1 的情况
-            rank_id = args.tp // args.nnodes * args.node_rank
-            return self.shared_tp_infos[rank_id].get_value()
-        dp_size = args.dp
-        dp_world_size = self.global_world_size // dp_size
-        return self.shared_tp_infos[dp_rank * dp_world_size].get_value()
+    def get_unrefed_token_num(self, dp_rank_in_node: int):
+        if self.is_multinode_tp:
+            return self.shared_tp_infos[0].get_value()
+        return self.shared_tp_infos[dp_rank_in_node].get_value()
