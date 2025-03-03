@@ -205,7 +205,7 @@ class ModeBackend:
         set_random_seed(2147483647)
         self.radix_cache = (
             RadixCache(
-                get_unique_server_name(), self.model.mem_manager.size, self.tp_rank, mem_manager=self.model.mem_manager
+                get_unique_server_name(), self.model.mem_manager.size, self.rank_in_node, mem_manager=self.model.mem_manager
             )
             if self.use_dynamic_prompt_cache
             else None
