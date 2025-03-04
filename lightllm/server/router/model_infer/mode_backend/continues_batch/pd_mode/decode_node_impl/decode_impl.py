@@ -49,16 +49,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         return
 
     def prefill(self, reqs: List[Tuple]):
-        # 当 dp_size 不等于 1 的时候，需要提前从发来的请求参数中
-        # 剔除掉不需要处理的请求参数, deepseekv2 这种特殊的模型
-        # 在 dp 模式下 tp_rank == dp_rank
-        if self.dp_size != 1:
-            cur_dp_index = self.tp_rank
-            reqs = [req for req in reqs if req[3] == cur_dp_index]
-
-        g_infer_state_lock.acquire()
-        g_infer_context.add_reqs(reqs, init_req_obj=False)  # 请求对象进行延迟初始化
-        g_infer_state_lock.release()
+        self._init_reqs(reqs, init_req_obj=False)
         return
 
     def decode(self):
