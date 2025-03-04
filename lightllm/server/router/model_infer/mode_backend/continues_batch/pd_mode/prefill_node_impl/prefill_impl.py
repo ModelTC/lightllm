@@ -76,7 +76,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
             req_obj.cur_kv_len = req_obj.get_cur_total_len()
             # 只需要有真实采样的进程写入最后结果即可，由于其他进程没有做运算，所以其fake结果
             # 不能写入。
-            if self.tp_rank < self.dp_size:
+            if self.is_master_in_dp:
                 req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
             req_obj.cur_output_len += 1
 
@@ -86,7 +86,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
             if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
                 finished_req_ids.append(req_obj.shm_req.request_id)
 
-            if self.tp_rank < self.dp_size:
+            if self.is_master_in_dp:
                 # shm_cur_kv_len shm_cur_output_len 是 router 调度进程需要读的信息
                 # finish_token_index finish_status candetoken_out_len 是
                 # detokenization 进程需要的信息，注意这些变量的写入顺序避免异步协同问题。
@@ -107,7 +107,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
     def prefill_req_handle_and_frozen_tokens(self, run_reqs: List[InferReq]):
         # 提前在radix cache中回收相关的信息，并添加引用信息
-        if self.tp_rank < self.dp_size:
+        if self.is_master_in_dp:
             logger.info("prefill_req_handle_and_frozen_tokens")
         g_infer_state_lock.acquire()
         try:
@@ -130,7 +130,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
 
                 if req.shm_req.sample_params.move_kv_to_decode_node.exists:
                     # 注意兼容纯tp 和 tp dp 混合模式的逻辑
-                    if self.tp_rank < self.dp_size:
+                    if self.is_master_in_dp:
                         g_router_lock.acquire()
                         self.shared_token_load.add_frozened_token_count(len(key), self.tp_rank)
                         g_router_lock.release()
@@ -154,11 +154,11 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                     g_kv_move_task_cache[task.group_request_id] = (task, share_node)
 
                     # 注意兼容纯 tp 和 tp dp 混合模式的逻辑
-                    if self.tp_rank < self.dp_size:
+                    if self.is_master_in_dp:
                         self.info_queue.put(task)
         except BaseException as e:
             logger.exception(str(e))
         g_infer_state_lock.release()
-        if self.tp_rank < self.dp_size:
+        if self.is_master_in_dp:
             logger.info("prefill_req_handle_and_frozen_tokens end")
         return

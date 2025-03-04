@@ -98,7 +98,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 req_obj.out_token_id_count[next_token_id] += 1
                 req_obj.update_finish_status(self.eos_id)
 
-                if self.tp_rank < self.dp_size:
+                if self.is_master_in_dp:
                     # shm_cur_kv_len shm_cur_output_len 是 router 调度进程需要读的信息
                     # finish_token_index finish_status candetoken_out_len 是
                     # detokenization 进程需要的信息，注意这些变量的写入顺序避免异步协同问题。
@@ -138,7 +138,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 req_obj.set_next_gen_token_id(0, 0.0)
                 req_obj.cur_output_len += 1
 
-                if self.tp_rank < self.dp_size:
+                if self.is_master_in_dp:
                     req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
                     req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
                     req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
@@ -148,7 +148,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                     req_id = req_obj.shm_req.request_id
                     logger.error(f"req_id: {req_id} forced to finished, it not in g_success_kv_move_task_cache")
 
-        if self.tp_rank < self.dp_size:
+        if self.is_master_in_dp:
             with g_router_lock.obj:
                 self.shared_token_load.add_frozened_token_count(-remove_count, self.tp_rank)
                 self.shared_token_load.add_estimated_peak_token_count(estimated_peak_token_count, self.tp_rank)
