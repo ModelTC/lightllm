@@ -17,9 +17,9 @@ class BaseWeight(ABC):
 
 
 class BaseWeightTpl(BaseWeight):
-    def __init__(self):
-        self.world_size_ = get_global_world_size()
-        self.tp_rank_ = get_global_rank()
+    def __init__(self, tp_rank, tp_world_size):
+        self.world_size_ = tp_world_size
+        self.tp_rank_ = tp_rank
         self.device_id_ = get_current_device_id()
 
     def load_hf_weights(self, weights):

@@ -17,9 +17,6 @@ def generate_scale_name(name, weight_scale_suffix, act_scale_suffix):
     return weight_scale_name, act_scale_name
 
 
-STATIC_QUANT = os.getenv("STATIC_QUANT", "0").upper() in ["1", "TRUE", "ON"]
-
-
 class MMWeightTpl(BaseWeightTpl):
     def __init__(self, data_type: torch.dtype) -> None:
         super().__init__()
@@ -94,8 +91,6 @@ class MMWeight(MMWeightTpl):
         data_type: torch.dtype,
         split_n_embed: int,
         bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
     ) -> None:
         super().__init__(data_type)
         self.start = split_n_embed * self.tp_rank_
@@ -103,11 +98,6 @@ class MMWeight(MMWeightTpl):
         self.weight_name = weight_name
         self.bias_name = bias_name
         self.has_bias = bias_name is not None
-        self.weight_scale_name, self.act_scale_name = generate_scale_name(
-            weight_name, weight_scale_suffix, act_scale_suffix
-        )
-        self.quantized_weight = self.weight_scale_name is not None
-        self.static_activation = self.act_scale_name is not None
 
 
 class ROWMMWeight(MMWeight):
