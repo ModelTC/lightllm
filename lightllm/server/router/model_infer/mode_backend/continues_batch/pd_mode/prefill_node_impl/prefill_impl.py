@@ -35,7 +35,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
             ranks.append(i + self.global_dp_rank * self.dp_world_size)
         
         self.lock_nccl_group = dist.new_group(ranks=ranks, backend="gloo")
-        logger.info(f"lock_nccl_group ranks {self.lock_nccl_group.get_rank()}")
+        logger.info(f"lock_nccl_group ranks {dist.get_rank(self.lock_nccl_group)}")
         
         from .prefill_infer_rpyc import PDPrefillInferRpcServer
 

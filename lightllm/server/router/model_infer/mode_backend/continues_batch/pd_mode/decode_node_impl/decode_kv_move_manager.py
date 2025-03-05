@@ -416,8 +416,13 @@ class DecodeKVMoveManager(rpyc.Service):
 
             trans_obj = self.get_trans_obj(tasks[0])
             assert trans_obj is not None
-
-            id_to_test_range = {task.group_request_id: random.shuffle(list(range(self.dp_size_in_node))) for task in tasks}
+            
+            id_to_test_range = {}
+            for task in tasks:
+                test_dp_indexes = list(range(self.dp_size_in_node))
+                random.shuffle(test_dp_indexes)
+                id_to_test_range[task.group_request_id] = test_dp_indexes
+                                
             id_has_result = {}
             for test_index in range(self.dp_size_in_node):
                 dp_tasks = [[] for _ in range(self.dp_size_in_node)]
