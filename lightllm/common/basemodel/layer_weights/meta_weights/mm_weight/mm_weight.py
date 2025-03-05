@@ -1,12 +1,15 @@
 import os
 import torch
 from abc import abstractmethod
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Type
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.quantization.quantize_method import QuantizationMethod
 from lightllm.common.basemodel.layer_weights.meta_weights.base_weight import BaseWeightTpl
 from lightllm.common.quantization import Quantcfg
 from lightllm.utils.dist_utils import get_current_device_id
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 def generate_scale_name(name, weight_scale_suffix, act_scale_suffix):
@@ -118,6 +121,30 @@ class MultiMMWeightTpl(MMWeightTpl):
                 bias = weights[self.bias_names[i]]
                 self.biases[i] = self._slice_bias(bias)
         self._fuse_weights()
+
+
+class MMWeight:
+    def __new__(cls, **kwargs):
+        quant_cfg = kwargs.pop("quant_cfg", None)
+        layer_num_ = kwargs.pop("layer_num_", None)
+        layer_name_ = kwargs.pop("layer_name", None)
+        quant_method, quant_type = cls._get_quant_method(quant_cfg, layer_num_, layer_name_)
+        kwargs["quant_method"] = quant_method
+        mmcls = cls._get_mmcls(quant_type, quant_method)
+        return mmcls(**kwargs)
+
+    @classmethod
+    def _get_quant_method(cls, quant_cfg: Quantcfg, layer_num_: int, layer_name: str) -> QuantizationMethod:
+        quant_method = quant_cfg.get_quant_method(layer_num_, layer_name)
+        quant_type = quant_cfg.get_quant_type(layer_num_, layer_name)
+        logger.info(f"Layer {layer_num_} {layer_name} is set to {quant_type}")
+        return quant_method, quant_type
+
+    @classmethod
+    def _get_mmcls(
+        cls, quant_type: str, quant_method: QuantizationMethod
+    ) -> Optional[Type[MMWeightTpl, MultiMMWeightTpl]]:
+        return None
 
 
 class BMMWeightTpl(MMWeightTpl):
