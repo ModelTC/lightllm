@@ -1,9 +1,11 @@
 import os
 import torch
-from .base_weight import BaseWeightTpl
+from abc import abstractmethod
 from typing import Optional, Tuple, List, Dict, Any
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.quantization.quantize_method import QuantizationMethod
+from lightllm.common.basemodel.layer_weights.meta_weights.base_weight import BaseWeightTpl
+from lightllm.common.quantization import Quantcfg
 from lightllm.utils.dist_utils import get_current_device_id
 
 
@@ -18,17 +20,18 @@ def generate_scale_name(name, weight_scale_suffix, act_scale_suffix):
 
 
 class MMWeightTpl(BaseWeightTpl):
-    def __init__(self, data_type: torch.dtype) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        data_type: torch.dtype,
+        quant_method: QuantizationMethod = None,
+        tp_rank: int = None,
+        tp_world_size: int = None,
+    ) -> None:
+        super().__init__(tp_rank, tp_world_size)
         self.data_type_ = data_type
-        self.quant_method: Optional[QuantizationMethod] = None
+        self.quant_method = quant_method
         self.weight: Optional[torch.Tensor] = None
         self.bias: Optional[torch.Tensor] = None
-        self.weight_scale: Optional[torch.Tensor] = None
-        self.input_scale: Optional[torch.Tensor] = None
-
-    def set_quant_method(self, quant_method: QuantizationMethod) -> None:
-        self.quant_method = quant_method
 
     def mm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
@@ -56,348 +59,65 @@ class MMWeightTpl(BaseWeightTpl):
         # Verify bias. If bias_name is set, it must be not None.
         if self.has_bias:
             load_ok = load_ok and self.bias is not None
-        if self.quantized_weight:
-            load_ok = load_ok and self.weight_scale is not None
-        if self.static_activation:
-            load_ok = load_ok and self.input_scale is not None
         return load_ok
 
-    def _post_load_weights(self) -> None:
+    def _process_weights(self, weight) -> None:
         if self.quant_method is not None:
-            if self.quantized_weight:
-                if (
-                    self.weight is not None
-                    and self.weight_scale is not None
-                    and (not self.static_activation or self.input_scale is not None)
-                ):
-                    if self.weight_scale.ndim > 1:
-                        self.weight_scale = self.weight_scale.transpose(0, 1).cuda(get_current_device_id())
-                    self.weight = [
-                        self.weight.cuda(get_current_device_id()).transpose(0, 1),
-                        self.weight_scale,
-                        self.input_scale,
-                    ]
-            else:
-                self.weight = self.quant_method.quantize(self.weight.to(self.data_type_).cuda(get_current_device_id()))
+            self.weight = self.quant_method.quantize(weight.to(self.data_type_).cuda(get_current_device_id()))
             return
         # 让 k dim 更连续，大多数split k 算法的算子可能能更快
-        self.weight = self.weight.to(self.data_type_).cuda(get_current_device_id()).transpose(0, 1)
+        self.weight = weight.to(self.data_type_).cuda(get_current_device_id()).transpose(0, 1)
 
+    def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
 
-class MMWeight(MMWeightTpl):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-    ) -> None:
-        super().__init__(data_type)
-        self.start = split_n_embed * self.tp_rank_
-        self.end = split_n_embed * (self.tp_rank_ + 1)
-        self.weight_name = weight_name
-        self.bias_name = bias_name
-        self.has_bias = bias_name is not None
-
-
-class ROWMMWeight(MMWeight):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, weight_scale_suffix, act_scale_suffix)
-
-    def load_hf_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-        weight = None
-        weight_scale = None
-        input_scale = None
         if self.weight_name in weights:
-            weight = weights[self.weight_name]
-            self.weight = weight[self.start : self.end]
+            weight = self._slice_weight(weights[self.weight_name])
+            self._process_weights(weight)
+
         if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type_)[self.start : self.end]
-            self.bias = bias.cuda(get_current_device_id())
-
-        if self.weight_scale_name is not None and self.weight_scale_name in weights:
-            block_size = 1
-            if self.quant_method is not None:
-                if hasattr(self.quant_method, "block_size"):
-                    block_size = self.quant_method.block_size
-
-            weight_scale = weights[self.weight_scale_name]
-            # per channel or block-wise
-            if weight_scale.shape[0] > 1:
-                scale_start = (self.start + block_size - 1) // block_size
-                scale_end = (self.end + block_size - 1) // block_size
-                weight_scale = weight_scale.to(torch.float)[scale_start:scale_end]
-            else:
-                # per tensor
-                weight_scale = weight_scale.to(torch.float)
-            self.weight_scale = weight_scale
-
-        if self.act_scale_name is not None and self.act_scale_name in weights:
-            input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda(get_current_device_id())
-
-        if weight is None and weight_scale is None and input_scale is None:
-            return
-        self._post_load_weights()
+            self.bias = self._slice_bias(weights[self.bias_name]).cuda(get_current_device_id())
         return
 
 
-class ROWMMWeightNoTP(ROWMMWeight):
+class MultiMMWeightTpl(MMWeightTpl):
     def __init__(
         self,
-        weight_name: str,
+        weight_names: str,
         data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
+        bias_names: Optional[str] = None,
+        quant_method: QuantizationMethod = None,
+        tp_rank: int = None,
+        tp_world_size: int = None,
     ) -> None:
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, weight_scale_suffix, act_scale_suffix)
-        self.start = 0
-        self.end = split_n_embed
+        super().__init__(data_type, quant_method, tp_rank, tp_world_size)
 
-
-class COLMMWeight(MMWeight):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, weight_scale_suffix, act_scale_suffix)
-
-    def load_hf_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-        weight = None
-        weight_scale = None
-        input_scale = None
-        if self.weight_name in weights:
-            weight = weights[self.weight_name]
-            self.weight = weight[:, self.start : self.end]
-        if self.bias_name in weights:
-            bias = weights[self.bias_name]
-            self.bias = (bias / self.world_size_).to(self.data_type_).cuda(get_current_device_id())
-
-        if self.quantized_weight and self.weight_scale_name in weights:
-            block_size = 1
-            if self.quant_method is not None:
-                if hasattr(self.quant_method, "block_size"):
-                    block_size = self.quant_method.block_size
-            weight_scale = weights[self.weight_scale_name]
-            # block-wise
-            if weight_scale.ndim >= 2:
-                weight_scale = weight_scale[:, self.start // block_size : self.end // block_size].to(torch.float)
-            else:
-                # per tensor or per-channel
-                weight_scale = weight_scale.to(torch.float)
-            self.weight_scale = weight_scale
-
-        if self.static_activation and self.act_scale_name in weights:
-            input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda(get_current_device_id())
-
-        if weight is None and weight_scale is None and input_scale is None:
-            return
-        self._post_load_weights()
-        return
-
-
-class COLMMWeightNoTp(COLMMWeight):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, weight_scale_suffix, act_scale_suffix)
-        self.start = 0
-        self.end = split_n_embed
-
-
-class MultiMMWeight(MMWeightTpl):
-    def __init__(
-        self,
-        weight_names: List[str],
-        data_type: torch.dtype,
-        split_n_embeds: List[int],
-        bias_names: Optional[List[str]] = [],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(data_type)
-        if isinstance(split_n_embeds, int):
-            self.split_n_embeds = [split_n_embeds] * len(weight_names)
-        else:
-            self.split_n_embeds = split_n_embeds
-
-        self.starts = [i * self.tp_rank_ for i in self.split_n_embeds]
-        self.ends = [i * (self.tp_rank_ + 1) for i in self.split_n_embeds]
         self.weight_names = weight_names
         self.bias_names = bias_names
-        self.weight_scale_names = []
-        self.act_scale_names = []
-        for weight_name in weight_names:
-            weight_scale_name, act_scale_name = generate_scale_name(weight_name, weight_scale_suffix, act_scale_suffix)
-            self.weight_scale_names.append(weight_scale_name)
-            self.act_scale_names.append(act_scale_name)
-            self.quantized_weight = weight_scale_name is not None
-            self.static_activation = act_scale_name is not None
-
         self.weights = [None] * len(self.weight_names)
         self.biases = [None] * len(self.bias_names)
-        self.input_scales = [None] * len(self.weight_names)
-        self.weight_scales = [None] * len(self.weight_names)
         self.has_bias = all(b is not None for b in self.bias_names) and len(bias_names) > 0
 
-
-class MultiROWMMWeight(MultiMMWeight):
-    def __init__(
-        self,
-        weight_names: List[str],
-        data_type: torch.dtype,
-        split_n_embeds: List[int],
-        bias_names: Optional[List[str]] = [],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_names, data_type, split_n_embeds, bias_names, weight_scale_suffix, act_scale_suffix)
-
-    def _fuse(self) -> None:
+    def _fuse_weights(self) -> None:
         if self.weight is None and (None not in self.weights):
-            self.weight = torch.cat(self.weights, dim=0)
-            self._post_load_weights()
+            weight = torch.cat(self.weights, dim=0)
+            self._process_weights(weight)
             delattr(self, "weights")
 
-        if self.weight_scale is None and (None not in self.weight_scales):
-            self.weight_scale = torch.cat(self.weight_scales, dim=0).cuda(get_current_device_id())
-            self._post_load_weights()
-            delattr(self, "weight_scales")
-
-        if self.static_activation and self.input_scale is None and (None not in self.input_scales):
-            input_scales = torch.stack(self.input_scales, dim=0)
-            self.input_scale = torch.max(input_scales).cuda(get_current_device_id())
-            self._post_load_weights()
-            delattr(self, "input_scales")
-
-        if self.has_bias:
-            if self.bias is None and (None not in self.biases):
-                self.bias = torch.cat(self.biases, dim=0).cuda(get_current_device_id())
-                delattr(self, "biases")
+        if self.has_bias and self.bias is None and (None not in self.biases):
+            self.bias = torch.cat(self.biases, dim=0).cuda(get_current_device_id())
+            delattr(self, "biases")
         return self
 
-    def load_hf_weights(self, weights: Dict[str, torch.Tensor]) -> None:
+    def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         weight = None
         for i in range(len(self.weight_names)):
             if self.weight_names[i] in weights:
                 weight = weights[self.weight_names[i]]
-                self.weights[i] = weight[self.starts[i] : self.ends[i]]
+                self.weights[i] = self._slice_weight(weight)
             if self.has_bias and self.bias_names[i] in weights:
-                bias = weights[self.bias_names[i]].to(self.data_type_)
-                self.biases[i] = bias[self.starts[i] : self.ends[i]]
-            if self.quantized_weight and self.weight_scale_names[i] in weights:
-                block_size = 1
-                if self.quant_method is not None:
-                    if hasattr(self.quant_method, "block_size"):
-                        block_size = self.quant_method.block_size
-                weight_scale = weights[self.weight_scale_names[i]]
-                # block-wise or per-channel
-                if weight_scale.shape[0] > 1:
-                    weight_scale = weight_scale[self.starts[i] // block_size : self.ends[i] // block_size].to(
-                        torch.float
-                    )
-                else:
-                    # per tensor
-                    weight_scale = weight_scale.to(torch.float)
-                self.weight_scales[i] = weight_scale
-            if self.static_activation and self.act_scale_names[i] in weights:
-                input_scale = weights[self.act_scale_names[i]].to(torch.float)
-                self.input_scales[i] = input_scale
-        self._fuse()
-        return
-
-
-class MultiROWMMWeightNoTP(MultiROWMMWeight):
-    def __init__(
-        self,
-        weight_names: List[str],
-        data_type: torch.dtype,
-        split_n_embeds: List[int],
-        bias_names: Optional[List[str]] = [],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_names, data_type, split_n_embeds, bias_names, weight_scale_suffix, act_scale_suffix)
-        self.starts = [0 for i in self.split_n_embeds]
-        self.ends = [i for i in self.split_n_embeds]
-
-
-class MultiCOLMMWeight(MultiROWMMWeight):
-    def __init__(
-        self,
-        weight_names: List[str],
-        data_type: torch.dtype,
-        split_n_embeds: List[int],
-        bias_names: Optional[List[str]] = [],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_names, data_type, split_n_embeds, bias_names, weight_scale_suffix, act_scale_suffix)
-
-    def load_hf_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-        weight = None
-        for i in range(len(self.weight_names)):
-            if self.weight_names[i] in weights:
-                weight = weights[self.weight_names[i]]
-                self.weights[i] = weight[:, self.starts[i] : self.ends[i]]
-            if self.has_bias and self.bias_names[i] in weights:
-                bias = weights[self.bias_names[i]].to(self.data_type_)
-                self.biases[i] = bias[:, self.starts[i] : self.ends[i]]
-            if self.quantized_weight and self.weight_scale_names[i] in weights:
-                weight_scale = weights[self.weight_scale_names[i]]
-                self.weight_scales[i] = weight_scale.to(torch.float)
-            if self.static_activation and self.act_scale_names[i] in weights:
-                input_scale = weights[self.act_scale_names[i]].to(torch.float)
-                self.input_scales[i] = input_scale
-        self._fuse()
-        return
-
-
-class MultiCOLMMWeightNoTp(MultiROWMMWeightNoTP):
-    def __init__(
-        self,
-        weight_names: List[str],
-        data_type: torch.dtype,
-        split_n_embeds: List[int],
-        bias_names: Optional[List[str]] = [],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_names, data_type, split_n_embeds, bias_names, weight_scale_suffix, act_scale_suffix)
-
-    def load_hf_weights(self, weights: Dict[str, torch.Tensor]):
-        weight = None
-        for i in range(len(self.weight_names)):
-            if self.weight_names[i] in weights:
-                weight = weights[self.weight_names[i]].to(self.data_type_)
-                self.weights[i] = weight[:, self.starts[i] : self.ends[i]]
-            if self.has_bias and self.bias_names[i] in weights:
-                bias = weights[self.bias_names[i]].to(self.data_type_)
-                self.biases[i] = bias[:, self.starts[i] : self.ends[i]]
-        self._fuse()
-        return
+                bias = weights[self.bias_names[i]]
+                self.biases[i] = self._slice_bias(bias)
+        self._fuse_weights()
 
 
 class BMMWeightTpl(MMWeightTpl):

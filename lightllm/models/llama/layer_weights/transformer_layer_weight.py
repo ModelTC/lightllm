@@ -25,6 +25,26 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._init_ffn()
         self._init_norm()
 
+    def load_hf_weights(self, weights):
+        self.k_weight = weights.get(self._k_weight_name, None)
+        self.v_weight = weights.get(self._v_weight_name, None)
+        self._gate_weight = weights.get(self._gate_weight_name, None)
+        self._up_weight = weights.get(self._up_weight_name, None)
+        kv_weight = self._try_cat_to(["k_weight", "v_weight"], 0)
+        if kv_weight is not None:
+            weights[self._kv_weight_name] = kv_weight
+
+        gate_up_weight = self._try_cat_to(
+            [
+                "_gate_weight",
+                "_up_weight",
+            ],
+            0,
+        )
+        if gate_up_weight is not None:
+            weights[self._gate_up_weight_name] = gate_up_weight
+        return super().load_hf_weights(weights)
+
     def _parse_config(self):
         self.n_embed = self.network_config_["hidden_size"]
         self.n_head = self.network_config_["num_attention_heads"]
@@ -39,6 +59,8 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._k_bias_name = None
         self._v_weight_name = f"model.layers.{self.layer_num_}.self_attn.v_proj.weight"
         self._v_bias_name = None
+        self._kv_weight_name = f"model.layers.{self.layer_num_}.self_attn.kv_proj.weight"
+        self._kv_bias_name = None
         self._o_weight_name = f"model.layers.{self.layer_num_}.self_attn.o_proj.weight"
         self._o_bias_name = None
 
@@ -46,6 +68,8 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._gate_bias_name = None
         self._up_weight_name = f"model.layers.{self.layer_num_}.mlp.up_proj.weight"
         self._up_bias_name = None
+        self._gate_up_weight_name = f"model.layers.{self.layer_num_}.mlp.gate_up_proj.weight"
+        self._gate_up_bias_name = None
         self._down_weight_name = f"model.layers.{self.layer_num_}.mlp.down_proj.weight"
         self._down_bias_name = None
 
@@ -55,11 +79,10 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._ffn_norm_bias_name = None
 
     def _init_qkv(self):
-        q_split_n_embed = self.head_dim * self.n_head // self.world_size_
         kv_split_n_embed = self.head_dim * self.n_kv_head // self.world_size_
-        self.q_proj = ROWMMWeight(self._q_weight_name, self.data_type_, q_split_n_embed, bias_name=self._q_bias_name)
-        self.kv_proj = MultiROWMMWeight(
-            [self._k_weight_name, self._v_weight_name],
+        self.q_proj = ROWMMWeight(self._q_weight_name, self.data_type_, bias_name=self._q_bias_name)
+        self.kv_proj = ROWMMWeight(
+            self._kv_weight_name,
             self.data_type_,
             kv_split_n_embed,
             bias_names=[self._k_bias_name, self._v_bias_name],

@@ -39,3 +39,13 @@ class BaseLayerWeight:
             return cpu_tensor.contiguous().to(self.data_type_).cuda()
         else:
             return cpu_tensor.contiguous().to(self.data_type_).cuda(get_current_device_id())
+
+    def _try_cat_to(self, source_tensor_names, cat_dim):
+        source_tensor = [getattr(self, name) for name in source_tensor_names]
+        if all(src_tensor is not None for src_tensor in source_tensor):
+            with self.lock:
+                ans = torch.cat(source_tensor, dim=cat_dim)
+                for name in source_tensor_names:
+                    delattr(self, name)
+                return ans
+        return None
