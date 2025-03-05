@@ -39,7 +39,7 @@ logger = init_logger(__name__)
 
 
 class RouterManager:
-    def __init__(self, args, router_port, detokenization_port, model_rpc_ports, metric_port):
+    def __init__(self, args, router_port, detokenization_port, metric_port):
         self.args = args
         self.model_weightdir = args.model_dir
         self.world_size = args.tp
@@ -81,8 +81,7 @@ class RouterManager:
 
         self.send_to_detokenization = context.socket(zmq.PUSH)
         self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
-        self.model_rpc_ports = model_rpc_ports
-
+        
         if self.is_multinode_tp:
             self.mulitnode_group = dist.init_process_group(
                 backend="gloo",
@@ -173,7 +172,7 @@ class RouterManager:
             "batch_max_tokens": self.args.batch_max_tokens,
             "quant_type": self.args.quant_type,
             "quant_cfg": self.args.quant_cfg,
-            "pd_rpyc_ports": self.args.pd_tp_infer_rpyc_ports,  # 非 pd 模式可以不设置
+            "pd_rpyc_ports": self.args.pd_node_infer_rpyc_ports,  # 非 pd 模式可以不设置
         }
 
         await self.model_rpc_client.init_model(kvargs=kvargs)
@@ -416,7 +415,7 @@ class RouterManager:
         return
 
 
-def start_router_process(args, router_port, detokenization_port, model_rpc_ports, metric_port, pipe_writer):
+def start_router_process(args, router_port, detokenization_port, metric_port, pipe_writer):
     # 注册 graceful 退出的处理
     graceful_registry(inspect.currentframe().f_code.co_name)
     start_parent_check_thread()
@@ -426,7 +425,6 @@ def start_router_process(args, router_port, detokenization_port, model_rpc_ports
             args,
             router_port=router_port,
             detokenization_port=detokenization_port,
-            model_rpc_ports=model_rpc_ports,
             metric_port=metric_port,
         )
 

@@ -18,6 +18,7 @@ from rpyc.utils.server import ThreadedServer
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, g_router_lock
 from .decode_task_cache import g_success_kv_move_task_cache, KVMoveTask
 from lightllm.utils.device_utils import kv_trans_use_p2p
+from lightllm.utils.envs_utils import get_unique_server_name
 
 logger = init_logger(__name__)
 
@@ -29,10 +30,16 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         self.mem_queue: mp.Queue = mem_queue
 
     def init_custom(self):
-        self.lock_nccl_group = dist.new_group(backend="gloo")
+        ranks = []
+        for i in range(self.dp_world_size):
+            ranks.append(i + self.global_dp_rank * self.dp_world_size)
+        
+        self.lock_nccl_group = dist.new_group(ranks=ranks, backend="gloo")
+        logger.info(f"lock_nccl_group ranks {self.lock_nccl_group.get_rank()}")
+        
         from .decode_infer_rpyc import PDDecodeInferRpcServer
 
-        socket_path = f"/tmp/decode_node_infer_rpyc_{self.pd_rpyc_ports[self.tp_rank]}"
+        socket_path = f"/tmp/{get_unique_server_name()}_decode_node_infer_rpyc_{self.pd_rpyc_ports[self.rank_in_node]}"
         if os.path.exists(socket_path):
             os.remove(socket_path)
 
@@ -141,8 +148,8 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
 
         if self.is_master_in_dp:
             with g_router_lock.obj:
-                self.shared_token_load.add_frozened_token_count(-remove_count, self.tp_rank)
-                self.shared_token_load.add_estimated_peak_token_count(estimated_peak_token_count, self.tp_rank)
+                self.shared_token_load.add_frozened_token_count(-remove_count, self.dp_rank_in_node)
+                self.shared_token_load.add_estimated_peak_token_count(estimated_peak_token_count, self.dp_rank_in_node)
         return
 
     def filter_finished_reqs(self, finished_reqs: List[InferReq]):

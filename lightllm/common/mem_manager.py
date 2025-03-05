@@ -83,13 +83,8 @@ class MemoryManager:
         self.kv_move_buf_indexes = torch.arange(0, max_req_total_len + 8, dtype=torch.int64, device="cuda")
         return
 
-    def send_to_decode_node(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size: int):
-        """
-        dp_size 是为 deepseekv2 类型，可以 dp 和 tp 混合模式运行的模型定制的参数，
-        普通tp模式下, dp_size 一定等于 1, dp_index 一定等于 0, 同时普通模式下, 这两个参数并不会
-        被真正使用
-        """
-        assert dp_size == 1
+    def send_to_decode_node(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int):
+        assert dp_size_in_node == 1
 
         # 先将数据发送到指定的一张卡上的buffer，再发送。
 
@@ -123,14 +118,9 @@ class MemoryManager:
         return move_buffer
 
     def receive_from_prefill_node(
-        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size: int
+        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int
     ):
-        """
-        dp_size 是为 deepseekv2 类型，可以 dp 和 tp 混合模式运行的模型定制的参数，
-        普通tp模式下, dp_size 一定等于 1, 同时普通模式下, 这两个参数并不会
-        被真正使用
-        """
-        assert dp_size == 1
+        assert dp_size_in_node == 1
 
         # 先将数据接受到指定的一张卡上的buffer，再复制到其他的卡上。
 
@@ -160,11 +150,11 @@ class MemoryManager:
         self.kv_buffer[layer_index : layer_index + 1, token_indexes, :, :] = buffer_tensor
         return
 
-    def send_to_decode_node_p2p(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size: int):
+    def send_to_decode_node_p2p(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int):
         """
         使用 p2p triton kernel 进行数据复制和传输的实现方式。
         """
-        assert dp_size == 1
+        assert dp_size_in_node == 1
 
         # 先将数据发送到指定的一张卡上的buffer，再发送。
 
@@ -190,9 +180,9 @@ class MemoryManager:
         return move_buffer
 
     def receive_from_prefill_node_p2p(
-        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size: int
+        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int
     ):
-        assert dp_size == 1
+        assert dp_size_in_node == 1
 
         # 先将数据接受到指定的一张卡上的buffer，再复制到其他的卡上。
 

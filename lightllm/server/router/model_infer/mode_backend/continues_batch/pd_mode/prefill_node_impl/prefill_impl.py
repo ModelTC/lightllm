@@ -18,6 +18,7 @@ from lightllm.common.basemodel.infer_lock import g_router_lock, g_infer_state_lo
 from rpyc.utils.server import ThreadedServer
 from .prefill_task_cache import g_kv_move_task_cache
 from lightllm.utils.device_utils import kv_trans_use_p2p
+from lightllm.utils.envs_utils import get_unique_server_name
 
 logger = init_logger(__name__)
 
@@ -29,10 +30,16 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
         self.mem_queue: mp.Queue = mem_queue
 
     def init_custom(self):
-        self.lock_nccl_group = dist.new_group(backend="gloo")
+        ranks = []
+        for i in range(self.dp_world_size):
+            ranks.append(i + self.global_dp_rank * self.dp_world_size)
+        
+        self.lock_nccl_group = dist.new_group(ranks=ranks, backend="gloo")
+        logger.info(f"lock_nccl_group ranks {self.lock_nccl_group.get_rank()}")
+        
         from .prefill_infer_rpyc import PDPrefillInferRpcServer
 
-        socket_path = f"/tmp/prefill_node_infer_rpyc_{self.pd_rpyc_ports[self.tp_rank]}"
+        socket_path = f"/tmp/{get_unique_server_name()}_prefill_node_infer_rpyc_{self.pd_rpyc_ports[self.rank_in_node]}"
         if os.path.exists(socket_path):
             os.remove(socket_path)
 
@@ -132,7 +139,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                     # 注意兼容纯tp 和 tp dp 混合模式的逻辑
                     if self.is_master_in_dp:
                         g_router_lock.acquire()
-                        self.shared_token_load.add_frozened_token_count(len(key), self.tp_rank)
+                        self.shared_token_load.add_frozened_token_count(len(key), self.dp_rank_in_node)
                         g_router_lock.release()
 
                     share_node, kv_len, value = self.radix_cache.match_prefix(key, update_refs=True)
@@ -147,7 +154,7 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
                         prefill_node_id=self.args.pd_node_id,
                         decode_node=decode_node_info,
                         move_kv_len=None,
-                        prefill_dp_index=0 if self.dp_size == 1 else self.tp_rank,
+                        prefill_dp_index=self.dp_rank_in_node,
                         decode_dp_index=None,
                         mark_start_time=time.time(),
                     )
