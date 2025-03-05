@@ -18,7 +18,7 @@ import torch
 
 # 下面是一个 2 node， 16卡， dp_size 4 的 rank 信息结构图：
 # +------+--------------+----------------+-------------+--------------+------------------+
-# | 卡片 | global_rank  | global_dp_rank | rank_in_dp  | rank_in_node | dp_rank_in_node  |
+# | card | global_rank  | global_dp_rank | rank_in_dp  | rank_in_node | dp_rank_in_node  |
 # +------+--------------+----------------+-------------+--------------+------------------+
 # |  0   |      0       |        0       |      0      |      0       |         0        |
 # |  1   |      1       |        0       |      1      |      1       |         0        |
