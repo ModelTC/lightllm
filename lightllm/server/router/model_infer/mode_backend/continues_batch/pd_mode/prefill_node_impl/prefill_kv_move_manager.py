@@ -318,7 +318,7 @@ class PrefillKVMoveManager:
         self.dp_world_size = args.tp // args.dp
         # 不支持跨机tp的pd 分离策略
         assert self.dp_world_size <= self.node_world_size
-        
+
         self.info_queue = info_queue
         self.mem_queues = mem_queues
         self.infer_rpyc_objs: List[PDPrefillInferRpcServer] = []

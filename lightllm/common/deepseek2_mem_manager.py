@@ -97,7 +97,9 @@ class Deepseek2MemoryManager(MemoryManager):
         self.kv_buffer[layer_index : layer_index + 1, token_indexes, :, :] = buffer_tensor
         return
 
-    def send_to_decode_node_p2p(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int):
+    def send_to_decode_node_p2p(
+        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int
+    ):
         """
         使用 p2p triton kernel 进行数据复制和传输的实现方式。
         """

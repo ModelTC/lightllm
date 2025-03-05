@@ -100,7 +100,12 @@ class ModeBackend:
 
         # 为 p d 分离模式添加的全局锁管理，用于做一些同步操作。 一定需要在
         # init_process_group 之后调用
-        g_infer_state_lock.obj = InferStateLock(name=get_unique_server_name(), rank_in_dp=self.rank_in_dp, dp_rank_in_node=self.dp_rank_in_node, dp_world_size=self.dp_world_size)
+        g_infer_state_lock.obj = InferStateLock(
+            name=get_unique_server_name(),
+            rank_in_dp=self.rank_in_dp,
+            dp_rank_in_node=self.dp_rank_in_node,
+            dp_world_size=self.dp_world_size,
+        )
         g_infer_state_lock.dp_world_size = self.dp_world_size
         self.infer_state_lock = g_infer_state_lock
         # 防止InferStateLock 中的全局共享信息被重复异常初始化,导致同步异常的问题。
@@ -205,7 +210,10 @@ class ModeBackend:
         set_random_seed(2147483647)
         self.radix_cache = (
             RadixCache(
-                get_unique_server_name(), self.model.mem_manager.size, self.rank_in_node, mem_manager=self.model.mem_manager
+                get_unique_server_name(),
+                self.model.mem_manager.size,
+                self.rank_in_node,
+                mem_manager=self.model.mem_manager,
             )
             if self.use_dynamic_prompt_cache
             else None

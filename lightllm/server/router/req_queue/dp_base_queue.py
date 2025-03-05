@@ -28,7 +28,9 @@ class DpQueue:
 
     # @calculate_time(show=True, min_cost_ms=10)
     def generate_new_batch(self, current_batch: Batch, limit_router_queue_length: int = None):
-        batches = [self.inner_queues[dp_index].generate_new_batch(current_batch) for dp_index in range(self.dp_size_in_node)]
+        batches = [
+            self.inner_queues[dp_index].generate_new_batch(current_batch) for dp_index in range(self.dp_size_in_node)
+        ]
         return self._merge_batch(batches)
 
     def _merge_batch(self, dp_batches: List[Batch]):
@@ -43,7 +45,9 @@ class DpQueue:
     def append(self, req: Req):
         suggested_dp_index = req.sample_params.suggested_dp_index
         if suggested_dp_index is None or suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0:
-            if suggested_dp_index is not None and (suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0):
+            if suggested_dp_index is not None and (
+                suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0
+            ):
                 logger.error(f"input req {req.request_id} dp index {suggested_dp_index} has error")
             suggested_dp_index = random.randint(0, self.dp_size_in_node - 1)
             req.sample_params.suggested_dp_index = suggested_dp_index
@@ -58,7 +62,9 @@ class DpQueue:
         for req in req_group:
             suggested_dp_index = req.sample_params.suggested_dp_index
             if suggested_dp_index is None or suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0:
-                if suggested_dp_index is not None and (suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0):
+                if suggested_dp_index is not None and (
+                    suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0
+                ):
                     logger.error(f"input req {req.request_id} dp index {suggested_dp_index} has error")
                 req.sample_params.suggested_dp_index = index
                 self.inner_queues[index].append(req)

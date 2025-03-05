@@ -38,7 +38,9 @@ class MemoryManager:
         from lightllm.utils.envs_utils import get_unique_server_name
 
         rank_in_node = get_current_rank_in_node()
-        self.shared_can_use_token_num = SharedInt(f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank_in_node}")
+        self.shared_can_use_token_num = SharedInt(
+            f"{get_unique_server_name()}_mem_manger_can_use_token_num_{rank_in_node}"
+        )
 
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
         self._init_buffers(
@@ -83,7 +85,9 @@ class MemoryManager:
         self.kv_move_buf_indexes = torch.arange(0, max_req_total_len + 8, dtype=torch.int64, device="cuda")
         return
 
-    def send_to_decode_node(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int):
+    def send_to_decode_node(
+        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int
+    ):
         assert dp_size_in_node == 1
 
         # 先将数据发送到指定的一张卡上的buffer，再发送。
@@ -150,7 +154,9 @@ class MemoryManager:
         self.kv_buffer[layer_index : layer_index + 1, token_indexes, :, :] = buffer_tensor
         return
 
-    def send_to_decode_node_p2p(self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int):
+    def send_to_decode_node_p2p(
+        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int
+    ):
         """
         使用 p2p triton kernel 进行数据复制和传输的实现方式。
         """
@@ -294,7 +300,7 @@ class ReadOnlyStaticsMemoryManager:
         args = get_env_start_args()
         self.global_world_size = args.tp
         self.node_world_size = args.tp // args.nnodes
-        self.dp_world_size = self.global_world_size  // args.dp
+        self.dp_world_size = self.global_world_size // args.dp
         # 兼容多机 dp size=1 纯 tp 模式的情况
         self.is_multinode_tp = args.dp == 1 and args.nnodes > 1
         self.shared_tp_infos = [

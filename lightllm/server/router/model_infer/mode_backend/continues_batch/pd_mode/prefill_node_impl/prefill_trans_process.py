@@ -32,7 +32,7 @@ def _init_env(
     os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
     os.environ["NCCL_SOCKET_NTHREADS"] = "1"
     torch.backends.cudnn.enabled = False
-    
+
     dp_size_in_node = max(1, args.dp // args.nnodes)
     node_world_size = args.tp // args.nnodes
 

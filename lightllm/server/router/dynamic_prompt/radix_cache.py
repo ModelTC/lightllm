@@ -111,7 +111,9 @@ class RadixCache:
 
         self.refed_tokens_num = SharedArray(f"{unique_name}_refed_tokens_num_{rank_in_node}", (1,), dtype=np.int64)
         self.refed_tokens_num.arr[0] = 0
-        self.tree_total_tokens_num = SharedArray(f"{unique_name}_tree_total_tokens_num_{rank_in_node}", (1,), dtype=np.int64)
+        self.tree_total_tokens_num = SharedArray(
+            f"{unique_name}_tree_total_tokens_num_{rank_in_node}", (1,), dtype=np.int64
+        )
         self.tree_total_tokens_num.arr[0] = 0
 
     def insert(self, key, value=None):
@@ -347,7 +349,9 @@ class _RadixCacheReadOnlyClient:
 
     def __init__(self, unique_name, total_token_num, rank_in_node):
         self.refed_tokens_num = SharedArray(f"{unique_name}_refed_tokens_num_{rank_in_node}", (1,), dtype=np.int64)
-        self.tree_total_tokens_num = SharedArray(f"{unique_name}_tree_total_tokens_num_{rank_in_node}", (1,), dtype=np.int64)
+        self.tree_total_tokens_num = SharedArray(
+            f"{unique_name}_tree_total_tokens_num_{rank_in_node}", (1,), dtype=np.int64
+        )
 
     def get_refed_tokens_num(self):
         return self.refed_tokens_num.arr[0]
@@ -362,7 +366,8 @@ class _RadixCacheReadOnlyClient:
 class RadixCacheReadOnlyClient:
     def __init__(self, unique_name, total_token_num, node_world_size, dp_world_size):
         self.dp_rank_clients: List[_RadixCacheReadOnlyClient] = [
-            _RadixCacheReadOnlyClient(unique_name, total_token_num, rank_in_node) for rank_in_node in range(0, node_world_size, dp_world_size)
+            _RadixCacheReadOnlyClient(unique_name, total_token_num, rank_in_node)
+            for rank_in_node in range(0, node_world_size, dp_world_size)
         ]
 
     def get_refed_tokens_num(self, dp_rank_in_node):

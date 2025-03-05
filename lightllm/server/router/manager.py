@@ -81,7 +81,7 @@ class RouterManager:
 
         self.send_to_detokenization = context.socket(zmq.PUSH)
         self.send_to_detokenization.connect(f"{args.zmq_mode}127.0.0.1:{detokenization_port}")
-        
+
         if self.is_multinode_tp:
             self.mulitnode_group = dist.init_process_group(
                 backend="gloo",
@@ -182,7 +182,10 @@ class RouterManager:
             self.args.max_total_token_num = self.max_total_token_num
         if self.args.use_dynamic_prompt_cache:
             self.radix_cache_client = RadixCacheReadOnlyClient(
-                get_unique_server_name(), self.max_total_token_num, node_world_size=self.node_world_size, dp_world_size=self.world_size // self.dp_size
+                get_unique_server_name(),
+                self.max_total_token_num,
+                node_world_size=self.node_world_size,
+                dp_world_size=self.world_size // self.dp_size,
             )
         self.req_queue = build_req_queue(self.args, self, self.dp_size_in_node)
         logger.info(f"use req queue {self.req_queue.__class__.__name__}")

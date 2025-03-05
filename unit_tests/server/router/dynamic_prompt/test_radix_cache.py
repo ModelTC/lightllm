@@ -2,6 +2,7 @@ import pytest
 import torch
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 
+
 def test_case1():
     tree = RadixCache("unique_name", 100, 0)
     ans = tree.insert(torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=torch.int64, device="cpu"))
@@ -21,7 +22,8 @@ def test_case1():
     tree.evict(9, lambda x: x)
     tree.print_self()
     assert tree.get_refed_tokens_num() == 0 and tree.get_tree_total_tokens_num() == 0
-    
+
+
 def test_case2():
     tree = RadixCache("unique_name", 100, 1)
     ans = tree.insert(torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=torch.int64, device="cpu"))
@@ -46,6 +48,7 @@ def test_case2():
     assert tree_node.node_prefix_total_len == 6 and size == 6 and len(values) == 6
     print(ans)
     return
+
 
 def test_case3():
     tree = RadixCache("unique_name", 100, 2)
@@ -74,6 +77,7 @@ def test_case3():
     tree.print_self()
     print(ans)
     return
+
 
 def test_case4():
 

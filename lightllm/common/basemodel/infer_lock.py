@@ -17,14 +17,16 @@ logger = init_logger(__name__)
 
 
 class InferStateLock:
-    def __init__(self, name, rank_in_dp:int, dp_rank_in_node:int, dp_world_size:int):
+    def __init__(self, name, rank_in_dp: int, dp_rank_in_node: int, dp_world_size: int):
         self.infer_lock = threading.Lock()
         self.dp_rank_in_node = dp_rank_in_node
         # sync_world_size 应该是 min(dp_world_size, node_world_size)
         self.dp_world_size = dp_world_size
         self.rank_in_dp = rank_in_dp
         # 默认开 128 tp 的空间, 现在应该没什么卡能开这么大的tp 吧
-        self.lock_tp_infos = SharedArray(f"{name}_dp_rank_{str(self.dp_rank_in_node)}_lock_tp_infos", shape=(self.dp_world_size + 1,), dtype=np.int64)
+        self.lock_tp_infos = SharedArray(
+            f"{name}_dp_rank_{str(self.dp_rank_in_node)}_lock_tp_infos", shape=(self.dp_world_size + 1,), dtype=np.int64
+        )
         self.lock_tp_infos.arr[:] = 0
 
     def add_cur_mark(self):

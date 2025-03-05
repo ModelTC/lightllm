@@ -256,8 +256,7 @@ class DecodeKVMoveManager(rpyc.Service):
         self.dp_world_size = args.tp // args.dp
         # 不支持跨机tp的pd 分离策略
         assert self.dp_world_size <= self.node_world_size
-        
-        
+
         self.info_queue = info_queue
         self.mem_queues = mem_queues
         self.infer_rpyc_lock = threading.Lock()
@@ -318,9 +317,11 @@ class DecodeKVMoveManager(rpyc.Service):
                 conns = self.infer_rpyc_objs[conn_start:conn_end]
                 for conn in conns:
                     futures.append(rpyc.async_(conn.alloc_to_frozen_some_tokens)(dp_tasks[dp_index]))
-            
+
             asyncio.run(self.wait_all_future_finish(futures))
-            ans_values = [obtain(futures[dp_index * self.dp_world_size].value) for dp_index in range(self.dp_size_in_node)]
+            ans_values = [
+                obtain(futures[dp_index * self.dp_world_size].value) for dp_index in range(self.dp_size_in_node)
+            ]
             return ans_values
 
     def _put_kv_received_to_radix_cache(self, tasks: List[KVMoveTask]) -> None:
@@ -416,13 +417,13 @@ class DecodeKVMoveManager(rpyc.Service):
 
             trans_obj = self.get_trans_obj(tasks[0])
             assert trans_obj is not None
-            
+
             id_to_test_range = {}
             for task in tasks:
                 test_dp_indexes = list(range(self.dp_size_in_node))
                 random.shuffle(test_dp_indexes)
                 id_to_test_range[task.group_request_id] = test_dp_indexes
-                                
+
             id_has_result = {}
             for test_index in range(self.dp_size_in_node):
                 dp_tasks = [[] for _ in range(self.dp_size_in_node)]

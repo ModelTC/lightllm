@@ -164,7 +164,7 @@ def normal_or_p_d_start(args):
     # 捕获到端口设置冲突的问题
     ports_locker = PortLocker(already_uesd_ports)
     ports_locker.lock_port()
-    
+
     node_world_size = args.tp // args.nnodes
     can_use_ports = alloc_can_use_network_port(
         num=6 + node_world_size + args.visual_dp * args.visual_tp, used_nccl_ports=already_uesd_ports
@@ -188,7 +188,7 @@ def normal_or_p_d_start(args):
     args.metric_port = metric_port
 
     # 申请在 p d 分离模式下，会用的端口
-    args.pd_node_infer_rpyc_ports = can_use_ports[0 : node_world_size]
+    args.pd_node_infer_rpyc_ports = can_use_ports[0:node_world_size]
     # p d 分离模式下用于标识节点的id
     args.pd_node_id = uuid.uuid4().int
     # p 节点用来建立torch kv 传输分布组的可用端口范围

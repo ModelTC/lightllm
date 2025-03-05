@@ -40,7 +40,9 @@ class PDPrefillInferRpcServer(rpyc.Service):
             # 更新调度元数据
             if self.is_master_in_dp:
                 with g_router_lock.obj:
-                    self.backend.shared_token_load.add_frozened_token_count(-len(task.input_tokens), self.dp_rank_in_node)
+                    self.backend.shared_token_load.add_frozened_token_count(
+                        -len(task.input_tokens), self.dp_rank_in_node
+                    )
         release_acquired_lock()
         return
 

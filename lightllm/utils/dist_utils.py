@@ -60,11 +60,11 @@ def init_distributed_env(kvargs):
     set_current_rank_in_dp(get_global_rank() % get_dp_world_size())
     set_current_rank_in_node(get_global_rank() % node_world_size)
     set_node_world_size(node_world_size)
-    
+
     nnodes = kvargs["args"].nnodes
     dp_size_in_node = max(1, get_dp_size() // nnodes)
     set_dp_rank_in_node(get_global_dp_rank() % dp_size_in_node)
-    
+
     device_id = kvargs["rank_id"] % get_node_world_size()
     set_current_device_id(device_id)
     torch.cuda.set_device(device_id)
@@ -125,8 +125,8 @@ def get_global_dp_rank():
 
 def set_dp_rank_in_node(rank: int):
     set_environ("LIGHTLLM_DP_RANK_IN_NODE", rank)
-    
-    
+
+
 def get_dp_rank_in_node():
     return int(get_environ("LIGHTLLM_DP_RANK_IN_NODE"))
 
