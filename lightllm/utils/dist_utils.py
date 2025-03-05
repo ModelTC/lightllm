@@ -16,6 +16,45 @@ import torch
 # 其中 node 0 上，存在两个dp，其 dp_rank_in_node 分别为 0， 1 在 node 1 上， 也存在两个dp，其 dp_rank_in_node
 # 也分别为 0， 1, 在一个node内的操作，几乎大部分都是使用 dp_rank_in_node 信息。
 
+# 下面是一个 2 node， 16卡， dp_size 4 的 rank 信息结构图：
+# ┌────────────────────────┐
+# │      Global Rank      │
+# │  global_rank: 0-15    │
+# │  global_world_size: 16 │
+# └────────────────────────┘
+#              │
+#              │
+# ┌────────────┴─────────────┐
+# │    Data Parallel (DP)     │
+# │  dp_size: 4               │
+# │  dp_world_size: 4         │
+# └────────────┬─────────────┘
+#              │
+#              │
+# ┌────────────┴─────────────┐
+# │  Global DP Rank          │
+# │  global_dp_rank: 0-3     │
+# │  (0-3) -> global_dp_rank 0│
+# │  (4-7) -> global_dp_rank 1│
+# │  (8-11) -> global_dp_rank 2│
+# │  (12-15) -> global_dp_rank 3│
+# └────────────┴─────────────┘
+#              │
+#              │
+# ┌────────────┴─────────────┐
+# │       Node Rank          │
+# │  node_world_size: 8      │
+# │  rank_in_node: 0-7       │
+# └────────────┴─────────────┘
+#              │
+#              │
+# ┌────────────┴─────────────┐
+# │       DP Rank in Node    │
+# │  dp_rank_in_node: 0-1    │
+# │  (Node 0: dp_rank_in_node 0, 1)│
+# │  (Node 1: dp_rank_in_node 0, 1)│
+# └───────────────────────────┘
+
 
 def set_environ(environ_name, value):
     os.environ[environ_name] = str(value)
