@@ -1,8 +1,10 @@
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import enable_env_vars
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.common.basemodel.layer_weights.meta_weights import (
     ROWMMWeight,
-    FusedMoeWeight,
+    FusedMoeWeightTP,
+    FusedMoeWeightEP,
 )
 
 logger = init_logger(__name__)
@@ -48,7 +50,8 @@ class MixtralTransformerLayerWeight(LlamaTransformerLayerWeight):
             tp_size=1,  # no tensor parallelism
         )
 
-        self.experts = FusedMoeWeight(
+        load_func = FusedMoeWeightEP if enable_env_vars("ETP_MODE_ENABLED") else FusedMoeWeightTP
+        self.experts = load_func(
             gate_proj_name="w1",
             down_proj_name="w2",
             up_proj_name="w3",

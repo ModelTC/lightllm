@@ -3,12 +3,14 @@ import torch
 import math
 import numpy as np
 from lightllm.common.basemodel import TransformerLayerWeight
+from lightllm.utils.envs_utils import enable_env_vars
 from lightllm.common.basemodel.layer_weights.meta_weights import (
     ROWMMWeight,
     MultiROWMMWeight,
     COLMMWeight,
     NormWeight,
-    FusedMoeWeight,
+    FusedMoeWeightTP,
+    FusedMoeWeightEP,
     ROWBMMWeight,
 )
 from functools import partial
@@ -325,7 +327,8 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         shared_split_inter_size = shared_intermediate_size // self.world_size_
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp.shared_experts", shared_split_inter_size)
 
-        self.experts = FusedMoeWeight(
+        load_func = FusedMoeWeightEP if enable_env_vars("ETP_MODE_ENABLED") else FusedMoeWeightTP
+        self.experts = load_func(
             gate_proj_name="gate_proj",
             down_proj_name="down_proj",
             up_proj_name="up_proj",
