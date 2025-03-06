@@ -30,8 +30,7 @@ class MMWeightTpl(BaseWeightTpl):
         tp_rank: int = None,
         tp_world_size: int = None,
     ) -> None:
-        super().__init__(tp_rank, tp_world_size)
-        self.data_type_ = data_type
+        super().__init__(tp_rank, tp_world_size, data_type)
         self.quant_method = quant_method
         self.weight: Optional[torch.Tensor] = None
         self.bias: Optional[torch.Tensor] = None
