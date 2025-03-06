@@ -5,8 +5,8 @@ from lightllm.common.basemodel import PreAndPostLayerWeight
 
 
 class LlamaPreAndPostLayerWeight(PreAndPostLayerWeight):
-    def __init__(self, tp_rank, world_size, data_type, network_config, mode):
-        super().__init__(tp_rank, world_size, data_type, network_config, mode)
+    def __init__(self, data_type, network_config, mode):
+        super().__init__(data_type, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         return
 

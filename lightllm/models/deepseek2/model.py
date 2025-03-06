@@ -90,13 +90,11 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
 
     def _init_weights(self):
         self.pre_post_weight = self.pre_and_post_weight_class(
-            self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+            self.data_type, network_config=self.config, mode=self.mode
         )
         self.trans_layers_weight = [
             self.transformer_weight_class(
                 i,
-                self.tp_rank_,
-                self.world_size_,
                 self.data_type,
                 network_config=self.config,
                 mode=self.mode,
