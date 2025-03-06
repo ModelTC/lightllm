@@ -41,7 +41,7 @@ class MixtralTransformerLayerWeight(LlamaTransformerLayerWeight):
             weight_name=self.moe_gate_weight_name,
             data_type=self.data_type_,
             bias_name=self.moe_gate_bias_name,
-            quant_cfg=self.quant_cfg_,
+            quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
             layer_name="moe_gate",
             tp_rank=0,

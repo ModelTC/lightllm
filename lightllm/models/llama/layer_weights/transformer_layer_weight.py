@@ -25,26 +25,6 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._init_ffn()
         self._init_norm()
 
-    def load_hf_weights(self, weights):
-        self.k_weight = weights.get(self._k_weight_name, None)
-        self.v_weight = weights.get(self._v_weight_name, None)
-        self._gate_weight = weights.get(self._gate_weight_name, None)
-        self._up_weight = weights.get(self._up_weight_name, None)
-        kv_weight = self._try_cat_to(["k_weight", "v_weight"], 0)
-        if kv_weight is not None:
-            weights[self._kv_weight_name] = kv_weight
-
-        gate_up_weight = self._try_cat_to(
-            [
-                "_gate_weight",
-                "_up_weight",
-            ],
-            0,
-        )
-        if gate_up_weight is not None:
-            weights[self._gate_up_weight_name] = gate_up_weight
-        return super().load_hf_weights(weights)
-
     def _parse_config(self):
         self.n_embed = self.network_config_["hidden_size"]
         self.n_head = self.network_config_["num_attention_heads"]

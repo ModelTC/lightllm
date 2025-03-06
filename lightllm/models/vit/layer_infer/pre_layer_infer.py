@@ -5,14 +5,15 @@ import torch.distributed as dist
 import numpy as np
 
 from lightllm.models.vit.layer_weights.pre_and_post_layer_weight import ViTPreAndPostLayerWeight
+from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
 
 
 class ViTPreLayerInfer:
     """ """
 
-    def __init__(self, tp_rank, world_size, network_config, mode):
-        self.tp_rank_ = tp_rank
-        self.world_size_ = world_size
+    def __init__(self, network_config, mode):
+        self.tp_rank_ = get_current_rank_in_dp()
+        self.world_size_ = get_dp_world_size()
         self.network_config_ = network_config
         self.mode = mode
         return

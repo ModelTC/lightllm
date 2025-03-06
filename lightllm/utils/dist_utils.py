@@ -57,6 +57,10 @@ def init_vision_distributed_env(kvargs):
     world_size = kvargs["vit_tp"]
     set_global_rank(kvargs["tp_rank_id"])
     set_global_world_size(world_size)
+    set_dp_size(kvargs.get("dp_size", 1))
+    set_dp_world_size(get_global_world_size() // get_dp_size())
+    set_global_dp_rank(get_global_rank() // get_dp_world_size())
+    set_current_rank_in_dp(get_global_rank() % get_dp_world_size())
     visual_gpu_ids = kvargs["visual_gpu_ids"]
     device_id = visual_gpu_ids[kvargs["vit_rank_id"]]
     set_current_device_id(device_id)

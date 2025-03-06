@@ -31,7 +31,7 @@ class Starcoder2TransformerLayerWeight(LlamaTransformerLayerWeight):
             weight_name=self._up_weight_name,
             data_type=self.data_type_,
             bias_name=self._up_bias_name,
-            quant_cfg=self.quant_cfg_,
+            quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
             layer_name="up_proj",
         )
@@ -39,7 +39,7 @@ class Starcoder2TransformerLayerWeight(LlamaTransformerLayerWeight):
             weight_name=self._down_weight_name,
             data_type=self.data_type_,
             bias_name=self._down_bias_name,
-            quant_cfg=self.quant_cfg_,
+            quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
             layer_name="down_proj",
         )

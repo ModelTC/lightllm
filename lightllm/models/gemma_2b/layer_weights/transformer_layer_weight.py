@@ -15,7 +15,7 @@ class Gemma_2bTransformerLayerWeight(LlamaTransformerLayerWeight):
             weight_name=self._q_weight_name,
             data_type=self.data_type_,
             bias_name=self._q_bias_name,
-            quant_cfg=self.quant_cfg_,
+            quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
             layer_name="q_proj",
         )
@@ -23,7 +23,7 @@ class Gemma_2bTransformerLayerWeight(LlamaTransformerLayerWeight):
             weight_names=[self._k_weight_name, self._v_weight_name],
             data_type=self.data_type_,
             bias_names=[self._k_bias_name, self._v_bias_name],
-            quant_cfg=self.quant_cfg_,
+            quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
             layer_name="kv_proj",
         )
