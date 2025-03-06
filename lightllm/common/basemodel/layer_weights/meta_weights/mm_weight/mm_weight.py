@@ -96,8 +96,12 @@ class MultiMMWeightTpl(MMWeightTpl):
         self.weight_names = weight_names
         self.bias_names = bias_names
         self.weights = [None] * len(self.weight_names)
-        self.biases = [None] * len(self.bias_names)
-        self.has_bias = all(b is not None for b in self.bias_names) and len(bias_names) > 0
+        if self.bias_names is not None:
+            self.biases = [None] * len(self.bias_names)
+            self.has_bias = all(b is not None for b in self.bias_names) and len(bias_names) > 0
+        else:
+            self.biases = None
+            self.has_bias = False
 
     def _fuse_weights(self) -> None:
         if self.weight is None and (None not in self.weights):

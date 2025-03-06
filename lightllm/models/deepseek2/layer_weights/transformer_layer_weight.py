@@ -5,17 +5,11 @@ import numpy as np
 from lightllm.common.basemodel import TransformerLayerWeight
 from lightllm.common.basemodel.layer_weights.meta_weights import (
     ROWMMWeight,
-    ROWMMWeightNoTP,
     MultiROWMMWeight,
-    MultiROWMMWeightNoTP,
     COLMMWeight,
-    COLMMWeightNoTp,
-    MultiCOLMMWeight,
-    MultiCOLMMWeightNoTp,
     NormWeight,
     FusedMoeWeight,
     ROWBMMWeight,
-    ROWBMMWeightNoTp,
 )
 from functools import partial
 from ..triton_kernel.weight_dequant import weight_dequant
@@ -146,47 +140,41 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
         return super().load_hf_weights(weights)
 
-    def _set_quantization(self):
-        super()._set_quantization()
-        # moe_gate of deepseek always keep bf16/fp16.
-        if self.is_moe:
-            self.moe_gate.quant_method = None
-
     def _init_qkvo(self):
-        q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
-        q_split_n_embed_with_rope = (
-            (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
-        )
         if self.q_lora_rank is None:
             self.q_weight_ = ROWMMWeight(
-                f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
-                self.data_type_,
-                q_split_n_embed_with_rope,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="q_weight",
             )
         else:
-            self.q_a_proj_ = ROWMMWeightNoTP(
-                f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight",
-                self.data_type_,
-                self.q_lora_rank,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+            self.q_a_proj_ = ROWMMWeight(
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="q_a_proj",
+                tp_rank=0,
+                tp_world_size=1,
             )
             self.q_b_proj_ = ROWMMWeight(
-                f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
-                self.data_type_,
-                q_split_n_embed_with_rope,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="q_b_proj",
             )
 
-        self.kv_a_proj_with_mqa_ = ROWMMWeightNoTP(
-            f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight",
-            self.data_type_,
-            self.kv_lora_rank + self.qk_rope_head_dim,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+        self.kv_a_proj_with_mqa_ = ROWMMWeight(
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="kv_a_proj_with_mqa",
+            tp_rank=0,
+            tp_world_size=1,
         )
         self.k_b_proj_ = ROWBMMWeight(
             f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
@@ -200,120 +188,138 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         )
         if self.enable_cc_method:
             self.cc_kv_b_proj_ = ROWMMWeight(
-                f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight",
-                self.data_type_,
-                split_n_embed=self.tp_q_head_num_ * (self.qk_nope_head_dim + self.v_head_dim),
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="cc_kv_b_proj",
             )
 
         self.o_weight_ = COLMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
-            self.data_type_,
-            q_split_n_embed,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="o_weight",
         )
 
     def _init_qkvo_dp(self):
-        q_split_n_embed = self.qk_nope_head_dim * self.tp_q_head_num_
-        q_split_n_embed_with_rope = (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads
         if self.q_lora_rank is None:
-            self.q_weight_ = ROWMMWeightNoTP(
-                f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
-                self.data_type_,
-                q_split_n_embed_with_rope,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+            self.q_weight_ = ROWMMWeight(
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.q_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="q_weight",
+                tp_rank=0,
+                tp_world_size=1,
             )
         else:
-            self.q_a_proj_ = ROWMMWeightNoTP(
-                f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight",
-                self.data_type_,
-                self.q_lora_rank,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+            self.q_a_proj_ = ROWMMWeight(
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.q_a_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="q_a_proj",
+                tp_rank=0,
+                tp_world_size=1,
             )
-            self.q_b_proj_ = ROWMMWeightNoTP(
-                f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
-                self.data_type_,
-                q_split_n_embed_with_rope,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+            self.q_b_proj_ = ROWMMWeight(
+                weight_name=f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="q_b_proj",
+                tp_rank=0,
+                tp_world_size=1,
             )
 
-        self.kv_a_proj_with_mqa_ = ROWMMWeightNoTP(
-            f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight",
-            self.data_type_,
-            self.kv_lora_rank + self.qk_rope_head_dim,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+        self.kv_a_proj_with_mqa_ = ROWMMWeight(
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.kv_a_proj_with_mqa.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="kv_a_proj_with_mqa",
+            tp_rank=0,
+            tp_world_size=1,
         )
 
-        self.k_b_proj_ = ROWBMMWeightNoTp(
-            f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
-            self.data_type_,
-            split_n_embed=self.tp_q_head_num_,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+        self.k_b_proj_ = ROWBMMWeight(
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="k_b_proj",
+            tp_rank=0,
+            tp_world_size=1,
         )
 
-        self.v_b_proj_ = ROWBMMWeightNoTp(
-            f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
-            self.data_type_,
-            split_n_embed=self.tp_q_head_num_,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+        self.v_b_proj_ = ROWBMMWeight(
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="v_b_proj",
+            tp_rank=0,
+            tp_world_size=1,
         )
 
-        self.o_weight_ = COLMMWeightNoTp(
-            f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
-            self.data_type_,
-            q_split_n_embed,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+        self.o_weight_ = COLMMWeight(
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.o_proj.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="o_weight",
+            tp_rank=0,
+            tp_world_size=1,
         )
 
     def _load_mlp(self, mlp_prefix, split_inter_size, no_tp=False):
         if no_tp:
-            self.gate_up_proj = MultiROWMMWeightNoTP(
-                [f"{mlp_prefix}.gate_proj.weight", f"{mlp_prefix}.up_proj.weight"],
-                self.data_type_,
-                split_inter_size,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+            self.gate_up_proj = MultiROWMMWeight(
+                weight_names=[f"{mlp_prefix}.gate_proj.weight", f"{mlp_prefix}.up_proj.weight"],
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="gate_up_proj",
+                tp_rank=0,
+                tp_world_size=1,
             )
-            self.down_proj = COLMMWeightNoTp(
-                f"{mlp_prefix}.down_proj.weight",
-                self.data_type_,
-                split_inter_size,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+            self.down_proj = COLMMWeight(
+                weight_name=f"{mlp_prefix}.down_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="down_proj",
+                tp_rank=0,
+                tp_world_size=1,
             )
         else:
             self.gate_up_proj = MultiROWMMWeight(
-                [f"{mlp_prefix}.gate_proj.weight", f"{mlp_prefix}.up_proj.weight"],
-                self.data_type_,
-                split_inter_size,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+                weight_names=[f"{mlp_prefix}.gate_proj.weight", f"{mlp_prefix}.up_proj.weight"],
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="gate_up_proj",
             )
             self.down_proj = COLMMWeight(
-                f"{mlp_prefix}.down_proj.weight",
-                self.data_type_,
-                split_inter_size,
-                weight_scale_suffix=self.weight_scale_suffix,
-                act_scale_suffix=self.act_scale_suffix,
+                weight_name=f"{mlp_prefix}.down_proj.weight",
+                data_type=self.data_type_,
+                quant_cfg=self.quant_cfg,
+                layer_num=self.layer_num_,
+                layer_name="down_proj",
             )
 
     def _init_moe(self):
         moe_intermediate_size = self.network_config_["moe_intermediate_size"]
-        self.moe_gate = ROWMMWeightNoTP(
-            f"model.layers.{self.layer_num_}.mlp.gate.weight",
-            self.data_type_,
-            moe_intermediate_size,
-            weight_scale_suffix=None,
-            act_scale_suffix=None,
+        self.moe_gate = ROWMMWeight(
+            weight_name=f"model.layers.{self.layer_num_}.mlp.gate.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="moe_gate",
+            tp_rank=0,
+            tp_world_size=1,
         )
         shared_intermediate_size = moe_intermediate_size * self.network_config_["n_shared_experts"]
         shared_split_inter_size = shared_intermediate_size // self.world_size_
