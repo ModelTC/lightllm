@@ -1,7 +1,4 @@
-import torch
-import math
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
-from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight
 
 
 class ChatGLM2TransformerLayerWeight(LlamaTransformerLayerWeight):
