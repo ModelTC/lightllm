@@ -8,7 +8,7 @@ from .triton_quant.triton_quant import *
 
 
 class Quantcfg:
-    def __init__(self, network_config, quant_type=None, custom_cfg_path=None):
+    def __init__(self, network_config, quant_type="none", custom_cfg_path=None):
         self.layer_num = network_config["n_layer"]
         self.quant_type = quant_type
         self.network_config_ = network_config
@@ -55,23 +55,12 @@ class Quantcfg:
                 self.quant_cfg[layer_num].update({layer_name: layer_quant_type})
 
     def get_quant_type(self, layer_num, layer_name):
-        if self.quant_type is None:
-            return None
-        return self.quant_cfg[layer_num][layer_name]
-
-    def set_quant_type(self, layer_num, layer_name, quant_type):
-        self.quant_cfg[layer_num][layer_name] = quant_type
-
-    def get_mixed_list(self, layer_num):
-        return self.quant_cfg[layer_num].keys()
-
-    def get_default_quant_method(self):
-        if self.quant_type is None:
-            return None
-        return QUANTMETHODS.get(self.quant_type)
+        layer_config = self.quant_cfg.get(layer_num, None)
+        if layer_config is None:
+            return self.quant_type
+        quant_type = layer_config.get(layer_name, self.quant_type)
+        return quant_type
 
     def get_quant_method(self, layer_num, layer_name):
-        if self.quant_type is None:
-            return None
-        layer_cfg = self.quant_cfg[layer_num]
-        return QUANTMETHODS.get(layer_cfg[layer_name])
+        quant_type = self.get_quant_type(layer_num, layer_name)
+        return QUANTMETHODS.get(quant_type)

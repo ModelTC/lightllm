@@ -12,15 +12,15 @@ from typing import Dict, List, Optional
 
 class COLMMWeight(MMWeight):
     @classmethod
-    def _get_mmcls(cls, quant_type, quant_method):
-        if quant_type is None or not quant_method.quantized_weight:
+    def _get_mmcls(cls, quant_method: QuantizationMethod, quantized_weight: bool):
+        if quant_method is None or not quantized_weight:
             return UnquantizedCOLMMWeight
 
 
 def MultiCOLMMWeight(MMWeight):
     @classmethod
-    def _get_mmcls(cls, quant_type, quant_method):
-        if quant_type is None or not quant_method.quantized_weight:
+    def _get_mmcls(cls, quant_method: QuantizationMethod, quantized_weight: bool):
+        if quant_method is None or not quantized_weight:
             return UnquantizedMultiCOLMMWeight
 
 

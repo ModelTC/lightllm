@@ -12,8 +12,8 @@ from typing import Dict, List, Optional
 
 class ROWMMWeight(MMWeight):
     @classmethod
-    def _get_mmcls(cls, quant_type, quant_method):
-        if quant_type is None or not quant_method.quantized_weight:
+    def _get_mmcls(cls, quant_method: QuantizationMethod, quantized_weight: bool):
+        if quant_method is None or not quantized_weight:
             return UnquantizedROWMMWeight
         # TODO: Implement more quantization weight
         return None
@@ -21,8 +21,8 @@ class ROWMMWeight(MMWeight):
 
 class MultiROWMMWeight(MMWeight):
     @classmethod
-    def _get_mmcls(cls, quant_type, quant_method):
-        if quant_type is None or not quant_method.quantized_weight:
+    def _get_mmcls(cls, quant_method: QuantizationMethod, quantized_weight: bool):
+        if quant_method is None or not quantized_weight:
             return UnquantizedMultiROWMMWeight
         # TODO: Implement more quantization weight
         return None
