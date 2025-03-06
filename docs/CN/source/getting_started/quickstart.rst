@@ -82,7 +82,7 @@
 
     $ hostname -i
 
-运行MPS(可选)
+运行MPS(可选, 有mps支持性能会好特别多，但是部分显卡和驱动环境开启mps会容易出现错误，建议升级驱动到较高版本，特别是H系列卡)
 
 .. code-block:: console
 
@@ -99,7 +99,7 @@
     $ --host /your/host/ip \
     $ --port 60011
 
-新建终端,运行prefill服务
+新建终端,运行prefill服务 
 
 .. code-block:: console
 
@@ -137,7 +137,7 @@
     $ --use_dynamic_prompt_cache 
 
 .. note::
-    prefill和decoding阶段的tp大小保持一致
+    prefill和decoding阶段的tp大小保持一致, 目前可以支持 prefill 和 decode 节点的数量是变化的，同时prefill 和 decode可以跨机部署。
 
 
 4. （可选）测试模型服务
@@ -147,7 +147,7 @@
 
 .. code-block:: console
 
-    $ curl http://localhost:8000/generate \
+    $ curl http://server_ip:server_port/generate \
     $      -H "Content-Type: application/json" \
     $      -d '{
     $            "inputs": "What is AI?",

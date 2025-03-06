@@ -143,7 +143,7 @@ In a new terminal, use the following command to test the model service:
 
 .. code-block:: console
 
-    $ curl http://localhost:8000/generate \
+    $ curl http://server_ip:server_port/generate \
     $      -H "Content-Type: application/json" \
     $      -d '{
     $            "inputs": "What is AI?",
