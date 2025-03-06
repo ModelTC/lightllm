@@ -1,4 +1,4 @@
-from lightllm.common.basemodel.layer_weights.meta_weights import NormWeight, ROWMMWeight, COLMMWeight
+from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, COLMMWeight
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 
 
@@ -27,10 +27,19 @@ class Starcoder2TransformerLayerWeight(LlamaTransformerLayerWeight):
         self._ffn_norm_bias_name = f"model.layers.{self.layer_num_}.post_attention_layernorm.bias"
 
     def _init_ffn(self):
-        split_inter_size = self.n_inter // self.world_size_
         self.up_proj = ROWMMWeight(
-            self._up_weight_name, self.data_type_, split_inter_size, bias_name=self._up_bias_name
+            weight_name=self._up_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._up_bias_name,
+            quant_cfg=self.quant_cfg_,
+            layer_num=self.layer_num_,
+            layer_name="up_proj",
         )
         self.down_proj = COLMMWeight(
-            self._down_weight_name, self.data_type_, split_inter_size, bias_name=self._down_bias_name
+            weight_name=self._down_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._down_bias_name,
+            quant_cfg=self.quant_cfg_,
+            layer_num=self.layer_num_,
+            layer_name="down_proj",
         )
