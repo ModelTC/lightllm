@@ -55,6 +55,8 @@ class Quantcfg:
                 self.quant_cfg[layer_num].update({layer_name: layer_quant_type})
 
     def get_quant_type(self, layer_num, layer_name):
+        if self.quant_type is None:
+            return None
         return self.quant_cfg[layer_num][layer_name]
 
     def set_quant_type(self, layer_num, layer_name, quant_type):

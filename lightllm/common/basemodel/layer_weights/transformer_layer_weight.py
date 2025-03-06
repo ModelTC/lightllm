@@ -2,7 +2,7 @@ from functools import partial
 
 # from lightllm.common.layers.mm import MM
 from .base_layer_weight import BaseLayerWeight
-from .meta_weights import BaseWeight, MultiMMWeight, MMWeightTpl, FusedMoeWeight
+from .meta_weights import BaseWeight, MultiMMWeightTpl
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -22,7 +22,6 @@ class TransformerLayerWeight(BaseLayerWeight):
         self._init_weight_names()
         self._init_qweight_names()
         self._init_weight()
-        self._set_quantization()
         return
 
     def _parse_config(self):
@@ -43,22 +42,8 @@ class TransformerLayerWeight(BaseLayerWeight):
         """
         for attr_name in dir(self):
             attr = getattr(self, attr_name, None)
-            if isinstance(attr, MultiMMWeight):
+            if isinstance(attr, MultiMMWeightTpl):
                 with self.lock:
                     attr.load_hf_weights(weights)
             elif isinstance(attr, BaseWeight):
                 attr.load_hf_weights(weights)
-
-    def _set_quantization(self):
-        if self.quant_cfg.quant_type is None:
-            return
-        mix_quant_list = self.quant_cfg.get_mixed_list(self.layer_num_)
-        for attr_name in dir(self):
-            attr = getattr(self, attr_name)
-            if isinstance(attr, MMWeightTpl) or isinstance(attr, FusedMoeWeight):
-                if attr_name in mix_quant_list:
-                    attr.set_quant_method(self.quant_cfg.get_quant_method(self.layer_num_, attr_name))
-                    attr_quant_type = self.quant_cfg.get_quant_type(self.layer_num_, attr_name)
-                    logger.info(f"Layer {self.layer_num_} {attr_name} is set to {attr_quant_type}")
-                else:
-                    attr.set_quant_method(self.quant_cfg.get_default_quant_method())

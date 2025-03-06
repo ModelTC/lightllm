@@ -1,7 +1,7 @@
 import os
 import torch
 from abc import abstractmethod
-from typing import Optional, Tuple, List, Dict, Type
+from typing import Optional, Tuple, List, Dict, Union
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 from lightllm.common.quantization.quantize_method import QuantizationMethod
 from lightllm.common.basemodel.layer_weights.meta_weights.base_weight import BaseWeightTpl
@@ -126,7 +126,7 @@ class MultiMMWeightTpl(MMWeightTpl):
 class MMWeight:
     def __new__(cls, **kwargs):
         quant_cfg = kwargs.pop("quant_cfg", None)
-        layer_num_ = kwargs.pop("layer_num_", None)
+        layer_num_ = kwargs.pop("layer_num", None)
         layer_name_ = kwargs.pop("layer_name", None)
         quant_method, quant_type = cls._get_quant_method(quant_cfg, layer_num_, layer_name_)
         kwargs["quant_method"] = quant_method
@@ -143,7 +143,7 @@ class MMWeight:
     @classmethod
     def _get_mmcls(
         cls, quant_type: str, quant_method: QuantizationMethod
-    ) -> Optional[Type[MMWeightTpl, MultiMMWeightTpl]]:
+    ) -> Optional[Union[MMWeightTpl, MultiMMWeightTpl]]:
         return None
 
 

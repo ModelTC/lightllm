@@ -79,29 +79,49 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
         self._ffn_norm_bias_name = None
 
     def _init_qkv(self):
-        kv_split_n_embed = self.head_dim * self.n_kv_head // self.world_size_
-        self.q_proj = ROWMMWeight(self._q_weight_name, self.data_type_, bias_name=self._q_bias_name)
-        self.kv_proj = ROWMMWeight(
-            self._kv_weight_name,
-            self.data_type_,
-            kv_split_n_embed,
+        self.q_proj = ROWMMWeight(
+            weight_name=self._q_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._q_bias_name,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="q_proj",
+        )
+        self.kv_proj = MultiROWMMWeight(
+            weight_names=[self._k_weight_name, self._v_weight_name],
+            data_type=self.data_type_,
             bias_names=[self._k_bias_name, self._v_bias_name],
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="kv_proj",
         )
 
     def _init_o(self):
-        o_split_n_embed = self.head_dim * self.n_head // self.world_size_
-        self.o_proj = COLMMWeight(self._o_weight_name, self.data_type_, o_split_n_embed, bias_name=self._o_bias_name)
+        self.o_proj = COLMMWeight(
+            weight_name=self._o_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._o_bias_name,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="o_proj",
+        )
 
     def _init_ffn(self):
-        split_inter_size = self.n_inter // self.world_size_
         self.gate_up_proj = MultiROWMMWeight(
-            [self._gate_weight_name, self._up_weight_name],
-            self.data_type_,
-            split_inter_size,
+            weight_names=[self._gate_weight_name, self._up_weight_name],
+            data_type=self.data_type_,
             bias_names=[self._gate_bias_name, self._up_bias_name],
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="gate_up_proj",
         )
         self.down_proj = COLMMWeight(
-            self._down_weight_name, self.data_type_, split_inter_size, bias_name=self._down_bias_name
+            weight_name=self._down_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._down_bias_name,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="down_proj",
         )
 
     def _init_norm(self):
