@@ -1,12 +1,7 @@
-import torch
-import math
-import numpy as np
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.common.basemodel.layer_weights.meta_weights import (
     ROWMMWeight,
-    COLMMWeight,
-    NormWeight,
     FusedMoeWeight,
 )
 
@@ -43,7 +38,14 @@ class MixtralTransformerLayerWeight(LlamaTransformerLayerWeight):
         split_inter_size = inter_size // self.world_size_
 
         self.moe_gate = ROWMMWeight(
-            self.moe_gate_weight_name, self.data_type_, 0, bias_name=self.moe_gate_bias_name, disable_tp=True
+            weight_name=self.moe_gate_weight_name,
+            data_type=self.data_type_,
+            bias_name=self.moe_gate_bias_name,
+            quant_cfg=self.quant_cfg_,
+            layer_num=self.layer_num_,
+            layer_name="moe_gate",
+            tp_rank=0,
+            tp_size=1,  # no tensor parallelism
         )
 
         self.experts = FusedMoeWeight(
