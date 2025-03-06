@@ -11,14 +11,21 @@ class Gemma_2bTransformerLayerWeight(LlamaTransformerLayerWeight):
         return
 
     def _init_qkv(self):
-        q_split_n_embed = self.head_dim * self.n_head // self.world_size_
-        kv_split_n_embed = self.head_dim * self.n_kv_head
-        self.q_proj = ROWMMWeight(self._q_weight_name, self.data_type_, q_split_n_embed, bias_name=self._q_bias_name)
+        self.q_proj = ROWMMWeight(
+            weight_name=self._q_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._q_bias_name,
+            quant_cfg=self.quant_cfg_,
+            layer_num=self.layer_num_,
+            layer_name="q_proj",
+        )
         self.kv_proj = MultiROWMMWeight(
-            [self._k_weight_name, self._v_weight_name],
-            self.data_type_,
-            kv_split_n_embed,
+            weight_names=[self._k_weight_name, self._v_weight_name],
+            data_type=self.data_type_,
             bias_names=[self._k_bias_name, self._v_bias_name],
+            quant_cfg=self.quant_cfg_,
+            layer_num=self.layer_num_,
+            layer_name="kv_proj",
         )
 
     def _init_norm(self):
