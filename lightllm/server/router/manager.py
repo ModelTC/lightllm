@@ -389,11 +389,11 @@ class RouterManager:
         # p d 分离模式下，目前只能使用保守调度，保证请求放入进行decode的时候
         # 显存token肯定是够用的。
         # deepseekv2 dp 模式下,采用保守调度，也肯定够用
-        if self.is_pd_run_mode or self.dp_size > 1 or self.is_safe_schedule:
+        if self.is_pd_run_mode or self.dp_size_in_node > 1 or self.is_safe_schedule:
             return True
 
         # 下面的判定条件，只在 dp 为 1 的情况下启用
-        assert self.dp_size == 1
+        assert self.dp_size_in_node == 1
         return batch.get_batch_decode_need_tokens()[0] + self.get_used_tokens(0) <= self.max_total_token_num
 
     def get_used_tokens(self, dp_index):
