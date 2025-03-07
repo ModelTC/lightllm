@@ -152,10 +152,7 @@ class BMMWeightTpl(MMWeightTpl):
         return torch.addbmm(self.bias, input_tensor, fpweight, out=out)
 
     def _process_weights(self, weight) -> None:
-        if self.quant_method is not None:
-            self.weight = self.quant_method.quantize(weight.to(self.data_type_).cuda(get_current_device_id()))
-            return
-        # 让 k dim 更连续，大多数split k 算法的算子可能能更快
+        self.quant_method = None
         self.weight = weight.to(self.data_type_).cuda(get_current_device_id())
 
 
