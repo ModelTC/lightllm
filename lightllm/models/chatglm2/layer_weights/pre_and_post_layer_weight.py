@@ -11,7 +11,7 @@ class ChatGLM2PreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
         # input layernorm params
 
         vob_size = self.network_config_["padded_vocab_size"]
-        split_vob_size = vob_size // self.world_size_
+        split_vob_size = vob_size // self.tp_world_size_
         if "transformer.embedding.word_embeddings.weight" in weights:
             self.wte_weight_ = weights["transformer.embedding.word_embeddings.weight"]
             self.wte_weight_ = self.wte_weight_[

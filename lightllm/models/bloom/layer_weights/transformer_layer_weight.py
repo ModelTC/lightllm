@@ -59,8 +59,8 @@ class BloomTransformerLayerWeight(LlamaTransformerLayerWeight):
         self.n_kv_head = self.network_config_["num_attention_heads"]
         self.head_dim = self.network_config_.get("head_dim", self.n_embed // self.n_head)
         # 计算生成alibi
-        assert self.n_head % self.world_size_ == 0
-        tp_head_num = self.n_head // self.world_size_
+        assert self.n_head % self.tp_world_size_ == 0
+        tp_head_num = self.n_head // self.tp_world_size_
         tmp_alibi = generate_alibi(self.n_head, dtype=torch.float32)
         self.tp_alibi = tmp_alibi[self.tp_rank_ * tp_head_num : (self.tp_rank_ + 1) * tp_head_num].contiguous().cuda()
 

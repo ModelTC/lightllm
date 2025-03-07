@@ -8,7 +8,7 @@ from lightllm.utils.dist_utils import get_current_device_id, get_current_rank_in
 class BaseLayerWeight:
     def __init__(self):
         self.tp_rank_ = get_current_rank_in_dp()
-        self.world_size_ = get_dp_world_size()
+        self.tp_world_size_ = get_dp_world_size()
         self.lock = threading.Lock()
 
     def load_hf_weights(self, weights):

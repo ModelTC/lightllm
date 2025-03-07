@@ -11,7 +11,7 @@ class QwenPreAndPostLayerWeight(PreAndPostLayerWeight):
     def load_hf_weights(self, weights):
 
         vob_size = self.network_config_["vocab_size"]
-        split_vob_size = vob_size // self.world_size_
+        split_vob_size = vob_size // self.tp_world_size_
 
         if "transformer.wte.weight" in weights:
             self.wte_weight_ = self._cuda(

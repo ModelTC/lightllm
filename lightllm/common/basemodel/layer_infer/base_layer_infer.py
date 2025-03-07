@@ -9,7 +9,7 @@ from .cache_tensor_manager import g_cache_manager
 class BaseLayerInfer:
     def __init__(self) -> None:
         self.tp_rank_ = get_current_rank_in_dp()
-        self.world_size_ = get_dp_world_size()
+        self.tp_world_size_ = get_dp_world_size()
 
     def context_forward(self, input_ids, infer_state: InferStateInfo, layer_weight: BaseLayerWeight):
         raise Exception("need to impl")

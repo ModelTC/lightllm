@@ -128,7 +128,7 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
         )
         if self.qk_norm:
             n_embed = self.network_config_["hidden_size"]
-            split_n_embed = (n_embed + self.padding_hidden_size) // self.world_size_
+            split_n_embed = (n_embed + self.padding_hidden_size) // self.tp_world_size_
             self.q_norm_weight_ = TpNormWeight(self._q_norm_weight_name, self.data_type_, split_n_embed)
             self.k_norm_weight_ = TpNormWeight(self._k_norm_weight_name, self.data_type_, split_n_embed)
 

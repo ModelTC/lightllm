@@ -35,7 +35,7 @@ class VisionTransformer:
     post_layer_infer_class = ViTPostLayerInfer
 
     def __init__(self, kvargs):
-        self.world_size_ = get_dp_world_size()
+        self.tp_world_size_ = get_dp_world_size()
         self.weight_dir_ = kvargs["weight_dir"]
         self.load_way = kvargs.get("load_way", "HF")
         self.mode = [m.replace("int4weight", "w4a16").replace("int8weight", "w8a16") for m in kvargs.get("mode", [])]
@@ -71,10 +71,10 @@ class VisionTransformer:
         self.config["padding_head_num"] = self.config["num_attention_heads"]
 
         head_dim = self.config["hidden_size"] // self.config["num_attention_heads"]
-        if self.config["num_attention_heads"] % self.world_size_ != 0:
+        if self.config["num_attention_heads"] % self.tp_world_size_ != 0:
             padding_head_num = (
-                self.config["num_attention_heads"] + self.world_size_ - 1
-            ) // self.world_size_ * self.world_size_ - self.config["num_attention_heads"]
+                self.config["num_attention_heads"] + self.tp_world_size_ - 1
+            ) // self.tp_world_size_ * self.tp_world_size_ - self.config["num_attention_heads"]
             self.config["padding_hidden_size"] = padding_head_num * head_dim
             self.config["padding_head_num"] += padding_head_num
         return

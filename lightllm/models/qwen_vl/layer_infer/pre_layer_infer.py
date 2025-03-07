@@ -59,7 +59,7 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
         else:
             img_weight = torch.empty((0, hidden_size), device=device, dtype=dtype)
         # each tp will fill the img embeds, should divide by world_size
-        img_weight = img_weight / self.world_size_
+        img_weight = img_weight / self.tp_world_size_
         img_start_token_ids = torch.Tensor(img_start_token_ids).to(device=device, dtype=torch.long)
         img_token_lens = torch.Tensor(img_token_lens).to(device=device, dtype=torch.long)
         img_start_locs = torch.Tensor(img_start_locs).to(device=device, dtype=torch.long)
@@ -75,6 +75,6 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
             self.vob_start_id_,
             self.vob_end_id_,
         )
-        if self.world_size_ > 1:
+        if self.tp_world_size_ > 1:
             dist.all_reduce(out, op=dist.ReduceOp.SUM, async_op=False)
         return out

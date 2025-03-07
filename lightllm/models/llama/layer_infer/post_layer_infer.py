@@ -76,13 +76,13 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         torch.mm(layer_weight.lm_head_weight_, last_input, out=logic_batch)
 
         last_input = None
-        if self.world_size_ == 1 or self.enable_dp:
+        if self.tp_world_size_ == 1 or self.enable_dp:
             gather_data = logic_batch
         else:
             gather_data = self.alloc_tensor((self.vocab_size_, token_num), dtype=input_embdings_dtype)
-            split_indexes = np.linspace(0, self.vocab_size_, self.world_size_ + 1, dtype=np.int64)
+            split_indexes = np.linspace(0, self.vocab_size_, self.tp_world_size_ + 1, dtype=np.int64)
             dist.all_gather(
-                [gather_data[split_indexes[i] : split_indexes[i + 1], :] for i in range(self.world_size_)],
+                [gather_data[split_indexes[i] : split_indexes[i + 1], :] for i in range(self.tp_world_size_)],
                 logic_batch,
                 group=None,
                 async_op=False,

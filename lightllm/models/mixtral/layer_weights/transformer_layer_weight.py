@@ -35,7 +35,7 @@ class MixtralTransformerLayerWeight(LlamaTransformerLayerWeight):
 
     def _init_moe(self, weights):
         inter_size = self.network_config_["intermediate_size"]
-        split_inter_size = inter_size // self.world_size_
+        split_inter_size = inter_size // self.tp_world_size_
 
         self.moe_gate = ROWMMWeight(
             weight_name=self.moe_gate_weight_name,
