@@ -17,7 +17,7 @@ from lightllm.utils.log_utils import init_logger
 from .prefill_infer_rpyc import PDPrefillInferRpcServer
 from lightllm.common.mem_manager import MemoryManager
 import torch.multiprocessing as mp
-from lightllm.server.pd_io_struct import KVMoveTask
+from lightllm.server.pd_io_struct import KVMoveTask, PDTransJoinInfo, PDTransLeaveInfo
 from lightllm.utils.net_utils import find_available_port
 from lightllm.utils.retry_utils import retry
 from rpyc.utils.classic import obtain
@@ -35,13 +35,10 @@ logger = init_logger(__name__)
 
 @dataclass
 class TransProcessObj:
-    decode_node_id: str = None
+    decode_node_id: int = None
     rpyc_conn: object = None  # rpyc_con 的连接对象
-    process: mp.Process = None
     task_in_queue: mp.Queue = None
     task_out_queue: mp.Queue = None
-    nccl_ip: str = None
-    nccl_port: str = None
     device_index: str = None  # 使用的gpu序号
     manager: "PrefillKVMoveManager" = None
     has_error: bool = False
@@ -52,42 +49,38 @@ class TransProcessObj:
     latest_check_time: float = None
 
     def create(
-        self, decode_node_id: str, decode_node_ip: str, decode_node_rpyc_port: int, manager: "PrefillKVMoveManager"
+        self, decode_node_id: int, decode_node_ip: str, decode_node_rpyc_port: int, manager: "PrefillKVMoveManager"
     ):
         con = rpyc.connect(
             host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True
         )
-        nccl_ip = manager.host_ip
-        nccl_port = find_available_port(manager.args.pd_p_allowed_port_min, manager.args.pd_p_allowed_port_max)
-        if nccl_port is None:
-            raise Exception("no pd nccl port can be used")
-
-        from .prefill_trans_process import start_prefill_trans_process
 
         device_index = manager.get_next_device_index()  # 分配 trans 进程使用的显卡
-        task_in_queue = mp.Queue()
-        task_out_queue = mp.Queue()
-        proc = start_prefill_trans_process(
-            manager.args, device_index, nccl_ip, nccl_port, task_in_queue, task_out_queue, manager.mem_queues
-        )
-        assert task_out_queue.get(timeout=30) == "proc_start"
-        manager._put_mem_manager_to_mem_queue()
-        assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
         prefill_node_id = manager.args.pd_node_id
+        task_in_queue = manager.kv_trans_task_in_queue
+        task_out_queue = manager.kv_trans_task_out_queue
+
+        task_in_queue.put(PDTransJoinInfo(
+            prefill_id=prefill_node_id,
+            prefill_device_id=device_index,
+            prefill_ip=manager.host_ip,
+            prefill_port=manager.kv_trans_port,
+            decode_id=decode_node_id,
+            decode_device_id=-1
+        ))
+
         # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
         max_kv_trans_token_num = obtain(
-            con.root.build_trans_process(prefill_node_id, nccl_ip, nccl_port, manager.args.max_total_token_num)
+            con.root.build_trans_process(prefill_node_id, manager.host_ip, manager.kv_trans_port, manager.args.max_total_token_num)
         )
         self.max_kv_trans_token_num = max_kv_trans_token_num
         assert task_out_queue.get(timeout=60) == "nccl_ok"
 
         self.decode_node_id = decode_node_id
+        self.prefill_node_id = prefill_node_id
         self.rpyc_conn = con
-        self.process = proc
         self.task_in_queue = task_in_queue
         self.task_out_queue = task_out_queue
-        self.nccl_port = nccl_port
-        self.nccl_ip = nccl_ip
         self.device_index = device_index
         self.manager = manager
         self.latest_check_time = time.time()
@@ -114,13 +107,6 @@ class TransProcessObj:
                 break
         return ans_list
 
-    def check_trans_process(self, raise_exception=True):
-        process = psutil.Process(self.process.pid)
-        if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
-            self.set_has_error()
-            if raise_exception:
-                raise Exception(f"trans process: {self.process.pid} is dead")
-        return
 
     def check_connect(self, raise_exception=True):
         try:
@@ -134,7 +120,6 @@ class TransProcessObj:
     def timer_check_status(self, raise_exception=True):
         if time.time() - self.latest_check_time >= 2.0:
             self.latest_check_time = time.time()
-            self.check_trans_process(raise_exception=raise_exception)
             self.check_connect(raise_exception=raise_exception)
             if self.has_error:
                 self.manager.remove_trans_obj(self.decode_node_id)
@@ -249,6 +234,8 @@ class TransProcessObj:
                 self.manager.put_to_release_task_queue(move_tasks)
 
         logger.error(f"trans kv thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
+        self.task_in_queue.put(PDTransLeaveInfo(
+            decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
         return
 
     def wait_thread_quit(self):
@@ -302,12 +289,6 @@ class TransProcessObj:
 
         logger.error(f"trans obj deled, decode node id {self.decode_node_id} device_index {self.device_index}")
 
-        # 强制关闭连接和杀掉传输进程
-        if self.process is not None:
-            logger.warning(f"prefill trans process {self.process.pid} is killed")
-            os.kill(self.process.pid, signal.SIGKILL)
-        pass
-
 
 class PrefillKVMoveManager:
     def __init__(self, args, info_queue: mp.Queue, mem_queues: List[mp.Queue]):
@@ -344,6 +325,19 @@ class PrefillKVMoveManager:
         self.release_task_queue = TaskQueue(lambda datas: datas[0:KV_MOVE_MAX_NUM], fail_func=None)
         self.release_tasks_thread = threading.Thread(target=self.handle_release_task_loop, daemon=True)
         self.release_tasks_thread.start()
+
+         # start a single kv trans process
+        self.kv_trans_task_in_queue = mp.Queue()
+        self.kv_trans_task_out_queue = mp.Queue()
+        from .prefill_trans_process import start_decode_trans_process
+        self.kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
+        self.kv_trans_process = start_decode_trans_process(
+            self.args, self.host_ip, self.kv_trans_port, self.kv_trans_task_in_queue, self.kv_trans_task_out_queue, self.mem_queues)
+
+        assert self.kv_trans_task_out_queue.get(timeout=30) == "proc_start"
+        self._put_mem_manager_to_mem_queue()
+        assert self.kv_trans_task_out_queue.get(timeout=60) == "get_mem_managers_ok"
+
         return
 
     def put_to_release_task_queue(self, task: Union[KVMoveTask, List[KVMoveTask]]):
@@ -362,6 +356,13 @@ class PrefillKVMoveManager:
                 time.sleep(0.01)
             else:
                 self._remove_req_refs_from_prompt_cache(handle_list)
+        return
+
+    def check_trans_process(self, raise_exception=True):
+        process = psutil.Process(self.kv_trans_process.pid)
+        if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+            if raise_exception:
+                raise Exception(f"trans process: {self.kv_trans_process.pid} is dead")
         return
 
     def get_next_device_index(self):
@@ -403,6 +404,7 @@ class PrefillKVMoveManager:
 
     def task_dispatcher_loop(self):
         try:
+            last_check_time = time.time()
             # 获取任务，并分发给相关卡的处理队列
             while True:
                 move_task: KVMoveTask = self.info_queue.get()
@@ -414,6 +416,10 @@ class PrefillKVMoveManager:
                     self.put_to_release_task_queue(move_task)
                 finally:
                     trans_obj = None
+
+                if time.time() - last_check_time > 10.0:
+                    self.check_trans_process()
+                    last_check_time = time.time()
 
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
