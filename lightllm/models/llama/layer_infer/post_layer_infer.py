@@ -16,8 +16,8 @@ from lightllm.utils.infer_utils import mark_cost_time
 class LlamaPostLayerInfer(PostLayerInferTpl):
     """ """
 
-    def __init__(self, tp_rank, world_size, network_config, mode):
-        super().__init__(tp_rank, world_size, network_config, mode)
+    def __init__(self, network_config, mode):
+        super().__init__(network_config, mode)
         self.eps_ = network_config["rms_norm_eps"]
         self.vocab_size_ = network_config["vocab_size"]
         self.embed_dim_ = network_config["n_embed"]

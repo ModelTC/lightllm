@@ -14,8 +14,8 @@ from ..transformer_layer_infer import TransformerLayerInfer
 class TransformerLayerCohereInferTpl(TransformerLayerInferTpl):
     """ """
 
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode):
-        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
+    def __init__(self, layer_num, network_config, mode):
+        super().__init__(layer_num, network_config, mode)
 
         self.use_qk_norm_ = self.network_config_.get("use_qk_norm", False)
         return

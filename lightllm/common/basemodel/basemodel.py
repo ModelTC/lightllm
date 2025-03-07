@@ -16,6 +16,7 @@ from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_m
 from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.common.quantization import Quantcfg
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.dist_utils import get_dp_world_size
 
 logger = init_logger(__name__)
 
@@ -37,8 +38,6 @@ class TpPartBaseModel:
 
     def __init__(self, kvargs):
         self.run_mode = kvargs["run_mode"]
-        self.tp_rank_ = kvargs["tp_rank"]
-        self.world_size_ = kvargs["world_size"]
         self.weight_dir_ = kvargs["weight_dir"]
         self.max_total_token_num = kvargs["max_total_token_num"]
         self.batch_max_tokens = kvargs.get("batch_max_tokens", None)
@@ -63,6 +62,7 @@ class TpPartBaseModel:
         self.quant_type = kvargs.get("quant_type", None)
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
+        self.world_size_ = get_dp_world_size()
 
         self._init_datatype()
         self._init_config()
@@ -117,13 +117,11 @@ class TpPartBaseModel:
 
     def _init_weights(self):
         self.pre_post_weight = self.pre_and_post_weight_class(
-            self.tp_rank_, self.world_size_, self.data_type, network_config=self.config, mode=self.mode
+            self.data_type, network_config=self.config, mode=self.mode
         )
         self.trans_layers_weight = [
             self.transformer_weight_class(
                 i,
-                self.tp_rank_,
-                self.world_size_,
                 self.data_type,
                 network_config=self.config,
                 mode=self.mode,
@@ -176,16 +174,10 @@ class TpPartBaseModel:
         return
 
     def _init_infer_layer(self):
-        self.pre_infer = self.pre_layer_infer_class(
-            tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode
-        )
-        self.post_infer = self.post_layer_infer_class(
-            tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode
-        )
+        self.pre_infer = self.pre_layer_infer_class(network_config=self.config, mode=self.mode)
+        self.post_infer = self.post_layer_infer_class(network_config=self.config, mode=self.mode)
         self.layers_infer = [
-            self.transformer_layer_infer_class(
-                i, tp_rank=self.tp_rank_, world_size=self.world_size_, network_config=self.config, mode=self.mode
-            )
+            self.transformer_layer_infer_class(i, network_config=self.config, mode=self.mode)
             for i in range(self.config["n_layer"])
         ]
         return

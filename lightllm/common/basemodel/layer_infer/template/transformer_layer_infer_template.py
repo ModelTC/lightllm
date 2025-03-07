@@ -11,8 +11,8 @@ from typing import Tuple
 class TransformerLayerInferTpl(TransformerLayerInfer):
     """ """
 
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode):
-        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
+    def __init__(self, layer_num, network_config, mode):
+        super().__init__(layer_num, network_config, mode)
         # need to set by subclass
         self.eps_ = 1e-5
         self.tp_q_head_num_ = -1
