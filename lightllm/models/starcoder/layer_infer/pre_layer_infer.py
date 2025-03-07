@@ -13,8 +13,8 @@ from lightllm.models.llama.triton_kernel.embedding import embedding
 class StarcoderPreLayerInfer(PreLayerInfer):
     """ """
 
-    def __init__(self, tp_rank, world_size, network_config, mode):
-        super().__init__(tp_rank, world_size, network_config, mode)
+    def __init__(self, network_config, mode):
+        super().__init__(network_config, mode)
         assert network_config["vocab_size"] % self.world_size_ == 0
         self.tp_vocab_size_ = network_config["vocab_size"] // self.world_size_
         self.embed_dim_ = network_config["hidden_size"]

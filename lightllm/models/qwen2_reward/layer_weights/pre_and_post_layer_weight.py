@@ -5,8 +5,8 @@ from lightllm.common.basemodel.layer_weights.meta_weights import ROWMMWeight, CO
 
 
 class Qwen2RewardPreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
-    def __init__(self, tp_rank, world_size, data_type, network_config, mode):
-        super().__init__(tp_rank, world_size, data_type, network_config, mode)
+    def __init__(self, data_type, network_config, mode):
+        super().__init__(data_type, network_config, mode)
         return
 
     def load_hf_weights(self, weights):

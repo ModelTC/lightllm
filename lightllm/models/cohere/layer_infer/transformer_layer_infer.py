@@ -13,8 +13,8 @@ from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 
 
 class CohereTransformerLayerInfer(TransformerLayerCohereInferTpl):
-    def __init__(self, layer_num, tp_rank, world_size, network_config, mode):
-        super().__init__(layer_num, tp_rank, world_size, network_config, mode)
+    def __init__(self, layer_num, network_config, mode):
+        super().__init__(layer_num, network_config, mode)
         self.tp_q_head_num_ = network_config["num_attention_heads"] // self.world_size_
         self.tp_k_head_num_ = network_config["num_key_value_heads"] // self.world_size_
         self.tp_v_head_num_ = network_config["num_key_value_heads"] // self.world_size_

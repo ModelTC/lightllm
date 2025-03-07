@@ -26,8 +26,8 @@ infer_state.multimodal_params: batch list of MultimodalParams-dict like:
 
 
 class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
-    def __init__(self, tp_rank, world_size, network_config, mode):
-        super().__init__(tp_rank, world_size, network_config, mode)
+    def __init__(self, network_config, mode):
+        super().__init__(network_config, mode)
         return
 
     def context_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):

@@ -6,8 +6,8 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
 
 
 class CohereTransformerLayerWeight(LlamaTransformerLayerWeight):
-    def __init__(self, layer_num, tp_rank, world_size, data_type, network_config, mode=[], quant_cfg=None):
-        super().__init__(layer_num, tp_rank, world_size, data_type, network_config, mode, quant_cfg)
+    def __init__(self, layer_num, data_type, network_config, mode=[], quant_cfg=None):
+        super().__init__(layer_num, data_type, network_config, mode, quant_cfg)
         return
 
     def _parse_config(self):

@@ -4,8 +4,8 @@ from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaP
 
 
 class StableLMPreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
-    def __init__(self, tp_rank, world_size, data_type, network_config, mode):
-        super().__init__(tp_rank, world_size, data_type, network_config, mode)
+    def __init__(self, data_type, network_config, mode):
+        super().__init__(data_type, network_config, mode)
         return
 
     def load_hf_weights(self, weights):
