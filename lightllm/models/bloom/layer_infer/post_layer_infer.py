@@ -12,8 +12,8 @@ from lightllm.models.bloom.triton_kernel.layernorm import layernorm_forward
 class BloomPostLayerInfer(PostLayerInferTpl):
     """ """
 
-    def __init__(self, tp_rank, world_size, network_config, mode):
-        super().__init__(tp_rank, world_size, network_config, mode)
+    def __init__(self, network_config, mode):
+        super().__init__(network_config, mode)
         assert network_config["vocab_size"] % self.world_size_ == 0
         self.eps_ = network_config["layer_norm_epsilon"]
         self.vocab_size_ = network_config["vocab_size"]
