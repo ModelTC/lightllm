@@ -17,7 +17,7 @@ class Gemma_2bTransformerLayerWeight(LlamaTransformerLayerWeight):
             bias_name=self._q_bias_name,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="q_proj",
+            name="q_proj",
         )
         self.kv_proj = MultiROWMMWeight(
             weight_names=[self._k_weight_name, self._v_weight_name],
@@ -25,7 +25,7 @@ class Gemma_2bTransformerLayerWeight(LlamaTransformerLayerWeight):
             bias_names=[self._k_bias_name, self._v_bias_name],
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="kv_proj",
+            name="kv_proj",
         )
 
     def _init_norm(self):

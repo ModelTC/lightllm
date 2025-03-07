@@ -48,19 +48,20 @@ class Quantcfg:
 
         self.quant_type = data["quant_type"]
         for layer_quant_cfg in data.get("mix_bits", []):
-            layer_name = layer_quant_cfg["layer_name"]
+            print(layer_quant_cfg)
+            name = layer_quant_cfg["name"]
             layer_nums = layer_quant_cfg.get("layer_nums", range(self.layer_num))
             layer_quant_type = layer_quant_cfg["quant_type"]
             for layer_num in layer_nums:
-                self.quant_cfg[layer_num].update({layer_name: layer_quant_type})
+                self.quant_cfg[layer_num].update({name: layer_quant_type})
 
-    def get_quant_type(self, layer_num, layer_name):
+    def get_quant_type(self, layer_num, name):
         layer_config = self.quant_cfg.get(layer_num, None)
         if layer_config is None:
             return self.quant_type
-        quant_type = layer_config.get(layer_name, self.quant_type)
+        quant_type = layer_config.get(name, self.quant_type)
         return quant_type
 
-    def get_quant_method(self, layer_num, layer_name):
-        quant_type = self.get_quant_type(layer_num, layer_name)
+    def get_quant_method(self, layer_num, name):
+        quant_type = self.get_quant_type(layer_num, name)
         return QUANTMETHODS.get(quant_type)

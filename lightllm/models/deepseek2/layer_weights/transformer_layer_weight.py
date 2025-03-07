@@ -149,7 +149,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="q_weight",
+                name="q_weight",
             )
         else:
             self.q_a_proj_ = ROWMMWeight(
@@ -157,7 +157,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="q_a_proj",
+                name="q_a_proj",
                 tp_rank=0,
                 tp_world_size=1,
             )
@@ -166,7 +166,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="q_b_proj",
+                name="q_b_proj",
             )
 
         self.kv_a_proj_with_mqa_ = ROWMMWeight(
@@ -174,7 +174,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="kv_a_proj_with_mqa",
+            name="kv_a_proj_with_mqa",
             tp_rank=0,
             tp_world_size=1,
         )
@@ -183,14 +183,14 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="k_b_proj",
+            name="k_b_proj",
         )
         self.v_b_proj_ = ROWBMMWeight(
             weight_name=f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="v_b_proj",
+            name="v_b_proj",
         )
         if self.enable_cc_method:
             self.cc_kv_b_proj_ = ROWMMWeight(
@@ -198,7 +198,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="cc_kv_b_proj",
+                name="cc_kv_b_proj",
             )
 
         self.o_weight_ = COLMMWeight(
@@ -206,7 +206,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="o_weight",
+            name="o_weight",
         )
 
     def _init_qkvo_dp(self):
@@ -216,7 +216,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="q_weight",
+                name="q_weight",
                 tp_rank=0,
                 tp_world_size=1,
             )
@@ -226,7 +226,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="q_a_proj",
+                name="q_a_proj",
                 tp_rank=0,
                 tp_world_size=1,
             )
@@ -235,7 +235,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="q_b_proj",
+                name="q_b_proj",
                 tp_rank=0,
                 tp_world_size=1,
             )
@@ -245,7 +245,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="kv_a_proj_with_mqa",
+            name="kv_a_proj_with_mqa",
             tp_rank=0,
             tp_world_size=1,
         )
@@ -255,7 +255,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="k_b_proj",
+            name="k_b_proj",
             tp_rank=0,
             tp_world_size=1,
         )
@@ -265,7 +265,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="v_b_proj",
+            name="v_b_proj",
             tp_rank=0,
             tp_world_size=1,
         )
@@ -275,7 +275,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="o_weight",
+            name="o_weight",
             tp_rank=0,
             tp_world_size=1,
         )
@@ -287,7 +287,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="gate_up_proj",
+                name="gate_up_proj",
                 tp_rank=0,
                 tp_world_size=1,
             )
@@ -296,7 +296,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="down_proj",
+                name="down_proj",
                 tp_rank=0,
                 tp_world_size=1,
             )
@@ -306,14 +306,14 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="gate_up_proj",
+                name="gate_up_proj",
             )
             self.down_proj = COLMMWeight(
                 weight_name=f"{mlp_prefix}.down_proj.weight",
                 data_type=self.data_type_,
                 quant_cfg=self.quant_cfg,
                 layer_num=self.layer_num_,
-                layer_name="down_proj",
+                name="down_proj",
             )
 
     def _init_moe(self):
@@ -323,7 +323,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             data_type=self.data_type_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="moe_gate",
+            name="moe_gate",
             tp_rank=0,
             tp_world_size=1,
         )

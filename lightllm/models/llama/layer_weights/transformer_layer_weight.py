@@ -63,7 +63,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             bias_name=self._q_bias_name,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="q_proj",
+            name="q_proj",
         )
         self.kv_proj = MultiROWMMWeight(
             weight_names=[self._k_weight_name, self._v_weight_name],
@@ -71,7 +71,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             bias_names=[self._k_bias_name, self._v_bias_name],
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="kv_proj",
+            name="kv_proj",
         )
 
     def _init_o(self):
@@ -81,7 +81,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             bias_name=self._o_bias_name,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="o_proj",
+            name="o_proj",
         )
 
     def _init_ffn(self):
@@ -91,7 +91,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             bias_names=[self._gate_bias_name, self._up_bias_name],
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="gate_up_proj",
+            name="gate_up_proj",
         )
         self.down_proj = COLMMWeight(
             weight_name=self._down_weight_name,
@@ -99,7 +99,7 @@ class LlamaTransformerLayerWeight(TransformerLayerWeight):
             bias_name=self._down_bias_name,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="down_proj",
+            name="down_proj",
         )
 
     def _init_norm(self):

@@ -160,21 +160,23 @@ class MMWeight:
     def __new__(cls, **kwargs):
         quant_cfg = kwargs.pop("quant_cfg", None)
         layer_num_ = kwargs.pop("layer_num", None)
-        layer_name_ = kwargs.pop("layer_name", None)
-        quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, layer_name_)
+        name = kwargs.pop("name", None)
+        quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, name)
         kwargs["quant_method"] = quant_method
         mmcls = cls._get_mmcls(quant_method, quantized_weight)
         return mmcls(**kwargs)
 
     @classmethod
-    def _get_quant_method(cls, quant_cfg: Quantcfg, layer_num_: int, layer_name: str) -> QuantizationMethod:
-        quant_method = quant_cfg.get_quant_method(layer_num_, layer_name)
-        quant_type = quant_cfg.get_quant_type(layer_num_, layer_name)
+    def _get_quant_method(cls, quant_cfg: Quantcfg, layer_num_: int, name: str) -> QuantizationMethod:
+        quant_method = quant_cfg.get_quant_method(layer_num_, name)
+        quant_type = quant_cfg.get_quant_type(layer_num_, name)
         quantized_weight = quant_cfg.quantized_weight
         if quant_method is not None:
-            logger.info(f"Layer {layer_num_} {layer_name} is set to {quant_type}")
+            logger.info(f"Layer {layer_num_} {name} is set to {quant_type}")
         return quant_method, quantized_weight
 
     @classmethod
-    def _get_mmcls(cls, quant_method: QuantizationMethod) -> Optional[Union[MMWeightTpl, MultiMMWeightTpl, BMMWeightTpl]]:
+    def _get_mmcls(
+        cls, quant_method: QuantizationMethod
+    ) -> Optional[Union[MMWeightTpl, MultiMMWeightTpl, BMMWeightTpl]]:
         return None

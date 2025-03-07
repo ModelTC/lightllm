@@ -87,7 +87,7 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
             bias_names=[self._q_bias_name, self._k_bias_name, self._v_bias_name],
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="qkv_proj",
+            name="qkv_proj",
         )
 
     def _init_o(self):
@@ -97,7 +97,7 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
             bias_name=self._o_bias_name,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="o_proj",
+            name="o_proj",
         )
 
     def _init_ffn(self):
@@ -107,7 +107,7 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
             bias_name=self.fc1_bias_name_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="ffn_1_proj",
+            name="ffn_1_proj",
         )
 
         self.ffn_2_proj_ = COLMMWeight(
@@ -116,7 +116,7 @@ class ViTTransformerLayerWeight(TransformerLayerWeight):
             bias_name=self.fc2_bias_name_,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="ffn_2_proj",
+            name="ffn_2_proj",
         )
 
     def _init_norm(self):

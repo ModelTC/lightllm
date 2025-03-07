@@ -43,7 +43,7 @@ class MixtralTransformerLayerWeight(LlamaTransformerLayerWeight):
             bias_name=self.moe_gate_bias_name,
             quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
-            layer_name="moe_gate",
+            name="moe_gate",
             tp_rank=0,
             tp_size=1,  # no tensor parallelism
         )
