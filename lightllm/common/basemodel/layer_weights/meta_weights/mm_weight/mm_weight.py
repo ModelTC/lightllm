@@ -126,38 +126,11 @@ class MultiMMWeightTpl(MMWeightTpl):
         self._fuse_weights()
 
 
-class MMWeight:
-    def __new__(cls, **kwargs):
-        quant_cfg = kwargs.pop("quant_cfg", None)
-        layer_num_ = kwargs.pop("layer_num", None)
-        layer_name_ = kwargs.pop("layer_name", None)
-        quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, layer_name_)
-        kwargs["quant_method"] = quant_method
-        mmcls = cls._get_mmcls(quant_method, quantized_weight)
-        return mmcls(**kwargs)
-
-    @classmethod
-    def _get_quant_method(cls, quant_cfg: Quantcfg, layer_num_: int, layer_name: str) -> QuantizationMethod:
-        quant_method = quant_cfg.get_quant_method(layer_num_, layer_name)
-        quant_type = quant_cfg.get_quant_type(layer_num_, layer_name)
-        quantized_weight = quant_cfg.quantized_weight
-        if quant_method is not None:
-            logger.info(f"Layer {layer_num_} {layer_name} is set to {quant_type}")
-        return quant_method, quantized_weight
-
-    @classmethod
-    def _get_mmcls(cls, quant_method: QuantizationMethod) -> Optional[Union[MMWeightTpl, MultiMMWeightTpl]]:
-        return None
-
-
 class BMMWeightTpl(MMWeightTpl):
-    def __init__(self, data_type: torch.dtype):
-        super().__init__(data_type)
-
-    def set_quant_method(self, quant_method: QuantizationMethod) -> None:
-        if self.quantized_weight:
-            # for the quantized fp8 weight of Deepseek v3
-            self.quant_method = quant_method
+    def mm(
+        self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
+    ) -> torch.Tensor:
+        raise RuntimeError("use bmm not mm")
 
     def bmm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
@@ -178,116 +151,33 @@ class BMMWeightTpl(MMWeightTpl):
             return torch.bmm(input_tensor, fpweight, out=out)
         return torch.addbmm(self.bias, input_tensor, fpweight, out=out)
 
-    def _post_load_weights(self) -> None:
+    def _process_weights(self, weight) -> None:
         if self.quant_method is not None:
-            if self.quantized_weight:
-                if (
-                    self.weight is not None
-                    and self.weight_scale is not None
-                    and (not self.static_activation or self.input_scale is not None)
-                ):
-                    if self.weight_scale.ndim > 1:
-                        self.weight_scale = self.weight_scale.cuda(get_current_device_id())
-                    self.weight = [self.weight.cuda(get_current_device_id()), self.weight_scale, self.input_scale]
+            self.weight = self.quant_method.quantize(weight.to(self.data_type_).cuda(get_current_device_id()))
             return
-        self.weight = self.weight.cuda(get_current_device_id())
+        # 让 k dim 更连续，大多数split k 算法的算子可能能更快
+        self.weight = weight.to(self.data_type_).cuda(get_current_device_id())
 
 
-class BMMWeight(BMMWeightTpl):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(data_type)
-        self.start = split_n_embed * self.tp_rank_
-        self.end = split_n_embed * (self.tp_rank_ + 1)
-        self.weight_name = weight_name
-        self.bias_name = bias_name
-        self.weight_scale_name, self.act_scale_name = generate_scale_name(
-            weight_name, weight_scale_suffix, act_scale_suffix
-        )
-        self.quantized_weight = self.weight_scale_name is not None
-        self.static_activation = self.act_scale_name is not None
+class MMWeight:
+    def __new__(cls, **kwargs):
+        quant_cfg = kwargs.pop("quant_cfg", None)
+        layer_num_ = kwargs.pop("layer_num", None)
+        layer_name_ = kwargs.pop("layer_name", None)
+        quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, layer_name_)
+        kwargs["quant_method"] = quant_method
+        mmcls = cls._get_mmcls(quant_method, quantized_weight)
+        return mmcls(**kwargs)
 
-    def verify_load(self) -> None:
-        load_ok = True
-        # Verify weight. The weight must be not None.
-        load_ok = load_ok and self.weight is not None
-        # Verify bias. If bias_name is set, it must be not None.
-        if self.bias_name is not None:
-            load_ok = load_ok and self.bias is not None
-        return load_ok
+    @classmethod
+    def _get_quant_method(cls, quant_cfg: Quantcfg, layer_num_: int, layer_name: str) -> QuantizationMethod:
+        quant_method = quant_cfg.get_quant_method(layer_num_, layer_name)
+        quant_type = quant_cfg.get_quant_type(layer_num_, layer_name)
+        quantized_weight = quant_cfg.quantized_weight
+        if quant_method is not None:
+            logger.info(f"Layer {layer_num_} {layer_name} is set to {quant_type}")
+        return quant_method, quantized_weight
 
-
-class ROWBMMWeight(BMMWeight):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, weight_scale_suffix, act_scale_suffix)
-
-    def dequant_weight(self, weight: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        # for Deepseek v3
-        # TODO a fast bmm quant kernel
-        weight = weight.to(self.data_type_)
-        block_size = weight.shape[-1] // scale.shape[-1]
-        w_shape = weight.shape
-        s_shape = scale.shape
-        scale = scale.unsqueeze(-1).repeat(1, 1, 1, block_size).reshape(s_shape[0], s_shape[1], -1)
-        scale = scale.unsqueeze(2).repeat(1, 1, block_size, 1).reshape(w_shape)
-        return (weight * scale).to(self.data_type_)
-
-    def load_hf_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-        weight = None
-        weight_scale = None
-        input_scale = None
-        if self.weight_name in weights:
-            weight = weights[self.weight_name]
-            self.weight = weight[self.start : self.end]
-        if self.bias_name in weights:
-            bias = weights[self.bias_name].to(self.data_type_)[self.start : self.end]
-            self.bias = bias.cuda(get_current_device_id())
-
-        if self.weight_scale_name is not None and self.weight_scale_name in weights:
-            weight_scale = weights[self.weight_scale_name]
-            # per channel or block-wise
-            if weight_scale.shape[0] > 1:
-                weight_scale = weight_scale.to(torch.float)[self.start : self.end]
-            else:
-                # per tensor
-                weight_scale = weight_scale.to(torch.float)
-            self.weight_scale = weight_scale
-
-        if self.act_scale_name is not None and self.act_scale_name in weights:
-            input_scale = weights[self.act_scale_name].to(torch.float)
-            self.input_scale = input_scale.cuda(get_current_device_id())
-
-        if weight is None and weight_scale is None and input_scale is None:
-            return
-        self._post_load_weights()
-        return
-
-
-class ROWBMMWeightNoTp(ROWBMMWeight):
-    def __init__(
-        self,
-        weight_name: str,
-        data_type: torch.dtype,
-        split_n_embed: int,
-        bias_name: Optional[str] = None,
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
-    ) -> None:
-        super().__init__(weight_name, data_type, split_n_embed, bias_name, weight_scale_suffix, act_scale_suffix)
-        self.start = 0
-        self.end = split_n_embed
+    @classmethod
+    def _get_mmcls(cls, quant_method: QuantizationMethod) -> Optional[Union[MMWeightTpl, MultiMMWeightTpl, BMMWeightTpl]]:
+        return None

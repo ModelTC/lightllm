@@ -6,7 +6,6 @@ from .mm_weight import (
     COLMMWeight,
     MultiROWMMWeight,
     ROWBMMWeight,
-    ROWBMMWeightNoTp,
 )
 from .norm_weight import NormWeight, GEMMANormWeight, TpNormWeight
 from .fused_moe_weight_tp import FusedMoeWeightTP

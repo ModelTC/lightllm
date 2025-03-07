@@ -179,14 +179,18 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             tp_world_size=1,
         )
         self.k_b_proj_ = ROWBMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
-            self.data_type_,
-            split_n_embed=self.tp_q_head_num_,
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="k_b_proj",
         )
         self.v_b_proj_ = ROWBMMWeight(
-            f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
-            self.data_type_,
-            split_n_embed=self.tp_q_head_num_,
+            weight_name=f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
+            data_type=self.data_type_,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            layer_name="v_b_proj",
         )
         if self.enable_cc_method:
             self.cc_kv_b_proj_ = ROWMMWeight(
