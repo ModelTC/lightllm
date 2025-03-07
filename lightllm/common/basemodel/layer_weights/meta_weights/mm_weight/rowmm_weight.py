@@ -28,6 +28,7 @@ class MultiROWMMWeight(MMWeight):
         # TODO: Implement more quantization weight
         return None
 
+
 class ROWBMMWeight(MMWeight):
     @classmethod
     def _get_mmcls(cls, quant_method: QuantizationMethod, quantized_weight: bool):
