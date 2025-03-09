@@ -63,7 +63,7 @@ class MMWeightTpl(BaseWeightTpl):
             load_ok = load_ok and self.bias is not None
         return load_ok
 
-    def _process_weights(self, weight) -> None:
+    def _post_process_weight(self, weight) -> None:
         if self.quant_method is not None:
             self.weight = self.quant_method.quantize(weight.to(self.data_type_).cuda(get_current_device_id()))
             return
@@ -71,10 +71,9 @@ class MMWeightTpl(BaseWeightTpl):
         self.weight = weight.to(self.data_type_).cuda(get_current_device_id()).transpose(0, 1)
 
     def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-
         if self.weight_name in weights:
             weight = self._slice_weight(weights[self.weight_name])
-            self._process_weights(weight)
+            self._post_process_weight(weight)
 
         if self.bias_name in weights:
             self.bias = self._slice_bias(weights[self.bias_name]).cuda(get_current_device_id())
@@ -103,10 +102,19 @@ class MultiMMWeightTpl(MMWeightTpl):
             self.biases = None
             self.has_bias = False
 
+    def _pre_porcess_weights(self, weights: Dict[str, torch.Tensor]) -> None:
+        for i in range(len(self.weight_names)):
+            if self.weight_names[i] in weights:
+                weight = weights[self.weight_names[i]]
+                self.weights[i] = self._slice_weight(weight)
+            if self.has_bias and self.bias_names[i] in weights:
+                bias = weights[self.bias_names[i]]
+                self.biases[i] = self._slice_bias(bias)
+
     def _fuse_weights(self) -> None:
         if self.weight is None and (None not in self.weights):
             weight = torch.cat(self.weights, dim=0)
-            self._process_weights(weight)
+            self._post_process_weight(weight)
             delattr(self, "weights")
 
         if self.has_bias and self.bias is None and (None not in self.biases):
@@ -115,14 +123,7 @@ class MultiMMWeightTpl(MMWeightTpl):
         return self
 
     def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-        weight = None
-        for i in range(len(self.weight_names)):
-            if self.weight_names[i] in weights:
-                weight = weights[self.weight_names[i]]
-                self.weights[i] = self._slice_weight(weight)
-            if self.has_bias and self.bias_names[i] in weights:
-                bias = weights[self.bias_names[i]]
-                self.biases[i] = self._slice_bias(bias)
+        self._pre_porcess_weights(weights)
         self._fuse_weights()
 
 
@@ -151,7 +152,7 @@ class BMMWeightTpl(MMWeightTpl):
             return torch.bmm(input_tensor, fpweight, out=out)
         return torch.addbmm(self.bias, input_tensor, fpweight, out=out)
 
-    def _process_weights(self, weight) -> None:
+    def _post_process_weight(self, weight) -> None:
         self.quant_method = None
         self.weight = weight.to(self.data_type_).cuda(get_current_device_id())
 
