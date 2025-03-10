@@ -300,6 +300,9 @@ class SamplingParams(ctypes.Structure):
         self.suggested_dp_index = kwargs.get("suggested_dp_index", -1)
 
         self.skip_special_tokens = kwargs.get("skip_special_tokens", True)
+        SKIP_SPECIAL_TOKENS = os.environ.get("SKIP_SPECIAL_TOKENS", True)
+        self.skip_special_tokens = SKIP_SPECIAL_TOKENS
+        
         self.add_special_tokens = kwargs.get("add_special_tokens", True)
         self.add_spaces_between_special_tokens = kwargs.get("add_spaces_between_special_tokens", True)
         self.print_eos_token = kwargs.get("print_eos_token", False)
