@@ -34,7 +34,7 @@ class MMWeightTpl(BaseWeightTpl):
         self.quant_method = quant_method
         self.weight: Optional[torch.Tensor] = None
         self.bias: Optional[torch.Tensor] = None
-        self.weight_tp_size = 0
+        self.quantized_weight: bool = False
 
     def mm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
@@ -64,8 +64,8 @@ class MMWeightTpl(BaseWeightTpl):
             load_ok = load_ok and self.bias is not None
         return load_ok
 
-    def _post_process_weight(self, weight) -> None:
-        if self.quant_method is not None:
+    def _process_weight(self, weight) -> None:
+        if self.quant_method is not None and not self.quantized_weight:
             self.weight = self.quant_method.quantize(weight.to(self.data_type_).cuda(get_current_device_id()))
             return
         # 让 k dim 更连续，大多数split k 算法的算子可能能更快
@@ -74,7 +74,7 @@ class MMWeightTpl(BaseWeightTpl):
     def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         if self.weight_name in weights:
             weight = self._slice_weight(weights[self.weight_name])
-            self._post_process_weight(weight)
+            self._process_weight(weight)
 
         if self.bias_name in weights:
             self.bias = self._slice_bias(weights[self.bias_name]).cuda(get_current_device_id())
@@ -115,7 +115,7 @@ class MultiMMWeightTpl(MMWeightTpl):
     def _fuse_weights(self) -> None:
         if self.weight is None and (None not in self.weights):
             weight = torch.cat(self.weights, dim=0)
-            self._post_process_weight(weight)
+            self._process_weight(weight)
             delattr(self, "weights")
 
         if self.has_bias and self.bias is None and (None not in self.biases):
@@ -153,7 +153,7 @@ class BMMWeightTpl(MMWeightTpl):
             return torch.bmm(input_tensor, fpweight, out=out)
         return torch.addbmm(self.bias, input_tensor, fpweight, out=out)
 
-    def _post_process_weight(self, weight) -> None:
+    def _process_weight(self, weight) -> None:
         self.weight = weight.cuda(get_current_device_id())
 
 
@@ -164,10 +164,6 @@ class MMWeight:
         name = kwargs.pop("name", None)
         quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, name)
         kwargs["quant_method"] = quant_method
-        if quant_cfg is not None and quant_cfg.static_activation:
-            kwargs["act_scale_suffix"] = "input_scale"
-        if quant_cfg is not None and quant_cfg.quantized_weight:
-            kwargs["weight_scale_suffix"] = "weight_scale_inv"
         mmcls = cls._get_mmcls(quant_method, quantized_weight)
         return mmcls(**kwargs)
 

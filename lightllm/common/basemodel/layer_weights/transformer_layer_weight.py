@@ -18,7 +18,6 @@ class TransformerLayerWeight(BaseLayerWeight):
         self.quant_cfg = quant_cfg
         self._parse_config()
         self._init_weight_names()
-        self._init_qweight_names()
         self._init_weight()
         return
 
@@ -26,9 +25,6 @@ class TransformerLayerWeight(BaseLayerWeight):
         pass
 
     def _init_weight_names(self):
-        pass
-
-    def _init_qweight_names(self):
         pass
 
     def _init_weight(self):

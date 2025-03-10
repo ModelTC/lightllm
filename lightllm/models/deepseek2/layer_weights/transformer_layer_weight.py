@@ -49,14 +49,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             self.rope_weight_name = f"model.layers.{self.layer_num_}.self_attn.q_b_proj.weight"
         self.e_score_correction_bias_name = f"model.layers.{self.layer_num_}.mlp.gate.e_score_correction_bias"
 
-    def _init_qweight_names(self):
-        self.act_scale_suffix = None
-        self.weight_scale_suffix = None
-        if self.quant_cfg.static_activation:
-            self.act_scale_suffix = "input_scale"
-        if self.quant_cfg.quantized_weight:
-            self.weight_scale_suffix = "weight_scale_inv"
-
     def _init_weight(self):
         if not self.enable_dp:
             self._init_qkvo()
@@ -111,33 +103,35 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         return v_b_proj_scale_.contiguous().to(kv_b_proj_scale_.dtype)
 
     def load_hf_weights(self, weights):
+        kv_b_quant_method = self.quant_cfg.get_quant_method(self.layer_num_, "kv_b_proj")
+
         if f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight" in weights:
             kv_b_proj_ = weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj.weight"]
             # for deepseek_v3, the bmm operator is not quantized
             if self.quant_cfg.quantized_weight:
                 kv_b_proj_ = weight_dequant(
                     kv_b_proj_.cuda(),
-                    weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix].cuda(),
+                    weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix].cuda(),
                 ).cpu()
             weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight"] = self._load_kb(kv_b_proj_)
             weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"] = self._load_vb(kv_b_proj_)
 
         if (
             self.quant_cfg.quantized_weight
-            and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix in weights
+            and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix in weights
         ):
             kv_b_proj_scale_ = weights[
-                f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + self.weight_scale_suffix
+                f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix
             ]
             block_size = 1
             if self.quant_cfg is not None:
                 hf_quantization_config = self.quant_cfg.hf_quantization_config
                 block_size = hf_quantization_config.get("weight_block_size", [128, 128])[0]
             weights[
-                f"model.layers.{self.layer_num_}.self_attn.k_b_proj." + self.weight_scale_suffix
+                f"model.layers.{self.layer_num_}.self_attn.k_b_proj." + kv_b_quant_method.weight_scale_suffix
             ] = self._load_kb_scale(kv_b_proj_scale_, block_size)
             weights[
-                f"model.layers.{self.layer_num_}.self_attn.v_b_proj." + self.weight_scale_suffix
+                f"model.layers.{self.layer_num_}.self_attn.v_b_proj." + kv_b_quant_method.weight_scale_suffix
             ] = self._load_vb_scale(kv_b_proj_scale_, block_size)
 
         return super().load_hf_weights(weights)
