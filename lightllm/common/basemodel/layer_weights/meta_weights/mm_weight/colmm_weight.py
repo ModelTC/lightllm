@@ -39,10 +39,6 @@ class UnquantizedCOLMMWeight(MMWeightTpl):
         self.weight_tp_size = tp_size
         return tensor[:, tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)].to(self.data_type_)
 
-    def _slice_bias(self, bias):
-        tp_size = bias.shape[0] // self.tp_world_size_
-        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)].to(self.data_type_)
-
 
 class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
     def __init__(
@@ -85,8 +81,7 @@ class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
     def _post_process_weight(self, weight) -> None:
         self.weight = weight.cuda(get_current_device_id()).transpose(0, 1)
 
-    def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
-        super()._load_weights(weights)
+    def _load_scales(self, weights: Dict[str, torch.Tensor]) -> None:
         if self.weight_scale_name is not None and self.weight_scale_name in weights:
             weight_scale = weights[self.weight_scale_name]
             # per channel or block-wise
