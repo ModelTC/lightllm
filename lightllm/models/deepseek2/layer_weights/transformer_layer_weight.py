@@ -33,7 +33,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         )
         self.tp_q_head_num_ = self.network_config_["num_attention_heads"]
         if not self.enable_dp:
-            self.tp_q_head_num_ = self.tp_q_head_num_ // self.world_size_
+            self.tp_q_head_num_ = self.tp_q_head_num_ // self.tp_world_size_
         self.n_routed_experts = self.network_config_["n_routed_experts"]
         self.q_lora_rank = self.network_config_["q_lora_rank"]
         self.qk_nope_head_dim = self.network_config_["qk_nope_head_dim"]
@@ -71,7 +71,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
     def _load_q_rope(self, q_weight_):
         if not self.enable_dp:
             q_split_n_embed_with_rope = (
-                (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.world_size_
+                (self.qk_nope_head_dim + self.qk_rope_head_dim) * self.num_attention_heads // self.tp_world_size_
             )
             q_weight_ = q_weight_[
                 q_split_n_embed_with_rope * self.tp_rank_ : q_split_n_embed_with_rope * (self.tp_rank_ + 1), :
@@ -328,7 +328,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             tp_world_size=1,
         )
         shared_intermediate_size = moe_intermediate_size * self.network_config_["n_shared_experts"]
-        shared_split_inter_size = shared_intermediate_size // self.world_size_
+        shared_split_inter_size = shared_intermediate_size // self.tp_world_size_
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp.shared_experts", shared_split_inter_size)
 
         load_func = FusedMoeWeightEP if enable_env_vars("ETP_MODE_ENABLED") else FusedMoeWeightTP
@@ -339,7 +339,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             e_score_correction_bias_name=self.e_score_correction_bias_name,
             weight_prefix=f"model.layers.{self.layer_num_}.mlp.experts",
             n_routed_experts=self.n_routed_experts,
-            split_inter_size=moe_intermediate_size // self.world_size_,
+            split_inter_size=moe_intermediate_size // self.tp_world_size_,
             data_type=self.data_type_,
             network_config=self.network_config_,
             weight_scale_suffix=self.weight_scale_suffix,
@@ -348,7 +348,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
 
     def _init_ffn(self):
         inter_size = self.network_config_["intermediate_size"]
-        num_shards = self.world_size_ if not self.enable_dp else 1
+        num_shards = self.tp_world_size_ if not self.enable_dp else 1
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp", inter_size // num_shards, no_tp=self.enable_dp)
 
     def _init_norm(self):
