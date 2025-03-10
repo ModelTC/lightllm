@@ -34,6 +34,7 @@ class MMWeightTpl(BaseWeightTpl):
         self.quant_method = quant_method
         self.weight: Optional[torch.Tensor] = None
         self.bias: Optional[torch.Tensor] = None
+        self.weight_tp_size = 0
 
     def mm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
@@ -68,7 +69,7 @@ class MMWeightTpl(BaseWeightTpl):
             self.weight = self.quant_method.quantize(weight.to(self.data_type_).cuda(get_current_device_id()))
             return
         # 让 k dim 更连续，大多数split k 算法的算子可能能更快
-        self.weight = weight.to(self.data_type_).cuda(get_current_device_id()).transpose(0, 1)
+        self.weight = weight.cuda(get_current_device_id()).transpose(0, 1)
 
     def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         if self.weight_name in weights:
@@ -136,7 +137,7 @@ class BMMWeightTpl(MMWeightTpl):
     def bmm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
     ) -> torch.Tensor:
-        if self.quant_method is not None:
+        if self.quant_method is not None and len(self.weight) > 1:
             fpweight = self.dequant_weight(self.weight[0], self.weight[1])
         else:
             fpweight = self.weight
@@ -153,8 +154,7 @@ class BMMWeightTpl(MMWeightTpl):
         return torch.addbmm(self.bias, input_tensor, fpweight, out=out)
 
     def _post_process_weight(self, weight) -> None:
-        self.quant_method = None
-        self.weight = weight.to(self.data_type_).cuda(get_current_device_id())
+        self.weight = weight.cuda(get_current_device_id())
 
 
 class MMWeight:
@@ -164,6 +164,10 @@ class MMWeight:
         name = kwargs.pop("name", None)
         quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, name)
         kwargs["quant_method"] = quant_method
+        if quant_cfg.static_activation:
+            kwargs["act_scale_suffix"] = "input_scale"
+        if quant_cfg.quantized_weight:
+            kwargs["weight_scale_suffix"] = "weight_scale_inv"
         mmcls = cls._get_mmcls(quant_method, quantized_weight)
         return mmcls(**kwargs)
 

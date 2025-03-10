@@ -2,7 +2,6 @@ import torch
 from lightllm.common.basemodel.layer_weights.meta_weights.mm_weight.mm_weight import (
     MMWeight,
     MMWeightTpl,
-    MultiMMWeightTpl,
     generate_scale_name,
 )
 from lightllm.common.quantization import Quantcfg
@@ -37,6 +36,7 @@ class UnquantizedCOLMMWeight(MMWeightTpl):
 
     def _slice_weight(self, tensor):
         tp_size = tensor.shape[1] // self.tp_world_size_
+        self.weight_tp_size = tp_size
         return tensor[:, tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)].to(self.data_type_)
 
     def _slice_bias(self, bias):
@@ -60,21 +60,30 @@ class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
         self.weight_scale_name, self.act_scale_name = generate_scale_name(
             weight_name, weight_scale_suffix, act_scale_suffix
         )
+        self.weight_scale: Optional[torch.Tensor] = None
+        self.input_scale: Optional[torch.Tensor] = None
         self.quantized_weight = self.weight_scale_name is not None
         self.static_activation = self.act_scale_name is not None
         self.block_size = self.quant_method.block_size
 
+    def _slice_weight(self, tensor):
+        tp_size = tensor.shape[1] // self.tp_world_size_
+        self.weight_tp_size = tp_size
+        return tensor[:, tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)]
+
     def _slice_weight_scale(self, weight_scale: torch.Tensor):
-        tp_size = weight_scale.shape[0] // self.tp_world_size_
-        scale_start = (tp_size * self.tp_rank_) // self.block_size
-        scale_end = (tp_size * (self.tp_rank_ + 1)) // self.block_size
+        scale_start = (self.weight_tp_size * self.tp_rank_) // self.block_size
+        scale_end = (self.weight_tp_size * (self.tp_rank_ + 1)) // self.block_size
         return weight_scale[:, scale_start: scale_end].to(torch.float)
 
     def _post_process_weight_scale(self, weight_scale) -> None:
-        if self.weight_scale.ndim > 1:
+        if weight_scale.ndim > 1:
             self.weight_scale = weight_scale.transpose(0, 1).cuda(get_current_device_id())
         else:
             self.weight_scale = weight_scale
+
+    def _post_process_weight(self, weight) -> None:
+        self.weight = weight.cuda(get_current_device_id()).transpose(0, 1)
 
     def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         super()._load_weights(weights)
@@ -92,7 +101,7 @@ class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
             input_scale = weights[self.act_scale_name].to(torch.float)
             self.input_scale = input_scale.cuda(get_current_device_id())
 
-        if self.weight_scale is not None:
+        if self.weight_name in weights and self.weight_scale is not None:
             self.weight = [
                 self.weight,
                 self.weight_scale,
