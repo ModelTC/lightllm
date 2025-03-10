@@ -329,9 +329,9 @@ class PrefillKVMoveManager:
          # start a single kv trans process
         self.kv_trans_task_in_queue = mp.Queue()
         self.kv_trans_task_out_queue = mp.Queue()
-        from .prefill_trans_process import start_decode_trans_process
+        from .prefill_trans_process import start_prefill_trans_process
         self.kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
-        self.kv_trans_process = start_decode_trans_process(
+        self.kv_trans_process = start_prefill_trans_process(
             self.args, self.host_ip, self.kv_trans_port, self.kv_trans_task_in_queue, self.kv_trans_task_out_queue, self.mem_queues)
 
         assert self.kv_trans_task_out_queue.get(timeout=30) == "proc_start"
