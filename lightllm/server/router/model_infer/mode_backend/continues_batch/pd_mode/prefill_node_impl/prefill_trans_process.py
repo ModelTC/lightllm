@@ -87,7 +87,7 @@ def _init_env(
         pass
 
 
-def start_decode_trans_process(
+def start_prefill_trans_process(
     args,
     store_ip,
     store_port,
