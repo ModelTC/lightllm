@@ -130,7 +130,7 @@ class W8A8B128ROWMMWeight(UnquantizedROWMMWeight):
             input_scale = weights[self.act_scale_name].to(torch.float)
             self.input_scale = input_scale.cuda(get_current_device_id())
 
-        if self.weight_name in weights and self.weight_scale is not None:
+        if self.weight_scale is not None and isinstance(self.weight, torch.Tensor):
             self.weight = [
                 self.weight,
                 self.weight_scale,
@@ -312,7 +312,7 @@ class W8A8B128ROWBMMWeight(UnquantizedROWBMMWeight):
             input_scale = weights[self.act_scale_name].to(torch.float)
             self.input_scale = input_scale.cuda(get_current_device_id())
 
-        if self.weight_name in weights and self.weight_scale is not None:
+        if self.weight_scale is not None and isinstance(self.weight, torch.Tensor):
             self.weight = [
                 self.weight,
                 self.weight_scale,
