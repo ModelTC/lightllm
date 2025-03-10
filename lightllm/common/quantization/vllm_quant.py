@@ -160,9 +160,10 @@ class vLLMFP8w8a8B128QuantizationMethod(vLLMBaseQuantizationMethod):
         super().__init__()
         self.block_size = 128
         self.weight_scale_suffix = "weight_scale_inv"
-        self.act_scale_suffix = None # no support for static input tensor scale for ds model.
+        self.act_scale_suffix = None  # no support for static input tensor scale for ds model.
 
     def quantize(self, weight: torch.Tensor):
+
         raise Exception("Not implemented")
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
