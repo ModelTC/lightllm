@@ -111,14 +111,17 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             if self.quant_cfg.quantized_weight:
                 kv_b_proj_ = weight_dequant(
                     kv_b_proj_.cuda(),
-                    weights[f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix].cuda(),
+                    weights[
+                        f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix
+                    ].cuda(),
                 ).cpu()
             weights[f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight"] = self._load_kb(kv_b_proj_)
             weights[f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight"] = self._load_vb(kv_b_proj_)
 
         if (
             self.quant_cfg.quantized_weight
-            and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix in weights
+            and f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix
+            in weights
         ):
             kv_b_proj_scale_ = weights[
                 f"model.layers.{self.layer_num_}.self_attn.kv_b_proj." + kv_b_quant_method.weight_scale_suffix
@@ -175,14 +178,14 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.k_b_proj_ = ROWBMMWeight(
             weight_name=f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
             data_type=self.data_type_,
-            quant_cfg=self.quant_cfg,
+            quant_cfg=None,
             layer_num=self.layer_num_,
             name="k_b_proj",
         )
         self.v_b_proj_ = ROWBMMWeight(
             weight_name=f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
             data_type=self.data_type_,
-            quant_cfg=self.quant_cfg,
+            quant_cfg=None,
             layer_num=self.layer_num_,
             name="v_b_proj",
         )
@@ -247,7 +250,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.k_b_proj_ = ROWBMMWeight(
             weight_name=f"model.layers.{self.layer_num_}.self_attn.k_b_proj.weight",
             data_type=self.data_type_,
-            quant_cfg=self.quant_cfg,
+            quant_cfg=None,
             layer_num=self.layer_num_,
             name="k_b_proj",
             tp_rank=0,
@@ -257,7 +260,7 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.v_b_proj_ = ROWBMMWeight(
             weight_name=f"model.layers.{self.layer_num_}.self_attn.v_b_proj.weight",
             data_type=self.data_type_,
-            quant_cfg=self.quant_cfg,
+            quant_cfg=None,
             layer_num=self.layer_num_,
             name="v_b_proj",
             tp_rank=0,
