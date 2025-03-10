@@ -164,15 +164,17 @@ class MMWeight:
         name = kwargs.pop("name", None)
         quant_method, quantized_weight = cls._get_quant_method(quant_cfg, layer_num_, name)
         kwargs["quant_method"] = quant_method
-        if quant_cfg.static_activation:
+        if quant_cfg is not None and quant_cfg.static_activation:
             kwargs["act_scale_suffix"] = "input_scale"
-        if quant_cfg.quantized_weight:
+        if quant_cfg is not None and quant_cfg.quantized_weight:
             kwargs["weight_scale_suffix"] = "weight_scale_inv"
         mmcls = cls._get_mmcls(quant_method, quantized_weight)
         return mmcls(**kwargs)
 
     @classmethod
     def _get_quant_method(cls, quant_cfg: Quantcfg, layer_num_: int, name: str) -> QuantizationMethod:
+        if quant_cfg is None:
+            return None, False
         quant_method = quant_cfg.get_quant_method(layer_num_, name)
         quant_type = quant_cfg.get_quant_type(layer_num_, name)
         quantized_weight = quant_cfg.quantized_weight

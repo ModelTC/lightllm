@@ -22,8 +22,8 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
         split_inter_size: int,
         data_type: torch.dtype,
         network_config: Dict[str, Any],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
+        layer_num: int,
+        quant_cfg = None,
     ) -> None:
         super().__init__(
             gate_proj_name,
@@ -35,8 +35,8 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
             split_inter_size,
             data_type,
             network_config,
-            weight_scale_suffix,
-            act_scale_suffix
+            layer_num,
+            quant_cfg,
         )
         self.expert_gate_up_proj_etp = None
         self.expert_down_proj_etp = None

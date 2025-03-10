@@ -7,6 +7,7 @@ from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
 from lightllm.common.quantization.quantize_method import QuantizationMethod
 from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
 from lightllm.common.vllm_kernel import _custom_ops as ops
+from .mm_weight.mm_weight import MMWeight
 
 
 class FusedMoeWeightTP(BaseWeight):
@@ -21,17 +22,16 @@ class FusedMoeWeightTP(BaseWeight):
         split_inter_size: int,
         data_type: torch.dtype,
         network_config: Dict[str, Any],
-        weight_scale_suffix: Optional[str] = None,
-        act_scale_suffix: Optional[str] = None,
+        layer_num: int,
+        quant_cfg = None,
     ) -> None:
         super().__init__()
+        self.quant_method, self.quantized_weight = MMWeight._get_quant_method(quant_cfg, layer_num, weight_prefix)
+        if quant_cfg is not None and  quant_cfg.quantized_weight:
+            self.weight_scale_suffix = "weight_scale_inv"
         self.w1_weight_name = gate_proj_name
         self.w2_weight_name = down_proj_name
         self.w3_weight_name = up_proj_name
-        self.weight_scale_suffix = weight_scale_suffix
-        self.act_scale_suffix = act_scale_suffix
-        self.quantized_weight = weight_scale_suffix is not None
-        self.static_activation = act_scale_suffix is not None
 
         self.e_score_correction_bias_name = e_score_correction_bias_name
         self.weight_prefix = weight_prefix
@@ -46,7 +46,6 @@ class FusedMoeWeightTP(BaseWeight):
         self.e_score_correction_bias = None
         self.w2_list = [None] * self.n_routed_experts
         self.w2_scale_list = [None] * self.n_routed_experts
-        self.quant_method = None
         self.scoring_func = network_config["scoring_func"]
         self.w1 = [None, None]  # weight, weight_scale
         self.w2 = [None, None]  # weight, weight_scale

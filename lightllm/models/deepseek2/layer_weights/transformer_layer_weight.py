@@ -321,7 +321,6 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         self.moe_gate = ROWMMWeight(
             weight_name=f"model.layers.{self.layer_num_}.mlp.gate.weight",
             data_type=self.data_type_,
-            quant_cfg=self.quant_cfg,
             layer_num=self.layer_num_,
             name="moe_gate",
             tp_rank=0,
@@ -342,8 +341,8 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
             split_inter_size=moe_intermediate_size // self.tp_world_size_,
             data_type=self.data_type_,
             network_config=self.network_config_,
-            weight_scale_suffix=self.weight_scale_suffix,
-            act_scale_suffix=self.act_scale_suffix,
+            layer_num=self.layer_num_,
+            quant_cfg=self.quant_cfg,
         )
 
     def _init_ffn(self):
