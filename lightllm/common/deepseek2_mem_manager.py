@@ -42,8 +42,11 @@ class Deepseek2MemoryManager(MemoryManager):
         return
 
     def send_to_decode_node(
-        self, move_tasks: List[KVMoveTask], mem_managers: List["Deepseek2MemoryManager"], dp_size_in_node: int,
-        nccl_comm: PyNcclCommunicator
+        self,
+        move_tasks: List[KVMoveTask],
+        mem_managers: List["Deepseek2MemoryManager"],
+        dp_size_in_node: int,
+        nccl_comm: PyNcclCommunicator,
     ):
         assert dp_size_in_node == 1
 
@@ -69,8 +72,11 @@ class Deepseek2MemoryManager(MemoryManager):
         return move_buffer
 
     def receive_from_prefill_node(
-        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int,
-        nccl_comm: PyNcclCommunicator
+        self,
+        move_tasks: List[KVMoveTask],
+        mem_managers: List["MemoryManager"],
+        dp_size_in_node: int,
+        nccl_comm: PyNcclCommunicator,
     ):
         assert dp_size_in_node == 1
 
@@ -102,8 +108,11 @@ class Deepseek2MemoryManager(MemoryManager):
         return
 
     def send_to_decode_node_p2p(
-        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int,
-        nccl_comm: PyNcclCommunicator
+        self,
+        move_tasks: List[KVMoveTask],
+        mem_managers: List["MemoryManager"],
+        dp_size_in_node: int,
+        nccl_comm: PyNcclCommunicator,
     ):
         """
         使用 p2p triton kernel 进行数据复制和传输的实现方式。
@@ -155,8 +164,11 @@ class Deepseek2MemoryManager(MemoryManager):
         return move_buffer
 
     def receive_from_prefill_node_p2p(
-        self, move_tasks: List[KVMoveTask], mem_managers: List["MemoryManager"], dp_size_in_node: int,
-        nccl_comm: PyNcclCommunicator
+        self,
+        move_tasks: List[KVMoveTask],
+        mem_managers: List["MemoryManager"],
+        dp_size_in_node: int,
+        nccl_comm: PyNcclCommunicator,
     ):
         if not hasattr(self, "mem_ptrs_dict"):
             self.mem_ptrs_dict = {}
