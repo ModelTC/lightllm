@@ -74,6 +74,7 @@ class DecodeNodeInfo:
     rpyc_port: str
     max_new_tokens: int
 
+
 @dataclass
 class PDTransJoinInfo:
     decode_id: int
@@ -83,10 +84,12 @@ class PDTransJoinInfo:
     prefill_ip: str
     prefill_port: int
 
+
 @dataclass
 class PDTransLeaveInfo:
     decode_id: int
     prefill_id: int
+
 
 @dataclass
 class KVMoveTask:
