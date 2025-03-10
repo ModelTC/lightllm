@@ -47,23 +47,23 @@ class TransProcessObj:
     put_to_radix_thread: threading.Thread = None
     latest_check_time: float = None
 
-    def create(
-        self, prefill_node_id: str, prefill_ip: str, prefill_port: int, manager: "DecodeKVMoveManager"
-    ):
+    def create(self, prefill_node_id: str, prefill_ip: str, prefill_port: int, manager: "DecodeKVMoveManager"):
 
         device_index = manager.get_next_device_index()
         decode_node_id = manager.args.pd_node_id
         task_in_queue = manager.kv_trans_task_in_queue
         task_out_queue = manager.kv_trans_task_out_queue
 
-        task_in_queue.put(PDTransJoinInfo(
-            prefill_id=prefill_node_id,
-            prefill_device_id=-1,
-            prefill_ip=prefill_ip,
-            prefill_port=prefill_port,
-            decode_id=decode_node_id,
-            decode_device_id=device_index,
-        ))
+        task_in_queue.put(
+            PDTransJoinInfo(
+                prefill_id=prefill_node_id,
+                prefill_device_id=-1,
+                prefill_ip=prefill_ip,
+                prefill_port=prefill_port,
+                decode_id=decode_node_id,
+                decode_device_id=device_index,
+            )
+        )
         assert task_out_queue.get(timeout=60) == "nccl_ok"
 
         self.prefill_node_id = prefill_node_id
@@ -136,10 +136,7 @@ class TransProcessObj:
                 self.manager.put_to_fail_release_task_queue(move_tasks)
 
         logger.error(f"{func_name} prefill id {self.prefill_node_id} device_index {self.device_index} thread quit")
-        self.task_in_queue.put(PDTransLeaveInfo(
-            decode_id=self.decode_node_id,
-            prefill_id=self.prefill_node_id
-        ))
+        self.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
         return
 
     def put_to_radix_loop(self):
@@ -269,12 +266,14 @@ class DecodeKVMoveManager(rpyc.Service):
         # 需要每个卡有一个锁来规划每次只能有一个tran obj 操作对应显卡上的传输任务。
         self.device_locks = [threading.Lock() for _ in range(self.node_world_size)]
 
-         # start a single kv trans process
+        # start a single kv trans process
         self.kv_trans_task_in_queue = mp.Queue()
         self.kv_trans_task_out_queue = mp.Queue()
         from .decode_trans_process import start_decode_trans_process
+
         self.kv_trans_process = start_decode_trans_process(
-            self.args, self.kv_trans_task_in_queue, self.kv_trans_task_out_queue, self.mem_queues)
+            self.args, self.kv_trans_task_in_queue, self.kv_trans_task_out_queue, self.mem_queues
+        )
 
         assert self.kv_trans_task_out_queue.get(timeout=30) == "proc_start"
         self._put_mem_manager_to_mem_queue()

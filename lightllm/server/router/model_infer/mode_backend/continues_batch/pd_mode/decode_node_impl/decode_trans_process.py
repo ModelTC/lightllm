@@ -15,9 +15,13 @@ from lightllm.distributed.pynccl import PyNcclCommunicator, StatelessP2PProcessG
 logger = init_logger(__name__)
 
 
-def _handle_kvmove_task(move_tasks: List[KVMoveTask], task_out_queue: mp.Queue,
-                        mem_managers: List[MemoryManager], prefill_to_comm: Dict[int, PyNcclCommunicator],
-                        dp_size_in_node: int):
+def _handle_kvmove_task(
+    move_tasks: List[KVMoveTask],
+    task_out_queue: mp.Queue,
+    mem_managers: List[MemoryManager],
+    prefill_to_comm: Dict[int, PyNcclCommunicator],
+    dp_size_in_node: int,
+):
     total_move_kv_len = sum([task.move_kv_len for task in move_tasks])
     try:
         prefill_id = move_tasks[0].prefill_node_id
@@ -27,9 +31,13 @@ def _handle_kvmove_task(move_tasks: List[KVMoveTask], task_out_queue: mp.Queue,
             cur_mem = mem_managers[device_index]
             logger.info(f"trans start: {move_tasks[0].to_decode_log_info()}")
             if kv_trans_use_p2p():
-                cur_mem.receive_from_prefill_node_p2p(move_tasks, mem_managers, dp_size_in_node, prefill_to_comm[prefill_id])
+                cur_mem.receive_from_prefill_node_p2p(
+                    move_tasks, mem_managers, dp_size_in_node, prefill_to_comm[prefill_id]
+                )
             else:
-                cur_mem.receive_from_prefill_node(move_tasks, mem_managers, dp_size_in_node, prefill_to_comm[prefill_id])
+                cur_mem.receive_from_prefill_node(
+                    move_tasks, mem_managers, dp_size_in_node, prefill_to_comm[prefill_id]
+                )
             logger.info(f"trans finished: {move_tasks[0].to_decode_log_info()} move len: {total_move_kv_len}")
         torch.cuda.synchronize()
         logger.info(f"trans cost time: {(time.time() - start)}, {move_tasks[0].to_decode_log_info()}")
@@ -39,26 +47,26 @@ def _handle_kvmove_task(move_tasks: List[KVMoveTask], task_out_queue: mp.Queue,
         task_out_queue.put("fail")
         raise e
 
-def _handle_prefill_join(node_info: PDTransJoinInfo, task_out_queue: mp.Queue, prefill_to_comm: Dict[int, PyNcclCommunicator]):
+
+def _handle_prefill_join(
+    node_info: PDTransJoinInfo, task_out_queue: mp.Queue, prefill_to_comm: Dict[int, PyNcclCommunicator]
+):
     try:
-        store_client = TCPStore(host_name=node_info.prefill_ip, port=node_info.prefill_port, is_master=False, use_libuv=False)
+        store_client = TCPStore(
+            host_name=node_info.prefill_ip, port=node_info.prefill_port, is_master=False, use_libuv=False
+        )
         group = StatelessP2PProcessGroup.create(
-            src_id=node_info.prefill_id,
-            dest_id=node_info.decode_id,
-            is_server=False,
-            store=store_client)
+            src_id=node_info.prefill_id, dest_id=node_info.decode_id, is_server=False, store=store_client
+        )
         comm = PyNcclCommunicator(group, node_info.decode_device_id)
         prefill_to_comm[node_info.prefill_id] = comm
         logger.info(f"{node_info} kv trans connected")
-        task_out_queue.put('nccl_ok')
+        task_out_queue.put("nccl_ok")
     except Exception as e:
         logger.warning(f"error while connect to prefill node: {e}")
 
-def _init_env(
-    args,
-    task_in_queue: mp.Queue,
-    task_out_queue: mp.Queue,
-    mem_queues: List[mp.Queue]):
+
+def _init_env(args, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]):
 
     dp_size_in_node = max(1, args.dp // args.nnodes)
     node_world_size = args.tp // args.nnodes
@@ -80,7 +88,7 @@ def _init_env(
                 prefill_to_comm[task.prefill_id].destroy()
                 logger.info(f"destory {task.prefill_id} nccl communicator.")
             else:
-                logger.warning(f'unexpected task type: {task}')
+                logger.warning(f"unexpected task type: {task}")
 
     except Exception as e:
         logger.error(f"Fatal error happened in kv trans process: {e}")
@@ -93,10 +101,8 @@ def start_decode_trans_process(
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
-    proc = mp.Process(
-        target=_init_env, args=(args, task_in_queue, task_out_queue, mem_queues)
-    )
+    proc = mp.Process(target=_init_env, args=(args, task_in_queue, task_out_queue, mem_queues))
     proc.start()
     assert proc.is_alive()
-    logger.info(f"decode trans kv process start!")
+    logger.info("decode trans kv process start!")
     return proc
