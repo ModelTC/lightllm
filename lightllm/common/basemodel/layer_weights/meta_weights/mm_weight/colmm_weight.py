@@ -54,7 +54,7 @@ class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
         tp_world_size: int = None,
     ) -> None:
         super().__init__(weight_name, data_type, bias_name, quant_method, tp_rank, tp_world_size)
-        
+
         self.weight_scale_name, self.act_scale_name = generate_scale_name(
             weight_name, quant_method.weight_scale_suffix, quant_method.act_scale_suffix
         )
@@ -68,9 +68,9 @@ class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
 
     def _slice_weight_scale(self, weight_scale: torch.Tensor):
         tp_size = weight_scale.shape[1] // self.tp_world_size_
-        scale_start = tp_size * self.tp_rank_  
+        scale_start = tp_size * self.tp_rank_
         scale_end = tp_size * (self.tp_rank_ + 1)
-        return weight_scale[:, scale_start: scale_end].to(torch.float)
+        return weight_scale[:, scale_start:scale_end].to(torch.float)
 
     def _process_weight_scale(self, weight_scale) -> None:
         self.weight_scale = weight_scale.transpose(0, 1).cuda(get_current_device_id())

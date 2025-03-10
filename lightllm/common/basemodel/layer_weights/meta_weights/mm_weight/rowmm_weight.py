@@ -66,7 +66,7 @@ class UnquantizedROWMMWeight(MMWeightTpl):
 
     def _slice_bias(self, bias):
         tp_size = bias.shape[0] // self.tp_world_size_
-        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)].to(self.data_type_)
+        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)] / self.tp_world_size_.to(self.data_type_)
 
 
 class W8A8B128ROWMMWeight(UnquantizedROWMMWeight):
@@ -93,13 +93,13 @@ class W8A8B128ROWMMWeight(UnquantizedROWMMWeight):
 
     def _slice_bias(self, bias):
         tp_size = bias.shape[0] // self.tp_world_size_
-        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)]
+        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)] / self.tp_world_size_
 
     def _slice_weight_scale(self, weight_scale: torch.Tensor):
         tp_size = weight_scale.shape[0] // self.tp_world_size_
         scale_start = tp_size * self.tp_rank_
         scale_end = tp_size * (self.tp_rank_ + 1)
-        return weight_scale.to(torch.float)[scale_start : scale_end]
+        return weight_scale.to(torch.float)[scale_start:scale_end]
 
     def _process_weight_scale(self, weight_scale) -> None:
         self.weight_scale = weight_scale.cuda(get_current_device_id()).transpose(0, 1)
@@ -112,14 +112,15 @@ class W8A8B128ROWMMWeight(UnquantizedROWMMWeight):
             weight_scale = weights[self.weight_scale_name]
             weight_scale = self._slice_weight_scale(weight_scale)
             self._process_weight_scale(weight_scale)
-        
+
         if self.weight_scale is not None and isinstance(self.weight, torch.Tensor):
             self.weight = [
                 self.weight,
                 self.weight_scale,
-                None, # placeholder for input scale
+                None,  # placeholder for input scale
             ]
         return
+
 
 class UnquantizedMultiROWMMWeight(MultiMMWeightTpl):
     _slice_weight = UnquantizedROWMMWeight._slice_weight
@@ -156,7 +157,9 @@ class W8A8B128MultiROWMMWeight(UnquantizedMultiROWMMWeight):
         self.weight_scale: Optional[torch.Tensor] = None
         self.weight_scales = [None] * len(self.weight_names)
         for weight_name in weight_names:
-            weight_scale_name, act_scale_name = generate_scale_name(weight_name, quant_method.weight_scale_suffix, quant_method.act_scale_suffix)
+            weight_scale_name, act_scale_name = generate_scale_name(
+                weight_name, quant_method.weight_scale_suffix, quant_method.act_scale_suffix
+            )
             self.weight_scale_names.append(weight_scale_name)
         self.quantized_weight = True
 
@@ -244,14 +247,14 @@ class W8A8B128ROWBMMWeight(UnquantizedROWBMMWeight):
         tp_size = weight_scale.shape[0] // self.tp_world_size_
         scale_start = tp_size * self.tp_rank_
         scale_end = tp_size * (self.tp_rank_ + 1)
-        return weight_scale[scale_start : scale_end].to(torch.float)
+        return weight_scale[scale_start:scale_end].to(torch.float)
 
     def _load_scales(self, weights: Dict[str, torch.Tensor]) -> None:
         if self.weight_scale_name is not None and self.weight_scale_name in weights:
             weight_scale = weights[self.weight_scale_name]
             weight_scale = self._slice_weight_scale(weight_scale)
 
-        if self.weight_name in weights and self.weight_scale is not None:
+        if self.weight_scale is not None and isinstance(self.weight, torch.Tensor):
             self.weight = [
                 self.weight,
                 self.weight_scale,
