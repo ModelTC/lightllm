@@ -114,12 +114,8 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         return
 
     def _init_infer_layer(self):
-        self.pre_infer = self.pre_layer_infer_class(
-            network_config=self.config, mode=self.mode
-        )
-        self.post_infer = self.post_layer_infer_class(
-            network_config=self.config, mode=self.mode
-        )
+        self.pre_infer = self.pre_layer_infer_class(network_config=self.config, mode=self.mode)
+        self.post_infer = self.post_layer_infer_class(network_config=self.config, mode=self.mode)
         self.layers_infer = [
             self.transformer_layer_infer_class(
                 i,

@@ -23,7 +23,7 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
         data_type: torch.dtype,
         network_config: Dict[str, Any],
         layer_num: int,
-        quant_cfg = None,
+        quant_cfg=None,
     ) -> None:
         super().__init__(
             gate_proj_name,
