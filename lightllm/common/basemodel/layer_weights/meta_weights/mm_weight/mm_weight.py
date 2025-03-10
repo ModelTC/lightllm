@@ -125,7 +125,11 @@ class MultiMMWeightTpl(MMWeightTpl):
 
     def _load_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         self._pre_porcess_weights(weights)
+
+    def load_hf_weights(self, weights):
+        super().load_hf_weights(weights)
         self._fuse_weights()
+        return
 
 
 class BMMWeightTpl(MMWeightTpl):
