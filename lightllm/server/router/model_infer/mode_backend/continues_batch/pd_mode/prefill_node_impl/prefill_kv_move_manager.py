@@ -60,18 +60,22 @@ class TransProcessObj:
         task_in_queue = manager.kv_trans_task_in_queue
         task_out_queue = manager.kv_trans_task_out_queue
 
-        task_in_queue.put(PDTransJoinInfo(
-            prefill_id=prefill_node_id,
-            prefill_device_id=device_index,
-            prefill_ip=manager.host_ip,
-            prefill_port=manager.kv_trans_port,
-            decode_id=decode_node_id,
-            decode_device_id=-1
-        ))
+        task_in_queue.put(
+            PDTransJoinInfo(
+                prefill_id=prefill_node_id,
+                prefill_device_id=device_index,
+                prefill_ip=manager.host_ip,
+                prefill_port=manager.kv_trans_port,
+                decode_id=decode_node_id,
+                decode_device_id=-1,
+            )
+        )
 
         # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
         max_kv_trans_token_num = obtain(
-            con.root.build_trans_process(prefill_node_id, manager.host_ip, manager.kv_trans_port, manager.args.max_total_token_num)
+            con.root.build_trans_process(
+                prefill_node_id, manager.host_ip, manager.kv_trans_port, manager.args.max_total_token_num
+            )
         )
         self.max_kv_trans_token_num = max_kv_trans_token_num
         assert task_out_queue.get(timeout=60) == "nccl_ok"
@@ -106,7 +110,6 @@ class TransProcessObj:
             else:
                 break
         return ans_list
-
 
     def check_connect(self, raise_exception=True):
         try:
@@ -234,8 +237,7 @@ class TransProcessObj:
                 self.manager.put_to_release_task_queue(move_tasks)
 
         logger.error(f"trans kv thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
-        self.task_in_queue.put(PDTransLeaveInfo(
-            decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
+        self.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
         return
 
     def wait_thread_quit(self):
@@ -326,13 +328,20 @@ class PrefillKVMoveManager:
         self.release_tasks_thread = threading.Thread(target=self.handle_release_task_loop, daemon=True)
         self.release_tasks_thread.start()
 
-         # start a single kv trans process
+        # start a single kv trans process
         self.kv_trans_task_in_queue = mp.Queue()
         self.kv_trans_task_out_queue = mp.Queue()
         from .prefill_trans_process import start_prefill_trans_process
+
         self.kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
         self.kv_trans_process = start_prefill_trans_process(
-            self.args, self.host_ip, self.kv_trans_port, self.kv_trans_task_in_queue, self.kv_trans_task_out_queue, self.mem_queues)
+            self.args,
+            self.host_ip,
+            self.kv_trans_port,
+            self.kv_trans_task_in_queue,
+            self.kv_trans_task_out_queue,
+            self.mem_queues,
+        )
 
         assert self.kv_trans_task_out_queue.get(timeout=30) == "proc_start"
         self._put_mem_manager_to_mem_queue()

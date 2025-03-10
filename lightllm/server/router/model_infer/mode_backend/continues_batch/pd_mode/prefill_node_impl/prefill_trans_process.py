@@ -15,9 +15,14 @@ from lightllm.distributed.pynccl import StatelessP2PProcessGroup, PyNcclCommunic
 
 logger = init_logger(__name__)
 
-def _handle_kvmove_task(move_tasks: List[KVMoveTask], task_out_queue: mp.Queue,
-                        mem_managers: List[MemoryManager], decode_to_comm: Dict[int, PyNcclCommunicator],
-                        dp_size_in_node: int):
+
+def _handle_kvmove_task(
+    move_tasks: List[KVMoveTask],
+    task_out_queue: mp.Queue,
+    mem_managers: List[MemoryManager],
+    decode_to_comm: Dict[int, PyNcclCommunicator],
+    dp_size_in_node: int,
+):
     total_move_kv_len = sum([task.move_kv_len for task in move_tasks])
     try:
         decode_id = move_tasks[0].decode_node.node_id
@@ -42,7 +47,10 @@ def _handle_kvmove_task(move_tasks: List[KVMoveTask], task_out_queue: mp.Queue,
         logger.exception(str(e))
         task_out_queue.put("fail")
 
-def _handle_decode_join(node_info: PDTransJoinInfo, task_out_queue: mp.Queue, decode_to_comm: Dict[str, PyNcclCommunicator], store: TCPStore):
+
+def _handle_decode_join(
+    node_info: PDTransJoinInfo, task_out_queue: mp.Queue, decode_to_comm: Dict[str, PyNcclCommunicator], store: TCPStore
+):
     try:
         group = StatelessP2PProcessGroup.create(node_info.prefill_id, node_info.decode_id, True, store)
         comm = PyNcclCommunicator(group, node_info.prefill_device_id)
@@ -52,13 +60,15 @@ def _handle_decode_join(node_info: PDTransJoinInfo, task_out_queue: mp.Queue, de
     except Exception as e:
         logger.warning(f"error while connect to decode node: {e}")
 
+
 def _init_env(
     args,
     store_ip,
     store_port,
     task_in_queue: mp.Queue,
     task_out_queue: mp.Queue,
-    mem_queues: List[mp.Queue],):
+    mem_queues: List[mp.Queue],
+):
     try:
         graceful_registry(inspect.currentframe().f_code.co_name)
         master_store = TCPStore(host_name=store_ip, port=store_port, is_master=True, use_libuv=True)
@@ -80,7 +90,7 @@ def _init_env(
                 decode_to_comm[task.decode_id].destroy()
                 logger.info(f"destory {task.decode_id} nccl communicator.")
             else:
-                logger.warning(f'unexpected task type: {task}')
+                logger.warning(f"unexpected task type: {task}")
 
     except Exception as e:
         logger.error(f"Fatal error happened in kv trans process: {e}")
@@ -95,10 +105,8 @@ def start_prefill_trans_process(
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
-    proc = mp.Process(
-        target=_init_env, args=(args, store_ip, store_port, task_in_queue, task_out_queue, mem_queues)
-    )
+    proc = mp.Process(target=_init_env, args=(args, store_ip, store_port, task_in_queue, task_out_queue, mem_queues))
     proc.start()
     assert proc.is_alive()
-    logger.info(f"trans kv process started!")
+    logger.info("prefill trans kv process started!")
     return proc
