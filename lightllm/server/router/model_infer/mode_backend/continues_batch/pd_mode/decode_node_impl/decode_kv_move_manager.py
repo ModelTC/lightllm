@@ -51,8 +51,8 @@ class TransProcessObj:
 
         device_index = manager.get_next_device_index()
         decode_node_id = manager.args.pd_node_id
-        task_in_queue = manager.kv_trans_task_in_queue
-        task_out_queue = manager.kv_trans_task_out_queue
+        task_in_queue = manager.kv_trans_task_in_queues[device_index]
+        task_out_queue = manager.kv_trans_task_out_queues[device_index]
 
         task_in_queue.put(
             PDTransJoinInfo(
@@ -136,7 +136,6 @@ class TransProcessObj:
                 self.manager.put_to_fail_release_task_queue(move_tasks)
 
         logger.error(f"{func_name} prefill id {self.prefill_node_id} device_index {self.device_index} thread quit")
-        self.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
         return
 
     def put_to_radix_loop(self):
@@ -217,6 +216,7 @@ class TransProcessObj:
         try:
             self.set_has_error()
             self.wait_thread_quit()
+            self.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
             if self.ready_to_move_queue is not None:
                 self.ready_to_move_queue.clear_tasks()
             if self.move_finished_queue is not None:
@@ -266,18 +266,31 @@ class DecodeKVMoveManager(rpyc.Service):
         # 需要每个卡有一个锁来规划每次只能有一个tran obj 操作对应显卡上的传输任务。
         self.device_locks = [threading.Lock() for _ in range(self.node_world_size)]
 
-        # start a single kv trans process
-        self.kv_trans_task_in_queue = mp.Queue()
-        self.kv_trans_task_out_queue = mp.Queue()
         from .decode_trans_process import start_decode_trans_process
 
-        self.kv_trans_process = start_decode_trans_process(
-            self.args, self.kv_trans_task_in_queue, self.kv_trans_task_out_queue, self.mem_queues
-        )
+        self.kv_trans_processes = []
+        self.kv_trans_task_in_queues = []
+        self.kv_trans_task_out_queues = []
+        self.kv_trans_process_alive = []
 
-        assert self.kv_trans_task_out_queue.get(timeout=30) == "proc_start"
-        self._put_mem_manager_to_mem_queue()
-        assert self.kv_trans_task_out_queue.get(timeout=60) == "get_mem_managers_ok"
+        for device_index in range(self.node_world_size):
+            kv_trans_task_in_queue = mp.Queue()
+            kv_trans_task_out_queue = mp.Queue()
+            kv_trans_process = start_decode_trans_process(
+                self.args,
+                device_index,
+                kv_trans_task_in_queue,
+                kv_trans_task_out_queue,
+                self.mem_queues,
+            )
+            assert kv_trans_task_out_queue.get(timeout=30) == "proc_start"
+            self._put_mem_manager_to_mem_queue()
+            assert kv_trans_task_out_queue.get(timeout=60) == "get_mem_managers_ok"
+
+            self.kv_trans_processes.append(kv_trans_process)
+            self.kv_trans_task_in_queues.append(kv_trans_task_in_queue)
+            self.kv_trans_task_out_queues.append(kv_trans_task_out_queue)
+            self.kv_trans_process_alive.append(True)
 
         return
 
@@ -462,7 +475,9 @@ class DecodeKVMoveManager(rpyc.Service):
         return ans_list
 
     def get_next_device_index(self):
-        counts = [0 for _ in range(self.node_world_size)]
+        counts = [
+            0 if self.kv_trans_process_alive[device_id] else (1 << 20) for device_id in range(self.node_world_size)
+        ]
         for obj in self.node_id_to_trans_obj.values():
             counts[obj.device_index] += 1
         device_index = int(np.argmin(counts))
@@ -495,10 +510,22 @@ class DecodeKVMoveManager(rpyc.Service):
         return
 
     def check_trans_process(self, raise_exception=True):
-        process = psutil.Process(self.kv_trans_process.pid)
-        if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+        at_least_one_alive = False
+        for device_id in range(self.node_world_size):
+            if not self.kv_trans_process_alive[device_id]:
+                continue
+
+            process = psutil.Process(self.kv_trans_processes[device_id].pid)
+            if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+                self.kv_trans_process_alive[device_id] = False
+                logger.error(f"kv trans process for device: {device_id} dead!!!")
+            else:
+                at_least_one_alive = True
+
+        if not at_least_one_alive:
             if raise_exception:
-                raise Exception(f"trans process: {self.kv_trans_process.pid} is dead")
+                raise Exception("All trans process are dead!!!")
+
         return
 
     def timer_loop(self):
