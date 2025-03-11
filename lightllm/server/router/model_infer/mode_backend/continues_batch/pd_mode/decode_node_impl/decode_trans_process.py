@@ -66,16 +66,17 @@ def _handle_prefill_join(
         logger.warning(f"error while connect to prefill node: {e}")
 
 
-def _init_env(args, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]):
+def _init_env(args, device_id: int, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]):
 
     dp_size_in_node = max(1, args.dp // args.nnodes)
-    node_world_size = args.tp // args.nnodes
 
     try:
+        torch.cuda.set_device(device_id)
         graceful_registry(inspect.currentframe().f_code.co_name)
         task_out_queue.put("proc_start")
+
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
-        assert len(mem_managers) == node_world_size
+
         task_out_queue.put("get_mem_managers_ok")
         prefill_to_comm: Dict[int, PyNcclCommunicator] = {}
         while True:
@@ -97,12 +98,13 @@ def _init_env(args, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queue
 
 def start_decode_trans_process(
     args,
+    device_id: int,
     task_in_queue: mp.Queue,
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
-    proc = mp.Process(target=_init_env, args=(args, task_in_queue, task_out_queue, mem_queues))
+    proc = mp.Process(target=_init_env, args=(args, device_id, task_in_queue, task_out_queue, mem_queues))
     proc.start()
     assert proc.is_alive()
-    logger.info("decode trans kv process start!")
+    logger.info(f"decode trans kv process for device: {device_id} start!")
     return proc

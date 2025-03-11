@@ -27,7 +27,6 @@ def _handle_kvmove_task(
     try:
         decode_id = move_tasks[0].decode_node.node_id
         device_index = decode_to_comm[decode_id].device.index
-        torch.cuda.set_device(device_index)
         start = time.time()
         if total_move_kv_len != 0:
             logger.info(f"trans start: {move_tasks[0].to_prefill_log_info()}")
@@ -65,18 +64,18 @@ def _init_env(
     args,
     store_ip,
     store_port,
+    device_id,
     task_in_queue: mp.Queue,
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
     try:
+        torch.cuda.set_device(device_id)
         graceful_registry(inspect.currentframe().f_code.co_name)
         master_store = TCPStore(host_name=store_ip, port=store_port, is_master=True, use_libuv=True)
         dp_size_in_node = max(1, args.dp // args.nnodes)
-        node_world_size = args.tp // args.nnodes
         task_out_queue.put("proc_start")
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
-        assert len(mem_managers) == node_world_size
         task_out_queue.put("get_mem_managers_ok")
         decode_to_comm: Dict[int, PyNcclCommunicator] = {}
 
@@ -101,12 +100,15 @@ def start_prefill_trans_process(
     args,
     store_ip,
     store_port,
+    device_id,
     task_in_queue: mp.Queue,
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
-    proc = mp.Process(target=_init_env, args=(args, store_ip, store_port, task_in_queue, task_out_queue, mem_queues))
+    proc = mp.Process(
+        target=_init_env, args=(args, store_ip, store_port, device_id, task_in_queue, task_out_queue, mem_queues)
+    )
     proc.start()
     assert proc.is_alive()
-    logger.info("prefill trans kv process started!")
+    logger.info(f"prefill trans kv process for device: {device_id} started!")
     return proc
