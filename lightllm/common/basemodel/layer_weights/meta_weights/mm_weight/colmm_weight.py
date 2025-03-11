@@ -79,7 +79,7 @@ class W8A8B128COLMMWeight(UnquantizedCOLMMWeight):
         if self.weight_scale_name in weights:
             weight_scale = self._slice_weight_scale(weights[self.weight_scale_name])
             self._process_weight_scale(weight_scale)
-        if self.weight_name in weights and self.weight_scale is not None:
+        if self.weight_scale is not None and isinstance(self.weight, torch.Tensor):
             self.weight = [
                 self.weight,
                 self.weight_scale,
