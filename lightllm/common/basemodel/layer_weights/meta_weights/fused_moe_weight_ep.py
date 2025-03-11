@@ -1,12 +1,6 @@
-import os
 import torch
-import threading
 from typing import Optional, Tuple, List, Dict, Any
-from .base_weight import BaseWeight
-from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
-from lightllm.common.quantization.quantize_method import QuantizationMethod
 from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
-from lightllm.common.vllm_kernel import _custom_ops as ops
 from .fused_moe_weight_tp import FusedMoeWeightTP
 
 
@@ -40,6 +34,8 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
         )
         self.expert_gate_up_proj_etp = None
         self.expert_down_proj_etp = None
+        self.global_rank_ = get_global_rank()
+        self.device_id_ = get_current_device_id()
 
     def _load_hf_weights(self, weights):
         world_size_ = get_global_world_size()
@@ -57,7 +53,7 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
             expert_gate_proj = None
             expert_gate_up_proj = None
             expert_down_proj = None
-            i_experts = i_experts_ep + n_expert_ep * self.tp_rank_
+            i_experts = i_experts_ep + n_expert_ep * self.global_rank_
 
             if f"{self.weight_prefix}.{i_experts}.up_proj.weight" in weights:
                 expert_up_proj = weights[f"{self.weight_prefix}.{i_experts}.up_proj.weight"]
@@ -85,7 +81,7 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
                     if self.expert_gate_up_proj_etp is None:
                         self.expert_gate_up_proj_etp = torch.zeros(
                             (n_expert_ep,) + expert_gate_up_proj_last.shape, dtype=expert_gate_up_proj_last.dtype
-                        ).cuda(self.tp_rank_)
+                        ).cuda(self.device_id_)
 
                     for i_experts_ep in range(n_expert_ep):
                         if self.experts_gate_projs[i_experts_ep] is not None:
@@ -96,7 +92,7 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
                     if self.expert_down_proj_etp is None:
                         self.expert_down_proj_etp = torch.zeros(
                             (n_expert_ep,) + expert_down_proj_last.shape, dtype=expert_down_proj_last.dtype
-                        ).cuda(self.tp_rank_)
+                        ).cuda(self.device_id_)
 
                     for i_experts_ep in range(n_expert_ep):
                         if self.experts_up_projs[i_experts_ep] is not None:

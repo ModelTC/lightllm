@@ -3,10 +3,7 @@ import torch
 import threading
 from typing import Optional, Tuple, List, Dict, Any
 from .base_weight import BaseWeight
-from lightllm.common.quantization import vLLMFP8w8a8QuantizationMethod
-from lightllm.common.quantization.quantize_method import QuantizationMethod
-from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
-from lightllm.common.vllm_kernel import _custom_ops as ops
+from lightllm.utils.dist_utils import get_global_rank, get_current_device_id
 from lightllm.common.quantization import Quantcfg
 
 

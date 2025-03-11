@@ -34,7 +34,11 @@ class MMWeightTpl(BaseWeightTpl):
         self.quant_method = quant_method
         self.weight: Optional[torch.Tensor] = None
         self.bias: Optional[torch.Tensor] = None
+        # quantized_weight 用于标记加载的权重是已经量化的权重格式
+        # 不需要做在线量化
         self.quantized_weight: bool = False
+        # 标记是否存在 bias， 由子类初始化
+        self.has_bias: bool = None
 
     def mm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
@@ -141,10 +145,8 @@ class BMMWeightTpl(MMWeightTpl):
     def bmm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
     ) -> torch.Tensor:
-        if self.quant_method is not None and len(self.weight) > 1:
-            fpweight = self.dequant_weight(self.weight[0], self.weight[1])
-        else:
-            fpweight = self.weight
+        # 目前 bmm 不支持量化运算操作
+        fpweight = self.weight
         if out is None:
             shape = (input_tensor.shape[0], input_tensor.shape[1], fpweight.shape[2])
             dtype = input_tensor.dtype

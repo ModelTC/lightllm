@@ -61,12 +61,14 @@ class UnquantizedROWMMWeight(MMWeightTpl):
         super().__init__(data_type, quant_method, tp_rank, tp_world_size)
 
     def _slice_weight(self, weight: torch.Tensor):
+        assert weight.shape[0] % self.tp_world_size_ == 0, f"tp slice error {weight.shape[0]} % {self.tp_world_size_}"
         tp_size = weight.shape[0] // self.tp_world_size_
         return weight[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)].to(self.data_type_)
 
     def _slice_bias(self, bias):
+        assert bias.shape[0] % self.tp_world_size_ == 0, f"tp slice error {bias.shape[0]} % {self.tp_world_size_}"
         tp_size = bias.shape[0] // self.tp_world_size_
-        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)] / self.tp_world_size_.to(self.data_type_)
+        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)].to(self.data_type_)
 
 
 class W8A8B128ROWMMWeight(UnquantizedROWMMWeight):
@@ -88,14 +90,19 @@ class W8A8B128ROWMMWeight(UnquantizedROWMMWeight):
         self.quantized_weight = True
 
     def _slice_weight(self, weight: torch.Tensor):
+        assert weight.shape[0] % self.tp_world_size_ == 0, f"tp slice error {weight.shape[0]} % {self.tp_world_size_}"
         tp_size = weight.shape[0] // self.tp_world_size_
         return weight[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)]
 
     def _slice_bias(self, bias):
+        assert bias.shape[0] % self.tp_world_size_ == 0, f"tp slice error {bias.shape[0]} % {self.tp_world_size_}"
         tp_size = bias.shape[0] // self.tp_world_size_
-        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)] / self.tp_world_size_
+        return bias[tp_size * self.tp_rank_ : tp_size * (self.tp_rank_ + 1)]
 
     def _slice_weight_scale(self, weight_scale: torch.Tensor):
+        assert (
+            weight_scale.shape[0] % self.tp_world_size_ == 0
+        ), f"tp slice error {weight_scale.shape[0]} % {self.tp_world_size_}"
         tp_size = weight_scale.shape[0] // self.tp_world_size_
         scale_start = tp_size * self.tp_rank_
         scale_end = tp_size * (self.tp_rank_ + 1)
@@ -208,17 +215,6 @@ class UnquantizedROWBMMWeight(BMMWeightTpl):
         self.bias_name = bias_name
         self.has_bias = bias_name is not None
         super().__init__(data_type, quant_method, tp_rank, tp_world_size)
-
-    def dequant_weight(self, weight: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        # for Deepseek v3
-        # TODO a fast bmm quant kernel
-        weight = weight.to(self.data_type_)
-        block_size = weight.shape[-1] // scale.shape[-1]
-        w_shape = weight.shape
-        s_shape = scale.shape
-        scale = scale.unsqueeze(-1).repeat(1, 1, 1, block_size).reshape(s_shape[0], s_shape[1], -1)
-        scale = scale.unsqueeze(2).repeat(1, 1, block_size, 1).reshape(w_shape)
-        return (weight * scale).to(self.data_type_)
 
 
 class W8A8B128ROWBMMWeight(UnquantizedROWBMMWeight):
