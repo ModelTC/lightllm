@@ -39,7 +39,7 @@ class TransProcessObj:
     rpyc_conn: object = None  # rpyc_con 的连接对象
     task_in_queue: mp.Queue = None
     task_out_queue: mp.Queue = None
-    device_index: str = None  # 使用的gpu序号
+    device_index: int = None  # 使用的gpu序号
     manager: "PrefillKVMoveManager" = None
     has_error: bool = False
     request_kv_trans_task_queue: TaskQueue = None
@@ -57,15 +57,15 @@ class TransProcessObj:
 
         device_index = manager.get_next_device_index()  # 分配 trans 进程使用的显卡
         prefill_node_id = manager.args.pd_node_id
-        task_in_queue = manager.kv_trans_task_in_queue
-        task_out_queue = manager.kv_trans_task_out_queue
+        task_in_queue = manager.kv_trans_task_in_queues[device_index]
+        task_out_queue = manager.kv_trans_task_out_queues[device_index]
 
         task_in_queue.put(
             PDTransJoinInfo(
                 prefill_id=prefill_node_id,
                 prefill_device_id=device_index,
                 prefill_ip=manager.host_ip,
-                prefill_port=manager.kv_trans_port,
+                prefill_port=manager.kv_trans_ports[device_index],
                 decode_id=decode_node_id,
                 decode_device_id=-1,
             )
@@ -74,7 +74,7 @@ class TransProcessObj:
         # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
         max_kv_trans_token_num = obtain(
             con.root.build_trans_process(
-                prefill_node_id, manager.host_ip, manager.kv_trans_port, manager.args.max_total_token_num
+                prefill_node_id, manager.host_ip, manager.kv_trans_ports[device_index], manager.args.max_total_token_num
             )
         )
         self.max_kv_trans_token_num = max_kv_trans_token_num
@@ -237,7 +237,6 @@ class TransProcessObj:
                 self.manager.put_to_release_task_queue(move_tasks)
 
         logger.error(f"trans kv thread, decode id {self.decode_node_id} device_index {self.device_index} thread quit")
-        self.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
         return
 
     def wait_thread_quit(self):
@@ -282,6 +281,7 @@ class TransProcessObj:
         try:
             self.set_has_error()
             self.wait_thread_quit()
+            self.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id))
             if self.request_kv_trans_task_queue is not None:
                 self.request_kv_trans_task_queue.clear_tasks()
             if self.ready_kv_trans_task_queue is not None:
@@ -329,24 +329,37 @@ class PrefillKVMoveManager:
         self.release_tasks_thread.start()
 
         # start a single kv trans process
-        self.kv_trans_task_in_queue = mp.Queue()
-        self.kv_trans_task_out_queue = mp.Queue()
+
         from .prefill_trans_process import start_prefill_trans_process
 
-        self.kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
-        self.kv_trans_process = start_prefill_trans_process(
-            self.args,
-            self.host_ip,
-            self.kv_trans_port,
-            self.kv_trans_task_in_queue,
-            self.kv_trans_task_out_queue,
-            self.mem_queues,
-        )
+        self.kv_trans_ports = []
+        self.kv_trans_processes = []
+        self.kv_trans_task_in_queues = []
+        self.kv_trans_task_out_queues = []
+        self.kv_trans_process_alive = []
 
-        assert self.kv_trans_task_out_queue.get(timeout=30) == "proc_start"
-        self._put_mem_manager_to_mem_queue()
-        assert self.kv_trans_task_out_queue.get(timeout=60) == "get_mem_managers_ok"
+        for device_id in range(self.node_world_size):
+            kv_trans_task_in_queue = mp.Queue()
+            kv_trans_task_out_queue = mp.Queue()
+            kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
+            kv_trans_process = start_prefill_trans_process(
+                self.args,
+                self.host_ip,
+                kv_trans_port,
+                device_id,
+                kv_trans_task_in_queue,
+                kv_trans_task_out_queue,
+                self.mem_queues,
+            )
+            assert kv_trans_task_out_queue.get(timeout=30) == "proc_start"
+            self._put_mem_manager_to_mem_queue()
+            assert kv_trans_task_out_queue.get(timeout=60) == "get_mem_managers_ok"
 
+            self.kv_trans_ports.append(kv_trans_port)
+            self.kv_trans_processes.append(kv_trans_process)
+            self.kv_trans_task_in_queues.append(kv_trans_task_in_queue)
+            self.kv_trans_task_out_queues.append(kv_trans_task_out_queue)
+            self.kv_trans_process_alive.append(True)
         return
 
     def put_to_release_task_queue(self, task: Union[KVMoveTask, List[KVMoveTask]]):
@@ -368,14 +381,28 @@ class PrefillKVMoveManager:
         return
 
     def check_trans_process(self, raise_exception=True):
-        process = psutil.Process(self.kv_trans_process.pid)
-        if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+        at_least_one_alive = False
+        for device_id in range(self.node_world_size):
+            if not self.kv_trans_process_alive[device_id]:
+                continue
+
+            process = psutil.Process(self.kv_trans_processes[device_id].pid)
+            if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+                self.kv_trans_process_alive[device_id] = False
+                logger.error(f"kv trans process for device: {device_id} dead!!!")
+            else:
+                at_least_one_alive = True
+
+        if not at_least_one_alive:
             if raise_exception:
-                raise Exception(f"trans process: {self.kv_trans_process.pid} is dead")
+                raise Exception("All trans process are dead!!!")
+
         return
 
     def get_next_device_index(self):
-        counts = [0 for _ in range(self.node_world_size)]
+        counts = [
+            0 if self.kv_trans_process_alive[device_id] else (1 << 20) for device_id in range(self.node_world_size)
+        ]
         for obj in self.node_id_to_trans_obj.values():
             counts[obj.device_index] += 1
         device_index = int(np.argmin(counts))
