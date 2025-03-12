@@ -37,6 +37,8 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
         self.global_rank_ = get_global_rank()
         self.device_id_ = get_current_device_id()
 
+        # init buffer
+
     def _load_hf_weights(self, weights):
         world_size_ = get_global_world_size()
         assert self.n_routed_experts % world_size_ == 0
