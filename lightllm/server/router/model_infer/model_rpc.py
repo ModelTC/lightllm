@@ -123,13 +123,14 @@ class ModelRpcServer:
             is_xgrammar_constraint_mode = False
             is_prefill_node = False
             is_decode_node = False
+        is_multimodal = kvargs.get("enable_multimodal", False)
         # use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         if is_prefill_node:
             self.backend = ContinuesBatchBackendForPrefillNode(self.info_queue, self.mem_queue)
         elif is_decode_node:
             self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif enable_chunked_prefill:
-            self.backend = ChunkedPrefillBackend()
+            self.backend = ChunkedPrefillBackend(is_multimodal)
         elif use_reward_model:
             self.backend = RewardModelBackend()
         elif return_all_prompt_logprobs:

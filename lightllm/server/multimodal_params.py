@@ -74,6 +74,18 @@ class MultimodalParams:
         images: List[dict] = [],
     ) -> None:
         self.images = [ImageItem(**i) for i in images]
+        max_num = int(os.getenv("MAX_PATCH_NUM", 0))
+        if max_num > 0:
+            self.max_num = max_num
+            return
+        num_image = len(self.images)
+        if num_image == 1:
+            max_num = 12
+        elif num_image > 1 and num_image <= 6:
+            max_num = 6
+        elif num_image > 6:
+            max_num = 0
+        self.max_num = max_num
         return
 
     def verify_and_preload(self):
