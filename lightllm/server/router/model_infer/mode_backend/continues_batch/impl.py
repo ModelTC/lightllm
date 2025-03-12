@@ -8,6 +8,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from .post_process import sample
+from lightllm.utils.dist_utils import get_current_device_id
 
 logger = init_logger(__name__)
 
@@ -86,11 +87,9 @@ class ContinuesBatchBackend(ModeBackend):
         logits = self.model.forward(**kwargs)
         # if kwargs["batch_size"] > 1:
         #     kwargs1, kwargs2 = split_kwargs(**kwargs)
-        #     stream1 = torch.cuda.Stream()
-        #     stream2 = torch.cuda.Stream()
-        #     with torch.cuda.stream(stream1):
+        #     with torch.cuda.stream(self.model.stream1):
         #         logits1 = self.model.forward(**kwargs1)
-        #     with torch.cuda.stream(stream2):
+        #     with torch.cuda.stream(self.model.stream2):
         #         logits2 = self.model.forward(**kwargs2)
         #     torch.cuda.synchronize()
         #     logits = torch.cat([logits1, logits2], dim=0)
@@ -109,11 +108,9 @@ class ContinuesBatchBackend(ModeBackend):
         # logits = self.model.forward(**kwargs)
         if kwargs["batch_size"] > 1:
             kwargs1, kwargs2 = split_kwargs(**kwargs)
-            stream1 = torch.cuda.Stream()
-            stream2 = torch.cuda.Stream()
-            with torch.cuda.stream(stream1):
+            with torch.cuda.stream(self.model.stream1):
                 logits1 = self.model.forward(**kwargs1)
-            with torch.cuda.stream(stream2):
+            with torch.cuda.stream(self.model.stream2):
                 logits2 = self.model.forward(**kwargs2)
             torch.cuda.synchronize()
             logits = torch.cat([logits1, logits2], dim=0)

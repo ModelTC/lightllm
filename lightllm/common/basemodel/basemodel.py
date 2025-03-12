@@ -87,6 +87,8 @@ class TpPartBaseModel:
         self._init_cudagraph()
         self._check_max_len_infer()
         torch.cuda.empty_cache()
+        self.stream1 = torch.cuda.Stream()
+        self.stream2 = torch.cuda.Stream()
         return
 
     def _init_config(self):
