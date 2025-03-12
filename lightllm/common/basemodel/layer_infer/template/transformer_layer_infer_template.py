@@ -76,7 +76,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False, all_reduce_id=infer_state.all_reduce_id)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -85,7 +85,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False, all_reduce_id=infer_state.all_reduce_id)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 
@@ -99,7 +99,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
-            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
+            dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False, all_reduce_id=infer_state.all_reduce_id)
         input_embding.add_(o.view(-1, self.embed_dim_))
         return
 
@@ -108,7 +108,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
-            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
+            dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False, all_reduce_id=infer_state.all_reduce_id)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return
 

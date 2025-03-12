@@ -226,6 +226,7 @@ class TpPartBaseModel:
         b_ready_cache_len: torch.Tensor = None,
         multimodal_params=None,
         is_prefill=True,
+        all_reduce_id=0,
     ):
         assert mem_indexes.is_cuda
 
@@ -241,6 +242,7 @@ class TpPartBaseModel:
                 b_seq_len,
                 b_ready_cache_len,
                 multimodal_params,
+                all_reduce_id,
             )
         else:
             return self._decode(
@@ -253,6 +255,7 @@ class TpPartBaseModel:
                 b_start_loc,
                 b_seq_len,
                 multimodal_params,
+                all_reduce_id,
             )
 
     def _prefill(
@@ -267,9 +270,11 @@ class TpPartBaseModel:
         b_seq_len,
         b_ready_cache_len,
         multimodal_params,
+        all_reduce_id,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
+        infer_state.all_reduce_id = all_reduce_id
         infer_state.is_token_healing = self.is_token_healing
         infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
@@ -321,8 +326,10 @@ class TpPartBaseModel:
         b_start_loc,
         b_seq_len,
         multimodal_params,
+        all_reduce_id,
     ):
         infer_state = self.infer_state_class()
+        infer_state.all_reduce_id = all_reduce_id
         infer_state.is_prefill = False
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num
