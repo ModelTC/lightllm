@@ -140,6 +140,7 @@ class FusedMoeWeightTP(BaseWeight):
                 )
                 self.w1[1] = self._cuda(w1_scale)
                 self.w2[1] = self._cuda(w2_scale)
+                print(self.w1[1].shape, self.w2[1].shape)
                 delattr(self, "w2_scale_list")
                 delattr(self, "experts_up_proj_scales")
                 delattr(self, "experts_gate_proj_scales")

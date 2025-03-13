@@ -3,6 +3,14 @@ import torch
 import numpy as np
 import torch.distributed as dist
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
+from lightllm.utils.dist_utils import get_current_device_id, get_node_world_size, get_global_world_size
+
+try:
+    import deep_ep
+
+    HAS_DEEPEP = True
+except:
+    HAS_DEEPEP = False
 
 
 class Deepseek2InferStateInfo(LlamaInferStateInfo):
@@ -10,6 +18,7 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
         super().__init__()
         self.kv_starts = None
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
+        self.moe_mode = os.getenv("MOE_MODE", "TP").upper()
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         super().init_some_extra_state(model, input_ids)
@@ -34,5 +43,20 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
             self.all_end_idx = cumsum_token_num
             self.start_idx = self.all_start_idx[rank]
             self.end_idx = self.all_end_idx[rank]
+
+        if self.moe_mode == "EP":
+            assert HAS_DEEPEP, "deep_ep is required for expert parallelism"
+            global_world_size = get_global_world_size()
+            group = dist.new_group(list(range(global_world_size)))
+            test_ll_compatibility, num_rdma_bytes = False, 0
+            ll_num_experts = model.config["n_routed_experts"]
+            self.buffer = deep_ep.Buffer(
+                group,
+                int(1e9),
+                num_rdma_bytes,
+                low_latency_mode=test_ll_compatibility,
+                num_qps_per_rank=(ll_num_experts // global_world_size if test_ll_compatibility else 1),
+            )
+            print("Create deepep Buffer!!!")
 
         return

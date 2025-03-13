@@ -226,8 +226,10 @@ class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
         )
 
         self._load_mlp(f"model.layers.{self.layer_num_}.mlp.shared_experts")
-
-        load_func = FusedMoeWeightEP if enable_env_vars("ETP_MODE_ENABLED") else FusedMoeWeightTP
+        moe_mode = os.getenv("MOE_MODE", "TP")
+        assert moe_mode in ["EP", "TP"]
+        load_func = FusedMoeWeightEP if moe_mode == "EP" else FusedMoeWeightTP
+        print(load_func, moe_mode)
         self.experts = load_func(
             gate_proj_name="gate_proj",
             down_proj_name="down_proj",

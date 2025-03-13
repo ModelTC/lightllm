@@ -2,6 +2,7 @@ import torch
 from typing import Optional, Tuple, List, Dict, Any
 from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
 from .fused_moe_weight_tp import FusedMoeWeightTP
+from lightllm.common.fused_moe.grouped_fused_moe_ep import fused_experts_impl
 
 
 class FusedMoeWeightEP(FusedMoeWeightTP):
@@ -32,73 +33,137 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
             layer_num,
             quant_cfg,
         )
-        self.expert_gate_up_proj_etp = None
-        self.expert_down_proj_etp = None
-        self.global_rank_ = get_global_rank()
-        self.device_id_ = get_current_device_id()
+        global_world_size = get_global_world_size()
+        self.global_rank = get_global_rank()
+        self.all_routed_experts = self.n_routed_experts
+        assert self.n_routed_experts % global_world_size == 0
+        self.n_routed_experts = self.n_routed_experts // global_world_size
+        self.experts_up_projs = [None] * self.n_routed_experts
+        self.experts_gate_projs = [None] * self.n_routed_experts
+        self.experts_up_proj_scales = [None] * self.n_routed_experts
+        self.experts_gate_proj_scales = [None] * self.n_routed_experts
+        self.e_score_correction_bias = None
+        self.w2_list = [None] * self.n_routed_experts
+        self.w2_scale_list = [None] * self.n_routed_experts
+        self.scoring_func = network_config["scoring_func"]
+        self.w1 = [None, None]  # weight, weight_scale
+        self.w2 = [None, None]  # weight, weight_scale
+        self.tp_rank_ = 0
 
         # init buffer
 
+    def experts(
+        self,
+        input_tensor,
+        router_logits,
+        top_k,
+        renormalize,
+        use_grouped_topk,
+        topk_group,
+        num_expert_group,
+        buffer,
+        prefill,
+    ):
+        from lightllm.common.fused_moe.topk_select import select_experts
+
+        topk_weights, topk_ids = select_experts(
+            hidden_states=input_tensor,
+            router_logits=router_logits,
+            correction_bias=self.e_score_correction_bias,
+            use_grouped_topk=use_grouped_topk,
+            top_k=top_k,
+            renormalize=renormalize,
+            topk_group=topk_group,
+            num_expert_group=num_expert_group,
+            scoring_func=self.scoring_func,
+        )
+        w1, w1_scale = self.w1
+        w2, w2_scale = self.w2
+        use_fp8_w8a8 = self.quant_method is not None
+
+        fused_experts_impl(
+            hidden_states=input_tensor,
+            w1=w1,
+            w2=w2,
+            topk_weights=topk_weights,
+            topk_idx=topk_ids.to(torch.long),
+            num_experts=self.all_routed_experts,  # number of all experts
+            _buffer=buffer,
+            prefill=prefill,
+            inplace=True,
+            use_fp8_w8a8=use_fp8_w8a8,
+            use_fp8_all2all=use_fp8_w8a8,
+            use_int8_w8a16=False,  # default to False
+            w1_scale=w1_scale,
+            w2_scale=w2_scale,
+            previous_event=None,  # for overlap
+        )
+        return
+
     def _load_hf_weights(self, weights):
-        world_size_ = get_global_world_size()
-        assert self.n_routed_experts % world_size_ == 0
-        n_expert_ep = self.n_routed_experts // world_size_
+        n_expert_ep = self.n_routed_experts
 
         # tp to ep here
-        expert_gate_up_proj_last = None
-        expert_down_proj_last = None
         if self.e_score_correction_bias_name in weights:
             self.e_score_correction_bias = self._cuda(weights[self.e_score_correction_bias_name])
 
         for i_experts_ep in range(n_expert_ep):
-            expert_up_proj = None
-            expert_gate_proj = None
-            expert_gate_up_proj = None
-            expert_down_proj = None
             i_experts = i_experts_ep + n_expert_ep * self.global_rank_
+            w1_weight = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.weight"
+            w2_weight = f"{self.weight_prefix}.{i_experts}.{self.w2_weight_name}.weight"
+            w3_weight = f"{self.weight_prefix}.{i_experts}.{self.w3_weight_name}.weight"
+            if w1_weight in weights:
+                self.experts_gate_projs[i_experts_ep] = weights[w1_weight][
+                    self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1), :
+                ]
+            if w3_weight in weights:
+                self.experts_up_projs[i_experts_ep] = weights[w3_weight][
+                    self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1), :
+                ]
 
-            if f"{self.weight_prefix}.{i_experts}.up_proj.weight" in weights:
-                expert_up_proj = weights[f"{self.weight_prefix}.{i_experts}.up_proj.weight"]
+            if w2_weight in weights:
+                self.w2_list[i_experts_ep] = weights[w2_weight][
+                    :, self.split_inter_size * self.tp_rank_ : self.split_inter_size * (self.tp_rank_ + 1)
+                ]
+        if self.quant_method is not None:
+            self._load_weight_scale(weights)
+        self._fuse()
 
-                # self.experts_up_proj[i_experts] = expert_up_proj
+    def _load_weight_scale(self, weights: Dict[str, torch.Tensor]) -> None:
+        block_size = 1
+        if hasattr(self.quant_method, "block_size"):
+            block_size = self.quant_method.block_size
+        n_expert_ep = self.n_routed_experts
+        for i_experts_ep in range(n_expert_ep):
+            i_experts = i_experts_ep + n_expert_ep * self.global_rank
+            w1_scale = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.{self.weight_scale_suffix}"
+            w2_scale = f"{self.weight_prefix}.{i_experts}.{self.w2_weight_name}.{self.weight_scale_suffix}"
+            w3_scale = f"{self.weight_prefix}.{i_experts}.{self.w3_weight_name}.{self.weight_scale_suffix}"
+            if w1_scale in weights:
+                self.experts_gate_proj_scales[i_experts_ep] = weights[w1_scale][
+                    self.split_inter_size
+                    // block_size
+                    * self.tp_rank_ : self.split_inter_size
+                    // block_size
+                    * (self.tp_rank_ + 1),
+                    :,
+                ]
+            if w3_scale in weights:
+                self.experts_up_proj_scales[i_experts_ep] = weights[w3_scale][
+                    self.split_inter_size
+                    // block_size
+                    * self.tp_rank_ : self.split_inter_size
+                    // block_size
+                    * (self.tp_rank_ + 1),
+                    :,
+                ]
 
-            if f"{self.weight_prefix}.{i_experts}.gate_proj.weight" in weights:
-                expert_gate_proj = weights[f"{self.weight_prefix}.{i_experts}.gate_proj.weight"]
-                # self.experts_gate_proj[i_experts] = expert_gate_proj
-
-            if expert_gate_proj is not None and expert_up_proj is not None:
-                expert_gate_up_proj = torch.cat([expert_gate_proj, expert_up_proj], dim=0)
-                self.experts_gate_projs[i_experts_ep] = expert_gate_up_proj  # self._cuda(expert_gate_up_proj)
-                expert_gate_up_proj_last = expert_gate_up_proj
-
-            if f"{self.weight_prefix}.{i_experts}.down_proj.weight" in weights:
-                expert_down_proj = weights[f"{self.weight_prefix}.{i_experts}.down_proj.weight"]
-                self.experts_up_projs[i_experts_ep] = expert_down_proj  # self._cuda(expert_down_proj)
-                expert_down_proj_last = expert_down_proj
-
-            with self.lock:
-                if expert_gate_up_proj_last is not None:
-                    # package, if there is broken experts
-
-                    if self.expert_gate_up_proj_etp is None:
-                        self.expert_gate_up_proj_etp = torch.zeros(
-                            (n_expert_ep,) + expert_gate_up_proj_last.shape, dtype=expert_gate_up_proj_last.dtype
-                        ).cuda(self.device_id_)
-
-                    for i_experts_ep in range(n_expert_ep):
-                        if self.experts_gate_projs[i_experts_ep] is not None:
-                            self.expert_gate_up_proj_etp[i_experts_ep, :] = self.experts_gate_projs[i_experts_ep]
-
-                if expert_down_proj_last is not None:
-                    # package, if there is broken experts
-                    if self.expert_down_proj_etp is None:
-                        self.expert_down_proj_etp = torch.zeros(
-                            (n_expert_ep,) + expert_down_proj_last.shape, dtype=expert_down_proj_last.dtype
-                        ).cuda(self.device_id_)
-
-                    for i_experts_ep in range(n_expert_ep):
-                        if self.experts_up_projs[i_experts_ep] is not None:
-                            self.expert_down_proj_etp[i_experts_ep, :] = self.experts_up_projs[i_experts_ep]
-
-    def verify_load(self):
-        return self.expert_gate_up_proj_etp is not None and self.expert_down_proj_etp is not None
+            if w2_scale in weights:
+                self.w2_scale_list[i_experts_ep] = weights[w2_scale][
+                    :,
+                    self.split_inter_size
+                    // block_size
+                    * self.tp_rank_ : self.split_inter_size
+                    // block_size
+                    * (self.tp_rank_ + 1),
+                ]

@@ -98,7 +98,8 @@ class TpPartBaseModel:
         repair_config(self.config, same_names=["num_hidden_layers", "n_layer"])
         if self.finetune_config:
             self.config["vocab_size"] = self.finetune_config.vocab_size
-
+        # self.config["num_hidden_layes"] = 6
+        # self.config["n_layer"] = 6
         return
 
     @final

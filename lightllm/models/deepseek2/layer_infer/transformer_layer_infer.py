@@ -65,7 +65,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         super().__init__(layer_num, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         if self.enable_dp:
-            self.tp_q_head_num_ = int(self.tp_q_head_num_ * self.world_size_)
+            self.tp_q_head_num_ = int(self.tp_q_head_num_ * self.tp_world_size_)
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.num_heads = network_config["num_attention_heads"]
         self.num_kv_heads = network_config["num_key_value_heads"]
@@ -79,13 +79,13 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def _bind_ffn(self):
         if self.is_moe:
             if self.enable_dp:
-                if os.environ.get("MOE_MODE", "TP") == "TP":
+                moe_mode = os.environ.get("MOE_MODE", "TP")
+                if moe_mode == "TP":
                     self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_dtp, self)
+                elif moe_mode == "EP":
+                    self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_edp, self)
             else:
-                if os.environ.get("ETP_MODE_ENABLED") == "true":
-                    self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_etp, self)
-                else:
-                    self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
+                self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
         else:
             self._ffn = partial(LlamaTransformerLayerInfer._ffn, self)
 
@@ -601,58 +601,31 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             dist.all_reduce(hidden_states, op=dist.ReduceOp.SUM, async_op=False)
         return hidden_states[infer_state.start_idx : infer_state.end_idx]
 
-    def _moe_ffn_etp(
+    def _moe_ffn_edp(
         self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
-        world_size_ = self.world_size_
-        # num_local_experts = self.n_shared_experts // world_size_
-        # local_expert_offset = self.tp_rank_ * num_local_experts
-        num_experts_per_token = self.num_experts_per_tok
-        num_experts = self.n_routed_experts
-        # num_expert_groups = self.n_group
-        # num_groups_per_token = self.topk_group
-        gating_scaling_factor = self.routed_scaling_factor
-        # gating_normalize_prob = self.norm_topk_prob
-        rank_self = self.tp_rank_
 
-        hidden_states = input.view(-1, self.embed_dim_)
-        num_tokens, hidden_dim = hidden_states.shape
+        hidden_states = input
+        token_num, hidden_dim = hidden_states.shape
+        if self.n_shared_experts is not None:
+            shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
 
-        final_hidden_states = torch.empty(
-            num_tokens, hidden_dim, device=hidden_states.device, dtype=hidden_states.dtype
-        )
-
-        # router_logits_len = hidden_states.shape[0]*layer_weight.moe_gate.shape[1]
         router_logits = layer_weight.moe_gate.mm(hidden_states)
-
-        # now some parameter is not supported yet
-        # assert gating_normalize_prob is False
-        # assert num_expert_groups<=1
-
-        import lightllm_moe_etp_kernel
-
-        lightllm_moe_etp_kernel.moe_fused_all(
-            router_logits.contiguous(),
-            hidden_states.contiguous(),
-            layer_weight.gate_up_proj.weight.contiguous(),  # transpose
-            layer_weight.down_proj.weight.contiguous(),  # transpose
-            layer_weight.experts.expert_gate_up_proj_etp.contiguous(),
-            layer_weight.experts.expert_down_proj_etp.contiguous(),
-            infer_state.mem_manager.work_buffer.contiguous(),
-            infer_state.mem_manager.work_buffer.nelement(),
-            final_hidden_states.contiguous(),
-            rank_self,
-            gating_scaling_factor,
-            num_experts,
-            num_experts_per_token,
-            num_tokens,
-            world_size_,
-            hidden_dim,
-            layer_weight.gate_up_proj.weight.size(1) // 2,
-            layer_weight.experts.expert_gate_up_proj_etp.size(1) // 2,
-            self.n_shared_experts is not None,
+        layer_weight.experts.experts(
+            hidden_states,
+            router_logits=router_logits,
+            top_k=self.num_experts_per_tok,
+            renormalize=self.norm_topk_prob,
+            use_grouped_topk=self.n_group,
+            topk_group=self.topk_group,
+            num_expert_group=self.n_group,
+            buffer=infer_state.buffer,
+            prefill=infer_state.is_prefill,
         )
+        hidden_states.mul_(self.routed_scaling_factor)
 
-        router_logits = None
+        if self.n_shared_experts is not None:
+            hidden_states.add_(shared_output)
 
-        return final_hidden_states.view(num_tokens, hidden_dim)
+        hidden_states = hidden_states.view(token_num, hidden_dim)
+        return hidden_states
