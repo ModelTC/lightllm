@@ -188,6 +188,7 @@ class ModeBackend:
                 self.model = Phi3TpPartModel(model_kvargs)
             elif self.model_type in ["deepseek_v2", "deepseek_v3"]:
                 self.model = Deepseek2TpPartModel(model_kvargs)
+                custom_comm_ops.set_deepep(model_cfg["n_routed_experts"])
             elif self.model_type == "internvl_chat":
                 llm_model_type = model_cfg.get("llm_config").get("model_type")
                 if llm_model_type == "phi3":

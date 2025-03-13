@@ -26,6 +26,7 @@ from torch.distributed import ReduceOp
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.device_utils import has_nvlink
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.utils.dist_utils import get_current_device_id, get_node_world_size, get_global_world_size
 
 original_all_reduce = torch.distributed.all_reduce
 original_all_gather_into_tensor = torch.distributed.all_gather_into_tensor
@@ -48,6 +49,14 @@ except:
     HAS_LIGHTLLM_KERNEL = False
     logger.info("lightllm_kernel is not installed, you can't use custom allgather")
 
+try:
+    import deep_ep
+
+    HAS_DEEPEP = True
+except:
+    HAS_DEEPEP = False
+    logger.info("deep_ep is not installed, you can't use the api of it.")
+
 
 class CustomCommunicationOp:
     def __init__(self):
@@ -66,6 +75,23 @@ class CustomCommunicationOp:
                     yield
         else:
             yield
+
+    def set_deepep(self, n_routed_experts):
+        moe_mode = os.getenv("MOE_MODE", "TP")
+        if moe_mode == "TP":
+            self.ep_buffer = None
+            return
+        assert HAS_DEEPEP, "deep_ep is required for expert parallelism"
+        global_world_size = get_global_world_size()
+        group = dist.new_group(list(range(global_world_size)))
+        test_ll_compatibility, num_rdma_bytes = False, 0
+        self.ep_buffer = deep_ep.Buffer(
+            group,
+            int(1e9),
+            num_rdma_bytes,
+            low_latency_mode=test_ll_compatibility,
+            num_qps_per_rank=(n_routed_experts // global_world_size if test_ll_compatibility else 1),
+        )
 
     def set_custom_reduce(self):
         ENABLE_VLLM_REDUCE = os.getenv("ENABLE_VLLM_REDUCE", "True").upper() in ["ON", "TRUE", "1"]

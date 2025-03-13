@@ -3,6 +3,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
 from .fused_moe_weight_tp import FusedMoeWeightTP
 from lightllm.common.fused_moe.grouped_fused_moe_ep import fused_experts_impl
+from lightllm.distributed import custom_comm_ops
 
 
 class FusedMoeWeightEP(FusedMoeWeightTP):
@@ -61,7 +62,6 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
         use_grouped_topk,
         topk_group,
         num_expert_group,
-        buffer,
         prefill,
     ):
         from lightllm.common.fused_moe.topk_select import select_experts
@@ -80,7 +80,6 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
         use_fp8_w8a8 = self.quant_method is not None
-
         fused_experts_impl(
             hidden_states=input_tensor,
             w1=w1,
@@ -88,7 +87,7 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
             topk_weights=topk_weights,
             topk_idx=topk_ids.to(torch.long),
             num_experts=self.all_routed_experts,  # number of all experts
-            _buffer=buffer,
+            _buffer=custom_comm_ops.ep_buffer,
             prefill=prefill,
             inplace=True,
             use_fp8_w8a8=use_fp8_w8a8,
