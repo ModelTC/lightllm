@@ -208,8 +208,13 @@ class TpPartBaseModel:
         self.graph = (
             None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
         )
+        self.graph2 = (
+            None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
+        )
         if self.graph is not None:
-            self.graph.warmup(self)
+            self.graph.warmup(self, 0)
+        if self.graph2 is not None:
+            self.graph2.warmup(self, 1)
 
     def _init_custom(self):
         pass
@@ -358,12 +363,13 @@ class TpPartBaseModel:
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
-        if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
-            if self.graph.need_capture(batch_size):
+        graph = self.graph if all_reduce_id == 0 else self.graph2
+        if graph is not None and graph.can_run(batch_size, max_len_in_batch):
+            if graph.need_capture(batch_size):
                 infer_state.is_cuda_graph = True
-                predict_logics = self.graph.capture_decode(self._token_forward, input_ids, infer_state)
+                predict_logics = graph.capture_decode(self._token_forward, input_ids, infer_state)
             else:
-                predict_logics = self.graph.replay(input_ids, infer_state)
+                predict_logics = graph.replay(input_ids, infer_state)
         else:
             predict_logics = self._token_forward(input_ids, infer_state)
         return predict_logics

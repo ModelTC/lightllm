@@ -40,7 +40,7 @@ class CudaGraph:
             decode_func(input_ids, copy.copy(infer_state))  # infer_state must copy()
             torch.cuda.synchronize()
 
-        with custom_comm_ops.lightllm_capture_graph():
+        with custom_comm_ops.lightllm_capture_graph(infer_state.all_reduce_id):
             with torch.cuda.graph(graph_obj, pool=self.mempool):
                 predict_logics = decode_func(input_ids, infer_state)
         self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
@@ -56,7 +56,7 @@ class CudaGraph:
         return graph_predict_logics
 
     @torch.no_grad()
-    def warmup(self, model):
+    def warmup(self, model, all_reduce_id):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
         for batch_size in range(self.max_batch_size, 0, -1):
             # dummy prefill
@@ -82,6 +82,7 @@ class CudaGraph:
                 b_ready_cache_len=b_ready_cache_len,
                 is_prefill=True,
                 multimodal_params=[],
+                # all_reduce_id=all_reduce_id,
             )
             mem_indexes = None
             prob_out = torch.softmax(logics, dim=-1)
@@ -106,6 +107,7 @@ class CudaGraph:
                 b_start_loc,
                 b_seq_len,
                 is_prefill=False,
+                all_reduce_id=all_reduce_id,
             )
             mem_indexes = None
             model.mem_manager.free_all()
