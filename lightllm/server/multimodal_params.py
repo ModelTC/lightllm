@@ -72,9 +72,10 @@ class MultimodalParams:
     def __init__(
         self,
         images: List[dict] = [],
+        max_num: int = -1,
     ) -> None:
         self.images = [ImageItem(**i) for i in images]
-        max_num = int(os.getenv("MAX_PATCH_NUM", 0))
+        max_num = int(os.getenv("MAX_PATCH_NUM", max_num))
         if max_num > 0:
             self.max_num = max_num
             return
