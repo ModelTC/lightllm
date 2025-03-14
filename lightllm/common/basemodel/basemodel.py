@@ -78,6 +78,11 @@ class TpPartBaseModel:
             self._init_mem_manager()
             self._init_weights()
 
+        self.stream_num = 2
+        self.graph = [None] * self.stream_num
+        self.stream = [None] * self.stream_num
+        for i in range(self.stream_num):
+            self.stream[i] = torch.cuda.Stream()
         self._init_kv_move_buffer()
         self._check_mem_size()
         self._init_req_manager()
@@ -203,11 +208,12 @@ class TpPartBaseModel:
             raise ValueError(f"Unsupport datatype {self.data_type}!")
 
     def _init_cudagraph(self):
-        self.graph = (
-            None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
-        )
-        if self.graph is not None:
-            self.graph.warmup(self)
+        for i in range(self.stream_num):
+            self.graph[i] = (
+                None if self.disable_cudagraph else CudaGraph(self.stream[i], self.graph_max_batch_size, self.graph_max_len_in_batch)
+            )
+            if self.graph[i] is not None:
+                self.graph[i].warmup(self, i)
 
     def _init_custom(self):
         pass
@@ -226,6 +232,7 @@ class TpPartBaseModel:
         b_ready_cache_len: torch.Tensor = None,
         multimodal_params=None,
         is_prefill=True,
+        all_reduce_id=0,
     ):
         assert mem_indexes.is_cuda
 
@@ -241,6 +248,7 @@ class TpPartBaseModel:
                 b_seq_len,
                 b_ready_cache_len,
                 multimodal_params,
+                all_reduce_id,
             )
         else:
             return self._decode(
@@ -253,6 +261,7 @@ class TpPartBaseModel:
                 b_start_loc,
                 b_seq_len,
                 multimodal_params,
+                all_reduce_id,
             )
 
     def _prefill(
@@ -267,9 +276,11 @@ class TpPartBaseModel:
         b_seq_len,
         b_ready_cache_len,
         multimodal_params,
+        all_reduce_id,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
+        infer_state.all_reduce_id = all_reduce_id
         infer_state.is_token_healing = self.is_token_healing
         infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
@@ -321,8 +332,10 @@ class TpPartBaseModel:
         b_start_loc,
         b_seq_len,
         multimodal_params,
+        all_reduce_id,
     ):
         infer_state = self.infer_state_class()
+        infer_state.all_reduce_id = all_reduce_id
         infer_state.is_prefill = False
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num
@@ -349,12 +362,13 @@ class TpPartBaseModel:
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
-        if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
-            if self.graph.need_capture(batch_size):
+        graph = self.graph[all_reduce_id]
+        if graph is not None and graph.can_run(batch_size, max_len_in_batch):
+            if graph.need_capture(batch_size):
                 infer_state.is_cuda_graph = True
-                predict_logics = self.graph.capture_decode(self._token_forward, input_ids, infer_state)
+                predict_logics = graph.capture_decode(self._token_forward, input_ids, infer_state)
             else:
-                predict_logics = self.graph.replay(input_ids, infer_state)
+                predict_logics = graph.replay(input_ids, infer_state)
         else:
             predict_logics = self._token_forward(input_ids, infer_state)
         return predict_logics
@@ -372,17 +386,17 @@ class TpPartBaseModel:
 
     @final
     def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        g_cache_manager.cache_env_in(
-            is_cuda_graph=infer_state.is_cuda_graph,
-            cur_batch_size=infer_state.batch_size,
-            cuda_graph_max_batch_size=self.graph_max_batch_size,
-        )
+        # g_cache_manager.cache_env_in(
+        #     is_cuda_graph=infer_state.is_cuda_graph,
+        #     cur_batch_size=infer_state.batch_size,
+        #     cuda_graph_max_batch_size=self.graph_max_batch_size,
+        # )
         cuda_input_ids = input_ids
         input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
         for i in range(0, self.layers_num):
             input_embs = self.layers_infer[i].token_forward(input_embs, infer_state, self.trans_layers_weight[i])
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
-        g_cache_manager.cache_env_out()
+        # g_cache_manager.cache_env_out()
         return predict_logics
 
     @final

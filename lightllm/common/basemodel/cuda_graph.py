@@ -10,11 +10,12 @@ logger = init_logger(__name__)
 class CudaGraph:
     # CudaGraph forward pass for the decoding stage.
 
-    def __init__(self, max_batch_size=8, max_len_in_batch=8192):
+    def __init__(self, stream, max_batch_size=8, max_len_in_batch=8192):
         self.graph = {}
         self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
         self.max_batch_size = max_batch_size
         self.graph_max_len_in_batch = max_len_in_batch
+        self.stream = stream
 
     def can_run(self, batch_size, max_len_in_batch):
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
@@ -40,8 +41,8 @@ class CudaGraph:
             decode_func(input_ids, copy.copy(infer_state))  # infer_state must copy()
             torch.cuda.synchronize()
 
-        with custom_comm_ops.lightllm_capture_graph():
-            with torch.cuda.graph(graph_obj, pool=self.mempool):
+        with custom_comm_ops.lightllm_capture_graph(infer_state.all_reduce_id):
+            with torch.cuda.graph(graph_obj, stream=self.stream, pool=self.mempool):
                 predict_logics = decode_func(input_ids, infer_state)
         self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
         graph_obj.replay()
@@ -56,7 +57,7 @@ class CudaGraph:
         return graph_predict_logics
 
     @torch.no_grad()
-    def warmup(self, model):
+    def warmup(self, model, all_reduce_id):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
         for batch_size in range(self.max_batch_size, 0, -1):
             # dummy prefill
@@ -82,6 +83,7 @@ class CudaGraph:
                 b_ready_cache_len=b_ready_cache_len,
                 is_prefill=True,
                 multimodal_params=[],
+                # all_reduce_id=all_reduce_id,
             )
             mem_indexes = None
             prob_out = torch.softmax(logics, dim=-1)
@@ -106,6 +108,7 @@ class CudaGraph:
                 b_start_loc,
                 b_seq_len,
                 is_prefill=False,
+                all_reduce_id=all_reduce_id,
             )
             mem_indexes = None
             model.mem_manager.free_all()
