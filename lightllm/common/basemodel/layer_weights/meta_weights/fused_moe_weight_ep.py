@@ -87,7 +87,7 @@ class FusedMoeWeightEP(FusedMoeWeightTP):
             topk_weights=topk_weights,
             topk_idx=topk_ids.to(torch.long),
             num_experts=self.all_routed_experts,  # number of all experts
-            _buffer=custom_comm_ops.ep_buffer,
+            buffer=custom_comm_ops.ep_buffer,
             prefill=prefill,
             inplace=True,
             use_fp8_w8a8=use_fp8_w8a8,
