@@ -106,8 +106,8 @@ class HttpServerManager:
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
-    async def _alloc_resource(self, data, num):
-        md5sum = hashlib.md5(data).hexdigest()
+    async def _alloc_resource(self, data, num, max_num):
+        md5sum = hashlib.md5(data).hexdigest() + "_" + str(max_num)
         wait_time = 1
         while True:
             record = self.cache_client.root.alloc(md5sum, num)
@@ -126,8 +126,11 @@ class HttpServerManager:
     async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
+            max_num = multimodal_params.max_num
             for img in multimodal_params.images:
-                record = await self._alloc_resource(img.read(), self.tokenizer.get_image_token_length(img))
+                record = await self._alloc_resource(
+                    img.read(), self.tokenizer.get_image_token_length(img, max_num), max_num
+                )
                 img.uuid = record["id"]
                 img.token_id = record["token_id"]
                 img.token_num = record["token_num"]
