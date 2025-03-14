@@ -2,6 +2,7 @@ import numpy as np
 from multiprocessing import Queue
 import multiprocessing
 from lightllm.utils.dist_utils import init_distributed_env
+from lightllm.utils.envs_utils import get_env_start_args
 
 
 def test_model_inference(args, model_class):
@@ -16,12 +17,13 @@ def test_model_inference(args, model_class):
             "world_size": args.tp,
             "weight_dir": args.model_dir,
             "load_way": "HF",
-            "max_total_token_num": args.max_total_token_num,
+            "max_total_token_num": args.batch_size * (args.input_len + args.output_len + 1),
             "mem_faction": args.mem_fraction,
             "max_req_num": max(args.batch_size, 1000),
-            "batch_max_tokens": args.input_len,
+            "batch_max_tokens": args.batch_size * args.input_len,
             "run_mode": "normal",
             "max_seq_length": (args.input_len + args.output_len),
+            "disable_cudagraph": True if args.profile else False,
         }
         proc = multiprocessing.Process(
             target=tppart_model_infer,
@@ -40,6 +42,8 @@ def test_model_inference(args, model_class):
 
 
 def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_len, ans_queue):
+    args = get_env_start_args()
+    import triton.profiler as proton
     import torch
     from lightllm.distributed import custom_comm_ops
     from lightllm.utils.dist_utils import set_current_device_id
@@ -136,6 +140,12 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
 
     total_token_num = batch_size * input_len
     mem_indexes = model_part.req_manager.mem_manager.alloc(test_data.shape[0]).cuda()
+
+    rank_id = model_kvargs["rank_id"]
+    if rank_id == 0:
+        if args.profile:
+            proton.start(name="forward_prefill", context="python")
+
     logics = model_part.forward(
         batch_size,
         total_token_num,
@@ -153,9 +163,15 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
     predict_ids = predict_ids.detach().cpu().numpy()
 
     torch.cuda.synchronize()
-    rank_id = model_kvargs["rank_id"]
+
     if rank_id == 0:
+        if args.profile:
+            proton.finalize()
         print("prefill time cost:", (time.time() - prefill_start_time) * 1000)
+
+    if rank_id == 0:
+        if args.profile:
+            proton.start(name="forward_decode", context="python")
 
     for i in range(output_len):
         torch.cuda.synchronize()
@@ -187,6 +203,12 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
     end_time = time.time()
 
     if rank_id == 0:
+        if args.profile:
+            proton.finalize()
+            # triton version need >= 3.2.0
+            # pip install llnl-hatchet
+            # proton-viewer -m time/ms,time/% forward_prefill.hatchet
+            # proton-viewer -m time/ms,time/% forward_decode.hatchet
         print("time total cost(ms):", (end_time - start_time) * 1000)
     ans_queue.put(True)
 
