@@ -15,11 +15,13 @@ logger = init_logger(__name__)
 import deep_ep
 from deep_ep import Buffer, EventOverlap
 import deep_gemm
+import os
+from deep_gemm import bench_kineto, calc_diff, ceil_div, get_col_major_tma_aligned_tensor
 
 # Set the number of SMs to use
 Buffer.set_num_sms(24)
-import os
-from deep_gemm import bench_kineto, calc_diff, ceil_div, get_col_major_tma_aligned_tensor
+num_max_dispatch_tokens_per_rank = 512
+
 
 def init_dist(local_rank: int, num_local_ranks: int):
     # NOTES: you may rewrite this function with your own cluster settings
@@ -50,13 +52,6 @@ def per_block_cast_to_fp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     x_amax = x_view.abs().float().amax(dim=(1, 3), keepdim=True).clamp(1e-4)
     x_scaled = (x_view * (448.0 / x_amax)).to(torch.float8_e4m3fn)
     return x_scaled.view_as(x_padded)[:m, :n].contiguous(), (x_amax / 448.0).view(x_view.size(0), x_view.size(2))
-
-def per_token_cast_to_fp8(x: torch.Tensor):
-    assert x.dim() == 2 and x.size(1) % 128 == 0
-    m, n = x.shape
-    x_view = x.view(m, -1, 128)
-    x_amax = x_view.abs().float().amax(dim=2).view(m, -1).clamp(1e-4)
-    return (x_view * (448.0 / x_amax.unsqueeze(2))).to(torch.float8_e4m3fn).view(m, n), (x_amax / 448.0).view(m, -1)
 
 def fused_experts_impl_ref(
     x: torch.Tensor, # [M, K]
@@ -118,18 +113,11 @@ def fused_experts_impl_ref(
         if num_tokens == 0:
             continue
         tokens_for_this_expert = sorted_tokens[start_idx:end_idx]
-
-        expert_out = tokens_for_this_expert
-        # expert_out = torch.matmul(tokens_for_this_expert, w1[i].T)
-
-        # w1_out = torch.matmul(tokens_for_this_expert, w1[i,:N//2,:].T)
-        # w2_out = torch.matmul(tokens_for_this_expert, w1[i,N//2:,:].T)             
-
-        # tmp = w1_out * w2_out
-        # tmp = torch.nn.functional.silu(tmp)
-
-        # expert_out = torch.matmul(tmp, w2[i].T)
-
+        w1_out = torch.matmul(tokens_for_this_expert, w1[i,:N//2,:].T)
+        w2_out = torch.matmul(tokens_for_this_expert, w1[i,N//2:,:].T)             
+        tmp = torch.nn.functional.silu(w1_out)
+        tmp = tmp * w2_out
+        expert_out = torch.matmul(tmp, w2[i].T)
         outputs.append(expert_out)
         start_idx = end_idx
 
@@ -165,7 +153,7 @@ def fused_experts_impl(
     topk_idx: torch.Tensor, # [M, topk]
     num_experts: int,
     buffer: Buffer,
-    prefill: bool,
+    normal_mode: bool,
     inplace: bool = False,
     use_fp8_w8a8: bool = False,
     use_fp8_all2all: bool = False,
@@ -195,15 +183,14 @@ def fused_experts_impl(
         block_size_n = w1.shape[1] // w1_scale.shape[1]
         block_size_k = w1.shape[2] // w1_scale.shape[2]
     
-    assert block_size_k != 0, "block_size_k can not be 0"
-
-    # input_scale = torch.empty((M, K // block_size_k), dtype=torch.float32, device=hidden_states.device)
-    # qinput_tensor = torch.empty((M, K), dtype=w1.dtype, device=hidden_states.device)
-    # per_token_group_quant_fp8(hidden_states, block_size_k, qinput_tensor, input_scale)
-    qinput_tensor, input_scale = per_token_cast_to_fp8(hidden_states)
+    assert block_size_k == 128, "block_size_k must be 128"
 
     combined_x = None
-    if prefill:
+    if normal_mode:
+        input_scale = torch.empty((M, K // block_size_k), dtype=torch.float32, device=hidden_states.device)
+        qinput_tensor = torch.empty((M, K), dtype=w1.dtype, device=hidden_states.device)
+        per_token_group_quant_fp8(hidden_states, block_size_k, qinput_tensor, input_scale)
+
         # get_dispatch_layout
         num_tokens_per_rank, num_tokens_per_rdma_rank, num_tokens_per_expert, is_token_in_rank, previous_event  = \
         buffer.get_dispatch_layout(topk_idx, num_experts, previous_event=previous_event, async_finish=False,
@@ -211,101 +198,122 @@ def fused_experts_impl(
 
         # normal dispatch
         recv_x, recv_topk_idx, recv_topk_weights, num_recv_tokens_per_expert_list, handle, event = \
-        buffer.dispatch( hidden_states, topk_idx=topk_idx, topk_weights=topk_weights,
+        buffer.dispatch( (qinput_tensor, input_scale), topk_idx=topk_idx, topk_weights=topk_weights,
                          num_tokens_per_rank=num_tokens_per_rank, num_tokens_per_rdma_rank=num_tokens_per_rdma_rank,
                          is_token_in_rank=is_token_in_rank, num_tokens_per_expert=num_tokens_per_expert,
                          previous_event=previous_event, async_finish=False,
-                         allocate_on_comm_stream=False)
-        if dist.get_rank() == 0:
-            print(recv_x.shape, num_recv_tokens_per_expert_list, recv_topk_idx, recv_topk_weights)
+                         allocate_on_comm_stream=False, expert_alignment=128)
+
+        # scatter
+        # TODO fused kernel
+        all_tokens = sum(num_recv_tokens_per_expert_list)
+        input_tensor = (torch.empty((all_tokens, K), device=hidden_states.device, dtype=qinput_tensor.dtype), \
+                        torch.empty((all_tokens, K//128), device=hidden_states.device, dtype=torch.float32))
+        m_indices = torch.empty(all_tokens, device=hidden_states.device, dtype=torch.int32)
+
+        cumsum = torch.cumsum(torch.tensor([0] + num_recv_tokens_per_expert_list[:-1], device=hidden_states.device), dim=0)
+        cur_pos = torch.zeros_like(cumsum, device=hidden_states.device, dtype=torch.int32)
+        
+        for i in range(recv_topk_idx.shape[0]):
+            for j in range(recv_topk_idx.shape[1]):
+                if recv_topk_idx[i][j] >= 0:
+                    dst = cumsum[recv_topk_idx[i][j]] + cur_pos[recv_topk_idx[i][j]]
+                    input_tensor[0][dst][:] = recv_x[0][i][:]
+                    input_tensor[1][dst][:] = recv_x[1][i][:]
+                    cur_pos[recv_topk_idx[i][j]] += 1
+        cur = 0
+        for i,k in enumerate(num_recv_tokens_per_expert_list):
+            m_indices[cur:cur+k] = i
+            cur += k
 
         # groupgemm (contiguous layout)
-        # gemm_out_a = torch.empty((recv_x[0].shape[0], N), device=hidden_states.device, dtype=hidden_states.dtype)
-        # m_indices = torch.empty(recv_x[0].shape[0], device=hidden_states.device, dtype=torch.int)
-        # cur = 0
-        # for i, num in enumerate(num_recv_tokens_per_expert_list):
-        #     m_indices[cur:cur+num] = i
-        #     cur += num
+        gemm_out_a = torch.empty((all_tokens, N), device=hidden_states.device, dtype=hidden_states.dtype)
+
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(input_tensor, (w1,w1_scale), gemm_out_a, m_indices)
         
-        # print(recv_x[1].shape, num_recv_tokens_per_expert_list, m_indices)
-        # deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(recv_x, (w1,w1_scale), gemm_out_a, m_indices)
+        # silu_and_mul_fwd + qaunt
+        # TODO fused kernel
+        silu_out = torch.empty((all_tokens, N//2), device=hidden_states.device, dtype=hidden_states.dtype)
+        qsilu_out_scale = torch.empty((all_tokens, N//2//128), dtype=torch.float32, device=hidden_states.device)
+        qsilu_out = torch.empty((all_tokens, N//2), dtype=w1.dtype, device=hidden_states.device)
 
-        # # silu_and_mul_fwd
-        # silu_out = torch.empty((recv_x[0].shape[0], N//2), device=hidden_states.device, dtype=hidden_states.dtype)
-        # # silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
-        # silu_out = torch.nn.functional.silu(gemm_out_a[:, :N//2] * gemm_out_a[:, N//2:])
+        silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
+        per_token_group_quant_fp8(silu_out, block_size_k, qsilu_out, qsilu_out_scale)
 
-        # # groupgemm (contiguous layout)
-        # # qsilu_out_scale = torch.empty((recv_x[0].shape[0], N//2//128), dtype=torch.float32, device=hidden_states.device)
-        # # qsilu_out = torch.empty((recv_x[0].shape[0], N//2), dtype=w1.dtype, device=hidden_states.device)
-        # qsilu_out, qsilu_out_scale = per_token_cast_to_fp8(silu_out)
-        # # per_token_group_quant_fp8(silu_out, block_size_k, qsilu_out, qsilu_out_scale)
+        # groupgemm (contiguous layout)
+        gemm_out_b = torch.empty((all_tokens, K), device=hidden_states.device, dtype=hidden_states.dtype)
 
-        # gemm_out_b = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
-        # deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous((qsilu_out,qsilu_out_scale), (w2,w2_scale), gemm_out_b, m_indices)
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous((qsilu_out,qsilu_out_scale), (w2,w2_scale), gemm_out_b, m_indices)
+
+        # gather and local reduce
+        # TODO fused kernel
+        gather_out = torch.zeros_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
+        cur_pos = torch.zeros_like(cumsum, device=hidden_states.device, dtype=torch.int32)
+
+        for i in range(recv_topk_idx.shape[0]):
+            for j in range(recv_topk_idx.shape[1]):
+                if recv_topk_idx[i][j] >= 0:
+                    dst = cumsum[recv_topk_idx[i][j]] + cur_pos[recv_topk_idx[i][j]]
+                    gather_out[i][:] += gemm_out_b[dst][:] * recv_topk_weights[i][j]
+                    cur_pos[recv_topk_idx[i][j]] += 1
 
         # normal combine
-        combined_x, recv_topk_weights, event = buffer.combine(recv_x, handle, topk_weights=recv_topk_weights, async_finish=False, previous_event=previous_event,
+        combined_x, _, event = buffer.combine(gather_out, handle, topk_weights=None, async_finish=False, previous_event=previous_event,
                                            allocate_on_comm_stream=False)
-        # if dist.get_rank() == 0:
-        #     print(combined_x.shape, recv_topk_weights, is_token_in_rank, is_token_in_rank.sum(dim=1).unsqueeze(1))
-        combined_x = combined_x.float() / is_token_in_rank.sum(dim=1).unsqueeze(1)
 
     else:
-        num_max_dispatch_tokens_per_rank = M
-
         # low latency dispatch
-        recv_x, recv_expert_count, handle, event, hook = \
-        buffer.low_latency_dispatch(hidden_states, topk_idx, num_max_dispatch_tokens_per_rank, num_experts, use_fp8=False,
+        recv_x, masked_m, handle, event, hook = \
+        buffer.low_latency_dispatch(hidden_states, topk_idx, num_max_dispatch_tokens_per_rank, num_experts, use_fp8=use_fp8_w8a8,
                                      async_finish=False, return_recv_hook=True)
         hook()
 
-        # # groupgemm (masked layout)
-        # gemm_out_a = torch.empty((recv_x[0].shape[0], N), device=hidden_states.device, dtype=hidden_states.dtype)
-        # masked_m = torch.empty((E, ), device='cuda', dtype=torch.int)
-        # for j in range(E):
-        #     masked_m[j] = recv_expert_count[j]
-        # expected_m = min(int(masked_m.float().mean()) + 1, num_max_dispatch_tokens_per_rank)
-        # deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1,w1_scale), gemm_out_a, masked_m, expected_m)
+        padded_m = buffer.group_size * num_max_dispatch_tokens_per_rank
 
-        # # silu_and_mul_fwd
-        # silu_out = torch.empty((recv_x[0].shape[0], N//2), device=hidden_states.device, dtype=hidden_states.dtype)
-        # silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
+        # groupgemm (masked layout)
+        gemm_out_a = torch.empty((E, padded_m, N), device=hidden_states.device, dtype=hidden_states.dtype)
+        expected_m = min(int(masked_m.float().mean()) + 1, num_max_dispatch_tokens_per_rank)
 
-        # # groupgemm (masked layout)
-        # qsilu_out_scale = torch.empty((recv_x[0].shape[0], N//2//128), dtype=torch.float32, device=hidden_states.device)
-        # qsilu_out = torch.empty((recv_x[0].shape[0], N//2), dtype=w1.dtype, device=hidden_states.device)
-        # per_token_group_quant_fp8(hidden_states, block_size_k, qsilu_out, qsilu_out_scale)
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1,w1_scale), gemm_out_a, masked_m, expected_m)
 
-        # print(hidden_states.shape, qsilu_out.shape, qsilu_out_scale.shape)
-        # gemm_out_b = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
-        # deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked((qsilu_out,qsilu_out_scale), (w2,w2_scale), gemm_out_b, masked_m, expected_m)
+        # silu_and_mul_fwd + qaunt 
+        # TODO fused kernel with mask
+        silu_out = torch.empty((E* padded_m, N//2), device=hidden_states.device, dtype=hidden_states.dtype)
+        qsilu_out_scale = torch.empty((E, padded_m, N//2//block_size_k), device=hidden_states.device, dtype=torch.float32)
+        qsilu_out = torch.empty((E, padded_m, N//2), dtype=w1.dtype, device=hidden_states.device)
+
+        silu_and_mul_fwd(gemm_out_a.view(-1, N).contiguous(), silu_out)
+        per_token_group_quant_fp8(silu_out, block_size_k, qsilu_out.view(-1, N//2), qsilu_out_scale.view(-1, N//2//block_size_k))
+
+        # groupgemm (masked layout)
+        gemm_out_b = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
+
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked((qsilu_out,qsilu_out_scale), (w2,w2_scale), gemm_out_b, masked_m, expected_m)
 
         # low latency combine
         combined_x, event_overlap, hook = \
-        buffer.low_latency_combine(recv_x, topk_idx, topk_weights, handle,
+        buffer.low_latency_combine(gemm_out_b, topk_idx, topk_weights, handle,
                                     async_finish=False, return_recv_hook=True)
         hook()
-        # combined_x = combined_x.float() / is_token_in_rank.sum(dim=1).unsqueeze(1)
 
     return combined_x
 
 def test_loop(local_rank: int, num_local_ranks: int):
-    # 初始化 dist
+    # Init dist
     num_nodes = int(os.getenv('WORLD_SIZE', 1))
     rank, num_ranks, group = init_dist(local_rank, num_local_ranks)
 
     torch.manual_seed(rank)
 
-    # 构造fused_experts_impl的输入参数
+    # Construct inputs
     seqlen = 1
     hidden_states = torch.randn((seqlen, 7168), device='cuda', dtype=torch.bfloat16) 
-    w1 = torch.randn((256//num_local_ranks, 7168, 7168), device='cuda', dtype=torch.bfloat16)  
+    w1 = torch.randn((256//num_local_ranks, 4096, 7168), device='cuda', dtype=torch.bfloat16)  
     w2 = torch.randn((256//num_local_ranks, 7168, 2048), device='cuda', dtype=torch.bfloat16)
     
     w1_fp8 = torch.empty_like(w1, dtype=torch.float8_e4m3fn)
     w2_fp8 = torch.empty_like(w2, dtype=torch.float8_e4m3fn)
-    w1_scale = torch.empty((256//num_local_ranks, 7168//128, 7168//128), device='cuda', dtype=torch.float)
+    w1_scale = torch.empty((256//num_local_ranks, 4096//128, 7168//128), device='cuda', dtype=torch.float)
     w2_scale = torch.empty((256//num_local_ranks, 7168//128, 2048//128), device='cuda', dtype=torch.float)
 
     for i in range(256//num_local_ranks):
@@ -318,16 +326,16 @@ def test_loop(local_rank: int, num_local_ranks: int):
     for i in range(seqlen):
         topk_ids[i] = torch.randperm(254, device='cuda')[:8] + 1
 
-    # 初始化 buffer
+    # Init buffer
     test_ll_compatibility, num_rdma_bytes = True, 0
     if test_ll_compatibility:
-        ll_num_tokens, ll_hidden, ll_num_experts, ll_num_topk = 256, 7168, 256, 8
+        ll_num_tokens, ll_hidden, ll_num_experts, ll_num_topk = num_max_dispatch_tokens_per_rank, 7168, 256, 8
         num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(ll_num_tokens, ll_hidden, num_ranks, ll_num_experts)
 
     buffer = deep_ep.Buffer(group, int(1e9), num_rdma_bytes, low_latency_mode=test_ll_compatibility,
                             num_qps_per_rank=(ll_num_experts // num_ranks if test_ll_compatibility else 1))
 
-    # 调用fused_experts_impl
+    # Test normal
     ref_output = fused_experts_impl_ref(x=hidden_states, w1=w1, w2=w2, topk_weight=topk_weights ,topk_ids=topk_ids, num_experts=256)
 
     output = fused_experts_impl(
@@ -338,7 +346,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
         topk_idx=topk_ids,
         num_experts=256,
         buffer=buffer,
-        prefill=True,
+        normal_mode=True,
         inplace=False,
         use_fp8_w8a8=True, 
         use_fp8_all2all=True,
@@ -348,7 +356,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
         previous_event=None
     )
 
-    # Test compatibility with low latency functions
+    # Test ll
     if test_ll_compatibility:
         buffer.clean_low_latency_buffer(ll_num_tokens, ll_hidden, ll_num_experts)
         ll_output = fused_experts_impl(
@@ -359,7 +367,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
             topk_idx=topk_ids,
             num_experts=256,
             buffer=buffer,
-            prefill=False,
+            normal_mode=False,
             inplace=False,
             use_fp8_w8a8=True, 
             use_fp8_all2all=True,
@@ -369,8 +377,9 @@ def test_loop(local_rank: int, num_local_ranks: int):
             previous_event=None
         ) 
 
-    if dist.get_rank() == 0:
-        print(ref_output, output, ll_output)
+    # Check
+    print(torch.nn.functional.cosine_similarity(ref_output,output), \
+        torch.nn.functional.cosine_similarity(ref_output,ll_output))
 
     dist.barrier()
 
