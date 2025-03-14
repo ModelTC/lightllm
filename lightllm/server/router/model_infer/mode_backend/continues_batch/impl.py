@@ -77,6 +77,92 @@ def split_kwargs(
         kwargs2["multimodal_params"] = multimodal_params
     return kwargs1, kwargs2
 
+def split_kwargs_n(
+    batch_size,
+    total_token_num,
+    max_len_in_batch,
+    input_ids: torch.Tensor,
+    mem_indexes: torch.Tensor,
+    b_req_idx: torch.Tensor,
+    b_start_loc: torch.Tensor,
+    b_seq_len: torch.Tensor,
+    b_ready_cache_len: torch.Tensor = None,
+    multimodal_params=None,
+    is_prefill=True,
+    split_n=2):
+
+    kwargs = [None] * split_n
+
+    # 计算每个分片的批次大小
+    batch_per_split = [batch_size // split_n] * split_n
+    # 处理不能整除的情况
+    for i in range(batch_size % split_n):
+        batch_per_split[i] += 1
+
+    # 准备分割索引
+    batch_indices = [0]
+    for size in batch_per_split:
+        batch_indices.append(batch_indices[-1] + size)
+
+    # 记录到目前为止的token数
+    cumulative_tokens = 0
+
+    # 为每个分片创建kwargs
+    for i in range(split_n):
+        start_idx = batch_indices[i]
+        end_idx = batch_indices[i+1]
+
+        # 分割批次相关的张量
+        split_b_req_idx = b_req_idx[start_idx:end_idx]
+        split_b_seq_len = b_seq_len[start_idx:end_idx]
+
+        # 计算该分片的token数量
+        split_tokens = split_b_seq_len.sum().item()
+
+        if is_prefill:
+            # 在prefill阶段，根据token分割
+            token_start = cumulative_tokens
+            token_end = token_start + split_tokens
+            split_input_ids = input_ids[token_start:token_end]
+            split_mem_indexes = mem_indexes[token_start:token_end]
+        else:
+            # 在decode阶段，根据批次分割
+            split_input_ids = input_ids[start_idx:end_idx]
+            split_mem_indexes = mem_indexes[start_idx:end_idx]
+
+        # 计算此分片的其他参数
+        split_max_len = split_b_seq_len.max().item() if len(split_b_seq_len) > 0 else 0
+        split_b_start_loc = split_b_seq_len.cumsum(dim=0) - split_b_seq_len
+
+        # 处理缓存长度
+        split_b_ready_cache_len = None
+        if b_ready_cache_len is not None:
+            split_b_ready_cache_len = b_ready_cache_len[start_idx:end_idx]
+
+        # 创建kwargs字典
+        kwargs[i] = {
+            "batch_size": len(split_b_req_idx),
+            "total_token_num": split_tokens,
+            "max_len_in_batch": split_max_len,
+            "input_ids": split_input_ids,
+            "mem_indexes": split_mem_indexes,
+            "b_req_idx": split_b_req_idx,
+            "b_start_loc": split_b_start_loc,
+            "b_seq_len": split_b_seq_len,
+            "b_ready_cache_len": split_b_ready_cache_len,
+            "is_prefill": is_prefill,
+            "all_reduce_id": i,
+        }
+
+        # 如果有多模态参数，添加到kwargs
+        if multimodal_params is not None:
+            kwargs[i]["multimodal_params"] = multimodal_params
+
+        # 更新累计token数
+        cumulative_tokens += split_tokens
+
+    return kwargs
+
 class ContinuesBatchBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
@@ -106,14 +192,16 @@ class ContinuesBatchBackend(ModeBackend):
     def decode(self):
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
         # logits = self.model.forward(**kwargs)
-        if kwargs["batch_size"] > 1:
-            kwargs1, kwargs2 = split_kwargs(**kwargs)
-            with torch.cuda.stream(self.model.stream[0]):
-                logits1 = self.model.forward(**kwargs1)
-            with torch.cuda.stream(self.model.stream[1]):
-                logits2 = self.model.forward(**kwargs2)
+        split_n = self.model.stream_num
+        if kwargs["batch_size"] > split_n - 1:
+            kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
+            logits = [None] * split_n
+            for i in range(split_n):
+                with torch.cuda.stream(self.model.stream[i]):
+                    logits[i] = self.model.forward(**kwargs_list[i])
+
             torch.cuda.synchronize()
-            logits = torch.cat([logits1, logits2], dim=0)
+            logits = torch.cat(logits, dim=0)
         else:
             logits = self.model.forward(**kwargs)
 

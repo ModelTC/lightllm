@@ -78,16 +78,11 @@ class CustomCommunicationOp:
 
         # 创建新的 NCCL 组以防止原始 all_reduce 与 cudagraph 卡住
         if self.device_group is None:
-            # self.device_group_list = []
-            # for _ in range(2):
-            #     device_group = dist.new_group(ranks, backend="nccl")
-            #     self.device_group_list.append(device_group)
             self.device_group = dist.new_group(ranks, backend="nccl")
 
         if ENABLE_VLLM_REDUCE and HAS_VLLM:
-            cpu_group = [dist.new_group(ranks, backend="gloo")] * self.reduce_num
             for i in range(self.reduce_num):
-                self.vllm_reduce[i] = CustomAllreduce(cpu_group[i], torch.cuda.current_device())
+                self.vllm_reduce[i] = CustomAllreduce(dist.new_group(ranks, backend="gloo"), torch.cuda.current_device())
             logger.info("Enable VLLM ALLReduce.")
 
         def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False, all_reduce_id=0):

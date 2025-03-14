@@ -212,7 +212,8 @@ class TpPartBaseModel:
             self.graph[i] = (
                 None if self.disable_cudagraph else CudaGraph(self.stream[i], self.graph_max_batch_size, self.graph_max_len_in_batch)
             )
-            self.graph[i].warmup(self, i)
+            if self.graph[i] is not None:
+                self.graph[i].warmup(self, i)
 
     def _init_custom(self):
         pass
