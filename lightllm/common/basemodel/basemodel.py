@@ -78,6 +78,8 @@ class TpPartBaseModel:
             self._init_mem_manager()
             self._init_weights()
 
+        self.stream1 = torch.cuda.Stream()
+        self.stream2 = torch.cuda.Stream()
         self._init_kv_move_buffer()
         self._check_mem_size()
         self._init_req_manager()
@@ -87,8 +89,6 @@ class TpPartBaseModel:
         self._init_cudagraph()
         self._check_max_len_infer()
         torch.cuda.empty_cache()
-        self.stream1 = torch.cuda.Stream()
-        self.stream2 = torch.cuda.Stream()
         return
 
     def _init_config(self):
@@ -206,10 +206,10 @@ class TpPartBaseModel:
 
     def _init_cudagraph(self):
         self.graph = (
-            None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
+            None if self.disable_cudagraph else CudaGraph(self.stream1, self.graph_max_batch_size, self.graph_max_len_in_batch)
         )
         self.graph2 = (
-            None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
+            None if self.disable_cudagraph else CudaGraph(self.stream2, self.graph_max_batch_size, self.graph_max_len_in_batch)
         )
         if self.graph is not None:
             self.graph.warmup(self, 0)
@@ -387,17 +387,17 @@ class TpPartBaseModel:
 
     @final
     def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        g_cache_manager.cache_env_in(
-            is_cuda_graph=infer_state.is_cuda_graph,
-            cur_batch_size=infer_state.batch_size,
-            cuda_graph_max_batch_size=self.graph_max_batch_size,
-        )
+        # g_cache_manager.cache_env_in(
+        #     is_cuda_graph=infer_state.is_cuda_graph,
+        #     cur_batch_size=infer_state.batch_size,
+        #     cuda_graph_max_batch_size=self.graph_max_batch_size,
+        # )
         cuda_input_ids = input_ids
         input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
         for i in range(0, self.layers_num):
             input_embs = self.layers_infer[i].token_forward(input_embs, infer_state, self.trans_layers_weight[i])
         predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
-        g_cache_manager.cache_env_out()
+        # g_cache_manager.cache_env_out()
         return predict_logics
 
     @final

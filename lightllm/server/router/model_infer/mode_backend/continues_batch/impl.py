@@ -105,17 +105,17 @@ class ContinuesBatchBackend(ModeBackend):
 
     def decode(self):
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
-        logits = self.model.forward(**kwargs)
-        # if kwargs["batch_size"] > 1:
-        #     kwargs1, kwargs2 = split_kwargs(**kwargs)
-        #     with torch.cuda.stream(self.model.stream1):
-        #         logits1 = self.model.forward(**kwargs1)
-        #     with torch.cuda.stream(self.model.stream2):
-        #         logits2 = self.model.forward(**kwargs2)
-        #     torch.cuda.synchronize()
-        #     logits = torch.cat([logits1, logits2], dim=0)
-        # else:
-        #     logits = self.model.forward(**kwargs)
+        # logits = self.model.forward(**kwargs)
+        if kwargs["batch_size"] > 1:
+            kwargs1, kwargs2 = split_kwargs(**kwargs)
+            with torch.cuda.stream(self.model.stream1):
+                logits1 = self.model.forward(**kwargs1)
+            with torch.cuda.stream(self.model.stream2):
+                logits2 = self.model.forward(**kwargs2)
+            torch.cuda.synchronize()
+            logits = torch.cat([logits1, logits2], dim=0)
+        else:
+            logits = self.model.forward(**kwargs)
 
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()

@@ -103,7 +103,7 @@ class CustomCommunicationOp:
             self.vllm_reduce2 = CustomAllreduce(cpu_group2, torch.cuda.current_device())
             logger.info("Enable VLLM ALLReduce.")
 
-        def _all_reduce_closure(input_, all_reduce_id: int, op=ReduceOp.SUM, group=self.device_group, async_op=False):
+        def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False, all_reduce_id=0):
             if op != ReduceOp.SUM or async_op:
                 original_all_reduce(input_, op, group, async_op)
             else:

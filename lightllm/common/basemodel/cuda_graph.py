@@ -10,11 +10,12 @@ logger = init_logger(__name__)
 class CudaGraph:
     # CudaGraph forward pass for the decoding stage.
 
-    def __init__(self, max_batch_size=8, max_len_in_batch=8192):
+    def __init__(self, stream, max_batch_size=8, max_len_in_batch=8192):
         self.graph = {}
         self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
         self.max_batch_size = max_batch_size
         self.graph_max_len_in_batch = max_len_in_batch
+        self.stream = stream
 
     def can_run(self, batch_size, max_len_in_batch):
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
@@ -41,7 +42,7 @@ class CudaGraph:
             torch.cuda.synchronize()
 
         with custom_comm_ops.lightllm_capture_graph(infer_state.all_reduce_id):
-            with torch.cuda.graph(graph_obj, pool=self.mempool):
+            with torch.cuda.graph(graph_obj, stream=self.stream, pool=self.mempool):
                 predict_logics = decode_func(input_ids, infer_state)
         self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
         graph_obj.replay()
