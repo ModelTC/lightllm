@@ -108,9 +108,9 @@ class ContinuesBatchBackend(ModeBackend):
         # logits = self.model.forward(**kwargs)
         if kwargs["batch_size"] > 1:
             kwargs1, kwargs2 = split_kwargs(**kwargs)
-            with torch.cuda.stream(self.model.stream1):
+            with torch.cuda.stream(self.model.stream[0]):
                 logits1 = self.model.forward(**kwargs1)
-            with torch.cuda.stream(self.model.stream2):
+            with torch.cuda.stream(self.model.stream[1]):
                 logits2 = self.model.forward(**kwargs2)
             torch.cuda.synchronize()
             logits = torch.cat([logits1, logits2], dim=0)

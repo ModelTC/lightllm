@@ -51,34 +51,22 @@ except:
 
 class CustomCommunicationOp:
     def __init__(self):
-        self.vllm_reduce1 = None
-        self.vllm_reduce2 = None
-        self.custom_gather = None
-        self.custom_gather2 = None
+        self.reduce_num = 2
+        self.vllm_reduce = [None] * self.reduce_num
+        self.custom_gather = [None] * self.reduce_num
         self.device_group = None
 
     @contextmanager
     def lightllm_capture_graph(self, all_reduce_id):
-        if all_reduce_id == 0:
-            if self.vllm_reduce1 is not None:
-                with self.vllm_reduce1.capture():
-                    if self.custom_gather is not None:
-                        with self.custom_gather.capture():
-                            yield
-                    else:
+        if self.vllm_reduce[all_reduce_id] is not None:
+            with self.vllm_reduce[all_reduce_id].capture():
+                if self.custom_gather[all_reduce_id] is not None:
+                    with self.custom_gather[all_reduce_id].capture():
                         yield
-            else:
-                yield
+                else:
+                    yield
         else:
-            if self.vllm_reduce2 is not None:
-                with self.vllm_reduce2.capture():
-                    if self.custom_gather2 is not None:
-                        with self.custom_gather2.capture():
-                            yield
-                    else:
-                        yield
-            else:
-                yield
+            yield
 
     def set_custom_reduce(self):
         ENABLE_VLLM_REDUCE = os.getenv("ENABLE_VLLM_REDUCE", "True").upper() in ["ON", "TRUE", "1"]
@@ -97,17 +85,16 @@ class CustomCommunicationOp:
             self.device_group = dist.new_group(ranks, backend="nccl")
 
         if ENABLE_VLLM_REDUCE and HAS_VLLM:
-            cpu_group1 = dist.new_group(ranks, backend="gloo")
-            self.vllm_reduce1 = CustomAllreduce(cpu_group1, torch.cuda.current_device())
-            cpu_group2 = dist.new_group(ranks, backend="gloo")
-            self.vllm_reduce2 = CustomAllreduce(cpu_group2, torch.cuda.current_device())
+            cpu_group = [dist.new_group(ranks, backend="gloo")] * self.reduce_num
+            for i in range(self.reduce_num):
+                self.vllm_reduce[i] = CustomAllreduce(cpu_group[i], torch.cuda.current_device())
             logger.info("Enable VLLM ALLReduce.")
 
         def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False, all_reduce_id=0):
             if op != ReduceOp.SUM or async_op:
                 original_all_reduce(input_, op, group, async_op)
             else:
-                vllm_reduce = self.vllm_reduce1 if all_reduce_id == 0 else self.vllm_reduce2
+                vllm_reduce = self.vllm_reduce[all_reduce_id]
                 if vllm_reduce is not None and vllm_reduce.should_custom_ar(input_):
                     input_.data = vllm_reduce.custom_all_reduce(input_)
                 else:

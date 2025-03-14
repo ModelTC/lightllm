@@ -78,8 +78,11 @@ class TpPartBaseModel:
             self._init_mem_manager()
             self._init_weights()
 
-        self.stream1 = torch.cuda.Stream()
-        self.stream2 = torch.cuda.Stream()
+        self.stream_num = 2
+        self.graph = [None] * self.stream_num
+        self.stream = [None] * self.stream_num
+        for i in range(self.stream_num):
+            self.stream[i] = torch.cuda.Stream()
         self._init_kv_move_buffer()
         self._check_mem_size()
         self._init_req_manager()
@@ -205,16 +208,11 @@ class TpPartBaseModel:
             raise ValueError(f"Unsupport datatype {self.data_type}!")
 
     def _init_cudagraph(self):
-        self.graph = (
-            None if self.disable_cudagraph else CudaGraph(self.stream1, self.graph_max_batch_size, self.graph_max_len_in_batch)
-        )
-        self.graph2 = (
-            None if self.disable_cudagraph else CudaGraph(self.stream2, self.graph_max_batch_size, self.graph_max_len_in_batch)
-        )
-        if self.graph is not None:
-            self.graph.warmup(self, 0)
-        if self.graph2 is not None:
-            self.graph2.warmup(self, 1)
+        for i in range(self.stream_num):
+            self.graph[i] = (
+                None if self.disable_cudagraph else CudaGraph(self.stream[i], self.graph_max_batch_size, self.graph_max_len_in_batch)
+            )
+            self.graph[i].warmup(self, i)
 
     def _init_custom(self):
         pass
@@ -363,7 +361,7 @@ class TpPartBaseModel:
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
-        graph = self.graph if all_reduce_id == 0 else self.graph2
+        graph = self.graph[all_reduce_id]
         if graph is not None and graph.can_run(batch_size, max_len_in_batch):
             if graph.need_capture(batch_size):
                 infer_state.is_cuda_graph = True
