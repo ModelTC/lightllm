@@ -52,7 +52,7 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
         return padded_input_embdings
 
     def tpsp_token_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
-        input_embdings = self.context_forward(input_ids=input_ids, infer_state=infer_state, layer_weight=layer_weight)
+        input_embdings = self.token_forward(input_ids=input_ids, infer_state=infer_state, layer_weight=layer_weight)
         from lightllm.common.basemodel.triton_kernel.sp_pad_copy import sp_pad_copy
 
         padded_input_embdings = sp_pad_copy(input_embdings, sp_rank_id=self.tp_rank_, sp_world_size=self.tp_world_size_)

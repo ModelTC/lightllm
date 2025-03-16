@@ -1,10 +1,10 @@
 import torch
+import triton
 import torch.functional as F
 import torch.distributed as dist
 import numpy as np
 from typing import Tuple
 from functools import partial
-import triton
 
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
@@ -136,6 +136,30 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         )
         return q, cache_kv
 
+    def _tpsp_get_qkv(
+        self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
+    ) -> torch.Tensor:
+        if self.tp_world_size_ > 1:
+            sp_token_num, hidden_dim = input.shape
+            gather_input = self.alloc_tensor(
+                (sp_token_num * self.tp_world_size_, hidden_dim), dtype=input.dtype, device=input.device
+            )
+            dist.all_gather_into_tensor(gather_input, input, group=None, async_op=False)
+            input = gather_input[0 : len(infer_state.position_cos), :]
+
+        q = layer_weight.q_proj.mm(input)
+        cache_kv = layer_weight.kv_proj.mm(
+            input, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_)
+        ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
+
+        rotary_emb_fwd(
+            q.view(-1, self.tp_q_head_num_, self.head_dim_),
+            cache_kv[:, 0 : self.tp_k_head_num_, :],
+            infer_state.position_cos,
+            infer_state.position_sin,
+        )
+        return q, cache_kv
+
     def _context_attention_kernel(
         self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
@@ -218,6 +242,24 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         o_tensor = layer_weight.o_proj.mm(input)
         return o_tensor
 
+    def _tpsp_get_o(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
+    ) -> torch.Tensor:
+        input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
+        dest_size = triton.cdiv(input.shape[0], self.tp_world_size_) * self.tp_world_size_
+        o_tensor = self.alloc_tensor((dest_size, self.embed_dim_), dtype=input.dtype, device=input.device)
+        layer_weight.o_proj.mm(input, out=o_tensor[0 : len(infer_state.position_cos), :])
+
+        if self.tp_world_size_ > 1:
+            sp_token_num = o_tensor.shape[0] // self.tp_world_size_
+            reduce_o_tensor = self.alloc_tensor((sp_token_num, self.embed_dim_), dtype=input.dtype, device=input.device)
+            dist.reduce_scatter_tensor(
+                output=reduce_o_tensor, input=o_tensor, op=dist.ReduceOp.SUM, group=None, async_op=False
+            )
+            o_tensor = reduce_o_tensor
+
+        return o_tensor
+
     def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
         up_gate_out = layer_weight.gate_up_proj.mm(input)
@@ -227,6 +269,34 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         up_gate_out = None
         ffn2_out = layer_weight.down_proj.mm(ffn1_out)
         ffn1_out = None
+        return ffn2_out
+
+    def _tpsp_ffn(
+        self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
+    ) -> torch.Tensor:
+        input = input.view(-1, self.embed_dim_)
+        if self.tp_world_size_ > 1:
+            sp_token_num, hidden_dim = input.shape
+            gather_input = self.alloc_tensor(
+                (sp_token_num * self.tp_world_size_, hidden_dim), dtype=input.dtype, device=input.device
+            )
+            dist.all_gather_into_tensor(gather_input, input, group=None, async_op=False)
+            input = gather_input
+
+        up_gate_out = layer_weight.gate_up_proj.mm(input)
+        ffn1_out = self.alloc_tensor((input.size(0), up_gate_out.size(1) // 2), input.dtype)
+        silu_and_mul_fwd(up_gate_out, ffn1_out)
+        input = None
+        up_gate_out = None
+        ffn2_out = layer_weight.down_proj.mm(ffn1_out)
+        ffn1_out = None
+        if self.tp_world_size_ > 1:
+            sp_token_num = ffn2_out.shape[0] // self.tp_world_size_
+            reduce_o_tensor = self.alloc_tensor(
+                (sp_token_num, self.embed_dim_), dtype=ffn2_out.dtype, device=ffn2_out.device
+            )
+            dist.reduce_scatter_tensor(reduce_o_tensor, ffn2_out, op=dist.ReduceOp.SUM, group=None, async_op=False)
+            ffn2_out = reduce_o_tensor
         return ffn2_out
 
     # # keep code
