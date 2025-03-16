@@ -41,3 +41,19 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
         if self.tp_world_size_ > 1:
             dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False)
         return input_embdings
+
+    def tpsp_context_forward(
+        self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight
+    ):
+        input_embdings = self.context_forward(input_ids=input_ids, infer_state=infer_state, layer_weight=layer_weight)
+        from lightllm.common.basemodel.triton_kernel.sp_pad_copy import sp_pad_copy
+
+        padded_input_embdings = sp_pad_copy(input_embdings, sp_rank_id=self.tp_rank_, sp_world_size=self.tp_world_size_)
+        return padded_input_embdings
+
+    def tpsp_token_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
+        input_embdings = self.context_forward(input_ids=input_ids, infer_state=infer_state, layer_weight=layer_weight)
+        from lightllm.common.basemodel.triton_kernel.sp_pad_copy import sp_pad_copy
+
+        padded_input_embdings = sp_pad_copy(input_embdings, sp_rank_id=self.tp_rank_, sp_world_size=self.tp_world_size_)
+        return padded_input_embdings

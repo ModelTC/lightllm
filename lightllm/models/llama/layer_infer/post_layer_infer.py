@@ -92,3 +92,23 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         ans_logics[:, :] = gather_data.permute(1, 0)
         gather_data = None
         return ans_logics
+
+    def tpsp_token_forward(
+        self, input_embdings: torch.Tensor, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight
+    ):
+        if self.tp_world_size_ > 1:
+            assert len(input_embdings.shape) == 2
+            token_num, hidden_dim = input_embdings.shape
+            gather_data = torch.empty(
+                (self.tp_world_size_ * token_num, hidden_dim), device=input_embdings.device, dtype=input_embdings.dtype
+            )
+            dist.all_gather(
+                [gather_data[i * token_num : (i + 1) * token_num, :] for i in range(self.tp_world_size_)],
+                input_embdings,
+                group=None,
+                async_op=False,
+            )
+            # len(infer_state.position_sin) 获取真实输入长度
+            input_embdings = gather_data[0 : len(infer_state.position_sin)]
+
+        return self.token_forward(input_embdings=input_embdings, infer_state=infer_state, layer_weight=layer_weight)
