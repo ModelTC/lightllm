@@ -37,9 +37,9 @@ class Quantcfg:
         if self.hf_quantization_method == "fp8":
             block_size = self.hf_quantization_config.get("weight_block_size", None)
             if block_size == [128, 128]:
-                from lightllm.distributed.communication_op import HAS_DEEPEP
+                from lightllm.common.quantization.deepgemm_quant import HAS_DEEPGEMM
 
-                if HAS_DEEPEP:
+                if HAS_DEEPGEMM:
                     self.quant_type = "deepgemm-fp8w8a8-b128"
                 else:
                     self.quant_type = "vllm-fp8w8a8-b128"
