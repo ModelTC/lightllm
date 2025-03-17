@@ -22,7 +22,6 @@ from deep_gemm import bench_kineto, calc_diff, ceil_div, get_col_major_tma_align
 
 # Set the number of SMs to use
 Buffer.set_num_sms(24)
-num_max_dispatch_tokens_per_rank = 64  # 512
 
 
 def init_dist(local_rank: int, num_local_ranks: int):
@@ -285,6 +284,14 @@ def fused_experts_impl(
         )
     else:
         # low latency dispatch
+        num_max_dispatch_tokens_per_rank = hidden_states.shape[0]
+        padding_max_dispatch_tokens_per_rank = num_max_dispatch_tokens_per_rank * buffer.group_size
+        if padding_max_dispatch_tokens_per_rank > 64 and padding_max_dispatch_tokens_per_rank < 128:
+            num_max_dispatch_tokens_per_rank = 128 // buffer.group_size
+        elif padding_max_dispatch_tokens_per_rank > 128:
+            num_max_dispatch_tokens_per_rank = (
+                (padding_max_dispatch_tokens_per_rank + 127) // 128 * 128 // buffer.group_size
+            )
         recv_x, masked_m, handle, event, hook = buffer.low_latency_dispatch(
             hidden_states,
             topk_idx,
@@ -294,33 +301,29 @@ def fused_experts_impl(
             async_finish=False,
             return_recv_hook=True,
         )
-        hook()
 
-        padded_m = buffer.group_size * num_max_dispatch_tokens_per_rank
-
+        padded_m = recv_x[0].shape[1]
         # groupgemm (masked layout)
         gemm_out_a = torch.empty((E, padded_m, N), device=hidden_states.device, dtype=hidden_states.dtype)
-        expected_m = (
-            num_max_dispatch_tokens_per_rank  # min(int(masked_m.float().mean()) + 1, num_max_dispatch_tokens_per_rank)
-        )
-
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1, w1_scale), gemm_out_a, masked_m, expected_m)
-
-        # silu_and_mul_fwd + qaunt
-        # TODO fused kernel with mask
+        expected_m = num_max_dispatch_tokens_per_rank
         silu_out = torch.empty((E * padded_m, N // 2), device=hidden_states.device, dtype=hidden_states.dtype)
         qsilu_out_scale = torch.empty(
             (E, padded_m, N // 2 // block_size_k), device=hidden_states.device, dtype=torch.float32
         )
         qsilu_out = torch.empty((E, padded_m, N // 2), dtype=w1.dtype, device=hidden_states.device)
+        # groupgemm (masked layout)
+        gemm_out_b = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
 
-        silu_and_mul_fwd(gemm_out_a.view(-1, N).contiguous(), silu_out)
+        hook()
+
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1, w1_scale), gemm_out_a, masked_m, expected_m)
+
+        # silu_and_mul_fwd + qaunt
+        # TODO fused kernel with mask
+        silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
         per_token_group_quant_fp8(
             silu_out, block_size_k, qsilu_out.view(-1, N // 2), qsilu_out_scale.view(-1, N // 2 // block_size_k)
         )
-
-        # groupgemm (masked layout)
-        gemm_out_b = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
 
         deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(
             (qsilu_out, qsilu_out_scale), (w2, w2_scale), gemm_out_b, masked_m, expected_m
@@ -363,6 +366,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
 
     # Init buffer
     test_ll_compatibility, num_rdma_bytes = True, 0
+    num_max_dispatch_tokens_per_rank = 512
     if test_ll_compatibility:
         ll_num_tokens, ll_hidden, ll_num_experts, _ = num_max_dispatch_tokens_per_rank, 7168, 256, 8
         num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(
