@@ -78,13 +78,19 @@ class CustomCommunicationOp:
 
     def set_deepep(self, n_routed_experts):
         moe_mode = os.getenv("MOE_MODE", "TP")
+        num_max_dispatch_tokens_per_rank = 512
         if moe_mode == "TP":
             self.ep_buffer = None
             return
         assert HAS_DEEPEP, "deep_ep is required for expert parallelism"
         global_world_size = get_global_world_size()
         group = dist.new_group(list(range(global_world_size)))
-        test_ll_compatibility, num_rdma_bytes = False, 0
+        test_ll_compatibility, num_rdma_bytes = True, 0
+        if test_ll_compatibility:
+            ll_num_tokens, ll_hidden, ll_num_experts, _ = num_max_dispatch_tokens_per_rank, 7168, 256, 8
+            num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(
+                ll_num_tokens, ll_hidden, global_world_size, ll_num_experts
+            )
         self.ep_buffer = deep_ep.Buffer(
             group,
             int(1e9),

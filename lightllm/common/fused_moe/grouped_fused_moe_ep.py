@@ -162,7 +162,6 @@ def fused_experts_impl(
     num_experts: int,
     buffer: Buffer,
     is_prefill: bool,
-    inplace: bool = False,
     use_fp8_w8a8: bool = False,
     use_fp8_all2all: bool = False,
     use_int8_w8a16: bool = False,
@@ -226,54 +225,55 @@ def fused_experts_impl(
 
         # scatter
         all_tokens = sum(num_recv_tokens_per_expert_list)
-        input_tensor = (
-            torch.empty((all_tokens, K), device=hidden_states.device, dtype=qinput_tensor.dtype),
-            torch.empty((all_tokens, K // 128), device=hidden_states.device, dtype=torch.float32),
-        )
-        m_indices = torch.empty(all_tokens, device=hidden_states.device, dtype=torch.int32)
-        output_index = torch.empty_like(recv_topk_idx)
-
-        expert_start_loc = torch.cumsum(
-            torch.tensor([0] + num_recv_tokens_per_expert_list[:-1], device=hidden_states.device), dim=0
-        )
-        num_recv_tokens_per_expert = torch.tensor(
-            num_recv_tokens_per_expert_list, device=hidden_states.device, dtype=torch.int32
-        )
-
-        ep_scatter(
-            recv_x[0],
-            recv_x[1],
-            recv_topk_idx,
-            num_recv_tokens_per_expert,
-            expert_start_loc,
-            input_tensor[0],
-            input_tensor[1],
-            m_indices,
-            output_index,
-        )
-
-        # groupgemm (contiguous layout)
-        gemm_out_a = torch.empty((all_tokens, N), device=hidden_states.device, dtype=hidden_states.dtype)
-
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(input_tensor, (w1, w1_scale), gemm_out_a, m_indices)
-
-        # silu_and_mul_fwd + qaunt
-        # TODO fused kernel
-        silu_out = torch.empty((all_tokens, N // 2), device=hidden_states.device, dtype=hidden_states.dtype)
-
-        silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
-        qsilu_out, qsilu_out_scale = tma_aligned_quantize(silu_out)
-
-        # groupgemm (contiguous layout)
-        gemm_out_b = torch.empty((all_tokens, K), device=hidden_states.device, dtype=hidden_states.dtype)
-
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(
-            (qsilu_out, qsilu_out_scale), (w2, w2_scale), gemm_out_b, m_indices
-        )
-
-        # gather and local reduce
         gather_out = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
-        ep_gather(gemm_out_b, recv_topk_idx, recv_topk_weights, output_index, expert_start_loc, gather_out)
+        if all_tokens > 0:
+            input_tensor = (
+                torch.empty((all_tokens, K), device=hidden_states.device, dtype=qinput_tensor.dtype),
+                torch.empty((all_tokens, K // 128), device=hidden_states.device, dtype=torch.float32),
+            )
+            m_indices = torch.empty(all_tokens, device=hidden_states.device, dtype=torch.int32)
+            output_index = torch.empty_like(recv_topk_idx)
+
+            expert_start_loc = torch.cumsum(
+                torch.tensor([0] + num_recv_tokens_per_expert_list[:-1], device=hidden_states.device), dim=0
+            )
+            num_recv_tokens_per_expert = torch.tensor(
+                num_recv_tokens_per_expert_list, device=hidden_states.device, dtype=torch.int32
+            )
+
+            ep_scatter(
+                recv_x[0],
+                recv_x[1],
+                recv_topk_idx,
+                num_recv_tokens_per_expert,
+                expert_start_loc,
+                input_tensor[0],
+                input_tensor[1],
+                m_indices,
+                output_index,
+            )
+
+            # groupgemm (contiguous layout)
+            gemm_out_a = torch.empty((all_tokens, N), device=hidden_states.device, dtype=hidden_states.dtype)
+
+            deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(input_tensor, (w1, w1_scale), gemm_out_a, m_indices)
+
+            # silu_and_mul_fwd + qaunt
+            # TODO fused kernel
+            silu_out = torch.empty((all_tokens, N // 2), device=hidden_states.device, dtype=hidden_states.dtype)
+
+            silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
+            qsilu_out, qsilu_out_scale = tma_aligned_quantize(silu_out)
+
+            # groupgemm (contiguous layout)
+            gemm_out_b = torch.empty((all_tokens, K), device=hidden_states.device, dtype=hidden_states.dtype)
+
+            deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(
+                (qsilu_out, qsilu_out_scale), (w2, w2_scale), gemm_out_b, m_indices
+            )
+
+            # gather and local reduce
+            ep_gather(gemm_out_b, recv_topk_idx, recv_topk_weights, output_index, expert_start_loc, gather_out)
         # normal combine
         combined_x, _, event = buffer.combine(
             gather_out,
@@ -283,7 +283,6 @@ def fused_experts_impl(
             previous_event=previous_event,
             allocate_on_comm_stream=False,
         )
-
     else:
         # low latency dispatch
         recv_x, masked_m, handle, event, hook = buffer.low_latency_dispatch(
@@ -301,7 +300,9 @@ def fused_experts_impl(
 
         # groupgemm (masked layout)
         gemm_out_a = torch.empty((E, padded_m, N), device=hidden_states.device, dtype=hidden_states.dtype)
-        expected_m = min(int(masked_m.float().mean()) + 1, num_max_dispatch_tokens_per_rank)
+        expected_m = (
+            num_max_dispatch_tokens_per_rank  # min(int(masked_m.float().mean()) + 1, num_max_dispatch_tokens_per_rank)
+        )
 
         deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1, w1_scale), gemm_out_a, masked_m, expected_m)
 
@@ -330,7 +331,6 @@ def fused_experts_impl(
             gemm_out_b, topk_idx, topk_weights, handle, async_finish=False, return_recv_hook=True
         )
         hook()
-
     return combined_x
 
 
@@ -391,7 +391,6 @@ def test_loop(local_rank: int, num_local_ranks: int):
         num_experts=256,
         buffer=buffer,
         is_prefill=True,
-        inplace=False,
         use_fp8_w8a8=True,
         use_fp8_all2all=True,
         use_int8_w8a16=False,
@@ -412,7 +411,6 @@ def test_loop(local_rank: int, num_local_ranks: int):
             num_experts=256,
             buffer=buffer,
             is_prefill=False,
-            inplace=False,
             use_fp8_w8a8=True,
             use_fp8_all2all=True,
             use_int8_w8a16=False,
@@ -426,6 +424,8 @@ def test_loop(local_rank: int, num_local_ranks: int):
     print(
         torch.nn.functional.cosine_similarity(ref_output, output),
         torch.nn.functional.cosine_similarity(ref_output, ll_output),
+        (ref_output - output).abs().mean(),
+        (ref_output - ll_output).abs().mean(),
     )
 
     dist.barrier()
