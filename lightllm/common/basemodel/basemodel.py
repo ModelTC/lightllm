@@ -17,6 +17,7 @@ from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.common.quantization import Quantcfg
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.dist_utils import get_dp_world_size
+from lightllm.utils.envs_utils import enable_env_vars
 
 logger = init_logger(__name__)
 
@@ -360,28 +361,56 @@ class TpPartBaseModel:
 
     @final
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
-        g_cache_manager.cache_env_in()
-        cuda_input_ids = input_ids
-        input_embs = self.pre_infer.context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(0, self.layers_num):
-            input_embs = self.layers_infer[i].context_forward(input_embs, infer_state, self.trans_layers_weight[i])
-        predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
-        g_cache_manager.cache_env_out()
+        if not enable_env_vars("LIGHTLLM_USE_TPSP_MIX"):
+            g_cache_manager.cache_env_in()
+            cuda_input_ids = input_ids
+            input_embs = self.pre_infer.context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
+            for i in range(0, self.layers_num):
+                input_embs = self.layers_infer[i].context_forward(input_embs, infer_state, self.trans_layers_weight[i])
+            predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
+            g_cache_manager.cache_env_out()
+        else:
+            g_cache_manager.cache_env_in()
+            cuda_input_ids = input_ids
+            input_embs = self.pre_infer.tpsp_context_forward(cuda_input_ids, infer_state, self.pre_post_weight)
+            for i in range(0, self.layers_num):
+                input_embs = self.layers_infer[i].tpsp_context_forward(
+                    input_embs, infer_state, self.trans_layers_weight[i]
+                )
+            predict_logics = self.post_infer.tpsp_token_forward(input_embs, infer_state, self.pre_post_weight)
+            g_cache_manager.cache_env_out()
+
         return predict_logics
 
     @final
     def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        g_cache_manager.cache_env_in(
-            is_cuda_graph=infer_state.is_cuda_graph,
-            cur_batch_size=infer_state.batch_size,
-            cuda_graph_max_batch_size=self.graph_max_batch_size,
-        )
-        cuda_input_ids = input_ids
-        input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(0, self.layers_num):
-            input_embs = self.layers_infer[i].token_forward(input_embs, infer_state, self.trans_layers_weight[i])
-        predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
-        g_cache_manager.cache_env_out()
+        if not enable_env_vars("LIGHTLLM_USE_TPSP_MIX"):
+            g_cache_manager.cache_env_in(
+                is_cuda_graph=infer_state.is_cuda_graph,
+                cur_batch_size=infer_state.batch_size,
+                cuda_graph_max_batch_size=self.graph_max_batch_size,
+            )
+            cuda_input_ids = input_ids
+            input_embs = self.pre_infer.token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
+            for i in range(0, self.layers_num):
+                input_embs = self.layers_infer[i].token_forward(input_embs, infer_state, self.trans_layers_weight[i])
+            predict_logics = self.post_infer.token_forward(input_embs, infer_state, self.pre_post_weight)
+            g_cache_manager.cache_env_out()
+        else:
+            g_cache_manager.cache_env_in(
+                is_cuda_graph=infer_state.is_cuda_graph,
+                cur_batch_size=infer_state.batch_size,
+                cuda_graph_max_batch_size=self.graph_max_batch_size,
+            )
+            cuda_input_ids = input_ids
+            input_embs = self.pre_infer.tpsp_token_forward(cuda_input_ids, infer_state, self.pre_post_weight)
+            for i in range(0, self.layers_num):
+                input_embs = self.layers_infer[i].tpsp_token_forward(
+                    input_embs, infer_state, self.trans_layers_weight[i]
+                )
+            predict_logics = self.post_infer.tpsp_token_forward(input_embs, infer_state, self.pre_post_weight)
+            g_cache_manager.cache_env_out()
+
         return predict_logics
 
     @final

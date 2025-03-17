@@ -44,6 +44,11 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise Exception("need to impl")
 
+    def _tpsp_get_qkv(
+        self, input, cache_kv, infer_state: InferStateInfo, layer_weight
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        raise Exception("need to impl")
+
     def _post_cache_kv(self, cache_kv, infer_state: InferStateInfo, layer_weight):
         mem_manager = infer_state.mem_manager
         if not infer_state.mem_is_contiguous:
@@ -63,11 +68,17 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
     def _get_o(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:
         raise Exception("need to impl")
 
+    def _tpsp_get_o(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:
+        raise Exception("need to impl")
+
     def _ffn(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:
         raise Exception("need to impl")
 
-    def _context_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
-        input1 = self._att_norm(input_embding, infer_state, layer_weight)
+    def _tpsp_ffn(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:
+        raise Exception("need to impl")
+
+    def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
@@ -77,20 +88,19 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
-        input_embding.add_(o.view(-1, self.embed_dim_))
-        return
+        input_embdings.add_(o.view(-1, self.embed_dim_))
+        o = None
 
-    def _context_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
-        return
+        return input_embdings
 
-    def _token_attention(self, input_embding, infer_state: InferStateInfo, layer_weight):
-        input1 = self._att_norm(input_embding, infer_state, layer_weight)
+    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
@@ -100,24 +110,49 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
             dist.all_reduce(o, op=dist.ReduceOp.SUM, async_op=False)
-        input_embding.add_(o.view(-1, self.embed_dim_))
-        return
+        input_embdings.add_(o.view(-1, self.embed_dim_))
+        o = None
 
-    def _token_ffn(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
             dist.all_reduce(ffn_out, op=dist.ReduceOp.SUM, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
-        return
-
-    def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
-        self._context_attention(input_embdings, infer_state, layer_weight=layer_weight)
-        self._context_ffn(input_embdings, infer_state, layer_weight)
         return input_embdings
 
-    def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
-        self._token_attention(input_embdings, infer_state, layer_weight=layer_weight)
-        self._token_ffn(input_embdings, infer_state, layer_weight)
+    def tpsp_context_forward(self, input_embdings: torch.Tensor, infer_state: InferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embdings, infer_state, layer_weight)
+        cache_kv = self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_kv = self._tpsp_get_qkv(input1, cache_kv, infer_state, layer_weight)
+        input1 = None
+        self._post_cache_kv(cache_kv, infer_state, layer_weight)
+        o = self._context_attention_kernel(q, cache_kv, infer_state, layer_weight)
+        q = None
+        o = self._tpsp_get_o(o, infer_state, layer_weight)
+        input_embdings.add_(o.view(-1, self.embed_dim_))
+        o = None
+
+        input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
+        ffn_out = self._tpsp_ffn(input1, infer_state, layer_weight)
+        input1 = None
+        input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
+        return input_embdings
+
+    def tpsp_token_forward(self, input_embdings: torch.Tensor, infer_state: InferStateInfo, layer_weight):
+        input1 = self._att_norm(input_embdings, infer_state, layer_weight)
+        cache_kv = self._pre_cache_kv(infer_state, layer_weight)
+        q, cache_kv = self._tpsp_get_qkv(input1, cache_kv, infer_state, layer_weight)
+        input1 = None
+        self._post_cache_kv(cache_kv, infer_state, layer_weight)
+        o = self._token_attention_kernel(q, infer_state, layer_weight)
+        q = None
+        o = self._tpsp_get_o(o, infer_state, layer_weight)
+        input_embdings.add_(o.view(-1, self.embed_dim_))
+        o = None
+
+        input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
+        ffn_out = self._tpsp_ffn(input1, infer_state, layer_weight)
+        input1 = None
+        input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return input_embdings
