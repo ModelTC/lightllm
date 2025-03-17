@@ -22,7 +22,7 @@ from deep_gemm import bench_kineto, calc_diff, ceil_div, get_col_major_tma_align
 
 # Set the number of SMs to use
 Buffer.set_num_sms(24)
-num_max_dispatch_tokens_per_rank = 512
+num_max_dispatch_tokens_per_rank = 64  # 512
 
 
 def init_dist(local_rank: int, num_local_ranks: int):
