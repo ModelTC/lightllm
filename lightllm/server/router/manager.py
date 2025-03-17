@@ -224,10 +224,11 @@ class RouterManager:
 
     async def loop_for_fwd(
         self,
+        stream_id,
     ):
         counter_count = 0
         while True:
-            await self._step()
+            await self._step(stream_id)
             counter_count += 1
             if self.running_batch is not None:
                 if counter_count % 50 == 0:
@@ -294,7 +295,7 @@ class RouterManager:
             self.schedule_task = None
             return result
 
-    async def _step(self):
+    async def _step(self, stream_id):
         """
         事件处理循环
         """
@@ -310,7 +311,7 @@ class RouterManager:
                     )
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
-                await self._prefill_batch(self.running_batch)
+                await self._prefill_batch(self.running_batch, stream_id)
                 self._filter_runing_batch()
                 self.has_wait_tokens = self.max_wait_tokens
             return
@@ -322,7 +323,7 @@ class RouterManager:
             if new_mini_batch is not None:
                 self.has_wait_tokens = self.max_wait_tokens
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
-                await self._prefill_batch(new_mini_batch)
+                await self._prefill_batch(new_mini_batch, stream_id)
                 if not new_mini_batch.is_clear():
                     self.running_batch.merge(new_mini_batch)
                 return
@@ -331,7 +332,7 @@ class RouterManager:
         # 释放一些管理的 token
         if self._can_decode(self.running_batch):
             self.stats_tool.count_output_tokens(self.running_batch)
-            await self._decode_batch(self.running_batch)
+            await self._decode_batch(self.running_batch, stream_id)
             self._filter_runing_batch()
             self.has_wait_tokens += 1
             return
@@ -346,12 +347,12 @@ class RouterManager:
             return
         return
 
-    async def _prefill_batch(self, batch: Batch):
+    async def _prefill_batch(self, batch: Batch, stream_id):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
         self.overlap_event.set()
-        await self.model_rpc_client.prefill(reqs)
+        await self.model_rpc_client.prefill(reqs, stream_id)
         batch.filter_out_finished_req(self.shm_req_manager)
         # 发个None包触发一下detokenization
         self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
@@ -362,11 +363,11 @@ class RouterManager:
         )
         return
 
-    async def _decode_batch(self, batch: Batch):
+    async def _decode_batch(self, batch: Batch, stream_id):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
         self.overlap_event.set()
-        await self.model_rpc_client.decode()
+        await self.model_rpc_client.decode(stream_id)
         batch.filter_out_finished_req(self.shm_req_manager)
         # 发个None包触发一下detokenization
         self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
@@ -446,6 +447,6 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     pipe_writer.send("init ok")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(router.loop_for_fwd())
+    loop.create_task(router.loop_for_fwd(0))
     loop.run_until_complete(router.loop_for_netio_req())
     return

@@ -20,7 +20,7 @@ class InferStateInfo:
         # decode 阶段指的是每个req的总长 最大值
         self.max_len_in_batch = None
         self.is_prefill = None
-        self.all_reduce_id = 0
+        self.stream_id = 0
 
         self.mem_manager: MemoryManager = None
         self.req_manager: ReqManager = None

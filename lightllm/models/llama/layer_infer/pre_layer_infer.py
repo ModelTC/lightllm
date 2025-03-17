@@ -30,7 +30,7 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
         )
         embedding(input_ids, layer_weight.wte_weight_, self.vob_start_id_, self.vob_end_id_, input_embdings)
         if self.tp_world_size_ > 1:
-            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False, all_reduce_id=infer_state.all_reduce_id)
+            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False, stream_id=infer_state.stream_id)
         return input_embdings
 
     def token_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
@@ -39,5 +39,5 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
         )
         embedding(input_ids, layer_weight.wte_weight_, self.vob_start_id_, self.vob_end_id_, input_embdings)
         if self.tp_world_size_ > 1:
-            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False, all_reduce_id=infer_state.all_reduce_id)
+            dist.all_reduce(input_embdings, op=dist.ReduceOp.SUM, async_op=False, stream_id=infer_state.stream_id)
         return input_embdings

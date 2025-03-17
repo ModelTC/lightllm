@@ -57,7 +57,7 @@ def split_kwargs(
         "b_seq_len": b_seq_len1,
         "b_ready_cache_len": b_ready_cache_len1,
         "is_prefill": is_prefill,
-        "all_reduce_id": 0,
+        "stream_id": 0,
     }
     kwargs2 = {
         "batch_size": batch_size - batch_size // 2,
@@ -70,7 +70,7 @@ def split_kwargs(
         "b_seq_len": b_seq_len2,
         "b_ready_cache_len": b_ready_cache_len2,
         "is_prefill": is_prefill,
-        "all_reduce_id": 1,
+        "stream_id": 1,
     }
     if multimodal_params is not None:
         kwargs1["multimodal_params"] = multimodal_params
@@ -151,7 +151,7 @@ def split_kwargs_n(
             "b_seq_len": split_b_seq_len,
             "b_ready_cache_len": split_b_ready_cache_len,
             "is_prefill": is_prefill,
-            "all_reduce_id": i,
+            "stream_id": i,
         }
 
         # 如果有多模态参数，添加到kwargs
@@ -167,18 +167,23 @@ class ContinuesBatchBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
 
-    def prefill(self, reqs: List[Tuple]):
+    def prefill(self, reqs: List[Tuple], stream_id):
         req_ids = self._init_reqs(reqs)
         kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
-        logits = self.model.forward(**kwargs)
-        # if kwargs["batch_size"] > 1:
-        #     kwargs1, kwargs2 = split_kwargs(**kwargs)
-        #     with torch.cuda.stream(self.model.stream1):
-        #         logits1 = self.model.forward(**kwargs1)
-        #     with torch.cuda.stream(self.model.stream2):
-        #         logits2 = self.model.forward(**kwargs2)
+        with torch.cuda.stream(self.model.stream[stream_id]):
+            logits = self.model.forward(kwargs)
+            torch.cuda.current_stream().synchronize()
+        # logits = self.model.forward(**kwargs)
+        # split_n = self.model.stream_num
+        # if kwargs["batch_size"] > split_n - 1:
+        #     kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
+        #     logits = [None] * split_n
+        #     for i in range(split_n):
+        #         with torch.cuda.stream(self.model.stream[i]):
+        #             logits[i] = self.model.forward(**kwargs_list[i])
+
         #     torch.cuda.synchronize()
-        #     logits = torch.cat([logits1, logits2], dim=0)
+        #     logits = torch.cat(logits, dim=0)
         # else:
         #     logits = self.model.forward(**kwargs)
 
@@ -189,21 +194,24 @@ class ContinuesBatchBackend(ModeBackend):
         self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
         return
 
-    def decode(self):
+    def decode(self, stream_id):
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
+        with torch.cuda.stream(self.model.stream[stream_id]):
+            logits = self.model.forward(kwargs)
+            torch.cuda.current_stream().synchronize()
         # logits = self.model.forward(**kwargs)
-        split_n = self.model.stream_num
-        if kwargs["batch_size"] > split_n - 1:
-            kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
-            logits = [None] * split_n
-            for i in range(split_n):
-                with torch.cuda.stream(self.model.stream[i]):
-                    logits[i] = self.model.forward(**kwargs_list[i])
+        # split_n = self.model.stream_num
+        # if kwargs["batch_size"] > split_n - 1:
+        #     kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
+        #     logits = [None] * split_n
+        #     for i in range(split_n):
+        #         with torch.cuda.stream(self.model.stream[i]):
+        #             logits[i] = self.model.forward(**kwargs_list[i])
 
-            torch.cuda.synchronize()
-            logits = torch.cat(logits, dim=0)
-        else:
-            logits = self.model.forward(**kwargs)
+        #     torch.cuda.synchronize()
+        #     logits = torch.cat(logits, dim=0)
+        # else:
+        #     logits = self.model.forward(**kwargs)
 
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()

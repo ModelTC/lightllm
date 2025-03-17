@@ -154,17 +154,17 @@ class ModelRpcServer:
 
         return
 
-    def prefill(self, reqs):
+    def prefill(self, reqs, stream_id):
         try:
-            return self.backend.prefill(reqs)
+            return self.backend.prefill(reqs, stream_id)
         except Exception as e:
             err_msg = str(e)
             logger.exception(f"Batch prefill encountered an unexpected ERROR: {err_msg}")
             raise e
 
-    def decode(self):
+    def decode(self, stream_id):
         try:
-            return self.backend.decode()
+            return self.backend.decode(stream_id)
         except Exception as e:
             err_msg = str(e)
             logger.exception(f"Batch decode encountered an unexpected ERROR: {err_msg}")
@@ -210,28 +210,28 @@ class ModelRpcClient:
             self.model_infer_server.init_model(kvargs)
             return
 
-    async def prefill(self, reqs):
+    async def prefill(self, reqs, stream_id):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("prefill", (reqs,))
+            self.rpc_shm_params.write_func_params("prefill", (reqs, stream_id))
             self.rpc_event.set()
 
             await asyncio.to_thread(self.rpc_finished_event.wait)
             self.rpc_finished_event.clear()
             return
         else:
-            self.model_infer_server.prefill(reqs)
+            self.model_infer_server.prefill(reqs, stream_id)
             return
 
-    async def decode(self):
+    async def decode(self, stream_id):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("decode", ())
+            self.rpc_shm_params.write_func_params("decode", (stream_id, ))
             self.rpc_event.set()
 
             await asyncio.to_thread(self.rpc_finished_event.wait)
             self.rpc_finished_event.clear()
             return
         else:
-            self.model_infer_server.decode()
+            self.model_infer_server.decode(stream_id)
             return
 
     async def pause_reqs(self, req_ids):

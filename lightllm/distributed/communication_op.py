@@ -57,11 +57,11 @@ class CustomCommunicationOp:
         self.device_group = None
 
     @contextmanager
-    def lightllm_capture_graph(self, all_reduce_id):
-        if self.vllm_reduce[all_reduce_id] is not None:
-            with self.vllm_reduce[all_reduce_id].capture():
-                if self.custom_gather[all_reduce_id] is not None:
-                    with self.custom_gather[all_reduce_id].capture():
+    def lightllm_capture_graph(self, stream_id):
+        if self.vllm_reduce[stream_id] is not None:
+            with self.vllm_reduce[stream_id].capture():
+                if self.custom_gather[stream_id] is not None:
+                    with self.custom_gather[stream_id].capture():
                         yield
                 else:
                     yield
@@ -85,11 +85,11 @@ class CustomCommunicationOp:
                 self.vllm_reduce[i] = CustomAllreduce(dist.new_group(ranks, backend="gloo"), torch.cuda.current_device())
             logger.info("Enable VLLM ALLReduce.")
 
-        def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False, all_reduce_id=0):
+        def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False, stream_id=0):
             if op != ReduceOp.SUM or async_op:
                 original_all_reduce(input_, op, group, async_op)
             else:
-                vllm_reduce = self.vllm_reduce[all_reduce_id]
+                vllm_reduce = self.vllm_reduce[stream_id]
                 if vllm_reduce is not None and vllm_reduce.should_custom_ar(input_):
                     input_.data = vllm_reduce.custom_all_reduce(input_)
                 else:

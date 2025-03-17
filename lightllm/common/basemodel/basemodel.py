@@ -232,7 +232,7 @@ class TpPartBaseModel:
         b_ready_cache_len: torch.Tensor = None,
         multimodal_params=None,
         is_prefill=True,
-        all_reduce_id=0,
+        stream_id=0,
     ):
         assert mem_indexes.is_cuda
 
@@ -248,7 +248,7 @@ class TpPartBaseModel:
                 b_seq_len,
                 b_ready_cache_len,
                 multimodal_params,
-                all_reduce_id,
+                stream_id,
             )
         else:
             return self._decode(
@@ -261,7 +261,7 @@ class TpPartBaseModel:
                 b_start_loc,
                 b_seq_len,
                 multimodal_params,
-                all_reduce_id,
+                stream_id,
             )
 
     def _prefill(
@@ -276,11 +276,11 @@ class TpPartBaseModel:
         b_seq_len,
         b_ready_cache_len,
         multimodal_params,
-        all_reduce_id,
+        stream_id,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
-        infer_state.all_reduce_id = all_reduce_id
+        infer_state.stream_id = stream_id
         infer_state.is_token_healing = self.is_token_healing
         infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
@@ -332,10 +332,10 @@ class TpPartBaseModel:
         b_start_loc,
         b_seq_len,
         multimodal_params,
-        all_reduce_id,
+        stream_id,
     ):
         infer_state = self.infer_state_class()
-        infer_state.all_reduce_id = all_reduce_id
+        infer_state.stream_id = stream_id
         infer_state.is_prefill = False
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num
@@ -362,7 +362,7 @@ class TpPartBaseModel:
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
-        graph = self.graph[all_reduce_id]
+        graph = self.graph[stream_id]
         if graph is not None and graph.can_run(batch_size, max_len_in_batch):
             if graph.need_capture(batch_size):
                 infer_state.is_cuda_graph = True
