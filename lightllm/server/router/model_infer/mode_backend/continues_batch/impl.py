@@ -170,10 +170,14 @@ class ContinuesBatchBackend(ModeBackend):
     def prefill(self, reqs: List[Tuple], stream_id):
         req_ids = self._init_reqs(reqs)
         kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
+        kwargs["stream_id"] = stream_id
         with torch.cuda.stream(self.model.stream[stream_id]):
-            logits = self.model.forward(kwargs)
+            logits = self.model.forward(**kwargs)
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             torch.cuda.current_stream().synchronize()
+
         # logits = self.model.forward(**kwargs)
+
         # split_n = self.model.stream_num
         # if kwargs["batch_size"] > split_n - 1:
         #     kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
@@ -187,7 +191,7 @@ class ContinuesBatchBackend(ModeBackend):
         # else:
         #     logits = self.model.forward(**kwargs)
 
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        # next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
@@ -196,10 +200,14 @@ class ContinuesBatchBackend(ModeBackend):
 
     def decode(self, stream_id):
         kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
+        kwargs["stream_id"] = stream_id
         with torch.cuda.stream(self.model.stream[stream_id]):
-            logits = self.model.forward(kwargs)
+            logits = self.model.forward(**kwargs)
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             torch.cuda.current_stream().synchronize()
+
         # logits = self.model.forward(**kwargs)
+
         # split_n = self.model.stream_num
         # if kwargs["batch_size"] > split_n - 1:
         #     kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
@@ -213,7 +221,7 @@ class ContinuesBatchBackend(ModeBackend):
         # else:
         #     logits = self.model.forward(**kwargs)
 
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        # next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 

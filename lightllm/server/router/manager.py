@@ -448,5 +448,6 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(router.loop_for_fwd(0))
+    # loop.create_task(router.loop_for_fwd(1))
     loop.run_until_complete(router.loop_for_netio_req())
     return
