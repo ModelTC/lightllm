@@ -150,6 +150,43 @@ else:
     raise Exception("error triton version!")
 
 
+try:
+    from hopper.flash_attn_interface import _flash_attn_forward
+
+    def flash_attention_v3_fwd(
+            q,
+            k,
+            v,
+            o,
+    ):
+        head_dim = q.shape[-1]
+        softmax_scale = head_dim ** -0.5
+        _flash_attn_forward(
+            q,
+            k,
+            v,
+            None, None,  # k_new, v_new
+            None,  # qv
+            o,  # out
+            None, None, None,  # cu_seqlens_q/k/k_new
+            None, None,  # seqused_q/k
+            None, None,  # max_seqlen_q/k
+            None, None, None,  # page_table, kv_batch_idx, leftpad_k,
+            None, None,  # rotary_cos/sin
+            None, None, None,
+            softmax_scale,
+            causal=False,
+            window_size=(-1, -1),
+            softcap=0.0,
+            num_splits=1,
+            pack_gqa=None,
+            sm_margin=0,
+        )
+        return
+except ImportError:
+    print("Failed to import _flash_attn_forward from hopper.flash_attn_interface.")
+
+
 def torch_att(q, k, v):
     head_dim = q.shape[-1]
     q = q.transpose(1, 2)
