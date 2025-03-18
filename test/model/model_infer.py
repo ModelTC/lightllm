@@ -1,23 +1,34 @@
+import os
 import numpy as np
 from multiprocessing import Queue
 import multiprocessing
+from transformers import PretrainedConfig
 from lightllm.utils.dist_utils import init_distributed_env
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.models.deepseek2.model import Deepseek2TpPartModel
 
 
 def test_model_inference(args, model_class):
     ans_queue = Queue()
     workers = []
+    dp_size = args.get("dp", 1)
+    if dp_size > 1:
+        os.environ["ENABLE_DP"] = "1"
+
     for rank_id in range(args.tp):
         model_kvargs = {
             "args": args,
             "nccl_host": args.nccl_host,
+            "data_type": args.data_type,
             "nccl_port": args.nccl_port,
             "rank_id": rank_id,
             "world_size": args.tp,
+            "dp_size": dp_size,
             "weight_dir": args.model_dir,
             "load_way": "HF",
             "max_total_token_num": args.batch_size * (args.input_len + args.output_len + 1),
+            "graph_max_len_in_batch": args.max_req_total_len,
+            "graph_max_batch_size": args.graph_max_batch_size,
             "mem_faction": args.mem_fraction,
             "max_req_num": max(args.batch_size, 1000),
             "batch_max_tokens": args.batch_size * args.input_len,
@@ -54,14 +65,17 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
 
     custom_comm_ops.set_custom_reduce()
     custom_comm_ops.set_custom_gather()
+    if model_class == Deepseek2TpPartModel:
+        model_cfg, _ = PretrainedConfig.get_config_dict(model_kvargs["weight_dir"])
+        custom_comm_ops.set_deepep(model_cfg["n_routed_experts"])
     dist.barrier()
 
     torch.cuda.empty_cache()
 
     model_part = model_class(model_kvargs)
+
     # warm up
     test_data = np.vstack([np.arange(5, input_len + 5) for _ in range(batch_size)])
-    test_data[:, 0] = 100000
     test_data = test_data.reshape(-1)
     test_data = torch.from_numpy(test_data).cuda()
 
