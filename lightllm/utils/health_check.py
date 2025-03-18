@@ -80,7 +80,7 @@ async def health_check(args, httpserver_manager: HttpServerManager, request: Req
             health_obj.set_health()
         except asyncio.TimeoutError:
             health_obj.set_unhealth()
-            logger.warning("Health check timeout! The failure count is: %s", str(health_obj._failure_count))
+            logger.warning(f"Health check timeout! The failure count is: {str(health_obj._failure_count)}")
         return health_obj.is_health()
     except Exception as e:
         logger.exception(str(e))
