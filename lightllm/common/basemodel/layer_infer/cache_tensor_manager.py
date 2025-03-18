@@ -39,17 +39,12 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             UntypedStorage._free_weak_ref(self.storage_weak_ptr)
             return
 
-    # 实现 batch 1 到 cuda_graph_max_batch_size 共享内部torch.Tensor的特制cache manager.
-    # cuda graph cache 可以不实现得那么高效，因为只会捕获一次，后续都是在 graph 图中run。
+    # cuda graph cache 中，对于输出 tensor （申请参数中is_graph_out = True），实现跨不同
+    # batch size 的 cuda graph 的tensor共享。对于 非输出 tensor， 退化为使用 torch.empty 进行显存的分配。
     class CudaGraphCacheTensorManager:
         def __init__(self, cuda_graph_max_batch_size: int):
-            self.bufnodes: List[BufNode] = []
             self.cuda_graph_max_batch_size = cuda_graph_max_batch_size
-            from torch._C import _storage_Use_Count as use_count
-
             self.graph_out_tensor: torch.Tensor = None
-
-            self.use_count = use_count
             self.managed_total_tensor_bytes = 0
             return
 
@@ -61,43 +56,20 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             device: str = "cuda",
             is_graph_out: bool = False,
         ) -> torch.Tensor:
-            """
-            cuda graph 对应的分配需要先将shape扩大到最大batch_size 对应的shape, 然后再slice回来。
-            """
+            if not is_graph_out:
+                return torch.empty(shape, dtype=data_type, device=device)
+
             size = np.prod(shape)
             assert size % cur_batch_size == 0
             max_size = size // cur_batch_size * self.cuda_graph_max_batch_size
-            key = (max_size, data_type)
+
             # graph out tensor, 只有一个， 不需要进行引用计数管理
-            if is_graph_out:
-                if self.graph_out_tensor is None:
-                    self.graph_out_tensor = torch.empty(
-                        (max_size,), dtype=data_type, device=device, requires_grad=False
-                    )
-                    logger.info(
-                        f"pid {os.getpid()} cuda graph alloc graph out mem {shape} {data_type} {size} {max_size}"
-                    )
-                    self.managed_total_tensor_bytes += (
-                        self.graph_out_tensor.element_size() * self.graph_out_tensor.numel()
-                    )
-                    logger.info(f"cuda graph managed_total_tensor_bytes: {self.managed_total_tensor_bytes}")
-                return self.graph_out_tensor[0:size].view(shape)
-
-            for buf_node in self.bufnodes:
-                if buf_node.shape_key == key and self.use_count(buf_node.storage_weak_ptr) == 1:
-                    ans = buf_node.inner_tensor[0:size].view(shape)
-                    return ans
-
-            buf_tensor = torch.empty((max_size,), dtype=data_type, device=device, requires_grad=False)
-            logger.info(f"pid {os.getpid()} cuda graph alloc mem {shape} {data_type} {size} {max_size}")
-            self.managed_total_tensor_bytes += buf_tensor.element_size() * buf_tensor.numel()
-            logger.info(f"cuda graph managed_total_tensor_bytes: {self.managed_total_tensor_bytes}")
-
-            storage_weak_ptr = buf_tensor.untyped_storage()._weak_ref()
-            buf_node = BufNode(buf_tensor, key, storage_weak_ptr)
-            self.bufnodes.append(buf_node)
-            ans = buf_node.inner_tensor[0:size].view(shape)
-            return ans
+            if self.graph_out_tensor is None:
+                self.graph_out_tensor = torch.empty((max_size,), dtype=data_type, device=device, requires_grad=False)
+                logger.info(f"pid {os.getpid()} cuda graph alloc graph out mem {shape} {data_type} {size} {max_size}")
+                self.managed_total_tensor_bytes += self.graph_out_tensor.element_size() * self.graph_out_tensor.numel()
+                logger.info(f"cuda graph managed_total_tensor_bytes: {self.managed_total_tensor_bytes}")
+            return self.graph_out_tensor[0:size].view(shape)
 
     class CacheTensorManager:
         def __init__(self):
