@@ -112,3 +112,25 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
             input_embdings = gather_data[0 : len(infer_state.position_sin)]
 
         return self.token_forward(input_embdings=input_embdings, infer_state=infer_state, layer_weight=layer_weight)
+
+    def overlap_tpsp_token_forward(
+        self,
+        input_embdings: torch.Tensor,
+        input_embdings1: torch.Tensor,
+        infer_state: LlamaInferStateInfo,
+        infer_state1: LlamaInferStateInfo,
+        layer_weight: BaseLayerWeight,
+    ):
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            infer_state.hook = None
+
+        logics = self.tpsp_token_forward(input_embdings, infer_state, layer_weight=layer_weight)
+
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
+
+        logics1 = self.tpsp_token_forward(input_embdings1, infer_state1, layer_weight=layer_weight)
+
+        return logics, logics1

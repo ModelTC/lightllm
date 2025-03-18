@@ -1,8 +1,9 @@
-from typing import Tuple
+import os
 import torch
 import torch.functional as F
 import torch.distributed as dist
 import numpy as np
+from typing import Tuple
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv_fp8 import destindex_copy_kv_fp8
@@ -24,7 +25,7 @@ from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from lightllm.models.deepseek2.flashinfer_struct import Deepseek2FlashInferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
-import os
+
 from lightllm.utils.envs_utils import enable_env_vars
 
 
@@ -627,3 +628,93 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
         ep_output = ep_output.view(token_num, hidden_dim)
         return ep_output
+
+    def overlap_tpsp_token_forward(
+        self,
+        input_embdings: torch.Tensor,
+        input_embdings1: torch.Tensor,
+        infer_state: Deepseek2InferStateInfo,
+        infer_state1: Deepseek2InferStateInfo,
+        layer_weight: Deepseek2TransformerLayerWeight,
+    ):
+        # 0 attention
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            infer_state.hook = None
+
+        _0_input1 = self._att_norm(input_embdings, infer_state, layer_weight)
+        _0_cache_kv = self._pre_cache_kv(infer_state, layer_weight)
+        _0_q, _0_cache_kv = self._tpsp_get_qkv(input_embdings, _0_cache_kv, infer_state, layer_weight)
+        _0_input1 = None
+        self._post_cache_kv(_0_cache_kv, infer_state, layer_weight)
+        _0_o = self._context_attention_kernel(_0_q, _0_cache_kv, infer_state, layer_weight)
+        _0_q = None
+        _0_o = self._tpsp_get_o(_0_o, infer_state, layer_weight)
+        input_embdings.add_(_0_o.view(-1, self.embed_dim_))
+        _0_o = None
+        _0_input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
+        # to do gate and disptatch
+
+        # 0 dispatch
+        _0_hook, _0_ffn_in = layer_weight.moe.dispatch(_0_input1)
+        infer_state.hook = _0_hook
+
+        # 1 attention
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
+
+        _1_input1 = self._att_norm(input_embdings1, infer_state1, layer_weight)
+        _1_cache_kv = self._pre_cache_kv(infer_state1, layer_weight)
+        _1_q, _1_cache_kv = self._tpsp_get_qkv(input_embdings1, _1_cache_kv, infer_state1, layer_weight)
+        _1_input1 = None
+        self._post_cache_kv(_1_cache_kv, infer_state1, layer_weight)
+        _1_o = self._context_attention_kernel(_1_q, _1_cache_kv, infer_state1, layer_weight)
+        _1_q = None
+        _1_o = self._tpsp_get_o(_1_o, infer_state1, layer_weight)
+        input_embdings1.add_(_1_o.view(-1, self.embed_dim_))
+        _1_o = None
+        _1_input1 = self._ffn_norm(input_embdings1, infer_state1, layer_weight)
+        # to do gate and disptatch
+
+        # 1 dispatch
+        _1_hook, _1_ffn_in = layer_weight.moe.dispatch(_1_input1)
+        infer_state1.hook = _1_hook
+
+        # 0 moe calcu
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            infer_state.hook = None
+
+        # to do moe caclue
+        _0_moe_out = self.moe_calcu(_0_ffn_in)
+
+        # 0 combine
+        _0_ffn_out, _0_hook = layer_weight.moe.combine(_0_moe_out)
+
+        def _0_hook_post():
+            _0_hook()
+            input_embdings.add_(_0_ffn_out.view(-1, self.embed_dim_))
+            return
+
+        infer_state.hook = _0_hook_post
+
+        # 1 moe calcu
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
+
+        # to do moe caclue
+        _1_moe_out = self.moe_calcu(_1_ffn_in)
+
+        # 0 combine
+        _1_ffn_out, _1_hook = layer_weight.moe.combine(_1_moe_out)
+
+        def _1_hook_post():
+            _1_hook()
+            input_embdings1.add_(_1_ffn_out.view(-1, self.embed_dim_))
+            return
+
+        infer_state1.hook = _1_hook_post
+
+        return input_embdings, input_embdings1
