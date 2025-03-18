@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import torch.distributed as dist
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.fused_moe.moe_silu_and_mul import silu_and_mul_fwd
+from lightllm.common.fused_moe.moe_silu_and_mul_mix_quant_ep import silu_and_mul_masked_post_quant_fwd
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.deepgemm_quant import get_tma_aligned_size
 from lightllm.common.basemodel.triton_kernel.deepep_scatter_gather import ep_scatter, ep_gather
@@ -306,7 +307,6 @@ def fused_experts_impl(
         # groupgemm (masked layout)
         gemm_out_a = torch.empty((E, padded_m, N), device=hidden_states.device, dtype=hidden_states.dtype)
         expected_m = num_max_dispatch_tokens_per_rank
-        silu_out = torch.empty((E * padded_m, N // 2), device=hidden_states.device, dtype=hidden_states.dtype)
         qsilu_out_scale = torch.empty(
             (E, padded_m, N // 2 // block_size_k), device=hidden_states.device, dtype=torch.float32
         )
@@ -318,13 +318,7 @@ def fused_experts_impl(
 
         deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1, w1_scale), gemm_out_a, masked_m, expected_m)
 
-        # silu_and_mul_fwd + qaunt
-        # TODO fused kernel with mask
-        silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
-        per_token_group_quant_fp8(
-            silu_out, block_size_k, qsilu_out.view(-1, N // 2), qsilu_out_scale.view(-1, N // 2 // block_size_k)
-        )
-
+        silu_and_mul_masked_post_quant_fwd(gemm_out_a, qsilu_out, qsilu_out_scale, block_size_k, masked_m)
         deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(
             (qsilu_out, qsilu_out_scale), (w2, w2_scale), gemm_out_b, masked_m, expected_m
         )
