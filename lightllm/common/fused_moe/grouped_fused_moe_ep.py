@@ -28,7 +28,7 @@ Buffer.set_num_sms(24)
 def init_dist(local_rank: int, num_local_ranks: int):
     # NOTES: you may rewrite this function with your own cluster settings
     ip = os.getenv("MASTER_ADDR", "127.0.0.1")
-    port = int(os.getenv("MASTER_PORT", "8361"))
+    port = int(os.getenv("MASTER_PORT", "18361"))
     num_nodes = int(os.getenv("WORLD_SIZE", 1))
     node_rank = int(os.getenv("RANK", 0))
     assert (num_local_ranks < 8 and num_nodes == 1) or num_local_ranks == 8
@@ -338,7 +338,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
     torch.manual_seed(rank)
 
     # Construct inputs
-    seqlen = 1
+    seqlen = 128
     hidden_states = torch.randn((seqlen, 7168), device="cuda", dtype=torch.bfloat16)
     w1 = torch.randn((256 // num_local_ranks, 4096, 7168), device="cuda", dtype=torch.bfloat16)
     w2 = torch.randn((256 // num_local_ranks, 7168, 2048), device="cuda", dtype=torch.bfloat16)
@@ -425,6 +425,71 @@ def test_loop(local_rank: int, num_local_ranks: int):
         (ref_output - output).abs().mean(),
         (ref_output - ll_output).abs().mean(),
     )
+
+    # Profile
+    profile = False
+    if profile:
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True
+        ) as prof:
+            for i in range(10):
+                output = fused_experts_impl(
+                    hidden_states=hidden_states,
+                    w1=w1_fp8,
+                    w2=w2_fp8,
+                    topk_weights=topk_weights,
+                    topk_idx=topk_ids,
+                    num_experts=256,
+                    buffer=buffer,
+                    is_prefill=True,
+                    use_fp8_w8a8=True,
+                    use_fp8_all2all=True,
+                    use_int8_w8a16=False,
+                    w1_scale=w1_scale,
+                    w2_scale=w2_scale,
+                    previous_event=None,
+                )
+            # prof.step()
+        if rank == 0:
+            print(prof.key_averages().table(sort_by="cuda_time_total"))
+            prof.export_chrome_trace("normal_trace.json")
+
+        if test_ll_compatibility:
+            with torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True
+            ) as prof:
+                for i in range(10):
+                    ll_output = fused_experts_impl(
+                        hidden_states=hidden_states,
+                        w1=w1_fp8,
+                        w2=w2_fp8,
+                        topk_weights=topk_weights,
+                        topk_idx=topk_ids,
+                        num_experts=256,
+                        buffer=buffer,
+                        is_prefill=False,
+                        use_fp8_w8a8=True,
+                        use_fp8_all2all=True,
+                        use_int8_w8a16=False,
+                        w1_scale=w1_scale,
+                        w2_scale=w2_scale,
+                        previous_event=None,
+                    )
+            if rank == 0:
+                print(prof.key_averages().table(sort_by="cuda_time_total"))
+                prof.export_chrome_trace("ll_trace.json")
 
     dist.barrier()
 
