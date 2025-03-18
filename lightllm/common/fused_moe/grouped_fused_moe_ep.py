@@ -299,7 +299,7 @@ def fused_experts_impl(
             num_experts,
             use_fp8=use_fp8_w8a8,
             async_finish=False,
-            return_recv_hook=True,
+            return_recv_hook=False,
         )
 
         padded_m = recv_x[0].shape[1]
@@ -314,7 +314,7 @@ def fused_experts_impl(
         # groupgemm (masked layout)
         gemm_out_b = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
 
-        hook()
+        # hook()
 
         deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(recv_x, (w1, w1_scale), gemm_out_a, masked_m, expected_m)
 
@@ -331,9 +331,9 @@ def fused_experts_impl(
 
         # low latency combine
         combined_x, event_overlap, hook = buffer.low_latency_combine(
-            gemm_out_b, topk_idx, topk_weights, handle, async_finish=False, return_recv_hook=True
+            gemm_out_b, topk_idx, topk_weights, handle, async_finish=False, return_recv_hook=False
         )
-        hook()
+        # hook()
     return combined_x
 
 
