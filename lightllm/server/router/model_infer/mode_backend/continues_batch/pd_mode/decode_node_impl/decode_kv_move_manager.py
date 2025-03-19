@@ -29,7 +29,7 @@ logger = init_logger(__name__)
 thread_local_data = threading.local()
 
 KV_MOVE_MAX_NUM = 16
-KV_MOVE_MAX_RESTART_CNT = 3
+KV_MOVE_MAX_START_CNT = 3
 
 
 @dataclass
@@ -288,16 +288,12 @@ class DecodeKVMoveManager(rpyc.Service):
         # 需要每个卡有一个锁来规划每次只能有一个tran obj 操作对应显卡上的传输任务。
         self.device_locks = [threading.Lock() for _ in range(self.node_world_size)]
 
-        self.kv_trans_processes = []
-        self.kv_trans_task_in_queues = []
-        self.kv_trans_task_out_queues = []
-        self.kv_trans_process_restart_cnt = []
+        self.kv_trans_processes = [None] * self.node_world_size
+        self.kv_trans_task_in_queues = [None] * self.node_world_size
+        self.kv_trans_task_out_queues = [None] * self.node_world_size
+        self.kv_trans_process_start_cnt = [0] * self.node_world_size
 
         for device_id in range(self.node_world_size):
-            self.kv_trans_task_in_queues.append(mp.Queue())
-            self.kv_trans_task_out_queues.append(mp.Queue())
-            self.kv_trans_process_restart_cnt.append(0)
-            self.kv_trans_processes.append(None)
             assert self.start_trans_process(device_id)
 
         return
@@ -525,9 +521,9 @@ class DecodeKVMoveManager(rpyc.Service):
                 self.remove_dead_trans_obj(node_id)
 
     def start_trans_process(self, device_id: int):
-        task_in_queue = self.kv_trans_task_in_queues[device_id]
-        task_out_queue = self.kv_trans_task_out_queues[device_id]
-        self.kv_trans_process_restart_cnt[device_id] += 1
+        task_in_queue = mp.Queue()
+        task_out_queue = mp.Queue()
+        self.kv_trans_process_start_cnt[device_id] += 1
 
         if self.kv_trans_processes[device_id]:
             # force kill
@@ -554,6 +550,8 @@ class DecodeKVMoveManager(rpyc.Service):
             assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
 
             self.kv_trans_processes[device_id] = kv_trans_process
+            self.kv_trans_task_in_queues[device_id] = task_in_queue
+            self.kv_trans_task_out_queues[device_id] = task_out_queue
 
             return True
         except Exception as e:
@@ -561,7 +559,7 @@ class DecodeKVMoveManager(rpyc.Service):
             return False
 
     def is_kv_trans_process_alive(self, device_id):
-        return self.kv_trans_process_restart_cnt[device_id] <= KV_MOVE_MAX_RESTART_CNT
+        return self.kv_trans_process_start_cnt[device_id] <= KV_MOVE_MAX_START_CNT
 
     def check_trans_process(self, raise_exception=True):
         at_least_one_alive = False
