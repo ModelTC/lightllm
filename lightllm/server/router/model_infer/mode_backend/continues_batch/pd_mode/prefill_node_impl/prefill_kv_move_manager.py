@@ -29,6 +29,7 @@ from lightllm.utils.graceful_utils import graceful_registry
 from lightllm.utils.envs_utils import get_unique_server_name
 
 KV_MOVE_MAX_NUM = 16
+KV_MOVE_MAX_RESTART_CNT = 3
 
 logger = init_logger(__name__)
 
@@ -37,6 +38,7 @@ logger = init_logger(__name__)
 class TransProcessObj:
     decode_node_id: int = None
     rpyc_conn: object = None  # rpyc_con 的连接对象
+    process: mp.Process = None
     task_in_queue: mp.Queue = None
     task_out_queue: mp.Queue = None
     device_index: int = None  # 使用的gpu序号
@@ -60,25 +62,29 @@ class TransProcessObj:
         task_in_queue = manager.kv_trans_task_in_queues[device_index]
         task_out_queue = manager.kv_trans_task_out_queues[device_index]
 
-        task_in_queue.put(
-            PDTransJoinInfo(
-                prefill_id=prefill_node_id,
-                prefill_device_id=device_index,
-                prefill_ip=manager.host_ip,
-                prefill_port=manager.kv_trans_ports[device_index],
-                decode_id=decode_node_id,
-                decode_device_id=-1,
+        with manager.device_locks[device_index]:
+            task_in_queue.put(
+                PDTransJoinInfo(
+                    prefill_id=prefill_node_id,
+                    prefill_device_id=device_index,
+                    pd_prefill_nccl_ip=manager.host_ip,
+                    pd_prefill_nccl_port=manager.kv_trans_ports[device_index],
+                    decode_id=decode_node_id,
+                    decode_device_id=-1,
+                )
             )
-        )
 
-        # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
-        max_kv_trans_token_num = obtain(
-            con.root.build_trans_process(
-                prefill_node_id, manager.host_ip, manager.kv_trans_ports[device_index], manager.args.max_total_token_num
+            # 异步调用, 让decode节点建立与prefill节点进行nccl通信的进程
+            max_kv_trans_token_num = obtain(
+                con.root.build_trans_process(
+                    prefill_node_id,
+                    manager.host_ip,
+                    manager.kv_trans_ports[device_index],
+                    manager.args.max_total_token_num,
+                )
             )
-        )
-        self.max_kv_trans_token_num = max_kv_trans_token_num
-        assert task_out_queue.get(timeout=60) == "nccl_ok"
+            self.max_kv_trans_token_num = max_kv_trans_token_num
+            assert task_out_queue.get(timeout=60) == "nccl_ok"
 
         self.decode_node_id = decode_node_id
         self.prefill_node_id = prefill_node_id
@@ -88,6 +94,7 @@ class TransProcessObj:
         self.device_index = device_index
         self.manager = manager
         self.latest_check_time = time.time()
+        self.process = manager.kv_trans_processes[device_index]
 
         self.request_kv_trans_task_queue = TaskQueue(
             get_func=self._get_request_tasks, fail_func=self.manager.put_to_release_task_queue
@@ -120,9 +127,18 @@ class TransProcessObj:
                 raise e
         return
 
+    def check_trans_process(self, raise_exception=True):
+        process = psutil.Process(self.process.pid)
+        if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
+            self.set_has_error()
+            if raise_exception:
+                raise Exception(f"trans process: {self.process.pid} is dead")
+        return
+
     def timer_check_status(self, raise_exception=True):
         if time.time() - self.latest_check_time >= 2.0:
             self.latest_check_time = time.time()
+            self.check_trans_process(raise_exception=raise_exception)
             self.check_connect(raise_exception=raise_exception)
             if self.has_error:
                 self.manager.remove_trans_obj(self.decode_node_id)
@@ -336,30 +352,18 @@ class PrefillKVMoveManager:
         self.kv_trans_processes = []
         self.kv_trans_task_in_queues = []
         self.kv_trans_task_out_queues = []
-        self.kv_trans_process_alive = []
+        self.kv_trans_process_restart_cnt = []
 
         for device_id in range(self.node_world_size):
-            kv_trans_task_in_queue = mp.Queue()
-            kv_trans_task_out_queue = mp.Queue()
-            kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
-            kv_trans_process = start_prefill_trans_process(
-                self.args,
-                self.host_ip,
-                kv_trans_port,
-                device_id,
-                kv_trans_task_in_queue,
-                kv_trans_task_out_queue,
-                self.mem_queues,
+            self.kv_trans_task_in_queues.append(mp.Queue())
+            self.kv_trans_task_out_queues.append(mp.Queue())
+            self.kv_trans_ports.append(
+                find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
             )
-            assert kv_trans_task_out_queue.get(timeout=30) == "proc_start"
-            self._put_mem_manager_to_mem_queue()
-            assert kv_trans_task_out_queue.get(timeout=60) == "get_mem_managers_ok"
+            self.kv_trans_process_restart_cnt.append(0)
+            self.kv_trans_processes.append(None)
+            assert self.start_trans_process(device_id)
 
-            self.kv_trans_ports.append(kv_trans_port)
-            self.kv_trans_processes.append(kv_trans_process)
-            self.kv_trans_task_in_queues.append(kv_trans_task_in_queue)
-            self.kv_trans_task_out_queues.append(kv_trans_task_out_queue)
-            self.kv_trans_process_alive.append(True)
         return
 
     def put_to_release_task_queue(self, task: Union[KVMoveTask, List[KVMoveTask]]):
@@ -380,16 +384,55 @@ class PrefillKVMoveManager:
                 self._remove_req_refs_from_prompt_cache(handle_list)
         return
 
+    def start_trans_process(self, device_id: int):
+        task_in_queue = self.kv_trans_task_in_queues[device_id]
+        task_out_queue = self.kv_trans_task_out_queues[device_id]
+        kv_trans_port = self.kv_trans_ports[device_id]
+        self.kv_trans_process_restart_cnt[device_id] += 1
+
+        if self.kv_trans_processes[device_id]:
+            # force kill
+            try:
+                self.remove_trans_obj_by_deviceid(device_id)
+                process = psutil.Process(self.kv_trans_processes[device_id].pid)
+                process.kill()
+                self.kv_trans_processes[device_id] = None
+            except Exception:
+                pass
+
+        try:
+            from .prefill_trans_process import start_prefill_trans_process
+
+            kv_trans_process = start_prefill_trans_process(
+                self.args,
+                self.host_ip,
+                kv_trans_port,
+                device_id,
+                task_in_queue,
+                task_out_queue,
+                self.mem_queues,
+            )
+            assert task_out_queue.get(timeout=30) == "proc_start"
+            self._put_mem_manager_to_mem_queue()
+            assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
+
+            self.kv_trans_processes[device_id] = kv_trans_process
+
+            return True
+        except Exception as e:
+            logger.warning(f"Failed start kv trans process for device {device_id}: {e}")
+            return False
+
     def check_trans_process(self, raise_exception=True):
         at_least_one_alive = False
         for device_id in range(self.node_world_size):
-            if not self.kv_trans_process_alive[device_id]:
+            if not self.is_kv_trans_process_alive(device_id):
                 continue
 
             process = psutil.Process(self.kv_trans_processes[device_id].pid)
             if not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE):
-                self.kv_trans_process_alive[device_id] = False
-                logger.error(f"kv trans process for device: {device_id} dead!!!")
+                logger.error(f"kv trans process for device: {device_id} dead!!!, try start again...")
+                self.start_trans_process(device_id)
             else:
                 at_least_one_alive = True
 
@@ -399,9 +442,24 @@ class PrefillKVMoveManager:
 
         return
 
+    def check_trans_process_loop(self):
+        try:
+            while True:
+                self.check_trans_process()
+                time.sleep(10.0)
+        except (BaseException, RuntimeError) as e:
+            logger.exception(str(e))
+            # kill parent process if any exception occurred
+            os.kill(os.getppid(), signal.SIGTERM)
+            raise e
+
+    def is_kv_trans_process_alive(self, device_id):
+        return self.kv_trans_process_restart_cnt[device_id] <= KV_MOVE_MAX_RESTART_CNT
+
     def get_next_device_index(self):
+
         counts = [
-            0 if self.kv_trans_process_alive[device_id] else (1 << 20) for device_id in range(self.node_world_size)
+            0 if self.is_kv_trans_process_alive(device_id) else (1 << 20) for device_id in range(self.node_world_size)
         ]
         for obj in self.node_id_to_trans_obj.values():
             counts[obj.device_index] += 1
@@ -438,9 +496,13 @@ class PrefillKVMoveManager:
             gc.collect()
         return
 
+    def remove_trans_obj_by_deviceid(self, device_id):
+        for node_id, t_obj in self.node_id_to_trans_obj.items():
+            if t_obj.device_index == device_id:
+                self.remove_dead_trans_obj(node_id)
+
     def task_dispatcher_loop(self):
         try:
-            last_check_time = time.time()
             # 获取任务，并分发给相关卡的处理队列
             while True:
                 move_task: KVMoveTask = self.info_queue.get()
@@ -452,10 +514,6 @@ class PrefillKVMoveManager:
                     self.put_to_release_task_queue(move_task)
                 finally:
                     trans_obj = None
-
-                if time.time() - last_check_time > 10.0:
-                    self.check_trans_process()
-                    last_check_time = time.time()
 
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
@@ -496,6 +554,8 @@ def _init_env(args, info_queue: mp.Queue, mem_queues: List[mp.Queue], event: mp.
     graceful_registry(inspect.currentframe().f_code.co_name)
 
     manager = PrefillKVMoveManager(args, info_queue, mem_queues)
+    kv_trans_process_check = threading.Thread(target=manager.check_trans_process_loop, daemon=True)
+    kv_trans_process_check.start()
     event.set()
     # 进入主循环
     manager.task_dispatcher_loop()

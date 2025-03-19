@@ -81,8 +81,8 @@ class PDTransJoinInfo:
     decode_device_id: int
     prefill_id: int
     prefill_device_id: int
-    prefill_ip: str
-    prefill_port: int
+    pd_prefill_nccl_ip: str
+    pd_prefill_nccl_port: int
 
 
 @dataclass
