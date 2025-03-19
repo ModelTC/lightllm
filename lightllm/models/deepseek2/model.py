@@ -13,6 +13,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 from lightllm.utils.envs_utils import enable_env_vars
 from lightllm.distributed.communication_op import custom_comm_ops
+from lightllm.utils.dist_utils import get_dp_world_size, get_current_device_id
 
 
 logger = init_logger(__name__)
@@ -21,13 +22,13 @@ logger = init_logger(__name__)
 class FlashInferStateExtraInfo:
     def __init__(self, model):
         num_heads = model.config["num_attention_heads"]
-        self.tp_q_head_num = num_heads if enable_env_vars("ENABLE_DP") else num_heads // model.world_size_
+        self.tp_q_head_num = num_heads if enable_env_vars("ENABLE_DP") else num_heads // get_dp_world_size()
         self.qk_nope_head_dim = model.qk_nope_head_dim
         self.qk_rope_head_dim = model.qk_rope_head_dim
         self.kv_lora_rank = model.kv_lora_rank
         self.q_data_type = model.data_type
         self.kv_data_type = model.data_type
-        self.workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(model.tp_rank_)
+        self.workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8).to(get_current_device_id())
         self.max_seq_length = model.max_seq_length
         self.softmax_scale = (self.qk_nope_head_dim + self.qk_rope_head_dim) ** (-0.5)
         if model.config["rope_scaling"] is not None:
