@@ -29,7 +29,7 @@ from lightllm.utils.graceful_utils import graceful_registry
 from lightllm.utils.envs_utils import get_unique_server_name
 
 KV_MOVE_MAX_NUM = 16
-KV_MOVE_MAX_RESTART_CNT = 3
+KV_MOVE_MAX_START_CNT = 3
 
 logger = init_logger(__name__)
 
@@ -348,20 +348,13 @@ class PrefillKVMoveManager:
 
         from .prefill_trans_process import start_prefill_trans_process
 
-        self.kv_trans_ports = []
-        self.kv_trans_processes = []
-        self.kv_trans_task_in_queues = []
-        self.kv_trans_task_out_queues = []
-        self.kv_trans_process_restart_cnt = []
+        self.kv_trans_ports = [None] * self.node_world_size
+        self.kv_trans_processes = [None] * self.node_world_size
+        self.kv_trans_task_in_queues = [None] * self.node_world_size
+        self.kv_trans_task_out_queues = [None] * self.node_world_size
+        self.kv_trans_process_start_cnt = [0] * self.node_world_size
 
         for device_id in range(self.node_world_size):
-            self.kv_trans_task_in_queues.append(mp.Queue())
-            self.kv_trans_task_out_queues.append(mp.Queue())
-            self.kv_trans_ports.append(
-                find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
-            )
-            self.kv_trans_process_restart_cnt.append(0)
-            self.kv_trans_processes.append(None)
             assert self.start_trans_process(device_id)
 
         return
@@ -385,10 +378,10 @@ class PrefillKVMoveManager:
         return
 
     def start_trans_process(self, device_id: int):
-        task_in_queue = self.kv_trans_task_in_queues[device_id]
-        task_out_queue = self.kv_trans_task_out_queues[device_id]
-        kv_trans_port = self.kv_trans_ports[device_id]
-        self.kv_trans_process_restart_cnt[device_id] += 1
+        task_in_queue = mp.Queue()
+        task_out_queue = mp.Queue()
+        kv_trans_port = find_available_port(self.args.pd_p_allowed_port_min, self.args.pd_p_allowed_port_max)
+        self.kv_trans_process_start_cnt[device_id] += 1
 
         if self.kv_trans_processes[device_id]:
             # force kill
@@ -417,6 +410,9 @@ class PrefillKVMoveManager:
             assert task_out_queue.get(timeout=60) == "get_mem_managers_ok"
 
             self.kv_trans_processes[device_id] = kv_trans_process
+            self.kv_trans_task_in_queues[device_id] = task_in_queue
+            self.kv_trans_task_out_queues[device_id] = task_out_queue
+            self.kv_trans_ports[device_id] = kv_trans_port
 
             return True
         except Exception as e:
@@ -454,7 +450,7 @@ class PrefillKVMoveManager:
             raise e
 
     def is_kv_trans_process_alive(self, device_id):
-        return self.kv_trans_process_restart_cnt[device_id] <= KV_MOVE_MAX_RESTART_CNT
+        return self.kv_trans_process_start_cnt[device_id] <= KV_MOVE_MAX_START_CNT
 
     def get_next_device_index(self):
 
