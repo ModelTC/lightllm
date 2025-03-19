@@ -1,6 +1,7 @@
 import torch
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.req_manager import ReqManager
+from lightllm.distributed import CustomProcessGroup
 
 
 class InferStateInfo:
@@ -35,6 +36,7 @@ class InferStateInfo:
         self.use_dynamic_prompt_cache = False
         self.multimodal_params = None
         self.is_cuda_graph = False  # 标记是否是cuda graph的捕获推理
+        self.dist_group: CustomProcessGroup = None
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         pass

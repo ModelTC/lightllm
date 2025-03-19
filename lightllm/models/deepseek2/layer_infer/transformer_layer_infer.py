@@ -65,8 +65,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.enable_cc_method = not os.getenv("DISABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, network_config, mode)
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
-        self.tp_q_head_num_ = int(self.tp_q_head_num_ * self.tp_world_size_)
-        self.tp_o_head_num_ = self.tp_q_head_num_
         self.num_heads = network_config["num_attention_heads"]
         self.num_kv_heads = network_config["num_key_value_heads"]
         return

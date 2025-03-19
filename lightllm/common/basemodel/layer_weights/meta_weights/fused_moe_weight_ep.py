@@ -4,7 +4,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
 from .base_weight import BaseWeight
 from lightllm.common.fused_moe.grouped_fused_moe_ep import fused_experts_impl
-from lightllm.distributed import custom_comm_ops
+from lightllm.distributed import dist_group_manager
 
 
 class FusedMoeWeightEP(BaseWeight):
@@ -88,7 +88,7 @@ class FusedMoeWeightEP(BaseWeight):
             topk_weights=topk_weights,
             topk_idx=topk_ids.to(torch.long),
             num_experts=self.n_routed_experts,  # number of all experts
-            buffer=custom_comm_ops.ep_buffer,
+            buffer=dist_group_manager.ep_buffer,
             is_prefill=is_prefill,
             use_fp8_w8a8=use_fp8_w8a8,
             use_fp8_all2all=use_fp8_w8a8,

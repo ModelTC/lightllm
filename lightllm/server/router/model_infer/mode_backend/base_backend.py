@@ -46,6 +46,7 @@ from lightllm.utils.dist_utils import get_global_rank, get_global_world_size, ge
 from lightllm.utils.dist_utils import get_dp_world_size, get_global_dp_rank, get_current_rank_in_dp
 from lightllm.utils.dist_utils import get_current_device_id, get_current_rank_in_node, get_node_world_size
 from lightllm.utils.dist_utils import get_dp_rank_in_node
+from lightllm.distributed import dist_group_manager
 import torch.distributed as dist
 
 
@@ -90,13 +91,9 @@ class ModeBackend:
 
         init_distributed_env(kvargs)
         self.init_rank_infos()
+        dist_group_manager.new_group()  # set the default group
 
         self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", self.dp_size_in_node)
-
-        from lightllm.distributed import custom_comm_ops
-
-        custom_comm_ops.set_custom_reduce()
-        custom_comm_ops.set_custom_gather()
 
         # 为 p d 分离模式添加的全局锁管理，用于做一些同步操作。 一定需要在
         # init_process_group 之后调用
@@ -187,7 +184,7 @@ class ModeBackend:
             elif self.model_type == "phi3":
                 self.model = Phi3TpPartModel(model_kvargs)
             elif self.model_type in ["deepseek_v2", "deepseek_v3"]:
-                custom_comm_ops.set_deepep(model_cfg["n_routed_experts"])
+                dist_group_manager.new_deepep_group(model_cfg["n_routed_experts"])
                 self.model = Deepseek2TpPartModel(model_kvargs)
             elif self.model_type == "internvl_chat":
                 llm_model_type = model_cfg.get("llm_config").get("model_type")

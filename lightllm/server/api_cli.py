@@ -188,6 +188,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_multimodal", action="store_true", help="Whether or not to allow to load additional multimodal models."
     )
     parser.add_argument("--disable_custom_allreduce", action="store_true", help="Whether to disable cutom allreduce.")
+    parser.add_argument("--enable_custom_allgather", action="store_true", help="Whether to enable cutom allgather.")
     parser.add_argument(
         "--cache_capacity", type=int, default=200, help="cache server capacity for multimodal resources"
     )

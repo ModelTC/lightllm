@@ -12,7 +12,7 @@ from lightllm.common.deepseek2_fp8kv_mem_manager import Deepseek2FP8KVMemoryMana
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 from lightllm.utils.envs_utils import enable_env_vars
-from lightllm.distributed.communication_op import custom_comm_ops
+from lightllm.distributed.communication_op import dist_group_manager
 from lightllm.utils.dist_utils import get_dp_world_size, get_current_device_id
 
 
@@ -174,5 +174,5 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     @final
     def _context_forward(self, input_ids, infer_state):
         predict_logics = super()._context_forward(input_ids, infer_state)
-        custom_comm_ops.clear_deepep_buffer()
+        dist_group_manager.clear_deepep_buffer()
         return predict_logics
