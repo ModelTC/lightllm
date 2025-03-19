@@ -204,6 +204,40 @@ class HiCacheController:
         # 确保最后修改的节点被持久化
         self._persist_node(current)
     
+    def readable_length(self, key: torch.Tensor) -> int:
+        """
+        计算key对应的KV缓存索引可读取的长度
+        """
+        token_ids = key.cpu().tolist()
+        current = self.root
+        position = 0
+        relative_position = 0
+        readable_count = 0
+        
+        while position < len(token_ids):
+            token_id = token_ids[position]
+            
+            # 检查当前节点的token
+            if relative_position < len(current.token_ids) and current.token_ids[relative_position] == token_id:
+                readable_count += 1
+                position += 1
+                relative_position += 1
+                continue
+            
+            # 查找子节点
+            child_key = (token_id, relative_position)
+            if child_key in current.children:
+                child_info = current.children[child_key]
+                assert isinstance(child_info[0], CacheNode)
+                child_hash = child_info[0].hash
+                current = self.node_cache[child_hash]
+                relative_position = 0
+            else:
+                # 未找到匹配的路径，返回已读取的长度
+                return readable_count
+        
+        return readable_count
+    
     def read(self, key: torch.Tensor) -> torch.Tensor:
         """
         读取token序列对应的KV缓存索引
@@ -242,6 +276,6 @@ class HiCacheController:
                 relative_position = 0
             else:
                 # 未找到匹配的路径
-                return torch.tensor(result_indices, dtype=torch.int64)
+                return torch.tensor(result_indices)
         
-        return torch.tensor(result_indices, dtype=torch.int64)
+        return torch.tensor(result_indices)
