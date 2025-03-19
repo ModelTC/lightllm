@@ -53,7 +53,7 @@ def _handle_prefill_join(
 ):
     try:
         store_client = TCPStore(
-            host_name=node_info.prefill_ip, port=node_info.prefill_port, is_master=False, use_libuv=False
+            host_name=node_info.pd_prefill_nccl_ip, port=node_info.pd_prefill_nccl_port, is_master=False, use_libuv=True
         )
         group = StatelessP2PProcessGroup.create(
             src_id=node_info.prefill_id, dest_id=node_info.decode_id, is_server=False, store=store_client
