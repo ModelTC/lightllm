@@ -47,7 +47,7 @@ class HiCacheController:
         self.service = None  # 将由外部代码初始化
         
         self.root = CacheNode()
-        self.root.hash = "root"
+        self.root.hash = "root_" + str(time.time())
         
         self.node_cache = {self.root.hash: self.root}  # hash -> node
         self.read_queue = Queue()
@@ -67,7 +67,7 @@ class HiCacheController:
         self.poll_thread.join(timeout=1)
         
         self.root = CacheNode()
-        self.root.hash = "root"
+        self.root.hash = "root_" + str(time.time())
         self.node_cache = {self.root.hash: self.root}
         
         self.read_queue = Queue()
@@ -85,14 +85,7 @@ class HiCacheController:
             pending_reads = []
             while not self.read_queue.empty():
                 task = self.read_queue.get()
-                if task.ready():
-                    # TODO: 将读到的内容存入 memory manager 中
-                    node_hash = task.hashs[0]
-                    if node_hash in self.node_cache:
-                        node = self.node_cache[node_hash]
-                        node.cache_indices = self.mem_manager.store(node.cache_indices, task.value)
-                        print(f"Node {node_hash} loaded with {len(node.cache_indices)} cache indices")
-                else:
+                if not task.ready():
                     pending_reads.append(task)
             
             for task in pending_reads:
@@ -112,20 +105,29 @@ class HiCacheController:
     
     def _ensure_node_loaded(self, node_hash):
         """确保节点已加载到内存中"""
-        if node_hash not in self.node_cache and node_hash != "root":
+        assert node_hash in self.node_cache, f"Node {node_hash} not found in cache"
+        assert node_hash[:4] != "root", "Cannot load root node"
+        if not self.mem_manager.exist(self.node_cache[node_hash].cache_indices):
             task = self.service.create(hashs=[node_hash], mode="r")
             self.service.commit(task)
             self.read_queue.put(task)
             # 需要等待节点加载完成
-            while not task.ready() or node_hash not in self.node_cache:
+            while not task.ready():
                 time.sleep(0.01)
+            for node_hash, node_data in zip(task.hashs, task.data):
+                assert node_hash in self.node_cache
+                node = self.node_cache[node_hash]
+                node.cache_indices = self.mem_manager.store(node.cache_indices, node_data)
+                print(f"Node {node_hash} loaded with {len(node.cache_indices)} cache indices")
+            print(f"Node {node_hash} loaded to memory")
     
     def _persist_node(self, node):
         """将节点持久化到磁盘"""
-        print(f"Persisting node {node.hash} with {len(node.token_ids)} tokens")
         if not node.hash:
             # 为新节点生成hash
             node.hash = f"node_{id(node)}_{time.time()}"
+        
+        print(f"Persisting node {node.hash} with {len(node.token_ids)} tokens")
         
         # TODO: 将对应的kvcache写入磁盘
         task = self.service.create(hashs=[node.hash], value=self.mem_manager.to_kvcache(node.cache_indices), mode="w")
@@ -155,6 +157,7 @@ class HiCacheController:
         while position < len(token_ids):
             token_id = token_ids[position]
             print(f"Writing token {token_id} at position {position}, current node has {len(current.token_ids)} tokens")
+            print(f"relative_position: {relative_position}, node_hash: {current.hash}")
             child_key = (token_id, relative_position)
             
             if child_key in current.children:
@@ -170,7 +173,8 @@ class HiCacheController:
                 # 计算当前节点剩余空间
                 remaining_space = BLOCK_SIZE - len(current.cache_indices) * self.token_kvcache_size
                 
-                if self.token_kvcache_size <= remaining_space:
+                # root 不应存储任何内容
+                if self.token_kvcache_size <= remaining_space and current != self.root:
                     # 当前节点有足够空间
                     current.token_ids.append(token_ids[position])
                     current.cache_indices.append(indices[position])
@@ -189,7 +193,7 @@ class HiCacheController:
                     relative_position = 0 # next time relative pos is 0, not affecting child_key
                     
                     # 建立父子关系
-                    current.children[child_key] = (new_node, len(current.cache_indices))
+                    current.children[(token_id, new_node.split_token_idx)] = (new_node, new_node.split_token_idx)
                     
                     # 持久化
                     self._persist_node(new_node)
@@ -206,6 +210,7 @@ class HiCacheController:
         key: token_ids序列
         返回: 对应的KV缓存索引
         """
+        print(f"Reading key: {key}")
         token_ids = key.cpu().tolist()
         result_indices = []
         
@@ -215,17 +220,19 @@ class HiCacheController:
         
         while position < len(token_ids):
             token_id = token_ids[position]
-            print(f"Reading token {token_id} at position {position}, current node has {len(current.token_ids)} tokens")
+            print(f"Reading token {token_id} at position {position}, node total {len(current.token_ids)} tokens from node hash {current.hash}")
             
             # 检查当前节点的token
             if relative_position < len(current.token_ids) and current.token_ids[relative_position] == token_id:
                 # TODO: 将读到的东西存到 result_indices 中
+                result_indices.append(current.cache_indices[relative_position])
                 position += 1
                 relative_position += 1
                 continue
             
             # 查找子节点
             child_key = (token_id, relative_position)
+            print(f"Looking for child {child_key} in node {current.hash}: {current.children}")
             if child_key in current.children:
                 child_info = current.children[child_key]
                 assert isinstance(child_info[0], CacheNode)
