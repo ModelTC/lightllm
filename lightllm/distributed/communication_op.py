@@ -78,7 +78,7 @@ class CustomCommunicationOp:
 
     def set_deepep(self, n_routed_experts):
         moe_mode = os.getenv("MOE_MODE", "TP")
-        num_max_dispatch_tokens_per_rank = 512
+        num_max_dispatch_tokens_per_rank = os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128)
         if moe_mode == "TP":
             self.ep_buffer = None
             return
@@ -87,9 +87,9 @@ class CustomCommunicationOp:
         group = dist.new_group(list(range(global_world_size)))
         test_ll_compatibility, num_rdma_bytes = True, 0
         if test_ll_compatibility:
-            ll_num_tokens, ll_hidden, ll_num_experts, _ = num_max_dispatch_tokens_per_rank, 7168, 256, 8
+            self.ll_num_tokens, self.ll_hidden, self.ll_num_experts, _ = num_max_dispatch_tokens_per_rank, 7168, 256, 8
             num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(
-                ll_num_tokens, ll_hidden, global_world_size, ll_num_experts
+                self.ll_num_tokens, self.ll_hidden, global_world_size, self.ll_num_experts
             )
         self.ep_buffer = deep_ep.Buffer(
             group,
@@ -98,6 +98,10 @@ class CustomCommunicationOp:
             low_latency_mode=test_ll_compatibility,
             num_qps_per_rank=(n_routed_experts // global_world_size if test_ll_compatibility else 1),
         )
+
+    def clear_deepep_buffer(self):
+        if hasattr(self, "ep_buffer") and self.ep_buffer is not None:
+            self.ep_buffer.clean_low_latency_buffer(self.ll_num_tokens, self.ll_hidden, self.ll_num_experts)
 
     def set_custom_reduce(self):
         ENABLE_VLLM_REDUCE = os.getenv("ENABLE_VLLM_REDUCE", "True").upper() in ["ON", "TRUE", "1"]

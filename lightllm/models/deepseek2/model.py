@@ -1,4 +1,5 @@
 import torch
+from typing import final
 from lightllm.models.deepseek2.layer_infer.transformer_layer_infer import Deepseek2TransformerLayerInfer
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
@@ -11,6 +12,7 @@ from lightllm.common.deepseek2_fp8kv_mem_manager import Deepseek2FP8KVMemoryMana
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 from lightllm.utils.envs_utils import enable_env_vars
+from lightllm.distributed.communication_op import custom_comm_ops
 
 
 logger = init_logger(__name__)
@@ -167,3 +169,9 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self._sin_cached = (freqs.sin() * _mscale).to(self.data_type).cuda()
 
         return
+
+    @final
+    def _context_forward(self, input_ids, infer_state):
+        predict_logics = super()._context_forward(input_ids, infer_state)
+        custom_comm_ops.clear_deepep_buffer()
+        return predict_logics
