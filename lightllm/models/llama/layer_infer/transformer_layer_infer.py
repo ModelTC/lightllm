@@ -23,6 +23,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv, destindex_copy_quantize_kv
 from lightllm.common.basemodel import TransformerLayerInferTpl
 from lightllm.models.llama.triton_kernel.ppl_quant_copy_kv import destindex_copy_dequantize_kv
+from lightllm.distributed.communication_op import all_gather_into_tensor, reduce_scatter_tensor
 
 
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
@@ -144,7 +145,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             gather_input = self.alloc_tensor(
                 (sp_token_num * self.tp_world_size_, hidden_dim), dtype=input.dtype, device=input.device
             )
-            dist.all_gather_into_tensor(gather_input, input, group=None, async_op=False)
+            all_gather_into_tensor(gather_input, input, group=infer_state.dist_group, async_op=False)
             input = gather_input[0 : len(infer_state.position_cos), :]
 
         q = layer_weight.q_proj.mm(input)
@@ -253,8 +254,12 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         if self.tp_world_size_ > 1:
             sp_token_num = o_tensor.shape[0] // self.tp_world_size_
             reduce_o_tensor = self.alloc_tensor((sp_token_num, self.embed_dim_), dtype=input.dtype, device=input.device)
-            dist.reduce_scatter_tensor(
-                output=reduce_o_tensor, input=o_tensor, op=dist.ReduceOp.SUM, group=None, async_op=False
+            reduce_scatter_tensor(
+                output=reduce_o_tensor,
+                input=o_tensor,
+                op=dist.ReduceOp.SUM,
+                group=infer_state.dist_group,
+                async_op=False,
             )
             o_tensor = reduce_o_tensor
 

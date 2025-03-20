@@ -8,7 +8,7 @@ from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.basemodel import PreLayerInferTpl
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.models.llama.triton_kernel.embedding import embedding
-from lightllm.distributed import tensor_parallel_all_reduce
+from lightllm.distributed.communication_op import all_reduce
 
 
 class LlamaPreLayerInfer(PreLayerInferTpl):
@@ -31,9 +31,7 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
         )
         embedding(input_ids, layer_weight.wte_weight_, self.vob_start_id_, self.vob_end_id_, input_embdings)
         if self.tp_world_size_ > 1:
-            tensor_parallel_all_reduce(
-                input_embdings, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False
-            )
+            all_reduce(input_embdings, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         return input_embdings
 
     def token_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
@@ -42,9 +40,7 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
         )
         embedding(input_ids, layer_weight.wte_weight_, self.vob_start_id_, self.vob_end_id_, input_embdings)
         if self.tp_world_size_ > 1:
-            tensor_parallel_all_reduce(
-                input_embdings, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False
-            )
+            all_reduce(input_embdings, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         return input_embdings
 
     def tpsp_context_forward(

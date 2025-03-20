@@ -25,6 +25,7 @@ from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
 from lightllm.models.deepseek2.flashinfer_struct import Deepseek2FlashInferStateInfo
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
+from lightllm.distributed.communication_op import all_gather, all_gather_into_tensor, all_reduce, reduce_scatter_tensor
 
 from lightllm.utils.envs_utils import enable_env_vars
 
@@ -496,31 +497,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
         return
 
-    def _ffn_dp(
-        self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
-    ) -> torch.Tensor:
-        tp_hidden_states = input.view(-1, self.embed_dim_)
-        num_tokens, hidden_dim = tp_hidden_states.shape
-        hidden_states = self.alloc_tensor(
-            [infer_state.all_token_num, hidden_dim], dtype=tp_hidden_states.dtype, device=tp_hidden_states.device
-        )
-        dist.all_gather_into_tensor(
-            hidden_states,
-            tp_hidden_states,
-            group=None,
-            async_op=False,
-        )
-        up_gate_out = layer_weight.gate_up_proj.mm(hidden_states)
-        ffn1_out = self.alloc_tensor((hidden_states.size(0), up_gate_out.size(1) // 2), input.dtype)
-        silu_and_mul_fwd(up_gate_out, ffn1_out)
-        input = None
-        up_gate_out = None
-        ffn2_out = layer_weight.down_proj.mm(ffn1_out)
-        if self.world_size_ > 1:
-            dist.all_reduce(ffn2_out, op=dist.ReduceOp.SUM, async_op=False)
-        ffn1_out = None
-        return ffn2_out[infer_state.start_idx : infer_state.end_idx]
-
     def _moe_ffn(
         self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
@@ -548,56 +524,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             hidden_states.add_(shared_output)
 
         return hidden_states.view(num_tokens, hidden_dim)
-
-    def _moe_ffn_dtp(
-        self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
-    ) -> torch.Tensor:
-
-        tp_hidden_states = input.view(-1, self.embed_dim_)
-        num_tokens, hidden_dim = tp_hidden_states.shape
-        hidden_states = self.alloc_tensor(
-            [infer_state.all_token_num, hidden_dim], dtype=tp_hidden_states.dtype, device=tp_hidden_states.device
-        )
-        if infer_state.is_prefill:
-            dist.all_gather(
-                [
-                    hidden_states[infer_state.all_start_idx[i] : infer_state.all_end_idx[i], :]
-                    for i in range(self.world_size_)
-                ],
-                tp_hidden_states,
-                group=None,
-                async_op=False,
-            )
-        else:
-            dist.all_gather_into_tensor(
-                hidden_states,
-                tp_hidden_states,
-                group=None,
-                async_op=False,
-            )
-        if self.n_shared_experts is not None:
-            shared_output = LlamaTransformerLayerInfer._ffn(self, hidden_states, infer_state, layer_weight)
-
-        router_logits = layer_weight.moe_gate.mm(hidden_states)
-        layer_weight.experts.experts(
-            hidden_states,
-            router_logits=router_logits,
-            top_k=self.num_experts_per_tok,
-            renormalize=self.norm_topk_prob,
-            use_grouped_topk=self.n_group,
-            topk_group=self.topk_group,
-            num_expert_group=self.n_group,
-        )
-
-        hidden_states.mul_(self.routed_scaling_factor)
-
-        if self.n_shared_experts is not None:
-            hidden_states.add_(shared_output)
-
-        hidden_states = hidden_states.view(infer_state.all_token_num, hidden_dim)
-        if self.world_size_ > 1:
-            dist.all_reduce(hidden_states, op=dist.ReduceOp.SUM, async_op=False)
-        return hidden_states[infer_state.start_idx : infer_state.end_idx]
 
     def _moe_ffn_edp(
         self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
