@@ -10,7 +10,7 @@ from lightllm.models.vit.layer_weights.transformer_layer_weight import ViTTransf
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward, torch_rms_norm
 from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
 from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
-from lightllm.models.vit.triton_kernel.gelu_vit import gelu
+from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
 from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
 
 class ViTTransformerLayerInfer:
@@ -115,7 +115,7 @@ class ViTTransformerLayerInfer:
     def _ffn(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
         fc1 = layer_weight.ffn_1_proj_.mm(input.view(-1, self.embed_dim_), use_custom_tensor_mananger=False)
         # ffn1_out = torch.nn.functional.gelu(fc1)
-        ffn1_out = gelu(fc1)
+        ffn1_out = gelu_fwd(fc1)
         input_shape = input.shape
         input = None
         ffn2_out = layer_weight.ffn_2_proj_.mm(ffn1_out, use_custom_tensor_mananger=False)
