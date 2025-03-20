@@ -30,7 +30,7 @@ def test_model_inference(args, model_class):
             "graph_max_len_in_batch": args.max_req_total_len,
             "graph_max_batch_size": args.graph_max_batch_size,
             "mem_faction": args.mem_fraction,
-            "max_req_num": max(args.batch_size, 1000),
+            "max_req_num": max(args.batch_size, 2048),
             "batch_max_tokens": args.batch_size * args.input_len,
             "run_mode": "normal",
             "max_seq_length": (args.input_len + args.output_len),
@@ -56,18 +56,16 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
     args = get_env_start_args()
     import triton.profiler as proton
     import torch
-    from lightllm.distributed import custom_comm_ops
+    from lightllm.distributed import dist_group_manager
     from lightllm.utils.dist_utils import set_current_device_id
 
     import torch.distributed as dist
 
     init_distributed_env(model_kvargs)
 
-    custom_comm_ops.set_custom_reduce()
-    custom_comm_ops.set_custom_gather()
     if model_class == Deepseek2TpPartModel:
         model_cfg, _ = PretrainedConfig.get_config_dict(model_kvargs["weight_dir"])
-        custom_comm_ops.set_deepep(model_cfg["n_routed_experts"])
+        dist_group_manager.set_deepep(model_cfg["n_routed_experts"])
     dist.barrier()
 
     torch.cuda.empty_cache()
@@ -75,7 +73,8 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
     model_part = model_class(model_kvargs)
 
     # warm up
-    test_data = np.vstack([np.arange(5, input_len + 5) for _ in range(batch_size)])
+    # test_data = np.vstack([np.arange(5, input_len + 5) for _ in range(batch_size)])
+    test_data = np.vstack([np.random.randint(0, 50256, input_len) for _ in range(batch_size)])
     test_data = test_data.reshape(-1)
     test_data = torch.from_numpy(test_data).cuda()
 

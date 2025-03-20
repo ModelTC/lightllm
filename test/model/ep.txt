@@ -1,0 +1,1 @@
+INFO 03-20 13:40:07 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
