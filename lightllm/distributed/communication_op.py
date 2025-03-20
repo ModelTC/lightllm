@@ -98,16 +98,16 @@ class CustomProcessGroup:
     def all_reduce(self, input_: torch.Tensor) -> None:
         if self.custom_reduce is not None and self.custom_reduce.should_custom_ar(input_):
             input_.data = self.custom_reduce.custom_all_reduce(input_)
+            return
         else:
-            dist.all_reduce(input_, group=self.device_group)
-        return
+            return dist.all_reduce(input_, group=self.device_group)
 
     def all_gather_into_tensor(self, output_: torch.Tensor, input_: torch.Tensor, async_op: bool = False) -> None:
         if self.custom_gather is not None and self.custom_gather.should_custom_ar(input_):
             self.custom_gather.custom_all_gather(output_, input_)
+            return
         else:
-            dist.all_gather_into_tensor(output_, input_, group=self.device_group, async_op=async_op)
-        return
+            return dist.all_gather_into_tensor(output_, input_, group=self.device_group, async_op=async_op)
 
 
 @contextmanager
