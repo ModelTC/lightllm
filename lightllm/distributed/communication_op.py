@@ -78,7 +78,7 @@ class CustomProcessGroup:
         if not HAS_VLLM or not has_nvlink() or self.world_size not in [2, 4, 6, 8]:
             return
         args = get_env_start_args()
-        if args.disable_custom_allreduce:
+        if not args.enable_custom_allreduce:
             return
         ranks = list(range(self.world_size))
         cpu_group = dist.new_group(ranks, backend="gloo")
