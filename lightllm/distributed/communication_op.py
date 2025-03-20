@@ -61,16 +61,13 @@ except:
 
 
 class CustomProcessGroup:
-    def __init__(self, group_num: int = 0, disable_custom_op: bool = False):
+    def __init__(self, group_num: int = 0):
         self.group_num = group_num
         self.custom_reduce = None
         self.custom_gather = None
         self.dp_world_size = get_dp_world_size()
         ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
         self.device_group = dist.new_group(ranks, backend="nccl")
-        if not disable_custom_op:
-            self.init_custom_gather()
-            self.init_custom_reduce()
 
     def init_custom_reduce(self) -> None:
         if not HAS_VLLM or not has_nvlink() or self.dp_world_size not in [2, 4, 6, 8]:
@@ -131,8 +128,13 @@ class DistributeGroupManager:
     def __len__(self):
         return len(self.groups)
 
-    def new_group(self, disable_custom_op: bool = False) -> CustomProcessGroup:
-        group = CustomProcessGroup(group_num=len(self.groups), disable_custom_op=disable_custom_op)
+    def create_groups(self, group_size: int):
+        for i in range(group_size):
+            self.new_group()
+        return
+
+    def new_group(self) -> CustomProcessGroup:
+        group = CustomProcessGroup(group_num=len(self.groups))
         self.groups.append(group)
         return group
 
