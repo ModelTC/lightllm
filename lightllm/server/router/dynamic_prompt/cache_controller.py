@@ -3,13 +3,20 @@ import threading
 import time
 import json
 from typing import Dict, List, Tuple, Optional, Set, Any
+from threading import Thread, Event, RLock
 from queue import Queue
+from enum import Enum
 from lightllm.common.mem_manager import MemoryManager
 
 BLOCK_SIZE = 16384
 
 def get_torch_tensor_size(tensor: torch.Tensor):
     return tensor.nelement() * tensor.element_size()
+
+class LoadStatus(Enum):
+    UNLOADED = 0
+    LOADING = 1
+    LOADED = 2
 
 class CacheNode:
     def __init__(self, parent=None, split_token_idx=None):
@@ -19,27 +26,7 @@ class CacheNode:
         self.cache_indices = []  # 存储kv cache在mem_manager中的索引
         self.token_ids = []  # 当前节点存储的token ids
         self.hash = None  # 存储在磁盘上的唯一标识
-    
-    def serialize(self):
-        """将节点数据序列化为JSON"""
-        data = {
-            "children": {f"{k[0]}_{k[1]}": [c.hash, p] for k, (c, p) in self.children.items()},
-            "cache_indices": self.cache_indices,
-            "token_ids": self.token_ids,
-            "split_token_idx": self.split_token_idx
-        }
-        return json.dumps(data)
-    
-    @classmethod
-    def deserialize(cls, data_str, parent=None):
-        """从JSON反序列化节点数据"""
-        data = json.loads(data_str)
-        node = cls(parent=parent, split_token_idx=data["split_token_idx"])
-        node.cache_indices = data["cache_indices"]
-        node.token_ids = data["token_ids"]
-        # 子节点需要单独加载
-        return node, {(int(k.split('_')[0]), int(k.split('_')[1])): (v[0], v[1]) for k, v in data["children"].items()}
-
+        self.status = LoadStatus.UNLOADED  # 加载状态
 
 class HiCacheController:
     def __init__(self, mem_manager: MemoryManager):
@@ -50,76 +37,72 @@ class HiCacheController:
         self.root.hash = "root_" + str(time.time())
         
         self.node_cache = {self.root.hash: self.root}  # hash -> node
-        self.read_queue = Queue()
-        self.write_queue = Queue()
         
         self.token_kvcache_size = None  # 每个token的kvcache大小
         
-        # 启动后台线程处理读写任务
-        self.running = True
-        self.poll_thread = threading.Thread(target=self._poll_tasks)
-        self.poll_thread.daemon = True
-        self.poll_thread.start()
+        self.node_lock = RLock()
+        
+        # 添加写任务队列
+        self.writetaskqueue = Queue()
+        self.write_thread_running = True
+        
+        # 启动处理写任务的线程
+        self.write_thread = Thread(target=self._process_write_tasks)
+        self.write_thread.daemon = True
+        self.write_thread.start()
+    
+    def store_mem(self, indices, value):
+        for idx, value_dim in zip(indices, range(value.shape[0])):
+            self.mem_manager.load_index_kv_buffer(idx, {"kv_buffer": value[value_dim]})
+        return indices
+    
+    def get_mem(self, indices):
+        if len(indices) == 0:
+            return torch.tensor([])
+        return torch.stack([self.mem_manager.get_index_kv_buffer(idx)["kv_buffer"] for idx in indices], dim=0)
     
     def reset(self):
         """重置缓存控制器"""
-        self.running = False
-        self.poll_thread.join(timeout=1)
+        # 停止写任务线程
+        self.write_thread_running = False
+        self.write_thread.join(timeout=1)
         
         self.root = CacheNode()
         self.root.hash = "root_" + str(time.time())
         self.node_cache = {self.root.hash: self.root}
         
-        self.read_queue = Queue()
-        self.write_queue = Queue()
-        
-        self.running = True
-        self.poll_thread = threading.Thread(target=self._poll_tasks)
-        self.poll_thread.daemon = True
-        self.poll_thread.start()
-    
-    def _poll_tasks(self):
-        """轮询读写任务，检查是否完成"""
-        while self.running:
-            # 处理读任务
-            pending_reads = []
-            while not self.read_queue.empty():
-                task = self.read_queue.get()
-                if not task.ready():
-                    pending_reads.append(task)
-            
-            for task in pending_reads:
-                self.read_queue.put(task)
-            
-            # 处理写任务
-            pending_writes = []
-            while not self.write_queue.empty():
-                task = self.write_queue.get()
-                if not task.ready():
-                    pending_writes.append(task)
-            
-            for task in pending_writes:
-                self.write_queue.put(task)
-            
-            time.sleep(0.01)  # 避免CPU过度使用
+        # 重新创建队列和启动线程
+        self.writetaskqueue = Queue()
+        self.write_thread_running = True
+        self.write_thread = Thread(target=self._process_write_tasks)
+        self.write_thread.daemon = True
+        self.write_thread.start()
     
     def _ensure_node_loaded(self, node_hash):
         """确保节点已加载到内存中"""
         assert node_hash in self.node_cache, f"Node {node_hash} not found in cache"
         assert node_hash[:4] != "root", "Cannot load root node"
-        if not self.mem_manager.exist(self.node_cache[node_hash].cache_indices):
-            task = self.service.create(hashs=[node_hash], mode="r")
-            self.service.commit(task)
-            self.read_queue.put(task)
-            # 需要等待节点加载完成
-            while not task.ready():
-                time.sleep(0.01)
-            for node_hash, node_data in zip(task.hashs, task.data):
-                assert node_hash in self.node_cache
-                node = self.node_cache[node_hash]
-                node.cache_indices = self.mem_manager.store(node.cache_indices, node_data)
-                print(f"Node {node_hash} loaded with {len(node.cache_indices)} cache indices")
-            print(f"Node {node_hash} loaded to memory")
+        with self.node_lock:
+            if self.node_cache[node_hash].status == LoadStatus.LOADED:
+                return
+            if self.node_cache[node_hash].status == LoadStatus.LOADING:
+                while self.node_cache[node_hash].status != LoadStatus.LOADED:
+                    time.sleep(0.01)
+                return
+            if self.node_cache[node_hash].status == LoadStatus.UNLOADED:
+                self.node_cache[node_hash].status = LoadStatus.LOADING
+        
+        task = self.service.create(hashs=[node_hash], mode="r")
+        self.service.commit(task)
+        # 需要等待节点加载完成
+        while not task.ready():
+            time.sleep(0.01)
+        for node_hash, node_data in zip(task.hashs, task.data):
+            assert node_hash in self.node_cache
+            node = self.node_cache[node_hash]
+            node.cache_indices = self.store_mem(node.cache_indices, node_data)
+            print(f"Node {node_hash} loaded with {len(node.cache_indices)} cache indices")
+        print(f"Node {node_hash} loaded to memory")
     
     def _persist_node(self, node):
         """将节点持久化到磁盘"""
@@ -129,15 +112,37 @@ class HiCacheController:
         
         print(f"Persisting node {node.hash} with {len(node.token_ids)} tokens")
         
-        # TODO: 将对应的kvcache写入磁盘
-        task = self.service.create(hashs=[node.hash], value=self.mem_manager.to_kvcache(node.cache_indices), mode="w")
+        task = self.service.create(hashs=[node.hash], value=self.get_mem(node.cache_indices), mode="w")
         self.service.commit(task)
-        self.write_queue.put(task)
         self.node_cache[node.hash] = node
     
     def write(self, key: torch.Tensor, value: torch.Tensor):
         """
-        写入token序列及其对应的KV缓存索引
+        将写任务加入队列，由后台线程异步处理
+        
+        key: token_ids序列
+        value: 对应的KV缓存索引
+        """
+        # 将任务加入队列
+        self.writetaskqueue.put((key.clone(), value.clone()))
+    
+    def _process_write_tasks(self):
+        """后台线程处理写任务队列"""
+        while self.write_thread_running:
+            if not self.writetaskqueue.empty():
+                # 从队列获取任务
+                key, value = self.writetaskqueue.get()
+                # 执行实际的写操作
+                self._do_write(key, value)
+                self.writetaskqueue.task_done()
+            else:
+                # 队列为空时短暂休眠，避免CPU占用过高
+                time.sleep(0.01)
+    
+    def _do_write(self, key: torch.Tensor, value: torch.Tensor):
+        """
+        实际执行写入token序列及其对应的KV缓存索引
+        
         key: token_ids序列
         value: 对应的KV缓存索引
         """
@@ -146,7 +151,7 @@ class HiCacheController:
         
         # 首次计算每个token的kvcache大小
         if self.token_kvcache_size is None:
-            kvcache = self.mem_manager.to_kvcache(indices[:1])  # 计算单个token的kvcache
+            kvcache = self.get_mem(indices[:1])  # 计算单个token的kvcache
             self.token_kvcache_size = get_torch_tensor_size(kvcache)
             print(f"Single token KV cache size: {self.token_kvcache_size} bytes, Block size: {BLOCK_SIZE}")
         
@@ -279,3 +284,74 @@ class HiCacheController:
                 return torch.tensor(result_indices)
         
         return torch.tensor(result_indices)
+
+
+class HiHostTask:
+    def __init__(self, hashs, mode, value=None):
+        self.hashs = hashs
+        self.mode = mode
+        self._ready = Event()
+        self.data = value
+    
+    def ready(self):
+        return self._ready.is_set()
+    
+    def set_ready(self):
+        self._ready.set()
+
+class HiHostService:
+    def __init__(self):
+        self.tasks = Queue()
+        self.added_count = 0
+        self.finished_count = 0
+        self.running = True
+        self.hash_data = {} # hash -> (data, device)
+        self.worker = Thread(target=self.process_tasks)
+        self.worker.daemon = True
+        self.worker.start()
+    
+    def process_tasks(self):
+        while self.running:
+            if not self.tasks.empty():
+                start_time = time.time()
+                task = self.tasks.get()
+                self.complete(task)
+                task.set_ready()
+                print(f"Task for {task.hashs} completed after {time.time() - start_time:.2f}s")
+            else:
+                time.sleep(0.01)
+    
+    def complete(self, task):
+        if task.mode == "r":
+            assert all(hash in self.hash_data for hash in task.hashs)
+            task.data = torch.stack(list(self.hash_data[hash][0] for hash in task.hashs))
+            task.data.to(self.hash_data[task.hashs[0]][1])
+        elif task.mode == "w":
+            device = task.data[0].device
+            for hash, value in zip(task.hashs, task.data):
+                self.hash_data[hash] = (value.to("cpu"), device)
+        self.finished_count += 1
+    
+    def create(self, hashs, mode, value=None):
+        assert mode in ["r", "w"]
+        if not isinstance(value, list):
+            value = [value]
+        assert len(value) == len(hashs)
+        task = HiHostTask(hashs, mode, value)
+        return task
+    
+    def all_finished(self):
+        return self.tasks.empty() and self.added_count == self.finished_count
+    
+    def wait_till_all_finished(self):
+        while not self.all_finished():
+            time.sleep(0.01)
+    
+    def commit(self, task):
+        self.tasks.put(task)
+        self.added_count += 1
+    
+    def shutdown(self):
+        self.running = False
+        self.worker.join()
+

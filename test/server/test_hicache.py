@@ -4,7 +4,7 @@ import time
 import random
 from threading import Thread, Event
 from queue import Queue
-from lightllm.server.router.dynamic_prompt.cache_controller import HiCacheController, CacheNode, BLOCK_SIZE
+from lightllm.server.router.dynamic_prompt.cache_controller import HiCacheController, CacheNode, BLOCK_SIZE, HiHostService, HiHostTask
 
 class MockMemoryManager:
     """模拟内存管理器，仅返回连续的索引值"""
@@ -18,6 +18,12 @@ class MockMemoryManager:
         self.store(indices, torch.tensor([[random.randint(0, 0xffff) for __ in range(512)] for _ in range(size)]))
         return indices
     
+    def load_index_kv_buffer(self, index, load_tensor_dict):
+        self.kvcache_store[index] = load_tensor_dict["kv_buffer"]
+    
+    def get_index_kv_buffer(self, index):
+        return {"kv_buffer": self.kvcache_store[index]}
+    
     def to_kvcache(self, indices):
         assert all([idx in self.kvcache_store for idx in indices]), f"Not all of {indices} are not found in kvcache_store"
         return torch.tensor([self.kvcache_store[idx].tolist() for idx in indices])
@@ -29,88 +35,15 @@ class MockMemoryManager:
             print(f"[TEST:MemManager] Stored {value[value_dim].shape} at {idx}")
         return indices
     
-    def exist(self, indices):
-        return all([idx in self.kvcache_store for idx in indices])
-    
     def free(self, indices):
         print(f"[TEST:MemManager] Freeing {indices}")
         for idx in indices:
             del self.kvcache_store[idx]
 
-class MockTask:
-    def __init__(self, hashs, mode, value=None):
-        self.hashs = hashs
-        self.mode = mode
-        self._ready = Event()
-        self.data = value
-    
-    def ready(self):
-        return self._ready.is_set()
-    
-    def set_ready(self):
-        self._ready.set()
-
-class MockService:
-    def __init__(self):
-        self.tasks = Queue()
-        self.added_count = 0
-        self.finished_count = 0
-        self.running = True
-        self.hash_data = {}
-        self.worker = Thread(target=self.process_tasks)
-        self.worker.daemon = True
-        self.worker.start()
-    
-    def process_tasks(self):
-        while self.running:
-            if not self.tasks.empty():
-                # 模拟随机延迟后完成任务
-                delay = random.uniform(0.01, 0.1)
-                time.sleep(delay)
-                task = self.tasks.get()
-                self.complete(task)
-                task.set_ready()
-                print(f"Task for {task.hashs} completed after {delay:.2f}s")
-            else:
-                time.sleep(0.01)
-    
-    def complete(self, task):
-        if task.mode == "r":
-            assert all(hash in self.hash_data for hash in task.hashs)
-            task.data = torch.stack(list(self.hash_data[hash] for hash in task.hashs))
-        elif task.mode == "w":
-            for hash, value in zip(task.hashs, task.data):
-                self.hash_data[hash] = value
-        self.finished_count += 1
-    
-    def create(self, hashs, mode, value=None):
-        assert mode in ["r", "w"]
-        if not isinstance(value, list):
-            value = [value]
-        assert len(value) == len(hashs)
-        task = MockTask(hashs, mode, value)
-        self.tasks.put(task)
-        self.added_count += 1
-        return task
-    
-    def all_finished(self):
-        return self.tasks.empty() and self.added_count == self.finished_count
-    
-    def wait_till_all_finished(self):
-        time.sleep(1)
-        while not self.all_finished():
-            time.sleep(0.01)
-    
-    def commit(self, task):
-        pass  # 在Mock中不需要实现
-    
-    def shutdown(self):
-        self.running = False
-        self.worker.join()
 
 def setup():
     mem_manager = MockMemoryManager()
-    service = MockService()
+    service = HiHostService()
     hicache = HiCacheController(mem_manager)
     hicache.service = service  # 注入模拟服务
     
@@ -138,6 +71,7 @@ def test_basic_write_read(mem_manager, hicache, token_size):
     
     # 写入缓存
     hicache.write(torch.tensor(token_ids), torch.tensor(indices))
+    time.sleep(2)
     
     # 等待任务完成
     hicache.service.wait_till_all_finished()
@@ -158,6 +92,7 @@ def test_node_splitting(mem_manager, hicache, token_size):
     kvcache = mem_manager.to_kvcache(indices)
     
     hicache.write(torch.tensor(token_ids), torch.tensor(indices))
+    time.sleep(2)
     hicache.service.wait_till_all_finished()
     
     # 验证根节点应该有子节点
@@ -176,6 +111,7 @@ def test_partial_read(mem_manager, hicache):
     indices = mem_manager.alloc(len(token_ids))
     kvcache = mem_manager.to_kvcache(indices)
     hicache.write(torch.tensor(token_ids), torch.tensor(indices))
+    time.sleep(2)
     hicache.service.wait_till_all_finished()
     
     # 查询存在的部分前缀
