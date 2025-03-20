@@ -31,10 +31,8 @@ from lightllm.utils.dist_utils import (
     get_node_world_size,
     get_global_world_size,
     get_dp_world_size,
+    get_global_rank,
 )
-
-original_all_gather_into_tensor = torch.distributed.all_gather_into_tensor
-
 from contextlib import nullcontext, contextmanager
 
 logger = init_logger(__name__)
@@ -63,36 +61,33 @@ except:
 
 
 class CustomProcessGroup:
-    def __init__(self, group_num: int = 0, disable_custom_op: bool = False):
+    def __init__(self, group_num: int = 0):
         self.group_num = group_num
         self.custom_reduce = None
         self.custom_gather = None
-        self.world_size = get_dp_world_size()
-        ranks = list(range(self.world_size))
+        self.dp_world_size = get_dp_world_size()
+        ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
         self.device_group = dist.new_group(ranks, backend="nccl")
-        if not disable_custom_op:
-            self.init_custom_gather()
-            self.init_custom_reduce()
 
     def init_custom_reduce(self) -> None:
-        if not HAS_VLLM or not has_nvlink() or self.world_size not in [2, 4, 6, 8]:
+        if not HAS_VLLM or not has_nvlink() or self.dp_world_size not in [2, 4, 6, 8]:
             return
         args = get_env_start_args()
-        if args.disable_custom_allreduce:
+        if not args.enable_custom_allreduce:
             return
-        ranks = list(range(self.world_size))
+        ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
         self.custom_reduce = CustomAllreduce(cpu_group, torch.cuda.current_device())
         logger.info("Enable VLLM ALLReduce.")
 
     def init_custom_gather(self) -> None:
-        if not HAS_LIGHTLLM_KERNEL or not has_nvlink() or self.world_size not in [2, 4, 6, 8]:
+        if not HAS_LIGHTLLM_KERNEL or not has_nvlink() or self.dp_world_size not in [2, 4, 6, 8]:
             return
 
         args = get_env_start_args()
         if not args.enable_custom_allgather:
             return
-        ranks = list(range(self.world_size))
+        ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
         self.custom_gather = CustomAllgather(cpu_group, torch.cuda.current_device())
         logger.info("Enable Custom ALLGather.")
@@ -100,16 +95,16 @@ class CustomProcessGroup:
     def all_reduce(self, input_: torch.Tensor) -> None:
         if self.custom_reduce is not None and self.custom_reduce.should_custom_ar(input_):
             input_.data = self.custom_reduce.custom_all_reduce(input_)
+            return
         else:
-            dist.all_reduce(input_, group=self.device_group)
-        return
+            return dist.all_reduce(input_, group=self.device_group)
 
     def all_gather_into_tensor(self, output_: torch.Tensor, input_: torch.Tensor, async_op: bool = False) -> None:
         if self.custom_gather is not None and self.custom_gather.should_custom_ar(input_):
             self.custom_gather.custom_all_gather(output_, input_)
+            return
         else:
-            dist.all_gather_into_tensor(output_, input_, group=self.device_group, async_op=async_op)
-        return
+            return dist.all_gather_into_tensor(output_, input_, group=self.device_group, async_op=async_op)
 
 
 @contextmanager
@@ -133,8 +128,13 @@ class DistributeGroupManager:
     def __len__(self):
         return len(self.groups)
 
-    def new_group(self, disable_custom_op: bool = False) -> CustomProcessGroup:
-        group = CustomProcessGroup(group_num=len(self.groups), disable_custom_op=disable_custom_op)
+    def create_groups(self, group_size: int):
+        for i in range(group_size):
+            self.new_group()
+        return
+
+    def new_group(self) -> CustomProcessGroup:
+        group = CustomProcessGroup(group_num=len(self.groups))
         self.groups.append(group)
         return group
 
@@ -172,37 +172,55 @@ class DistributeGroupManager:
             self.ep_buffer.clean_low_latency_buffer(self.ll_num_tokens, self.ll_hidden, self.ll_num_experts)
 
 
-def tensor_parallel_all_reduce(
+def all_reduce(
     input_: torch.Tensor,
     group: Optional[Union[ProcessGroup, CustomProcessGroup]] = None,
     op: ReduceOp = ReduceOp.SUM,
     async_op: bool = False,
 ) -> None:
     if isinstance(group, CustomProcessGroup):
-        group.all_reduce(input_)
-        return
-    dist.all_reduce(input_, op, group, async_op)
+        return group.all_reduce(input_)
+    else:
+        return dist.all_reduce(input_, op, group, async_op)
 
 
-def tensor_parallel_all_gather_into_tensor(
+def all_gather_into_tensor(
     output_: torch.Tensor,
     input_: torch.Tensor,
     group: Optional[Union[ProcessGroup, CustomProcessGroup]] = None,
     async_op: bool = False,
 ) -> None:
     if isinstance(group, CustomProcessGroup):
-        group.all_gather_into_tensor(output_, input_)
-        return
-    dist.all_gather_into_tensor(output_, input_, group, async_op)
+        return group.all_gather_into_tensor(output_, input_)
+    else:
+        return dist.all_gather_into_tensor(output_, input_, group, async_op)
 
 
-def tensor_parallel_all_gather(
+def all_gather(
     output_: List[torch.Tensor],
     input_: torch.Tensor,
     group: Optional[Union[ProcessGroup, CustomProcessGroup]] = None,
     async_op: bool = False,
 ) -> None:
-    dist.all_gather(output_, input_, group.device_group, async_op)
+    # todo 目前还没有定制算子的支持。
+    if isinstance(group, CustomProcessGroup):
+        return dist.all_gather(output_, input_, group.device_group, async_op)
+    else:
+        return dist.all_gather(output_, input_, group, async_op)
+
+
+def reduce_scatter_tensor(
+    output: torch.Tensor,
+    input: torch.Tensor,
+    op: ReduceOp = ReduceOp.SUM,
+    group: Optional[Union[ProcessGroup, CustomProcessGroup]] = None,
+    async_op=False,
+):
+    # 目前还没有定制算子实现。
+    if isinstance(group, CustomProcessGroup):
+        return dist.reduce_scatter_tensor(output, input, op=op, group=group.device_group, async_op=async_op)
+    else:
+        return dist.reduce_scatter_tensor(output, input, op=op, group=group, async_op=async_op)
 
 
 dist_group_manager = DistributeGroupManager()
