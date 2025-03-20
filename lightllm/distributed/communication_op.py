@@ -61,8 +61,7 @@ except:
 
 
 class CustomProcessGroup:
-    def __init__(self, group_num: int = 0):
-        self.group_num = group_num
+    def __init__(self):
         self.custom_reduce = None
         self.custom_gather = None
         self.dp_world_size = get_dp_world_size()
@@ -130,19 +129,17 @@ class DistributeGroupManager:
 
     def create_groups(self, group_size: int):
         for i in range(group_size):
-            self.new_group()
+            group = CustomProcessGroup()
+            group.init_custom_gather()
+            group.init_custom_reduce()
+            self.groups.append(group)
         return
-
-    def new_group(self) -> CustomProcessGroup:
-        group = CustomProcessGroup(group_num=len(self.groups))
-        self.groups.append(group)
-        return group
 
     def get_default_group(self) -> CustomProcessGroup:
         return self.groups[0]
 
-    def get_group(self, group_num: int) -> CustomProcessGroup:
-        return self.groups[group_num]
+    def get_group(self, group_index: int) -> CustomProcessGroup:
+        return self.groups[group_index]
 
     def new_deepep_group(self, n_routed_experts):
         moe_mode = os.getenv("MOE_MODE", "TP")
@@ -153,9 +150,9 @@ class DistributeGroupManager:
         assert HAS_DEEPEP, "deep_ep is required for expert parallelism"
         global_world_size = get_global_world_size()
         deepep_group = dist.new_group(list(range(global_world_size)))
-        test_ll_compatibility, num_rdma_bytes = True, 0
-        if test_ll_compatibility:
-            self.ll_num_tokens, self.ll_hidden, self.ll_num_experts, _ = num_max_dispatch_tokens_per_rank, 7168, 256, 8
+        low_latency_mode, num_rdma_bytes = True, 0
+        if low_latency_mode:
+            self.ll_num_tokens, self.ll_hidden, self.ll_num_experts = num_max_dispatch_tokens_per_rank, 7168, 256
             num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(
                 self.ll_num_tokens, self.ll_hidden, global_world_size, self.ll_num_experts
             )
@@ -163,11 +160,14 @@ class DistributeGroupManager:
             deepep_group,
             int(1e9),
             num_rdma_bytes,
-            low_latency_mode=test_ll_compatibility,
-            num_qps_per_rank=(n_routed_experts // global_world_size if test_ll_compatibility else 1),
+            low_latency_mode=low_latency_mode,
+            num_qps_per_rank=(n_routed_experts // global_world_size if low_latency_mode else 1),
         )
 
     def clear_deepep_buffer(self):
+        """
+        prefill 之后需要clean 一下，ep buffer 才能正常执行 decode。
+        """
         if hasattr(self, "ep_buffer") and self.ep_buffer is not None:
             self.ep_buffer.clean_low_latency_buffer(self.ll_num_tokens, self.ll_hidden, self.ll_num_experts)
 
