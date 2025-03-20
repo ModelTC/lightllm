@@ -358,7 +358,7 @@ class TpPartBaseModel:
 
         infer_state.init_some_extra_state(self, input_ids)
         if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
-            if self.graph.need_capture(batch_size, infer_state.dist_group.group_num):
+            if self.graph.need_capture(batch_size):
                 infer_state.is_cuda_graph = True
                 predict_logics = self.graph.capture_decode(self._token_forward, input_ids, infer_state)
             else:

@@ -32,6 +32,7 @@ from lightllm.utils.dist_utils import (
     get_global_world_size,
     get_dp_world_size,
     get_global_rank,
+    get_current_rank_in_dp,
 )
 from contextlib import nullcontext, contextmanager
 
@@ -65,7 +66,7 @@ class CustomProcessGroup:
         self.custom_reduce = None
         self.custom_gather = None
         self.dp_world_size = get_dp_world_size()
-        ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
+        ranks = list([get_global_rank() - get_current_rank_in_dp() + i for i in range(self.dp_world_size)])
         self.device_group = dist.new_group(ranks, backend="nccl")
 
     def init_custom_reduce(self) -> None:
@@ -74,7 +75,7 @@ class CustomProcessGroup:
         args = get_env_start_args()
         if not args.enable_custom_allreduce:
             return
-        ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
+        ranks = list([get_global_rank() - get_current_rank_in_dp() + i for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
         self.custom_reduce = CustomAllreduce(cpu_group, torch.cuda.current_device())
         logger.info("Enable VLLM ALLReduce.")
@@ -86,7 +87,7 @@ class CustomProcessGroup:
         args = get_env_start_args()
         if not args.enable_custom_allgather:
             return
-        ranks = list([i + get_global_rank() for i in range(self.dp_world_size)])
+        ranks = list([get_global_rank() - get_current_rank_in_dp() + i for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
         self.custom_gather = CustomAllgather(cpu_group, torch.cuda.current_device())
         logger.info("Enable Custom ALLGather.")
@@ -108,16 +109,9 @@ class CustomProcessGroup:
 
 @contextmanager
 def lightllm_capture_graph(group: CustomProcessGroup = None):
-    assert group is not None, "dist group should not be None"
-    if group.custom_reduce is not None:
-        with group.custom_reduce.capture():
-            if group.custom_gather is not None:
-                with group.custom_gather.capture():
-                    yield
-            else:
-                yield
-    else:
-        yield
+    with group.custom_reduce.capture() if group and group.custom_reduce else nullcontext():
+        with group.custom_gather.capture() if group and group.custom_gather else nullcontext():
+            yield
 
 
 class DistributeGroupManager:
