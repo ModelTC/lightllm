@@ -10,7 +10,7 @@ from lightllm.common.fused_moe.moe_silu_and_mul import silu_and_mul_fwd
 from lightllm.common.fused_moe.moe_silu_and_mul_mix_quant_ep import silu_and_mul_masked_post_quant_fwd
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.deepgemm_quant import get_tma_aligned_size
-from lightllm.common.basemodel.triton_kernel.deepep_scatter_gather import ep_scatter, ep_gather
+from lightllm.common.fused_moe.deepep_scatter_gather import ep_scatter, ep_gather
 import numpy as np
 
 logger = init_logger(__name__)
@@ -233,12 +233,11 @@ def fused_experts_impl(
             m_indices = torch.empty(all_tokens, device=hidden_states.device, dtype=torch.int32)
             output_index = torch.empty_like(recv_topk_idx)
 
-            expert_start_loc = torch.cumsum(
-                torch.tensor([0] + num_recv_tokens_per_expert_list[:-1], device=hidden_states.device), dim=0
-            )
             num_recv_tokens_per_expert = torch.tensor(
                 num_recv_tokens_per_expert_list, device=hidden_states.device, dtype=torch.int32
             )
+            
+            expert_start_loc = torch.empty_like(num_recv_tokens_per_expert)
 
             ep_scatter(
                 recv_x[0],
@@ -417,6 +416,71 @@ def test_loop(local_rank: int, num_local_ranks: int):
         (ref_output - output).abs().mean(),
         (ref_output - ll_output).abs().mean(),
     )
+
+    # Profile
+    profile = True
+    if profile:
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True
+        ) as prof:
+            for i in range(10):
+                output = fused_experts_impl(
+                    hidden_states=hidden_states,
+                    w1=w1_fp8,
+                    w2=w2_fp8,
+                    topk_weights=topk_weights,
+                    topk_idx=topk_ids,
+                    num_experts=256,
+                    buffer=buffer,
+                    is_prefill=True,
+                    use_fp8_w8a8=True,
+                    use_fp8_all2all=True,
+                    use_int8_w8a16=False,
+                    w1_scale=w1_scale,
+                    w2_scale=w2_scale,
+                    previous_event=None,
+                )
+            # prof.step()
+        if rank == 0:
+            print(prof.key_averages().table(sort_by="cuda_time_total"))
+            prof.export_chrome_trace("normal_trace.json")
+
+        if test_ll_compatibility:
+            with torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True
+            ) as prof:
+                for i in range(10):
+                    ll_output = fused_experts_impl(
+                        hidden_states=hidden_states,
+                        w1=w1_fp8,
+                        w2=w2_fp8,
+                        topk_weights=topk_weights,
+                        topk_idx=topk_ids,
+                        num_experts=256,
+                        buffer=buffer,
+                        is_prefill=False,
+                        use_fp8_w8a8=True,
+                        use_fp8_all2all=True,
+                        use_int8_w8a16=False,
+                        w1_scale=w1_scale,
+                        w2_scale=w2_scale,
+                        previous_event=None,
+                    )
+            if rank == 0:
+                print(prof.key_averages().table(sort_by="cuda_time_total"))
+                prof.export_chrome_trace("ll_trace.json")
 
     dist.barrier()
 
