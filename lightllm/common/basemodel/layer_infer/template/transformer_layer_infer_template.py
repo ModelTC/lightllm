@@ -5,7 +5,7 @@ from ..transformer_layer_infer import TransformerLayerInfer
 from ...infer_struct import InferStateInfo
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv
-from lightllm.distributed import tensor_parallel_all_reduce
+from lightllm.distributed import all_reduce
 from typing import Tuple
 
 
@@ -88,7 +88,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
-            tensor_parallel_all_reduce(o, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
+            all_reduce(o, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         input_embdings.add_(o.view(-1, self.embed_dim_))
         o = None
 
@@ -96,7 +96,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
-            tensor_parallel_all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
+            all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return input_embdings
 
@@ -110,7 +110,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         q = None
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
-            tensor_parallel_all_reduce(o, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
+            all_reduce(o, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         input_embdings.add_(o.view(-1, self.embed_dim_))
         o = None
 
@@ -118,7 +118,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
-            tensor_parallel_all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
+            all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return input_embdings
 
