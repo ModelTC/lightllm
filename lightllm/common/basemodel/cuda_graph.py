@@ -15,7 +15,7 @@ class CudaGraph:
         self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
         self.max_batch_size = max_batch_size
         self.graph_max_len_in_batch = max_len_in_batch
-        self.overlap_two_micro_batch = False
+        self.is_overlap_two_micro_batch_mode = False
 
     def can_run(self, batch_size, max_len_in_batch):
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
@@ -84,9 +84,10 @@ class CudaGraph:
         Capture the cuda graph for the decoding stage.
         input_ids1 and infer_state1 is used for the overlap.
         """
-        if self.overlap_two_micro_batch:
+        if self.is_overlap_two_micro_batch_mode:
             return self._capture_decode_overlap(decode_func, input_ids, infer_state, input_ids1, infer_state1)
         else:
+            assert input_ids1 is None and infer_state1 is None
             return self._capture_decode(decode_func, input_ids, infer_state)
 
     def _replay(self, input_ids, infer_state):
@@ -116,9 +117,10 @@ class CudaGraph:
         return graph_predict_logics, graph_predict_logics1
 
     def replay(self, input_ids, infer_state, input_ids1=None, infer_state1=None):
-        if self.overlap_two_micro_batch:
+        if self.is_overlap_two_micro_batch_mode:
             return self._replay_overlap(input_ids, infer_state, input_ids1, infer_state1)
         else:
+            assert input_ids1 is None and infer_state1 is None
             return self._replay(input_ids, infer_state)
 
     @torch.no_grad()
