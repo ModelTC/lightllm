@@ -285,7 +285,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             gather_input = self.alloc_tensor(
                 (sp_token_num * self.tp_world_size_, hidden_dim), dtype=input.dtype, device=input.device
             )
-            dist.all_gather_into_tensor(gather_input, input, group=None, async_op=False)
+            all_gather_into_tensor(gather_input, input, group=infer_state.dist_group, async_op=False)
             input = gather_input
 
         up_gate_out = layer_weight.gate_up_proj.mm(input)
@@ -300,7 +300,9 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             reduce_o_tensor = self.alloc_tensor(
                 (sp_token_num, self.embed_dim_), dtype=ffn2_out.dtype, device=ffn2_out.device
             )
-            dist.reduce_scatter_tensor(reduce_o_tensor, ffn2_out, op=dist.ReduceOp.SUM, group=None, async_op=False)
+            reduce_scatter_tensor(
+                reduce_o_tensor, ffn2_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False
+            )
             ffn2_out = reduce_o_tensor
         return ffn2_out
 
