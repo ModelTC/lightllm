@@ -146,7 +146,7 @@ class VisionTransformer:
                 image_data = read_shm(get_shm_name_data(url))
                 image_data = Image.open(BytesIO(image_data))
                 max_num = max_num_list[i]
-                t = self.load_image_func(image_data, max_num)
+                t = self.load_image_func(image_data, max_num=max_num)
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(url), url))
