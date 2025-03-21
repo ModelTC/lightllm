@@ -44,7 +44,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
     class CudaGraphCacheTensorManager:
         def __init__(self, cuda_graph_max_batch_size: int):
             self.cuda_graph_max_batch_size = cuda_graph_max_batch_size
-            self.graph_out_tensor: torch.Tensor = None
+            self.graph_out_tensor_dict: Dict[int, torch.Tensor] = {}
             self.managed_total_tensor_bytes = 0
             return
 
@@ -55,7 +55,9 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             data_type: torch.dtype,
             device: str = "cuda",
             is_graph_out: bool = False,
+            microbatch_index: int = 0,
         ) -> torch.Tensor:
+            assert microbatch_index in [0, 1]
             if not is_graph_out:
                 return torch.empty(shape, dtype=data_type, device=device)
 
@@ -64,12 +66,13 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             max_size = size // cur_batch_size * self.cuda_graph_max_batch_size
 
             # graph out tensor, 只有一个， 不需要进行引用计数管理
-            if self.graph_out_tensor is None:
-                self.graph_out_tensor = torch.empty((max_size,), dtype=data_type, device=device, requires_grad=False)
+            if microbatch_index not in self.graph_out_tensor_dict:
+                graph_out_tensor = torch.empty((max_size,), dtype=data_type, device=device, requires_grad=False)
                 logger.info(f"pid {os.getpid()} cuda graph alloc graph out mem {shape} {data_type} {size} {max_size}")
-                self.managed_total_tensor_bytes += self.graph_out_tensor.element_size() * self.graph_out_tensor.numel()
+                self.managed_total_tensor_bytes += graph_out_tensor.element_size() * graph_out_tensor.numel()
                 logger.info(f"cuda graph managed_total_tensor_bytes: {self.managed_total_tensor_bytes}")
-            return self.graph_out_tensor[0:size].view(shape)
+                self.graph_out_tensor_dict[microbatch_index] = graph_out_tensor
+            return self.graph_out_tensor_dict[microbatch_index][0:size].view(shape)
 
     class CacheTensorManager:
         def __init__(self):
@@ -115,6 +118,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             data_type: torch.dtype,
             device: str = "cuda",
             is_graph_out: bool = False,
+            microbatch_index: int = 0,
         ) -> torch.Tensor:
             # shape 类型转换
             if isinstance(shape, list):
@@ -122,7 +126,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             # 是 cuda graph的时候，由cuda graph manager 接管
             if self.is_cuda_graph:
                 return self.inner_cuda_graph_manager.alloc_tensor_for_cuda_graph(
-                    self.cuda_graph_cur_batch_size, shape, data_type, device, is_graph_out
+                    self.cuda_graph_cur_batch_size, shape, data_type, device, is_graph_out, microbatch_index
                 )
 
             # 回收可能消亡的 tensor
@@ -186,6 +190,7 @@ else:
             data_type: torch.dtype,
             device: str = "cuda",
             is_graph_out: bool = False,
+            microbatch_index: int = 0,
         ) -> torch.Tensor:
             return torch.empty(shape, dtype=data_type, device=device, requires_grad=False)
 
