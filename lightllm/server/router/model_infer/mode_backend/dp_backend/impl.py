@@ -18,6 +18,7 @@ class DPChunkedPrefillBackend(ModeBackend):
         DPChunkedPrefillBackend 是DP的chuncked prefill 的单机实现，并不是标准的chunked prefill
         实现，这个模式最佳使用方式需要和 PD 分离模式进行配合。
         """
+        self.is_overlap_decode_mode = False
         pass
 
     def init_custom(self):
@@ -64,19 +65,54 @@ class DPChunkedPrefillBackend(ModeBackend):
         dist.all_reduce(self.reduce_tensor, op=dist.ReduceOp.MAX, group=None, async_op=False)
         max_decode_num = self.reduce_tensor.item()
         if max_decode_num != 0:
-            from .pre_process import padded_prepare_decode_inputs
+            if not self.is_overlap_decode_mode:
+                self.normal_decode(decode_reqs, max_decode_num)
+            else:
+                self.overlap_decode(decode_reqs, max_decode_num)
+        return
 
-            kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
-                decode_reqs, max_decode_num, is_multimodal=False
-            )
-            logits = self.model.forward(**kwargs)
-            if len(run_reqs) != 0:
-                logits = logits[0 : len(run_reqs), :]
-                next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-                next_token_ids = next_token_ids.detach().cpu().numpy()
-                next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-                self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
-            logits = None
+    def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int):
+        from .pre_process import padded_prepare_decode_inputs
+
+        kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
+            decode_reqs, max_decode_num, is_multimodal=False
+        )
+        logits = self.model.forward(**kwargs)
+        if len(run_reqs) != 0:
+            logits = logits[0 : len(run_reqs), :]
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+        logits = None
+
+    def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int):
+        from .pre_process import padded_overlap_prepare_decode_inputs
+
+        (
+            micro_batch,
+            run_reqs,
+            padded_req_num,
+            micro_batch1,
+            run_reqs1,
+            padded_req_num1,
+        ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=False)
+        logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
+        if len(run_reqs) != 0:
+            logits = logits[0 : len(run_reqs), :]
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+        if len(run_reqs1) != 0:
+            logits1 = logits1[0 : len(run_reqs1), :]
+            next_token_ids1, next_token_probs1 = sample(logits1, run_reqs1, self.eos_id)
+
+        if len(run_reqs) != 0:
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+        if len(run_reqs1) != 0:
+            next_token_ids1 = next_token_ids1.detach().cpu().numpy()
+            next_token_logprobs1 = torch.log(next_token_probs1).detach().cpu().numpy()
+            self.post_handel(run_reqs1, next_token_ids1, next_token_logprobs1)
         return
 
     def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs):
