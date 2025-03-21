@@ -65,7 +65,7 @@ def prepare_prefill_inputs(req_ids: List[int], is_multimodal=False):
     if padding_token_num > 0:
         padding_indexs = torch.full(
             (padding_token_num,),
-            fill_value=g_infer_context.req_manager.mem_manager.dp_use_token_index,
+            fill_value=g_infer_context.req_manager.mem_manager.HOLD_TOKEN_MEMINDEX,
             dtype=torch.int32,
             device="cuda",
         )
@@ -144,7 +144,7 @@ def prepare_decode_inputs(req_ids: List[int]):
     if padding_token_num > 0:
         padding_indexs = torch.full(
             (padding_token_num,),
-            fill_value=g_infer_context.req_manager.mem_manager.dp_use_token_index,
+            fill_value=g_infer_context.req_manager.mem_manager.HOLD_TOKEN_MEMINDEX,
             dtype=torch.int32,
             device="cuda",
         )
