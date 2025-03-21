@@ -178,7 +178,7 @@ class HttpServerManager:
         # 否则会造成异常问题。目前限制 NORMAL 模式都使用内部id替换， P 和 D 模式按需设置
         # health 请求 request_id 为负数，直接返回
         if is_health_req:
-            return
+            return sampling_params.group_request_id
         if self.pd_mode == NodeRole.NORMAL:
             if not (self.nnodes > 1 and self.args.dp == 1):
                 group_request_id = self.id_gen.generate_id()

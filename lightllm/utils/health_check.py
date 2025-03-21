@@ -65,8 +65,7 @@ async def health_check(args, httpserver_manager: HttpServerManager, request: Req
         sampling_params = SamplingParams()
         sampling_params.init(tokenizer=httpserver_manager.tokenizer, **sample_params_dict)
         sampling_params.verify()
-        if args.run_mode in ["prefill", "decode"]:
-            sampling_params.group_request_id = -_g_health_req_id_gen.generate_id()  # health monitor 的 id 是负的
+        sampling_params.group_request_id = -_g_health_req_id_gen.generate_id()  # health monitor 的 id 是负的
         multimodal_params_dict = request_dict.get("multimodal_params", {})
         multimodal_params = MultimodalParams(**multimodal_params_dict)
         results_generator = httpserver_manager.generate(
