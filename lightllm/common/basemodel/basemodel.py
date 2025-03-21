@@ -386,6 +386,7 @@ class TpPartBaseModel:
             infer_state.b_start_loc = cur_batch.b_start_loc
             infer_state.b_seq_len = cur_batch.b_seq_len
             infer_state.multimodal_params = None
+            infer_state.microbatch_index = batch_index
 
             infer_state.mem_manager = self.mem_manager
             infer_state.req_manager = self.req_manager
