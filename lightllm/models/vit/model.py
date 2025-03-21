@@ -135,7 +135,7 @@ class VisionTransformer:
         return input_embs
 
     @torch.no_grad()
-    def encode(self, image_uuids: List):
+    def encode(self, image_uuids: List, max_num_list: List):
         img_tensors = []
         valid_ids = []
         valid_id = 0
@@ -145,7 +145,8 @@ class VisionTransformer:
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))
                 image_data = Image.open(BytesIO(image_data))
-                t = self.load_image_func(image_data)
+                max_num = max_num_list[i]
+                t = self.load_image_func(image_data, max_num=max_num)
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(url), url))
