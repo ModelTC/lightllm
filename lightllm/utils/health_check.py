@@ -69,7 +69,9 @@ async def health_check(args, httpserver_manager: HttpServerManager, request: Req
             sampling_params.group_request_id = -_g_health_req_id_gen.generate_id()  # health monitor 的 id 是负的
         multimodal_params_dict = request_dict.get("multimodal_params", {})
         multimodal_params = MultimodalParams(**multimodal_params_dict)
-        results_generator = httpserver_manager.generate(prompt, sampling_params, multimodal_params, request)
+        results_generator = httpserver_manager.generate(
+            prompt, sampling_params, multimodal_params, request, is_health_req=True
+        )
 
         async def check_timeout(results_generator):
             async for _, _, _, _ in results_generator:
