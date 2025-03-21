@@ -43,8 +43,7 @@ class VisionTransformer:
         self.data_type = kvargs.get("data_type", "float16")
         self.quant_type = kvargs.get("quant_type", None)
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
-        self.max_num = 6
-        self.load_image_func = get_load_image_func(self.weight_dir_, self.max_num)
+        self.load_image_func = get_load_image_func(self.weight_dir_)
 
         self._init_datatype()
         self._init_config()
@@ -146,8 +145,8 @@ class VisionTransformer:
                 uuids.append(url)
                 image_data = read_shm(get_shm_name_data(url))
                 image_data = Image.open(BytesIO(image_data))
-                self.max_num = max_num_list[i]
-                t = self.load_image_func(image_data, self.max_num)
+                max_num = max_num_list[i]
+                t = self.load_image_func(image_data, max_num)
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(url), url))
