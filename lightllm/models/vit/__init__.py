@@ -7,7 +7,7 @@ from lightllm.models.internvl.img_process import get_image_patch as default_get_
 logger = init_logger(__name__)
 
 
-def get_load_image_func(weight_dir):
+def get_load_image_func(weight_dir, max_num):
     global load_image
     pre_process_path = os.path.join(weight_dir, "pre_process.py")
     if os.path.exists(pre_process_path):
@@ -23,7 +23,7 @@ def get_load_image_func(weight_dir):
     else:
         logger.info(f"pre_process.py not found in {weight_dir}, using default load_image.")
 
-    return default_load_image
+    return default_load_image(weight_dir, max_num)
 
 
 def get_image_patch_func(weight_dir):

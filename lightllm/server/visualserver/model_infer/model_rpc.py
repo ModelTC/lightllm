@@ -75,16 +75,22 @@ class VisualModelRpcServer(rpyc.Service):
     # @calculate_time(show=True, min_cost_ms=150)
     @torch.no_grad()
     def forward(self, images_uuids):
-        return self.model.encode(images_uuids)
+        max_num_list = []
+        if self.tp_rank_id == 0:
+            for i in range(len(images_uuids)):
+                uid = images_uuids[i] 
+                max_num_list.append(self.cache_client.root.get_max_num(uid))
+        return self.model.encode(images_uuids, max_num_list)
 
     # @calculate_time(show=False, min_cost_ms=300)
     def exposed_encode(self, images_uuids):
         images_uuids = obtain(images_uuids)
+                
         all_img_embeds, uuids, valid_ids = self.forward(images_uuids)
         all_img_embeds = all_img_embeds.to(torch.device("cpu"))
         if self.tp_rank_id == 0:
             for i in range(len(uuids)):
-                uid = uuids[i]
+                uid = uuids[i] 
                 if not self.cache_client.root.get_item_embed(uid):
                     start, end = valid_ids[i]
                     cur_embed_bytes = tensor2bytes(all_img_embeds[start:end])
