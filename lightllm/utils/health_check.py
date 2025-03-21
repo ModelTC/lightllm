@@ -18,7 +18,7 @@ _g_health_req_id_gen.generate_id()
 
 @dataclass
 class HealthObj:
-    _is_health: bool = True
+    _is_health: bool = False
     _is_health_checking: bool = False
     _failure_count: int = 0
     _failure_threshold: int = int(os.getenv("HEALTH_FAILURE_THRESHOLD", 3))
