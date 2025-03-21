@@ -18,7 +18,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     FirstTokenConstraintBackend,
     ContinuesBatchBackendForPrefillNode,
     ContinuesBatchBackendForDecodeNode,
-    DPBackend,
+    DPChunkedPrefillBackend,
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
@@ -145,7 +145,7 @@ class ModelRpcServer:
         elif is_first_token_constraint_mode:
             self.backend = FirstTokenConstraintBackend()
         elif kvargs.get("dp_size", 1) > 1:
-            self.backend = DPBackend()
+            self.backend = DPChunkedPrefillBackend()
         else:
             self.backend = ContinuesBatchBackend()
 

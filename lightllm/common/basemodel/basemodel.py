@@ -210,6 +210,7 @@ class TpPartBaseModel:
         )
         if self.graph is not None:
             self.graph.warmup(self)
+            # to do warmup overlap
 
     def _init_custom(self):
         pass
@@ -369,10 +370,11 @@ class TpPartBaseModel:
         return predict_logics
 
     @torch.no_grad()
-    def microbatch_overlap_decode(self, input_ids, input_ids1, batch: DecodeMicroBatch, batch1: DecodeMicroBatch):
+    def microbatch_overlap_decode(self, batch: DecodeMicroBatch, batch1: DecodeMicroBatch):
         assert batch.batch_size == batch1.batch_size
         assert batch.mem_indexes.is_cuda
         assert batch1.mem_indexes.is_cuda
+        input_ids, input_ids1 = batch.input_ids, batch1.input_ids
 
         def create_inferstate(cur_batch: DecodeMicroBatch, batch_index):
             infer_state = self.infer_state_class()
@@ -386,6 +388,7 @@ class TpPartBaseModel:
             infer_state.b_start_loc = cur_batch.b_start_loc
             infer_state.b_seq_len = cur_batch.b_seq_len
             infer_state.multimodal_params = None
+            infer_state.microbatch_index = batch_index
 
             infer_state.mem_manager = self.mem_manager
             infer_state.req_manager = self.req_manager

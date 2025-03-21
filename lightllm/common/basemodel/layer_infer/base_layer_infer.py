@@ -23,10 +23,14 @@ class BaseLayerInfer:
         dtype: torch.dtype,
         device: str = "cuda",
         is_graph_out: bool = False,
+        microbatch_index: int = 0,
     ) -> torch.Tensor:
         """
-        is_graph_out 用于标记是graph图推理中的最后一个tensor，该参数只会在开启cuda graph时生效。该tensor的复用有特殊的逻辑，用于降低显存
-        占用
+        is_graph_out 用于标记是graph图推理中的最后一个tensor，该参数只会在开启cuda graph时生效。
+        该tensor的复用有特殊的逻辑，用于降低显存占用。
+        microbatch_index 参数是为了支持microbatch overlap 模式所添加的参数，其值只能为0或者1，用以
+        标记申请的tensor是用于第几个microbatch的，当前这个参数只有在 is_graph_out 为 True的时候会有
+        具体的意义，其他情况没有实际意义。
         """
         return g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=is_graph_out)
 
