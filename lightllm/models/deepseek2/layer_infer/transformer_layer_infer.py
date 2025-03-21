@@ -3,6 +3,7 @@ import torch
 import torch.functional as F
 import torch.distributed as dist
 import numpy as np
+import triton
 from typing import Tuple
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.triton_kernel.destindex_copy_kv import destindex_copy_kv
@@ -79,9 +80,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         if self.is_moe:
             if self.enable_dp:
                 moe_mode = os.environ.get("MOE_MODE", "TP")
-                if moe_mode == "TP":
-                    self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_dtp, self)
-                elif moe_mode == "EP":
+                if moe_mode == "EP":
                     self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_edp, self)
             else:
                 self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)
@@ -166,12 +165,71 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
         return q, cache_kv
 
+    def _tpsp_get_qkv(
+        self, input, cache_kv, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
+    ) -> torch.Tensor:
+        if self.tp_world_size_ > 1:
+            sp_token_num, hidden_dim = input.shape
+            gather_input = self.alloc_tensor(
+                (sp_token_num * self.tp_world_size_, hidden_dim), dtype=input.dtype, device=input.device
+            )
+            all_gather_into_tensor(gather_input, input, group=infer_state.dist_group, async_op=False)
+            input = gather_input[0 : len(infer_state.position_cos), :]
+
+        input = input.view(-1, self.embed_dim_)
+
+        if self.q_lora_rank is None:
+            q = layer_weight.q_weight_.mm(input)
+        else:
+            q = layer_weight.q_a_proj_.mm(input)
+            rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
+            q = layer_weight.q_b_proj_.mm(q)
+        q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
+        q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+        layer_weight.kv_a_proj_with_mqa_.mm(input, out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim))
+        rmsnorm_forward(
+            cache_kv[:, :, : self.kv_lora_rank],
+            weight=layer_weight.kv_a_layernorm_.weight,
+            eps=self.eps_,
+            out=cache_kv[:, :, : self.kv_lora_rank],
+        )
+        rotary_emb_fwd(
+            q_rope,
+            cache_kv[:, :, self.kv_lora_rank :],
+            infer_state.position_cos,
+            infer_state.position_sin,
+        )
+        return q, cache_kv
+
     def _get_o(
         self, input: torch.Tensor, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
     ) -> torch.Tensor:
         if input.shape[2] == self.kv_lora_rank:
             input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
         o_tensor = layer_weight.o_weight_.mm(input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim))
+        return o_tensor
+
+    def _tpsp_get_o(
+        self, input, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight
+    ) -> torch.Tensor:
+        if input.shape[2] == self.kv_lora_rank:
+            input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
+        input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
+        dest_size = triton.cdiv(input.shape[0], self.tp_world_size_) * self.tp_world_size_
+        o_tensor = self.alloc_tensor((dest_size, self.embed_dim_), dtype=input.dtype, device=input.device)
+        layer_weight.o_weight_.mm(input, out=o_tensor[0 : len(infer_state.position_cos), :])
+        if self.tp_world_size_ > 1:
+            sp_token_num = o_tensor.shape[0] // self.tp_world_size_
+            reduce_o_tensor = self.alloc_tensor((sp_token_num, self.embed_dim_), dtype=input.dtype, device=input.device)
+            reduce_scatter_tensor(
+                output=reduce_o_tensor,
+                input=o_tensor,
+                op=dist.ReduceOp.SUM,
+                group=infer_state.dist_group,
+                async_op=False,
+            )
+            o_tensor = reduce_o_tensor
+
         return o_tensor
 
     def _decompress_kv(
