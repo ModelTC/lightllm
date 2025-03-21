@@ -6,7 +6,7 @@ from .diverse_backend.impl import DiversehBackend
 from .continues_batch.impl_for_token_healing import TokenHealingBackend
 from .continues_batch.impl_for_outlines_constraint_mode import OutlinesConstraintBackend
 from .continues_batch.impl_for_first_token_constraint_mode import FirstTokenConstraintBackend
-from .dp_backend.impl import DPBackend
+from .dp_backend.impl import DPChunkedPrefillBackend
 from .continues_batch.pd_mode.prefill_node_impl.prefill_impl import ContinuesBatchBackendForPrefillNode
 from .continues_batch.pd_mode.decode_node_impl.decode_impl import ContinuesBatchBackendForDecodeNode
 from .continues_batch.impl_for_xgrammar_mode import XgrammarBackend
