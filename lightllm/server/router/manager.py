@@ -34,6 +34,7 @@ from lightllm.common.mem_manager import ReadOnlyStaticsMemoryManager
 from lightllm.utils.graceful_utils import graceful_registry
 from lightllm.utils.process_check import start_parent_check_thread
 from lightllm.utils.envs_utils import get_unique_server_name
+from lightllm.server.router.model_infer.infer_batch import g_infer_context
 
 logger = init_logger(__name__)
 
@@ -55,7 +56,7 @@ class RouterManager:
         self.load_way = args.load_way
         self.mode = args.mode
         self.max_total_token_num = args.max_total_token_num
-        self.shm_req_manager = ShmReqManager()
+        self.shm_req_manager = [ShmReqManager(), ShmReqManager()]
         # 用共享内存进行共享，router 模块读取进行精确的调度估计
         self.read_only_statics_mem_manager = ReadOnlyStaticsMemoryManager()
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
@@ -70,10 +71,11 @@ class RouterManager:
             self.shared_token_load.set_logical_max_load(0.0, dp_index)
             self.shared_token_load.set_dynamic_max_load(0.0, dp_index)
 
+        self.stream_num = 2
         self.pause_strategy = Fcfs()
-        self.running_batch: Batch = None
+        self.running_batch: Batch = [None] * self.stream_num
         self.eos_id = args.eos_id
-        self.has_wait_tokens = 0
+        self.has_wait_tokens = [0,0] 
         self.max_wait_tokens = args.router_max_wait_tokens
         context = zmq.asyncio.Context(2)
         self.recv_from_httpserver = context.socket(zmq.PULL)
@@ -103,9 +105,12 @@ class RouterManager:
         g_router_lock.obj = self.router_lock
 
         # 调度和推理进行折叠使用的线程池
-        self.overlap_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        self.schedule_task = None
-        self.overlap_event = threading.Event()
+        self.overlap_thread_pool = [
+            concurrent.futures.ThreadPoolExecutor(max_workers=1),
+            concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        ]
+        self.schedule_task = [None] * self.stream_num
+        self.overlap_event = [threading.Event(), threading.Event()]
         return
 
     async def wait_to_model_ready(self):
@@ -116,8 +121,8 @@ class RouterManager:
         self.mem_queues: List[torch.multiprocessing.Queue] = [
             torch.multiprocessing.Queue() for _ in range(self.world_size)
         ]
-        self.rpc_event = multiprocessing.Event()
-        self.rpc_finished_event = multiprocessing.Event()
+        self.rpc_event = [multiprocessing.Event(), multiprocessing.Event()]
+        self.rpc_finished_event = [multiprocessing.Event(), multiprocessing.Event()]
 
         assert (self.world_size % self.nnodes) == 0
         node_world_size = self.world_size // self.nnodes
@@ -175,7 +180,7 @@ class RouterManager:
             "pd_rpyc_ports": self.args.pd_node_infer_rpyc_ports,  # 非 pd 模式可以不设置
         }
 
-        await self.model_rpc_client.init_model(kvargs=kvargs)
+        await self.model_rpc_client.init_model(kvargs=kvargs, stream_id=0)
 
         if self.max_total_token_num is None:
             self.max_total_token_num = await self.model_rpc_client.get_max_total_token_num()
@@ -187,8 +192,11 @@ class RouterManager:
                 node_world_size=self.node_world_size,
                 dp_world_size=self.world_size // self.dp_size,
             )
-        self.req_queue = build_req_queue(self.args, self, self.dp_size_in_node)
-        logger.info(f"use req queue {self.req_queue.__class__.__name__}")
+        self.req_queue = [
+            build_req_queue(self.args, self, self.dp_size_in_node),
+            build_req_queue(self.args, self, self.dp_size_in_node)
+        ]
+        logger.info(f"use req queue {self.req_queue[0].__class__.__name__}")
 
         if self.args.run_mode == "prefill":
             # 启动 prefill kv move 管理进程
@@ -208,16 +216,16 @@ class RouterManager:
 
         return
 
-    def add_req(self, group_req_indexes: GroupReqIndexes):
+    def add_req(self, group_req_indexes: GroupReqIndexes, stream_id):
         req_group = []
         for req_index in group_req_indexes.shm_req_indexes:
-            req = self.shm_req_manager.get_req_obj_by_index(req_index)
+            req = self.shm_req_manager[stream_id].get_req_obj_by_index(req_index)
             req.multimodal_params = group_req_indexes.multimodal_params
             req.start_time = group_req_indexes.time_mark
             req_group.append(req)
 
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
-        self.req_queue.extend(req_group)
+        self.req_queue[stream_id].extend(req_group)
         self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
 
         return
@@ -230,7 +238,7 @@ class RouterManager:
         while True:
             await self._step(stream_id)
             counter_count += 1
-            if self.running_batch is not None:
+            if self.running_batch[stream_id] is not None:
                 if counter_count % 50 == 0:
                     for dp_index in range(self.dp_size_in_node):
                         token_ratio1 = self.get_used_tokens(dp_index) / self.max_total_token_num
@@ -240,16 +248,16 @@ class RouterManager:
                         ) / self.max_total_token_num
                         d_i = dp_index
                         logger.debug(
-                            f"dp_i {d_i} current batch size: {len(self.running_batch.reqs)} \n"
-                            f"dp_i {d_i} paused req num: {self.req_queue.get_paused_req_num()} \n"
+                            f"dp_i {d_i} current batch size: {len(self.running_batch[stream_id].reqs)} \n"
+                            f"dp_i {d_i} paused req num: {self.req_queue[stream_id].get_paused_req_num()} \n"
                             f"dp_i {d_i} token used ratio: {token_ratio1} not contain prompt cache tree unrefed token\n"
                             f"dp_i {d_i} token used ratio: {token_ratio2} contain prompt cache tree unrefed token"
                         )
-                self.req_queue.update_token_load(self.running_batch, force_update=False)
+                self.req_queue[stream_id].update_token_load(self.running_batch[stream_id], force_update=False)
                 self.stats_tool.print_stats()
-                self.metric_client.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
-                self.metric_client.gauge_set("lightllm_batch_pause_size", self.req_queue.get_paused_req_num())
-                self.metric_client.gauge_set("lightllm_queue_size", self.req_queue.get_wait_req_num())
+                self.metric_client.gauge_set("lightllm_batch_current_size", len(self.running_batch[stream_id].reqs))
+                self.metric_client.gauge_set("lightllm_batch_pause_size", self.req_queue[stream_id].get_paused_req_num())
+                self.metric_client.gauge_set("lightllm_queue_size", self.req_queue[stream_id].get_wait_req_num())
                 self.metric_client.gauge_set(
                     "lightllm_batch_current_max_tokens",
                     int(
@@ -258,42 +266,41 @@ class RouterManager:
                     ),
                 )
             else:
-                self.req_queue.update_token_load(self.running_batch, force_update=True)
+                self.req_queue[stream_id].update_token_load(self.running_batch[stream_id], force_update=True)
                 if counter_count % 300 == 0:
                     self.metric_client.gauge_set("lightllm_batch_current_size", 0.0)
                     self.metric_client.gauge_set("lightllm_batch_pause_size", 0.0)
                     self.metric_client.gauge_set("lightllm_queue_size", 0.0)
                     self.metric_client.gauge_set("lightllm_batch_current_max_tokens", 0.0)
 
-            if self.running_batch is None:
+            if self.running_batch[stream_id] is None:
                 await asyncio.sleep(0.01)  # 10ms
 
-    async def get_schedule_result(self, running_batch: Batch):
-        if self.schedule_task is None:
-
+    async def get_schedule_result(self, running_batch: Batch, stream_id):
+        if self.schedule_task[stream_id] is None:
             def get_new_batch():
                 limit_router_queue_length = None
                 if self.is_multinode_tp:
                     # 使用 all_reduce 获取最小值
-                    limit_router_queue_length = len(self.req_queue.waiting_req_list)
+                    limit_router_queue_length = len(self.req_queue[stream_id].waiting_req_list)
                     limit_router_queue_length_tensor = torch.tensor(
                         limit_router_queue_length, dtype=torch.int32, device="cpu"
                     )
                     dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
                     limit_router_queue_length = limit_router_queue_length_tensor.item()
 
-                self.overlap_event.wait(timeout=0.020)
-                self.overlap_event.clear()
+                self.overlap_event[stream_id].wait(timeout=0.020)
+                self.overlap_event[stream_id].clear()
                 time.sleep(0.003)
-                new_batch = self.req_queue.generate_new_batch(running_batch, limit_router_queue_length)
+                new_batch = self.req_queue[stream_id].generate_new_batch(running_batch, limit_router_queue_length)
                 return new_batch
 
-            self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
+            self.schedule_task[stream_id] = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool[stream_id], get_new_batch)
             return None
-        else:
-            result = await self.schedule_task
-            self.schedule_task = None
-            return result
+
+        result = await self.schedule_task[stream_id]
+        self.schedule_task[stream_id] = None
+        return result
 
     async def _step(self, stream_id):
         """
@@ -301,8 +308,8 @@ class RouterManager:
         """
         # 删除所有已经 finished 的 req
         # 当前无运行请求时
-        if self.running_batch is None:
-            new_batch = await self.get_schedule_result(self.running_batch)
+        if self.running_batch[stream_id] is None:
+            new_batch = await self.get_schedule_result(self.running_batch[stream_id], stream_id)
             if new_batch is not None:
                 self.metric_client.histogram_observe("lightllm_batch_next_size", len(new_batch.reqs))
                 for req in new_batch.reqs:
@@ -310,50 +317,65 @@ class RouterManager:
                         "lightllm_request_queue_duration_bucket", time.time() - req.start_time
                     )
                 self.stats_tool.count_prompt_tokens(new_batch)
-                self.running_batch = new_batch
-                await self._prefill_batch(self.running_batch, stream_id)
-                self._filter_runing_batch()
-                self.has_wait_tokens = self.max_wait_tokens
+                self.running_batch[stream_id] = new_batch
+                await self._prefill_batch(self.running_batch[stream_id], stream_id)
+                # print("blueswhen prefilled1 batch", len(self.running_batch[stream_id].reqs), "stream id ", stream_id)
+                self._filter_runing_batch(stream_id)
+                self.has_wait_tokens[stream_id] = self.max_wait_tokens
             return
 
         # 有运行请求，当持续decode的次数到达一个阈值，或者有上次预调度的结果存在的时。
-        if self.has_wait_tokens >= self.max_wait_tokens or self.schedule_task is not None:
-            new_mini_batch = await self.get_schedule_result(self.running_batch)
-            self.has_wait_tokens = 0
+        if self.has_wait_tokens[stream_id] >= self.max_wait_tokens or self.schedule_task[stream_id] is not None:
+            new_mini_batch = await self.get_schedule_result(self.running_batch[stream_id], stream_id)
+            # if self.schedule_task[stream_id] is None and new_mini_batch is None:
+                # print("blueswhen error2", "stream id ", stream_id)
+            self.has_wait_tokens[stream_id] = 0
             if new_mini_batch is not None:
-                self.has_wait_tokens = self.max_wait_tokens
+                self.has_wait_tokens[stream_id] = self.max_wait_tokens
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
                 await self._prefill_batch(new_mini_batch, stream_id)
+                # print("blueswhen prefilled2 batch", len(new_mini_batch.reqs), "stream id ", stream_id)
+                # if rlt:
+                #     assert self.running_batch[stream_id] is None
                 if not new_mini_batch.is_clear():
-                    self.running_batch.merge(new_mini_batch)
+                    self.running_batch[stream_id].merge(new_mini_batch)
                 return
+        #     else:
+        #         print("blueswhen no new batch", "stream id ", stream_id)
+        # else:
+        #     print("blueswhen no prefilled2", "stream id ", stream_id)
 
         # 正常 decode 阶段， 如果可以直接decode就直接decode，否则通过暂停策略暂停一些请求
         # 释放一些管理的 token
-        if self._can_decode(self.running_batch):
-            self.stats_tool.count_output_tokens(self.running_batch)
-            await self._decode_batch(self.running_batch, stream_id)
-            self._filter_runing_batch()
-            self.has_wait_tokens += 1
+        if self._can_decode():
+            assert self.running_batch[stream_id] is not None
+            self.stats_tool.count_output_tokens(self.running_batch[stream_id])
+            await self._decode_batch(self.running_batch[stream_id], stream_id)
+            # if rlt:
+            #     print("blueswhen error3", "stream id ", stream_id)
+            # print("blueswhen decode batch", len(self.running_batch[stream_id].reqs), "stream id ", stream_id)
+            self._filter_runing_batch(stream_id)
+            # if rlt:
+            #     assert self.running_batch[stream_id] is None
+            self.has_wait_tokens[stream_id] += 1
             return
         else:
             # pause strategy
             paused_reqs = select_paused_reqs(
-                self.running_batch, self.pause_strategy, self.req_queue, self.max_total_token_num
+                self.running_batch[stream_id], self.pause_strategy, self.req_queue[stream_id], self.max_total_token_num
             )
-            await self._pause_reqs(paused_reqs)
-            logger.debug(f"pasued req num: {self.req_queue.get_paused_req_num()}")
-            self.has_wait_tokens = 0
+            await self._pause_reqs(paused_reqs, stream_id)
+            logger.debug(f"pasued req num: {self.req_queue[stream_id].get_paused_req_num()}")
+            self.has_wait_tokens[stream_id] = 0
             return
-        return
 
     async def _prefill_batch(self, batch: Batch, stream_id):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
-        self.overlap_event.set()
+        self.overlap_event[stream_id].set()
         await self.model_rpc_client.prefill(reqs, stream_id)
-        batch.filter_out_finished_req(self.shm_req_manager)
+        batch.filter_out_finished_req(self.shm_req_manager[stream_id])
         # 发个None包触发一下detokenization
         self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -366,9 +388,9 @@ class RouterManager:
     async def _decode_batch(self, batch: Batch, stream_id):
         start_time = time.time()
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
-        self.overlap_event.set()
+        self.overlap_event[stream_id].set()
         await self.model_rpc_client.decode(stream_id)
-        batch.filter_out_finished_req(self.shm_req_manager)
+        batch.filter_out_finished_req(self.shm_req_manager[stream_id])
         # 发个None包触发一下detokenization
         self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
         self.metric_client.histogram_observe(
@@ -376,17 +398,17 @@ class RouterManager:
         )
         return
 
-    async def _pause_reqs(self, pasue_reqs):
+    async def _pause_reqs(self, pasue_reqs, stream_id):
         pasue_req_ids = [r.request_id for r in pasue_reqs]
-        await self.model_rpc_client.pause_reqs(pasue_req_ids)
+        await self.model_rpc_client.pause_reqs(pasue_req_ids, stream_id)
         return
 
-    def _filter_runing_batch(self):
-        if self.running_batch is not None and self.running_batch.is_clear():
-            self.running_batch = None
+    def _filter_runing_batch(self, stream_id):
+        if self.running_batch[stream_id] is not None and self.running_batch[stream_id].is_clear():
+            self.running_batch[stream_id] = None
             return
 
-    def _can_decode(self, batch: Batch):
+    def _can_decode(self):
         # p d 分离模式下，目前只能使用保守调度，保证请求放入进行decode的时候
         # 显存token肯定是够用的。
         # deepseekv2 dp 模式下,采用保守调度，也肯定够用
@@ -395,7 +417,9 @@ class RouterManager:
 
         # 下面的判定条件，只在 dp 为 1 的情况下启用
         assert self.dp_size_in_node == 1
-        return batch.get_batch_decode_need_tokens()[0] + self.get_used_tokens(0) <= self.max_total_token_num
+        batch_size1 = self.running_batch[0].get_batch_decode_need_tokens()[0] if self.running_batch[0] is not None else 0
+        batch_size2 = self.running_batch[1].get_batch_decode_need_tokens()[0] if self.running_batch[0] is not None else 0
+        return batch_size1 + batch_size2 + self.get_used_tokens(0) <= self.max_total_token_num
 
     def get_used_tokens(self, dp_index):
         if self.args.use_dynamic_prompt_cache:
@@ -411,7 +435,9 @@ class RouterManager:
         while True:
             recv_req: GroupReqIndexes = await self.recv_from_httpserver.recv_pyobj()
             if isinstance(recv_req, GroupReqIndexes):
-                self.add_req(recv_req)
+                queue0_len = self.req_queue[0].get_wait_req_num()
+                queue1_len = self.req_queue[1].get_wait_req_num()
+                self.add_req(recv_req, 1)# if queue0_len <= queue1_len else 1)
             else:
                 assert False, f"Error Req Inf {recv_req}"
 
@@ -447,7 +473,7 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     pipe_writer.send("init ok")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(router.loop_for_fwd(0))
-    # loop.create_task(router.loop_for_fwd(1))
+    # loop.create_task(router.loop_for_fwd(0))
+    loop.create_task(router.loop_for_fwd(1))
     loop.run_until_complete(router.loop_for_netio_req())
     return

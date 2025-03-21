@@ -168,7 +168,8 @@ class ContinuesBatchBackend(ModeBackend):
         super().__init__()
 
     def prefill(self, reqs: List[Tuple], stream_id):
-        req_ids = self._init_reqs(reqs)
+        # print("blueswhen _init_reqs reqs num", len(reqs), "stream id ", stream_id)
+        req_ids = self._init_reqs(reqs, stream_id)
         kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
         kwargs["stream_id"] = stream_id
         with torch.cuda.stream(self.model.stream[stream_id]):
@@ -195,11 +196,13 @@ class ContinuesBatchBackend(ModeBackend):
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
-        return
+        return self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
+        # return
 
     def decode(self, stream_id):
-        kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
+        assert g_infer_context.infer_req_ids[stream_id]
+        # print("blueswhen infer reg num", len(g_infer_context.infer_req_ids))
+        kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids[stream_id])
         kwargs["stream_id"] = stream_id
         with torch.cuda.stream(self.model.stream[stream_id]):
             logits = self.model.forward(**kwargs)
@@ -225,10 +228,10 @@ class ContinuesBatchBackend(ModeBackend):
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
-        return
+        self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
+        return stream_id
 
-    def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs):
+    def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs, stream_id):
         finished_req_ids = []
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
@@ -257,5 +260,5 @@ class ContinuesBatchBackend(ModeBackend):
 
                 req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
 
-        g_infer_context.filter(finished_req_ids)
-        return
+        g_infer_context.filter(finished_req_ids, stream_id)
+        return not g_infer_context.infer_req_ids[stream_id]

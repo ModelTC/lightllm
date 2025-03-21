@@ -1,5 +1,6 @@
 import os
 import asyncio
+import torch
 import torch.multiprocessing as mp
 import multiprocessing
 import threading
@@ -35,8 +36,8 @@ class ModelRpcServer:
         rank: int,
         rank_in_node: int,
         node_world_size: int,
-        rpc_event: multiprocessing.Event,
-        rpc_finished_event: multiprocessing.Event,
+        rpc_event,
+        rpc_finished_event,
         info_queue: mp.Queue,
         mem_queue: mp.Queue,
     ):
@@ -48,12 +49,15 @@ class ModelRpcServer:
         self.rpc_event = rpc_event
         self.rpc_finished_event = rpc_finished_event
 
-        self.rpc_shm_params = RpcShmParams()
-        self.rpc_shm_params.create_or_link_shm()
-        self.rpc_shm_results = RpcShmResults()
-        self.rpc_shm_results.create_or_link_shm()
-        self.rpc_shm_sync_status = ShmSyncStatusArray(self.node_world_size)
-        self.rpc_shm_sync_status.create_or_link_shm()
+        self.rpc_shm_params = [RpcShmParams(), RpcShmParams()]
+        self.rpc_shm_params[0].create_or_link_shm()
+        self.rpc_shm_params[1].create_or_link_shm()
+        self.rpc_shm_results = [RpcShmResults(), RpcShmResults()]
+        self.rpc_shm_results[0].create_or_link_shm()
+        self.rpc_shm_results[1].create_or_link_shm()
+        self.rpc_shm_sync_status = [ShmSyncStatusArray(self.node_world_size), ShmSyncStatusArray(self.node_world_size)]
+        self.rpc_shm_sync_status[0].create_or_link_shm()
+        self.rpc_shm_sync_status[1].create_or_link_shm()
 
         self.rank = rank
         self.rank_in_node = rank_in_node
@@ -61,34 +65,40 @@ class ModelRpcServer:
 
         # 多卡才是跨进程的
         if self.args.tp != 1:
-            self.loop_thread = threading.Thread(target=self.rpc_loop)
-            self.loop_thread.start()
+            self.loop_thread = [
+                threading.Thread(target=self.rpc_loop, args=(0,)),
+                threading.Thread(target=self.rpc_loop, args=(1,)),
+            ]
+            self.loop_thread[0].start()
+            self.loop_thread[1].start()
         return
 
-    def rpc_loop(self):
+    def rpc_loop(self, stream_id):
         error_count = 0
         while True:
             try:
-                self.rpc_event.wait()
-                func_name, args = self.rpc_shm_params.read_func_params()
+                self.rpc_event[stream_id].wait()
+                func_name, args = self.rpc_shm_params[stream_id].read_func_params()
 
+                torch.cuda.set_device(self.rank_in_node)
                 ans = getattr(self, func_name)(*args)
+
                 if ans is not None and self.rank_in_node == 0:
-                    self.rpc_shm_results.write_func_result(func_name=func_name, ret=ans)
+                    self.rpc_shm_results[stream_id].write_func_result(func_name=func_name, ret=ans)
 
                 # 下面得执行顺序不可随意交换, 否则容易出现同步或者死锁问题。
-                self.rpc_shm_sync_status.add_mark(self.rank_in_node)
-                while not self.rpc_shm_sync_status.run_finished():
+                self.rpc_shm_sync_status[stream_id].add_mark(self.rank_in_node)
+                while not self.rpc_shm_sync_status[stream_id].run_finished():
                     pass
 
-                self.rpc_event.clear()
+                self.rpc_event[stream_id].clear()
 
-                self.rpc_shm_sync_status.add_mark1(self.rank_in_node)
-                while not self.rpc_shm_sync_status.run_finished1():
+                self.rpc_shm_sync_status[stream_id].add_mark1(self.rank_in_node)
+                while not self.rpc_shm_sync_status[stream_id].run_finished1():
                     pass
 
                 if self.rank_in_node == 0:
-                    self.rpc_finished_event.set()
+                    self.rpc_finished_event[stream_id].set()
 
             except BaseException as e:
                 logger.exception(str(e))
@@ -170,8 +180,8 @@ class ModelRpcServer:
             logger.exception(f"Batch decode encountered an unexpected ERROR: {err_msg}")
             raise e
 
-    def pause_reqs(self, req_ids):
-        return self.backend.pause_reqs(req_ids)
+    def pause_reqs(self, req_ids, stream_id):
+        return self.backend.pause_reqs(req_ids, stream_id)
 
     def get_max_total_token_num(self):
         return self.backend.get_max_total_token_num()
@@ -189,22 +199,24 @@ class ModelRpcClient:
 
         self.world_size = world_size
         self.use_rpc = self.world_size != 1
-        self.rpc_shm_params = RpcShmParams()
-        self.rpc_shm_params.create_or_link_shm()
-        self.rpc_shm_results = RpcShmResults()
-        self.rpc_shm_results.create_or_link_shm()
+        self.rpc_shm_params = [RpcShmParams(), RpcShmParams()]
+        self.rpc_shm_params[0].create_or_link_shm()
+        self.rpc_shm_params[1].create_or_link_shm()
+        self.rpc_shm_results = [RpcShmResults(), RpcShmResults()]
+        self.rpc_shm_results[0].create_or_link_shm()
+        self.rpc_shm_results[1].create_or_link_shm()
 
         self.rpc_event = rpc_event
         self.rpc_finished_event = rpc_finished_event
         return
 
-    async def init_model(self, kvargs):
+    async def init_model(self, kvargs, stream_id):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("init_model", (kvargs,))
-            self.rpc_event.set()
+            self.rpc_shm_params[stream_id].write_func_params("init_model", (kvargs,))
+            self.rpc_event[stream_id].set()
 
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
+            self.rpc_finished_event[stream_id].wait()
+            self.rpc_finished_event[stream_id].clear()
             return
         else:
             self.model_infer_server.init_model(kvargs)
@@ -212,11 +224,11 @@ class ModelRpcClient:
 
     async def prefill(self, reqs, stream_id):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("prefill", (reqs, stream_id))
-            self.rpc_event.set()
+            self.rpc_shm_params[stream_id].write_func_params("prefill", (reqs, stream_id))
+            self.rpc_event[stream_id].set()
 
-            await asyncio.to_thread(self.rpc_finished_event.wait)
-            self.rpc_finished_event.clear()
+            await asyncio.to_thread(self.rpc_finished_event[stream_id].wait)
+            self.rpc_finished_event[stream_id].clear()
             return
         else:
             self.model_infer_server.prefill(reqs, stream_id)
@@ -224,23 +236,23 @@ class ModelRpcClient:
 
     async def decode(self, stream_id):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("decode", (stream_id, ))
-            self.rpc_event.set()
+            self.rpc_shm_params[stream_id].write_func_params("decode", (stream_id, ))
+            self.rpc_event[stream_id].set()
 
-            await asyncio.to_thread(self.rpc_finished_event.wait)
-            self.rpc_finished_event.clear()
+            await asyncio.to_thread(self.rpc_finished_event[stream_id].wait)
+            self.rpc_finished_event[stream_id].clear()
             return
         else:
             self.model_infer_server.decode(stream_id)
             return
 
-    async def pause_reqs(self, req_ids):
+    async def pause_reqs(self, req_ids, stream_id):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("pause_reqs", (req_ids,))
-            self.rpc_event.set()
+            self.rpc_shm_params[stream_id].write_func_params("pause_reqs", (req_ids, stream_id))
+            self.rpc_event[stream_id].set()
 
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
+            self.rpc_finished_event[stream_id].wait()
+            self.rpc_finished_event[stream_id].clear()
             return
         else:
             self.model_infer_server.pause_reqs(req_ids)
@@ -248,12 +260,12 @@ class ModelRpcClient:
 
     async def get_max_total_token_num(self):
         if self.use_rpc:
-            self.rpc_shm_params.write_func_params("get_max_total_token_num", ())
-            self.rpc_event.set()
+            self.rpc_shm_params[0].write_func_params("get_max_total_token_num", ())
+            self.rpc_event[0].set()
 
-            self.rpc_finished_event.wait()
-            self.rpc_finished_event.clear()
-            func_name, ret = self.rpc_shm_results.read_func_result()
+            self.rpc_finished_event[0].wait()
+            self.rpc_finished_event[0].clear()
+            func_name, ret = self.rpc_shm_results[0].read_func_result()
             assert func_name == "get_max_total_token_num"
             return ret
         else:
@@ -268,8 +280,8 @@ def _init_env(
     info_queue,
     mem_queue,
     router_lock,
-    rpc_event: mp.Event,
-    rpc_finished_event: mp.Event,
+    rpc_event,
+    rpc_finished_event,
     success_event: mp.Event,
 ):
     import lightllm.utils.rpyc_fix_utils as _
@@ -288,7 +300,8 @@ def _init_env(
     )
     success_event.set()
 
-    model_rpc_server.loop_thread.join()
+    model_rpc_server.loop_thread[0].join()
+    model_rpc_server.loop_thread[1].join()
     return
 
 
