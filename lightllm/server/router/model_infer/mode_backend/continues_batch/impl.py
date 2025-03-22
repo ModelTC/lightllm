@@ -89,9 +89,11 @@ def split_kwargs_n(
     b_ready_cache_len: torch.Tensor = None,
     multimodal_params=None,
     is_prefill=True,
-    split_n=2):
+    split_n=2,
+    run_reqs=None):
 
     kwargs = [None] * split_n
+    run_reqs_list = [None] * split_n
 
     # 计算每个分片的批次大小
     batch_per_split = [batch_size // split_n] * split_n
@@ -124,11 +126,13 @@ def split_kwargs_n(
             token_start = cumulative_tokens
             token_end = token_start + split_tokens
             split_input_ids = input_ids[token_start:token_end]
+            reqs = run_reqs[token_start:token_end]
             split_mem_indexes = mem_indexes[token_start:token_end]
         else:
             # 在decode阶段，根据批次分割
             split_input_ids = input_ids[start_idx:end_idx]
             split_mem_indexes = mem_indexes[start_idx:end_idx]
+            reqs = run_reqs[start_idx:end_idx]
 
         # 计算此分片的其他参数
         split_max_len = split_b_seq_len.max().item() if len(split_b_seq_len) > 0 else 0
@@ -139,6 +143,7 @@ def split_kwargs_n(
         if b_ready_cache_len is not None:
             split_b_ready_cache_len = b_ready_cache_len[start_idx:end_idx]
 
+        run_reqs_list[i] = reqs
         # 创建kwargs字典
         kwargs[i] = {
             "batch_size": len(split_b_req_idx),
@@ -161,7 +166,7 @@ def split_kwargs_n(
         # 更新累计token数
         cumulative_tokens += split_tokens
 
-    return kwargs
+    return kwargs, run_reqs_list
 
 class ContinuesBatchBackend(ModeBackend):
     def __init__(self) -> None:
@@ -175,7 +180,10 @@ class ContinuesBatchBackend(ModeBackend):
         with torch.cuda.stream(self.model.stream[stream_id]):
             logits = self.model.forward(**kwargs)
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            torch.cuda.current_stream().synchronize()
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
+            # torch.cuda.current_stream().synchronize()
 
         # logits = self.model.forward(**kwargs)
 
@@ -193,10 +201,10 @@ class ContinuesBatchBackend(ModeBackend):
         #     logits = self.model.forward(**kwargs)
 
         # next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+        # next_token_ids = next_token_ids.detach().cpu().numpy()
+        # next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        return self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
+        # self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
         # return
 
     def decode(self, stream_id):
@@ -207,13 +215,15 @@ class ContinuesBatchBackend(ModeBackend):
         with torch.cuda.stream(self.model.stream[stream_id]):
             logits = self.model.forward(**kwargs)
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            torch.cuda.current_stream().synchronize()
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
 
         # logits = self.model.forward(**kwargs)
 
         # split_n = self.model.stream_num
         # if kwargs["batch_size"] > split_n - 1:
-        #     kwargs_list = split_kwargs_n(**kwargs, split_n=split_n)
+        #     kwargs_list, run_reqs_list = split_kwargs_n(**kwargs, split_n=split_n, run_reqs=run_reqs)
         #     logits = [None] * split_n
         #     for i in range(split_n):
         #         with torch.cuda.stream(self.model.stream[i]):
@@ -225,11 +235,10 @@ class ContinuesBatchBackend(ModeBackend):
         #     logits = self.model.forward(**kwargs)
 
         # next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
-        self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
-        return stream_id
+        # next_token_ids = next_token_ids.detach().cpu().numpy()
+        # next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+        # self.post_handel(run_reqs, next_token_ids, next_token_logprobs, stream_id)
+        return
 
     def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs, stream_id):
         finished_req_ids = []

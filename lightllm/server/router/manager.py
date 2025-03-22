@@ -437,7 +437,7 @@ class RouterManager:
             if isinstance(recv_req, GroupReqIndexes):
                 queue0_len = self.req_queue[0].get_wait_req_num()
                 queue1_len = self.req_queue[1].get_wait_req_num()
-                self.add_req(recv_req, 1)# if queue0_len <= queue1_len else 1)
+                self.add_req(recv_req, 0 if queue0_len <= queue1_len else 1)
             else:
                 assert False, f"Error Req Inf {recv_req}"
 
@@ -473,7 +473,7 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     pipe_writer.send("init ok")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    # loop.create_task(router.loop_for_fwd(0))
+    loop.create_task(router.loop_for_fwd(0))
     loop.create_task(router.loop_for_fwd(1))
     loop.run_until_complete(router.loop_for_netio_req())
     return
