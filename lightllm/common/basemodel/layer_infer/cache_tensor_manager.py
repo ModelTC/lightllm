@@ -4,6 +4,7 @@ import collections
 import dataclasses
 import numpy as np
 import torch._C
+import threading
 from typing import Dict, Iterable, Literal, Tuple, Union, List, Set
 from torch.storage import UntypedStorage
 from dataclasses import field
@@ -19,14 +20,18 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
     # 用于进行引用计数调整和判断
     def custom_del(self: torch.Tensor):
         global g_cache_manager
-        if hasattr(self, "storage_weak_ptr"):
-            storage_weak_ptr = self.storage_weak_ptr
-        else:
-            storage_weak_ptr = self.untyped_storage()._weak_ref()
-            UntypedStorage._free_weak_ref(storage_weak_ptr)
-        if storage_weak_ptr in g_cache_manager.ptr_to_bufnode:
-            g_cache_manager.changed_ptr.add(storage_weak_ptr)
-        return
+        g_cache_manager.tensor_lock.acquire()
+        try:
+            if hasattr(self, "storage_weak_ptr"):
+                storage_weak_ptr = self.storage_weak_ptr
+            else:
+                storage_weak_ptr = self.untyped_storage()._weak_ref()
+                UntypedStorage._free_weak_ref(storage_weak_ptr)
+                if storage_weak_ptr in g_cache_manager.ptr_to_bufnode:
+                    g_cache_manager.changed_ptr.add(storage_weak_ptr)
+            return
+        finally:
+            g_cache_manager.tensor_lock.release()
 
     @dataclasses.dataclass
     class BufNode:
@@ -105,6 +110,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             self.free_shape_dtype_to_bufs: Dict[Tuple, List[BufNode]] = collections.defaultdict(list)
             self.calcu_shape_cache: Dict[torch.Size, int] = {}
             self.changed_ptr: Set[int] = set()
+            self.tensor_lock = threading.Lock()
             from torch._C import _storage_Use_Count as use_count
 
             # use_count 函数可以用于获取有多少 tensor 真正引用了这片显存 tensor
@@ -117,25 +123,36 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
         def cache_env_in(
             self, is_cuda_graph: bool = False, cur_batch_size: int = 0, cuda_graph_max_batch_size: int = 0
         ):
-            self.managed_total_tensor_bytes = 0
-            setattr(torch.Tensor, "__del__", custom_del)
-            self.is_cuda_graph = is_cuda_graph
-            if self.is_cuda_graph:
-                if self.inner_cuda_graph_manager is None:
-                    self.inner_cuda_graph_manager = CudaGraphCacheTensorManager(cuda_graph_max_batch_size)
-                else:
-                    assert self.inner_cuda_graph_manager.cuda_graph_max_batch_size == cuda_graph_max_batch_size
-                self.cuda_graph_cur_batch_size = cur_batch_size
-                assert cur_batch_size != 0
-            return
+            if not self.tensor_lock.acquire(blocking=False):
+                return
+            try:
+                self.managed_total_tensor_bytes = 0
+                setattr(torch.Tensor, "__del__", custom_del)
+                self.is_cuda_graph = is_cuda_graph
+                if self.is_cuda_graph:
+                    if self.inner_cuda_graph_manager is None:
+                        self.inner_cuda_graph_manager = CudaGraphCacheTensorManager(cuda_graph_max_batch_size)
+                    else:
+                        assert self.inner_cuda_graph_manager.cuda_graph_max_batch_size == cuda_graph_max_batch_size
+                    self.cuda_graph_cur_batch_size = cur_batch_size
+                    assert cur_batch_size != 0
+                return
+            finally:
+                self.tensor_lock.release()
 
         def cache_env_out(self):
-            delattr(torch.Tensor, "__del__")
-            self.ptr_to_bufnode.clear()
-            self.free_shape_dtype_to_bufs.clear()
-            self.calcu_shape_cache.clear()
-            self.changed_ptr.clear()
-            return
+            if not self.tensor_lock.acquire(blocking=False):
+                return
+            try:
+                if hasattr(torch.Tensor, "__del__"):
+                    delattr(torch.Tensor, "__del__")
+                self.ptr_to_bufnode.clear()
+                self.free_shape_dtype_to_bufs.clear()
+                self.calcu_shape_cache.clear()
+                self.changed_ptr.clear()
+                return
+            finally:
+                self.tensor_lock.release()
 
         def alloc_tensor(
             self,
@@ -144,54 +161,55 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             device: str = "cuda",
             is_graph_out: bool = False,
         ) -> torch.Tensor:
-            # shape 类型转换
-            if isinstance(shape, list):
-                shape = torch.Size(shape)
-            # 是 cuda graph的时候，由cuda graph manager 接管
-            if self.is_cuda_graph:
-                return self.inner_cuda_graph_manager.alloc_tensor_for_cuda_graph(
-                    self.cuda_graph_cur_batch_size, shape, data_type, device, is_graph_out
-                )
+            with self.tensor_lock:
+                # shape 类型转换
+                if isinstance(shape, list):
+                    shape = torch.Size(shape)
+                # 是 cuda graph的时候，由cuda graph manager 接管
+                if self.is_cuda_graph:
+                    return self.inner_cuda_graph_manager.alloc_tensor_for_cuda_graph(
+                        self.cuda_graph_cur_batch_size, shape, data_type, device, is_graph_out
+                    )
 
-            # 回收可能消亡的 tensor
-            for ptr in self.changed_ptr:
-                t_buf_node = self.ptr_to_bufnode[ptr]
-                if self.use_count(ptr) == 1 + len(t_buf_node.shape_to_tensor):
-                    self.free_shape_dtype_to_bufs[t_buf_node.shape_key].append(t_buf_node)
-            self.changed_ptr.clear()
+                # 回收可能消亡的 tensor
+                for ptr in self.changed_ptr:
+                    t_buf_node = self.ptr_to_bufnode[ptr]
+                    if self.use_count(ptr) == 1 + len(t_buf_node.shape_to_tensor):
+                        self.free_shape_dtype_to_bufs[t_buf_node.shape_key].append(t_buf_node)
+                self.changed_ptr.clear()
 
-            if shape not in self.calcu_shape_cache:
-                size = np.prod(shape)
-                self.calcu_shape_cache[shape] = size
-            else:
-                size = self.calcu_shape_cache[shape]
-
-            key = (size, data_type)
-            buf_node_list = self.free_shape_dtype_to_bufs[key]
-            if buf_node_list:
-                buf_node = buf_node_list.pop()
-                if shape not in buf_node.shape_to_tensor:
-                    mark_tensor = buf_node.inner_tensor.view(shape)
-                    buf_node.shape_to_tensor[shape] = mark_tensor
+                if shape not in self.calcu_shape_cache:
+                    size = np.prod(shape)
+                    self.calcu_shape_cache[shape] = size
                 else:
-                    mark_tensor = buf_node.shape_to_tensor[shape]
+                    size = self.calcu_shape_cache[shape]
+
+                key = (size, data_type)
+                buf_node_list = self.free_shape_dtype_to_bufs[key]
+                if buf_node_list:
+                    buf_node = buf_node_list.pop()
+                    if shape not in buf_node.shape_to_tensor:
+                        mark_tensor = buf_node.inner_tensor.view(shape)
+                        buf_node.shape_to_tensor[shape] = mark_tensor
+                    else:
+                        mark_tensor = buf_node.shape_to_tensor[shape]
+                    ans = mark_tensor.data  # 返回一个新的引用, 否则引用计数会无法判断
+                    ans.storage_weak_ptr = buf_node.storage_weak_ptr
+                    return ans
+
+                buf_tensor = torch.empty((size,), dtype=data_type, device=device, requires_grad=False)
+                # 用于调试显存占用的重要日志
+                # self.managed_total_tensor_bytes +=  buf_tensor.element_size() * buf_tensor.numel()
+                # logger.info(f"gpu cache managed_total_tensor_bytes: {self.managed_total_tensor_bytes}")
+                storage_weak_ptr = buf_tensor.untyped_storage()._weak_ref()
+                buf_node = BufNode(buf_tensor, key, storage_weak_ptr)
+                self.ptr_to_bufnode[storage_weak_ptr] = buf_node
+                if shape not in buf_node.shape_to_tensor:
+                    buf_node.shape_to_tensor[shape] = buf_node.inner_tensor.view(shape)
+                mark_tensor = buf_node.shape_to_tensor[shape]
                 ans = mark_tensor.data  # 返回一个新的引用, 否则引用计数会无法判断
                 ans.storage_weak_ptr = buf_node.storage_weak_ptr
                 return ans
-
-            buf_tensor = torch.empty((size,), dtype=data_type, device=device, requires_grad=False)
-            # 用于调试显存占用的重要日志
-            # self.managed_total_tensor_bytes +=  buf_tensor.element_size() * buf_tensor.numel()
-            # logger.info(f"gpu cache managed_total_tensor_bytes: {self.managed_total_tensor_bytes}")
-            storage_weak_ptr = buf_tensor.untyped_storage()._weak_ref()
-            buf_node = BufNode(buf_tensor, key, storage_weak_ptr)
-            self.ptr_to_bufnode[storage_weak_ptr] = buf_node
-            if shape not in buf_node.shape_to_tensor:
-                buf_node.shape_to_tensor[shape] = buf_node.inner_tensor.view(shape)
-            mark_tensor = buf_node.shape_to_tensor[shape]
-            ans = mark_tensor.data  # 返回一个新的引用, 否则引用计数会无法判断
-            ans.storage_weak_ptr = buf_node.storage_weak_ptr
-            return ans
 
 else:
     logger.info("USE_GPU_TENSOR_CACHE is OFF")

@@ -247,22 +247,20 @@ class ModeBackend:
         """This method can be overridden in subclasses."""
         raise NotImplementedError()
 
-    def pause_reqs(self, req_ids):
+    def pause_reqs(self, req_ids, stream_id):
         if self.dp_size_in_node != 1:
             req_ids = [req_id for req_id in req_ids if req_id in g_infer_context.requests_mapping]
 
-        g_infer_context.pause_reqs(req_ids)
+        g_infer_context.pause_reqs(req_ids, stream_id)
         return
 
     # 一些可以复用的单元功能函数
-    def _init_reqs(self, reqs: List[Tuple], init_req_obj=True):
+    def _init_reqs(self, reqs: List[Tuple], stream_id, init_req_obj=True):
         if self.dp_size_in_node != 1:
             dp_rank_in_node = self.dp_rank_in_node
             reqs = [req for req in reqs if req[3] == dp_rank_in_node]
 
-        g_infer_state_lock.acquire()
-        g_infer_context.add_reqs(reqs, init_req_obj=init_req_obj)
-        g_infer_state_lock.release()
+        g_infer_context.add_reqs(reqs, stream_id, init_req_obj=init_req_obj)
         req_ids = [e[0] for e in reqs]
         return req_ids
 

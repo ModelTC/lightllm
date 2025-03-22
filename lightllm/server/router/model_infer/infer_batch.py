@@ -5,6 +5,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import collections
+import threading
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Union, Any
@@ -14,7 +15,6 @@ from lightllm.server.core.objs import Req, SamplingParams, FinishStatus, ShmReqM
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNode
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
-from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.multimodal_params import MultimodalParams
 
 logger = init_logger(__name__)
@@ -27,7 +27,8 @@ class InferenceContext:
     shm_req_manager: ShmReqManager = None  # 共享内存请求对象管理
     requests_mapping: Dict[int, "InferReq"] = None
     group_mapping = None  # 只有进行多输出模式下才有真的使用
-    infer_req_ids = None
+    infer_req_ids = [None] * 2
+    infer_req_lock = None
     vocab_size = None
 
     overlap_stream: torch.cuda.Stream = None  # 一些情况下推理进程进行异步折叠操作的异步流对象。
@@ -41,9 +42,10 @@ class InferenceContext:
 
         self.requests_mapping = {}
         self.group_mapping: Dict[int, InferReqGroup] = {}
-        self.infer_req_ids = []
+        self.infer_req_ids = [[],[]]
 
         self.vocab_size = vocab_size
+        self.infer_req_lock = threading.Lock()
         return
 
     def get_overlap_stream(self) -> torch.cuda.Stream:
@@ -51,7 +53,8 @@ class InferenceContext:
             self.overlap_stream = torch.cuda.Stream()
         return self.overlap_stream
 
-    def add_reqs(self, requests: List[Tuple[int, int, Any, int]], init_req_obj=True):
+    def add_reqs(self, requests: List[Tuple[int, int, Any, int]], stream_id, init_req_obj=True):
+        self.infer_req_lock.acquire()
         request_ids = []
         for r in requests:
 
@@ -74,8 +77,10 @@ class InferenceContext:
             if init_req_obj:
                 r_obj.init_all()
 
-        self.infer_req_ids.extend(request_ids)
+        self.infer_req_ids[stream_id].extend(request_ids)
+        # print("blueswhen infer_req_id size: ", len(self.infer_req_ids))
 
+        self.infer_req_lock.release()
         return
 
     def free_a_req_mem(self, free_token_index: List, req: "InferReq", is_group_finished: bool):
@@ -121,14 +126,16 @@ class InferenceContext:
         torch.save(prompt_cache_kv_buffer, f"prompt_cache_rank_{dist.get_rank()}.pt")
 
     @torch.no_grad()
-    def filter(self, finished_request_ids: List[int]):
+    def filter(self, finished_request_ids: List[int], stream_id):
         if len(finished_request_ids) == 0:
             return
 
+        self.infer_req_lock.acquire()
         free_req_index = []
         free_token_index = []
         for request_id in finished_request_ids:
             req: InferReq = self.requests_mapping.pop(request_id)
+            # print("blueswhen requests_mapping size: ", len(self.requests_mapping))
             group_req_id = convert_sub_id_to_group_id(req.shm_req.request_id)
             if group_req_id in self.group_mapping:
                 is_group_finished = self.group_mapping[group_req_id].remove_req(req.shm_req.request_id)
@@ -146,9 +153,9 @@ class InferenceContext:
         self.req_manager.free(free_req_index, free_token_index)
 
         finished_req_ids_set = set(finished_request_ids)
-        self.infer_req_ids = [_id for _id in self.infer_req_ids if _id not in finished_req_ids_set]
+        self.infer_req_ids[stream_id] = [_id for _id in self.infer_req_ids[stream_id] if _id not in finished_req_ids_set]
 
-        if self.radix_cache is not None and len(self.infer_req_ids) == 0:
+        if self.radix_cache is not None and len(self.infer_req_ids[stream_id]) == 0:
             logger.debug(
                 f"free a batch state:\n"
                 f"radix refed token num {self.radix_cache.get_refed_tokens_num()}\n"
@@ -157,14 +164,18 @@ class InferenceContext:
                 f"mem manager total size {self.req_manager.mem_manager.size}"
             )
 
+        self.infer_req_lock.release()
+        # if len(self.infer_req_ids[stream_id]) == 0:
+        #     print("blueswhen all request finished", "stream_id", stream_id)
         return
 
     @torch.no_grad()
-    def pause_reqs(self, pause_req_ids: List[int]):
+    def pause_reqs(self, pause_req_ids: List[int], stream_id):
+        self.infer_req_lock.acquire()
         free_token_index = []
         for request_id in pause_req_ids:
             req: InferReq = self.requests_mapping[request_id]
-            self.infer_req_ids.remove(request_id)
+            self.infer_req_ids[stream_id].remove(request_id)
 
             # 不支持多输出的情况的暂停
             self.free_a_req_mem(free_token_index, req, is_group_finished=True)
@@ -176,6 +187,7 @@ class InferenceContext:
             free_token_index = torch.cat(free_token_index, dim=-1)
             self.req_manager.free_token(free_token_index)
 
+        self.infer_req_lock.release()
         return self
 
 

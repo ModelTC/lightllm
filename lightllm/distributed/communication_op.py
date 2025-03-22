@@ -51,16 +51,17 @@ except:
 
 class CustomCommunicationOp:
     def __init__(self):
-        self.vllm_reduce = None
-        self.custom_gather = None
+        self.reduce_num = 2
+        self.vllm_reduce = [None] * self.reduce_num
+        self.custom_gather = [None] * self.reduce_num
         self.device_group = None
 
     @contextmanager
-    def lightllm_capture_graph(self):
-        if self.vllm_reduce is not None:
-            with self.vllm_reduce.capture():
-                if self.custom_gather is not None:
-                    with self.custom_gather.capture():
+    def lightllm_capture_graph(self, stream_id):
+        if self.vllm_reduce[stream_id] is not None:
+            with self.vllm_reduce[stream_id].capture():
+                if self.custom_gather[stream_id] is not None:
+                    with self.custom_gather[stream_id].capture():
                         yield
                 else:
                     yield
@@ -80,16 +81,17 @@ class CustomCommunicationOp:
             self.device_group = dist.new_group(ranks, backend="nccl")
 
         if ENABLE_VLLM_REDUCE and HAS_VLLM:
-            cpu_group = dist.new_group(ranks, backend="gloo")
-            self.vllm_reduce = CustomAllreduce(cpu_group, torch.cuda.current_device())
+            for i in range(self.reduce_num):
+                self.vllm_reduce[i] = CustomAllreduce(dist.new_group(ranks, backend="gloo"), torch.cuda.current_device())
             logger.info("Enable VLLM ALLReduce.")
 
-        def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False):
+        def _all_reduce_closure(input_, op=ReduceOp.SUM, group=self.device_group, async_op=False, stream_id=0):
             if op != ReduceOp.SUM or async_op:
                 original_all_reduce(input_, op, group, async_op)
             else:
-                if self.vllm_reduce is not None and self.vllm_reduce.should_custom_ar(input_):
-                    input_.data = self.vllm_reduce.custom_all_reduce(input_)
+                vllm_reduce = self.vllm_reduce[stream_id]
+                if vllm_reduce is not None and vllm_reduce.should_custom_ar(input_):
+                    input_.data = vllm_reduce.custom_all_reduce(input_)
                 else:
                     original_all_reduce(input_, op, group, async_op)
 
