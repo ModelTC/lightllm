@@ -264,13 +264,13 @@ class ModeBackend:
         req_ids = [e[0] for e in reqs]
         return req_ids
 
-    def _post_handel(
+    def _post_handle(
         self,
         run_reqs: List[InferReq],
         next_token_ids,
         next_token_logprobs,
-        is_chuncked_mode=False,
-        do_filter_finished_reqs=False,
+        is_chuncked_mode: bool,
+        do_filter_finished_reqs: bool,
     ):
         finished_req_ids = []
 
