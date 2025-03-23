@@ -307,6 +307,11 @@ class InferReq:
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 
+    def get_chuncked_input_token_len(self):
+        chunked_start = self.cur_kv_len
+        chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
+        return chunked_end
+
     def set_next_gen_token_id(self, next_token_id: int, logprob: float):
         index = self.get_cur_total_len()
         self.shm_req.shm_prompt_ids.arr[index] = next_token_id
@@ -328,6 +333,9 @@ class InferReq:
         elif self.cur_output_len >= self.sampling_param.shm_param.max_new_tokens:
             self.finish_status.set_status(FinishStatus.FINISHED_LENGTH)
         return
+
+    def is_finished_or_aborted(self):
+        return self.finish_status.is_finished() or self.shm_req.router_aborted
 
     def _stop_sequences_matched(self):
         for stop_token_ids in self.stop_sequences:

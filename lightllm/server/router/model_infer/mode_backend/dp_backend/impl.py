@@ -58,7 +58,9 @@ class DPChunkedPrefillBackend(ModeBackend):
                 next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
                 next_token_ids = next_token_ids.detach().cpu().numpy()
                 next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-                self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+                self._post_handel(
+                    run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
+                )
             logits = None
 
         self.reduce_tensor.fill_(len(decode_reqs))
@@ -83,7 +85,9 @@ class DPChunkedPrefillBackend(ModeBackend):
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+            self._post_handel(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
+            )
         logits = None
 
     def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int):
@@ -108,46 +112,13 @@ class DPChunkedPrefillBackend(ModeBackend):
         if len(run_reqs) != 0:
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self.post_handel(run_reqs, next_token_ids, next_token_logprobs)
+            self._post_handel(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
+            )
         if len(run_reqs1) != 0:
             next_token_ids1 = next_token_ids1.detach().cpu().numpy()
             next_token_logprobs1 = torch.log(next_token_probs1).detach().cpu().numpy()
-            self.post_handel(run_reqs1, next_token_ids1, next_token_logprobs1)
-        return
-
-    def post_handel(self, run_reqs: List[InferReq], next_token_ids, next_token_logprobs):
-        finished_req_ids = []
-
-        for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-            req_obj: InferReq = req_obj
-
-            req_obj.cur_kv_len = len(req_obj.get_chuncked_input_token_ids())
-            if req_obj.cur_kv_len < req_obj.get_cur_total_len():
-                if self.is_master_in_dp:
-                    req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
-                continue
-
-            req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
-            req_obj.cur_output_len += 1
-
-            req_obj.out_token_id_count[next_token_id] += 1
-            req_obj.update_finish_status(self.eos_id)
-
-            if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
-                finished_req_ids.append(req_obj.shm_req.request_id)
-
-            if self.is_master_in_dp:
-                # shm_cur_kv_len shm_cur_output_len 是 router 调度进程需要读的信息
-                # finish_token_index finish_status candetoken_out_len 是
-                # detokenization 进程需要的信息，注意这些变量的写入顺序避免异步协同问题。
-                req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
-                req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
-
-                if req_obj.finish_status.is_finished():
-                    req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
-                    req_obj.shm_req.finish_status = req_obj.finish_status
-
-                req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
-
-        g_infer_context.filter(finished_req_ids)
+            self._post_handel(
+                run_reqs1, next_token_ids1, next_token_logprobs1, is_chuncked_mode=True, do_filter_finished_reqs=True
+            )
         return
