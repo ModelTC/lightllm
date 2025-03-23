@@ -44,6 +44,8 @@ class StartArgs:
     output_constraint_mode: str = field(default="none", metadata={"choices": ["none", "simple", "xgrammar"]})
     first_token_constraint_mode: bool = field(default=False)
     enable_multimodal: bool = field(default=False)
+    enable_tpsp_mix_mode: bool = field(default=False)
+    enable_decode_microbatch_overlap: bool = field(default=False)
     cache_capacity: int = field(default=200)
     cache_reserved_ratio: float = field(default=0.5)
     data_type: Optional[str] = field(

@@ -17,7 +17,7 @@ from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.common.quantization import Quantcfg
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.dist_utils import get_dp_world_size
-from lightllm.utils.envs_utils import enable_env_vars
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 
@@ -66,6 +66,7 @@ class TpPartBaseModel:
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
         self.tp_world_size_ = get_dp_world_size()
+        self.enable_tpsp_mix_mode = get_env_start_args().enable_tpsp_mix_mode
 
         self._init_datatype()
         self._init_config()
@@ -209,8 +210,10 @@ class TpPartBaseModel:
             None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
         )
         if self.graph is not None:
-            self.graph.warmup(self)
-            # to do warmup overlap
+            if get_env_start_args().enable_decode_microbatch_overlap:
+                self.graph.warmup_overlap(self)
+            else:
+                self.graph.warmup(self)
 
     def _init_custom(self):
         pass
@@ -441,7 +444,7 @@ class TpPartBaseModel:
 
     @final
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
-        run_mode_index = 1 if enable_env_vars("LIGHTLLM_USE_TPSP_MIX") else 0
+        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
         g_cache_manager.cache_env_in()
         cuda_input_ids = input_ids
 
@@ -461,7 +464,7 @@ class TpPartBaseModel:
 
     @final
     def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        run_mode_index = 1 if enable_env_vars("LIGHTLLM_USE_TPSP_MIX") else 0
+        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
         g_cache_manager.cache_env_in(
             is_cuda_graph=infer_state.is_cuda_graph,
             cur_batch_size=infer_state.batch_size,

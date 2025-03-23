@@ -2,6 +2,7 @@ import os
 import torch
 import copy
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 
@@ -16,7 +17,7 @@ class CudaGraph:
         self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
         self.max_batch_size = max_batch_size
         self.graph_max_len_in_batch = max_len_in_batch
-        self.is_overlap_two_micro_batch_mode = False
+        self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap
 
     def can_run(self, batch_size, max_len_in_batch):
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
@@ -85,7 +86,7 @@ class CudaGraph:
         Capture the cuda graph for the decoding stage.
         input_ids1 and infer_state1 is used for the overlap.
         """
-        if self.is_overlap_two_micro_batch_mode:
+        if self.enable_decode_microbatch_overlap:
             return self._capture_decode_overlap(decode_func, input_ids, infer_state, input_ids1, infer_state1)
         else:
             assert input_ids1 is None and infer_state1 is None
@@ -118,7 +119,7 @@ class CudaGraph:
         return graph_predict_logics, graph_predict_logics1
 
     def replay(self, input_ids, infer_state, input_ids1=None, infer_state1=None):
-        if self.is_overlap_two_micro_batch_mode:
+        if self.enable_decode_microbatch_overlap:
             return self._replay_overlap(input_ids, infer_state, input_ids1, infer_state1)
         else:
             assert input_ids1 is None and infer_state1 is None
