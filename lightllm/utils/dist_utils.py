@@ -1,3 +1,4 @@
+import flux
 import torch.distributed as dist
 import os
 import torch
@@ -102,6 +103,11 @@ def init_distributed_env(kvargs):
         rank=kvargs["rank_id"],
         world_size=kvargs["world_size"],
     )
+
+    # initilize flux communication kernel
+    flux.init_flux_shm(torch.distributed.group.WORLD)
+    torch.cuda.synchronize()
+
     # warmup nccl communicator
     _a = torch.zeros([1]).to(f"cuda:{device_id}")
     dist.all_reduce(_a)

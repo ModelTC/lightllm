@@ -15,13 +15,26 @@ import numpy as np
 
 logger = init_logger(__name__)
 
-import deep_ep
-from deep_ep import Buffer, EventOverlap
-import deep_gemm
-from deep_gemm import bench_kineto, calc_diff, ceil_div, get_col_major_tma_aligned_tensor
+try:
+    import deep_ep
+    from deep_ep import Buffer, EventOverlap
+    import deep_gemm
+    from deep_gemm import bench_kineto, calc_diff, ceil_div, get_col_major_tma_aligned_tensor
+except ImportError as e:
+    logger.info(f"{e}, deep_ep and deep_gemm is not installed, some functions are not valid.")
+    deep_ep = None
+    Buffer = None
+    EventOverlap = None
+    deep_gemm = None
+    bench_kineto = None
+    calc_diff = None
+    ceil_div = None
+    get_col_major_tma_aligned_tensor = None
+
 
 # Set the number of SMs to use
-Buffer.set_num_sms(20)
+if Buffer is not None:
+    Buffer.set_num_sms(20)
 
 
 def init_dist(local_rank: int, num_local_ranks: int):
@@ -236,7 +249,7 @@ def fused_experts_impl(
             num_recv_tokens_per_expert = torch.tensor(
                 num_recv_tokens_per_expert_list, device=hidden_states.device, dtype=torch.int32
             )
-            
+
             expert_start_loc = torch.empty_like(num_recv_tokens_per_expert)
 
             ep_scatter(
@@ -427,7 +440,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
             ],
             record_shapes=True,
             profile_memory=True,
-            with_stack=True
+            with_stack=True,
         ) as prof:
             for i in range(10):
                 output = fused_experts_impl(
@@ -459,7 +472,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
                 ],
                 record_shapes=True,
                 profile_memory=True,
-                with_stack=True
+                with_stack=True,
             ) as prof:
                 for i in range(10):
                     ll_output = fused_experts_impl(

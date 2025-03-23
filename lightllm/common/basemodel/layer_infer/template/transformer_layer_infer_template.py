@@ -1,6 +1,8 @@
 import os
 import torch
 import torch.distributed as dist
+
+from lightllm.utils.envs_utils import enable_env_vars
 from ..transformer_layer_infer import TransformerLayerInfer
 from ...infer_struct import InferStateInfo
 from lightllm.utils.infer_utils import mark_cost_time
@@ -23,6 +25,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         self.head_dim_ = -1
         self.embed_dim_ = -1
         self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
+        self.enable_flux = enable_env_vars("LIGHTLLM_ENABLE_FLUX")
         return
 
     def _att_norm(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:

@@ -1,5 +1,7 @@
 import os
+import flux
 import torch
+from torch.distributed import ProcessGroup
 from abc import abstractmethod
 from typing import Optional, Tuple, List, Dict, Union
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
@@ -39,6 +41,110 @@ class MMWeightTpl(BaseWeightTpl):
         self.quantized_weight: bool = False
         # 标记是否存在 bias， 由子类初始化
         self.has_bias: bool = None
+
+    def flux_gemm_rs(
+        self,
+        input_tensor: torch.Tensor,
+        out: Optional[torch.Tensor] = None,
+        use_custom_tensor_mananger: bool = True,
+        transpose_weight: bool = True,
+    ):
+        # logger.debug("flux_gemm_rs kernel start")
+        # check the weight contiguous
+        if not self.weight.is_contiguous():
+            self.weight = self.weight.contiguous()
+        assert self.weight.is_contiguous(), "weight must be contiguous"
+
+        local_M = input_tensor.size(0)
+        M = local_M * self.tp_world_size_
+        N = self.weight.size(1)
+
+        if out is None:
+            # out shape: [4, 4096]
+            shape = (local_M, self.weight.shape[1])
+            dtype = input_tensor.dtype
+            device = input_tensor.device
+            if use_custom_tensor_mananger:
+                out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            else:
+                out = torch.zeros(shape, dtype=dtype, device=device)
+        # logger.debug(f"{input_tensor.shape}, {self.weight.shape}, {out.shape}")
+
+        with flux.util.group_profile(
+            name="gemm_rs_" + os.environ["TORCHELASTIC_RUN_ID"], do_prof=False, group=torch.distributed.group.WORLD
+        ):
+            gemm_rs_op = flux.GemmRS(
+                torch.distributed.group.WORLD,
+                1,
+                (M + 1024 - 1) // 1024 * 1024,
+                N,
+                input_tensor.dtype,
+                out.dtype,
+                transpose_weight=transpose_weight,
+            )
+            # logger.debug(f"gemm_rs_kernel initialized M={M}, N={N}, local_M={local_M}")
+            out = gemm_rs_op.forward(
+                input_tensor,
+                self.weight,
+                bias=self.bias,
+                fast_accum=False,
+                reduce_scatter_option=flux.ReduceScatterOption(),
+            )
+            return out
+
+    def flux_ag_gemm(
+        self,
+        input_tensor: torch.Tensor,
+        out: Optional[torch.Tensor] = None,
+        use_custom_tensor_mananger: bool = True,
+        transpose_weight: bool = True,
+    ):
+        # logger.debug("flux_ag_gemm kernel start")
+        # check the weight contiguous
+        if not self.weight.is_contiguous():
+            self.weight = self.weight.contiguous()
+        assert self.weight.is_contiguous(), "weight must be contiguous"
+
+        local_M = input_tensor.size(0)
+        M = local_M * self.tp_world_size_
+        K = input_tensor.size(1)
+        N = self.weight.size(1)
+
+        if out is None:
+            shape = (M, self.weight.shape[1])
+            dtype = input_tensor.dtype
+            device = input_tensor.device
+            if use_custom_tensor_mananger:
+                out = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+            else:
+                out = torch.zeros(shape, dtype=dtype, device=device)
+        # logger.debug(f"{input_tensor.shape}, {self.weight.shape}, {out.shape}")
+
+        with flux.util.group_profile(
+            name="ag_gemm_" + os.environ["TORCHELASTIC_RUN_ID"], do_prof=False, group=torch.distributed.group.WORLD
+        ):
+            ag_option = flux.AllGatherOption()
+            ag_gemm_op = flux.AGKernel(
+                torch.distributed.group.WORLD,
+                1,
+                M,
+                N,
+                K,
+                input_tensor.dtype,
+                output_dtype=out.dtype,
+            )
+            full_input = torch.empty((M, K), dtype=input_tensor.dtype, device=input_tensor.device)
+            # logger.debug(f"ag_gemm_kernel initialized M={M}, N={N}, K={K}")
+            out = ag_gemm_op.forward(
+                input_tensor,
+                self.weight,
+                output=out,
+                bias=self.bias,
+                transpose_weight=transpose_weight,
+                gathered_input=full_input,
+                all_gather_option=ag_option,
+            )
+            return out, full_input
 
     def mm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
