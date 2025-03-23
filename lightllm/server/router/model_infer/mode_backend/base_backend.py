@@ -252,8 +252,15 @@ class ModeBackend:
         g_infer_context.pause_reqs(req_ids)
         return
 
-    # 一些可以复用的单元功能函数
+    # 一些可以复用的通用功能函数
     def _init_reqs(self, reqs: List[Tuple], init_req_obj=True):
+        """
+        init_req_obj 参数用于控制是否对请求对象的进行全量初始化，如果设置为True
+        在 g_infer_context.add_reqs 函数中，会进行全量初始化，包括其 kv 信息等，
+        如果设置为 False，则请求对象只是创建了基础信息，需要延迟到合适的时机调用
+        请求对象的完整初始化，设计这个接口的用途是用于某些追求高性能场景的cpu gpu
+        折叠，降低cpu 的overhead。
+        """
         if self.dp_size_in_node != 1:
             dp_rank_in_node = self.dp_rank_in_node
             reqs = [req for req in reqs if req[3] == dp_rank_in_node]
@@ -264,6 +271,40 @@ class ModeBackend:
         req_ids = [e[0] for e in reqs]
         return req_ids
 
+    # 一些可以复用的通用功能函数
+    def _get_classed_reqs(req_ids: List[int]):
+        """
+        将请求分类返回:
+        1. unit reqs 还未完整初始化的请求
+        2. finished_reqs 已经推理完的请求但是还没有释放
+        3. prefill reqs 需要进行prefill操作的请求
+        4. decode reqs 需要进行decode操作的请求
+        """
+        uinit_reqs = []
+        finished_reqs = []
+        prefill_reqs = []
+        decode_reqs = []
+
+        for request_id in req_ids:
+            req_obj: InferReq = g_infer_context.requests_mapping[request_id]
+
+            if req_obj.is_uninitialized():
+                uinit_reqs.append(req_obj)
+                continue
+
+            if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
+                finished_reqs.append(req_obj)
+                continue
+
+            is_decode = req_obj.cur_kv_len + 1 == req_obj.get_cur_total_len()
+            if not is_decode:
+                prefill_reqs.append(req_obj)
+            else:
+                decode_reqs.append(req_obj)
+
+        return uinit_reqs, finished_reqs, prefill_reqs, decode_reqs
+
+    # 一些可以复用的通用功能函数
     def _post_handle(
         self,
         run_reqs: List[InferReq],

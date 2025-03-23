@@ -40,9 +40,7 @@ class DPChunkedPrefillBackend(ModeBackend):
         return
 
     def decode(self):
-        from .pre_process import get_classed_reqs
-
-        uinit_reqs, finished_reqs, prefill_reqs, decode_reqs = get_classed_reqs(g_infer_context.infer_req_ids)
+        uinit_reqs, finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(g_infer_context.infer_req_ids)
         current_dp_prefill_num = len(prefill_reqs)
         self.reduce_tensor.fill_(current_dp_prefill_num)
         dist.all_reduce(self.reduce_tensor, op=dist.ReduceOp.MAX, group=None, async_op=False)
@@ -59,7 +57,7 @@ class DPChunkedPrefillBackend(ModeBackend):
                 next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
                 next_token_ids = next_token_ids.detach().cpu().numpy()
                 next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-                self._post_handel(
+                self._post_handle(
                     run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
                 )
             logits = None
@@ -86,7 +84,7 @@ class DPChunkedPrefillBackend(ModeBackend):
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self._post_handel(
+            self._post_handle(
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
             )
         logits = None
@@ -113,13 +111,13 @@ class DPChunkedPrefillBackend(ModeBackend):
         if len(run_reqs) != 0:
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self._post_handel(
+            self._post_handle(
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
             )
         if len(run_reqs1) != 0:
             next_token_ids1 = next_token_ids1.detach().cpu().numpy()
             next_token_logprobs1 = torch.log(next_token_probs1).detach().cpu().numpy()
-            self._post_handel(
+            self._post_handle(
                 run_reqs1, next_token_ids1, next_token_logprobs1, is_chuncked_mode=True, do_filter_finished_reqs=True
             )
         return
