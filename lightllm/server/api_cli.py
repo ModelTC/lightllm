@@ -190,6 +190,18 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable_custom_allreduce", action="store_true", help="Whether to disable cutom allreduce.")
     parser.add_argument("--enable_custom_allgather", action="store_true", help="Whether to enable cutom allgather.")
     parser.add_argument(
+        "--enable_tpsp_mix_mode",
+        action="store_true",
+        help="""inference backend will use TP SP Mixed running mode.
+        only llama and deepseek v3 model supported now.""",
+    )
+    parser.add_argument(
+        "--enable_decode_microbatch_overlap",
+        action="store_true",
+        help="""inference backend will use microbatch overlap mode for decode.
+        only deepseekv3 model supported now.""",
+    )
+    parser.add_argument(
         "--cache_capacity", type=int, default=200, help="cache server capacity for multimodal resources"
     )
     parser.add_argument(
