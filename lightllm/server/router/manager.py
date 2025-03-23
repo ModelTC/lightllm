@@ -50,6 +50,7 @@ class RouterManager:
         # 兼容多机纯tp的运行模式，这时候 1 // 2 == 0, 需要兼容
         self.dp_size_in_node = max(1, args.dp // self.nnodes)
         self.is_multinode_tp = args.nnodes > 1 and args.dp == 1
+        self.is_multinode_and_multidp = args.nnodes > 1 and args.dp > 1
         # 判断是否是保守调度，保守调度不会发生暂停 req 的情况，但是有些场景可能影响吞吐
         self.is_safe_schedule = args.router_token_ratio == 0.0
         self.load_way = args.load_way
@@ -313,6 +314,13 @@ class RouterManager:
                 await self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens = self.max_wait_tokens
+            elif self.is_multinode_and_multidp:
+                # 在多节点多 dp 的模式下，如果当前 running_batch 为None, 也需要不断的调用 decode 操作，
+                # 因为其他节点上的dp可能存在运行的请求，所以本节点也需要调用decode，推理后端的backend会
+                # padding 一些fake的请求来使推理过程可以正常完成。主要是给 deepseekv3 这种类型的大模型
+                # 使用的，其ep并行模式下需要所有节点协同。
+                self._decode_batch(self.running_batch)
+
             return
 
         # 有运行请求，当持续decode的次数到达一个阈值，或者有上次预调度的结果存在的时。
@@ -367,7 +375,9 @@ class RouterManager:
         self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
         self.overlap_event.set()
         await self.model_rpc_client.decode()
-        batch.filter_out_finished_req(self.shm_req_manager)
+        # 在 self.is_multinode_and_multidp 为 True 时，传入的 batch 对象可能为 None。
+        if batch is not None:
+            batch.filter_out_finished_req(self.shm_req_manager)
         # 发个None包触发一下detokenization
         self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
         self.metric_client.histogram_observe(
