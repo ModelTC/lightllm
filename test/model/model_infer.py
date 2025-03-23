@@ -62,10 +62,11 @@ def tppart_model_infer(model_class, model_kvargs, batch_size, input_len, output_
     import torch.distributed as dist
 
     init_distributed_env(model_kvargs)
+    dist_group_manager.create_groups(group_size=1)
 
     if model_class == Deepseek2TpPartModel:
         model_cfg, _ = PretrainedConfig.get_config_dict(model_kvargs["weight_dir"])
-        dist_group_manager.set_deepep(model_cfg["n_routed_experts"])
+        dist_group_manager.new_deepep_group(model_cfg["n_routed_experts"])
     dist.barrier()
 
     torch.cuda.empty_cache()

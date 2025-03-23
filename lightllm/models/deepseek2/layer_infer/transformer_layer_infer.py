@@ -636,10 +636,21 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         _0_o = None
         _0_input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
         # to do gate and disptatch
-
         # 0 dispatch
-        _0_hook, _0_ffn_in = layer_weight.moe.dispatch(_0_input1)
+        _0_router_logits = layer_weight.moe_gate.mm(_0_input1)
+        (
+            _0_recv_x,
+            _0_masked_m,
+            _0_topk_idx,
+            _0_topk_weight,
+            _0_handle,
+            _0_hook,
+        ) = layer_weight.experts.low_latency_dispatch(_0_input1, _0_router_logits)
         infer_state.hook = _0_hook
+
+        # 0 shared expert
+        if self.n_shared_experts is not None:
+            _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
 
         # 1 attention
         if getattr(infer_state1, "hook", None) is not None:
@@ -660,22 +671,40 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         # to do gate and disptatch
 
         # 1 dispatch
-        _1_hook, _1_ffn_in = layer_weight.moe.dispatch(_1_input1)
+        _1_router_logits = layer_weight.moe_gate.mm(_1_input1)
+        (
+            _1_recv_x,
+            _1_masked_m,
+            _1_topk_idx,
+            _1_topk_weight,
+            _1_handle,
+            _1_hook,
+        ) = layer_weight.experts.low_latency_dispatch(_1_input1, _1_router_logits)
         infer_state1.hook = _1_hook
+
+        # 1 shared expert
+        if self.n_shared_experts is not None:
+            _1_shared_output = LlamaTransformerLayerInfer._ffn(self, _1_input1, infer_state1, layer_weight)
 
         # 0 moe calcu
         if getattr(infer_state, "hook", None) is not None:
             infer_state.hook()
             infer_state.hook = None
 
-        # to do moe caclue
-        _0_moe_out = self.moe_calcu(_0_ffn_in)
+        # moe calu
+        _0_moe_out = layer_weight.experts.masked_group_gemm(_0_recv_x, _0_masked_m, input_embdings.dtype)
 
         # 0 combine
-        _0_ffn_out, _0_hook = layer_weight.moe.combine(_0_moe_out)
+        _0_ffn_out, _0_hook = layer_weight.experts.low_latency_combine(
+            _0_moe_out, _0_topk_idx, _0_topk_weight, _0_handle
+        )
 
         def _0_hook_post():
             _0_hook()
+            nonlocal _0_ffn_out
+            _0_ffn_out *= self.routed_scaling_factor
+            if self.n_shared_experts is not None:
+                _0_ffn_out.add_(_0_shared_output)
             input_embdings.add_(_0_ffn_out.view(-1, self.embed_dim_))
             return
 
@@ -687,13 +716,19 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             infer_state1.hook = None
 
         # to do moe caclue
-        _1_moe_out = self.moe_calcu(_1_ffn_in)
+        _1_moe_out = layer_weight.experts.masked_group_gemm(_1_recv_x, _1_masked_m, input_embdings1.dtype)
 
         # 0 combine
-        _1_ffn_out, _1_hook = layer_weight.moe.combine(_1_moe_out)
+        _1_ffn_out, _1_hook = layer_weight.experts.low_latency_combine(
+            _1_moe_out, _1_topk_idx, _1_topk_weight, _1_handle
+        )
 
         def _1_hook_post():
             _1_hook()
+            nonlocal _1_ffn_out
+            _1_ffn_out *= self.routed_scaling_factor
+            if self.n_shared_experts is not None:
+                _1_ffn_out.add_(_1_shared_output)
             input_embdings1.add_(_1_ffn_out.view(-1, self.embed_dim_))
             return
 
