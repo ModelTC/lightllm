@@ -9,6 +9,7 @@ from lightllm.server.router.model_infer.infer_batch import g_infer_context, Infe
 from lightllm.server.core.objs import FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.continues_batch.post_process import sample
+from lightllm.utils.envs_utils import get_env_start_args
 
 
 class DPChunkedPrefillBackend(ModeBackend):
@@ -18,7 +19,7 @@ class DPChunkedPrefillBackend(ModeBackend):
         DPChunkedPrefillBackend 是DP的chuncked prefill 的单机实现，并不是标准的chunked prefill
         实现，这个模式最佳使用方式需要和 PD 分离模式进行配合。
         """
-        self.is_overlap_decode_mode = False
+        self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap
         pass
 
     def init_custom(self):
@@ -67,7 +68,7 @@ class DPChunkedPrefillBackend(ModeBackend):
         dist.all_reduce(self.reduce_tensor, op=dist.ReduceOp.MAX, group=None, async_op=False)
         max_decode_num = self.reduce_tensor.item()
         if max_decode_num != 0:
-            if not self.is_overlap_decode_mode:
+            if not self.enable_decode_microbatch_overlap:
                 self.normal_decode(decode_reqs, max_decode_num)
             else:
                 self.overlap_decode(decode_reqs, max_decode_num)
