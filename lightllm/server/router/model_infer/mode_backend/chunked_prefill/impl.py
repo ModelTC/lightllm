@@ -5,8 +5,8 @@ from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from lightllm.utils.envs_utils import get_env_start_args
-from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
 from ..continues_batch.post_process import sample
+from ..generic_pre_process import prepare_prefill_inputs, prepare_decode_inputs
 
 
 logger = init_logger(__name__)
@@ -25,12 +25,23 @@ class ChunkedPrefillBackend(ModeBackend):
         return
 
     def decode(self):
-        kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
-        self.forward_batch(kwargs, run_reqs)
-        if len(run_reqs) == 0 or self.forward_step % self.max_wait_step == 0:
-            # run prefill
-            kwargs, run_reqs = prepare_prefill_inputs(g_infer_context.infer_req_ids)
+        uinit_reqs, finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(g_infer_context.infer_req_ids)
+        assert len(uinit_reqs) == 0
+        # 如果 finished_reqs 不是空，则先调用filter, 这里主要是可能存在 aborted造成的finished
+        # 需要提前处理，否则会出现请求永远没被清理的情况
+        if len(finished_reqs) != 0:
+            g_infer_context.filter([req.req_id for req in finished_reqs])
+
+        # 先 decode
+        if len(decode_reqs) != 0:
+            kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
             self.forward_batch(kwargs, run_reqs)
+
+        # 再 prefill
+        if len(decode_reqs) == 0 or self.forward_step % self.max_wait_step == 0:
+            kwargs, run_reqs = prepare_prefill_inputs(prefill_reqs, is_chuncked_mode=True, is_multimodal=False)
+            self.forward_batch(kwargs, run_reqs)
+
         self.forward_step += 1
         return
 
