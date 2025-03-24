@@ -194,7 +194,7 @@ def fused_experts_impl(
         )
     else:
         # low latency dispatch
-        num_max_dispatch_tokens_per_rank = os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128)
+        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128))
         recv_x, masked_m, handle, event, hook = buffer.low_latency_dispatch(
             hidden_states,
             topk_idx,

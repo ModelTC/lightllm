@@ -250,7 +250,6 @@ class CudaGraph:
                     if isinstance(var_value, torch.Tensor):
                         del locals()[var_name]
                 torch.cuda.empty_cache()
-
             _, _ = model.microbatch_overlap_decode(decode_batches[0], decode_batches[1])
 
             model.mem_manager.free_all()

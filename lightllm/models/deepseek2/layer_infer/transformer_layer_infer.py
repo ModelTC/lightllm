@@ -214,7 +214,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     ) -> torch.Tensor:
         if input.shape[2] == self.kv_lora_rank:
             input = layer_weight.v_b_proj_.bmm(input.transpose(0, 1)).transpose(0, 1)
-        input = input.view(-1, self.tp_o_head_num_ * self.head_dim_)
+
+        input = input.reshape(-1, self.tp_q_head_num_ * self.qk_nope_head_dim)
         dest_size = triton.cdiv(input.shape[0], self.tp_world_size_) * self.tp_world_size_
         o_tensor = self.alloc_tensor((dest_size, self.embed_dim_), dtype=input.dtype, device=input.device)
         layer_weight.o_weight_.mm(input, out=o_tensor[0 : len(infer_state.position_cos), :])
@@ -474,42 +475,21 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     ):
         q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
         q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
-
         kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
-        o_tensor = self.alloc_tensor(q_nope.shape, dtype=q_nope.dtype)
-
-        if enable_env_vars("ENABLE_OPT_DECODE_MHA"):
-            q = torch.cat([q_nope, q_rope], dim=-1)
-            q_nope, q_rope = None, None
-            import lightllm_ppl_mla
-
-            lightllm_ppl_mla.decode_mla(
-                o_tensor,
-                q,
-                kv,
-                infer_state.req_manager.req_to_token_indexs,
-                infer_state.kv_starts,
-                infer_state.b_req_idx,
-                self.softmax_scale,
-                q.shape[-1],
-                self.kv_lora_rank,
-            )
-            return o_tensor
-        else:
-            kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
-            return gqa_token_decode_attention_flash_decoding(
-                q_nope,
-                q_rope,
-                kv[:, :, : -self.qk_rope_head_dim],
-                kv[:, :, -self.qk_rope_head_dim :],
-                infer_state,
-                self.tp_q_head_num_,
-                self.kv_lora_rank,
-                self.qk_rope_head_dim,
-                self.qk_nope_head_dim,
-                self.softmax_scale,
-                alloc_tensor_func=self.alloc_tensor,
-            )
+        out = gqa_token_decode_attention_flash_decoding(
+            q_nope,
+            q_rope,
+            kv[:, :, : -self.qk_rope_head_dim],
+            kv[:, :, -self.qk_rope_head_dim :],
+            infer_state,
+            self.tp_q_head_num_,
+            self.kv_lora_rank,
+            self.qk_rope_head_dim,
+            self.qk_nope_head_dim,
+            self.softmax_scale,
+            alloc_tensor_func=self.alloc_tensor,
+        )
+        return out
 
     def _token_gqa_decode_attention_flashdecoding_fp8(
         self, q, infer_state: Deepseek2InferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, out=None
@@ -619,25 +599,30 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         infer_state1: Deepseek2InferStateInfo,
         layer_weight: Deepseek2TransformerLayerWeight,
     ):
+        if not self.is_moe:
+            return super().overlap_tpsp_token_forward(
+                input_embdings, input_embdings1, infer_state, infer_state1, layer_weight
+            )
         # 0 attention
-        if getattr(infer_state, "hook", None) is not None:
-            infer_state.hook()
-            infer_state.hook = None
-
         _0_input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         _0_cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         _0_q, _0_cache_kv = self._tpsp_get_qkv(input_embdings, _0_cache_kv, infer_state, layer_weight)
         _0_input1 = None
         self._post_cache_kv(_0_cache_kv, infer_state, layer_weight)
-        _0_o = self._context_attention_kernel(_0_q, _0_cache_kv, infer_state, layer_weight)
+        _0_o = self._token_attention_kernel(_0_q, infer_state, layer_weight)
         _0_q = None
         _0_o = self._tpsp_get_o(_0_o, infer_state, layer_weight)
         input_embdings.add_(_0_o.view(-1, self.embed_dim_))
         _0_o = None
         _0_input1 = self._ffn_norm(input_embdings, infer_state, layer_weight)
-        # to do gate and disptatch
-        # 0 dispatch
         _0_router_logits = layer_weight.moe_gate.mm(_0_input1)
+
+        # 1 hook
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
+
+        # 0 dispatch
         (
             _0_recv_x,
             _0_masked_m,
@@ -653,16 +638,12 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
 
         # 1 attention
-        if getattr(infer_state1, "hook", None) is not None:
-            infer_state1.hook()
-            infer_state1.hook = None
-
         _1_input1 = self._att_norm(input_embdings1, infer_state1, layer_weight)
         _1_cache_kv = self._pre_cache_kv(infer_state1, layer_weight)
         _1_q, _1_cache_kv = self._tpsp_get_qkv(input_embdings1, _1_cache_kv, infer_state1, layer_weight)
         _1_input1 = None
         self._post_cache_kv(_1_cache_kv, infer_state1, layer_weight)
-        _1_o = self._context_attention_kernel(_1_q, _1_cache_kv, infer_state1, layer_weight)
+        _1_o = self._token_attention_kernel(_1_q, infer_state1, layer_weight)
         _1_q = None
         _1_o = self._tpsp_get_o(_1_o, infer_state1, layer_weight)
         input_embdings1.add_(_1_o.view(-1, self.embed_dim_))
@@ -670,8 +651,14 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         _1_input1 = self._ffn_norm(input_embdings1, infer_state1, layer_weight)
         # to do gate and disptatch
 
-        # 1 dispatch
         _1_router_logits = layer_weight.moe_gate.mm(_1_input1)
+
+        # 0 hook
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            infer_state.hook = None
+
+        # 1 dispatch
         (
             _1_recv_x,
             _1_masked_m,
@@ -686,39 +673,34 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         if self.n_shared_experts is not None:
             _1_shared_output = LlamaTransformerLayerInfer._ffn(self, _1_input1, infer_state1, layer_weight)
 
-        # 0 moe calcu
-        if getattr(infer_state, "hook", None) is not None:
-            infer_state.hook()
-            infer_state.hook = None
-
         # moe calu
         _0_moe_out = layer_weight.experts.masked_group_gemm(_0_recv_x, _0_masked_m, input_embdings.dtype)
+
+        # 1 hook
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
 
         # 0 combine
         _0_ffn_out, _0_hook = layer_weight.experts.low_latency_combine(
             _0_moe_out, _0_topk_idx, _0_topk_weight, _0_handle
         )
 
-        def _0_hook_post():
-            _0_hook()
-            nonlocal _0_ffn_out
-            _0_ffn_out *= self.routed_scaling_factor
-            if self.n_shared_experts is not None:
-                _0_ffn_out.add_(_0_shared_output)
-            input_embdings.add_(_0_ffn_out.view(-1, self.embed_dim_))
-            return
-
-        infer_state.hook = _0_hook_post
-
-        # 1 moe calcu
-        if getattr(infer_state1, "hook", None) is not None:
-            infer_state1.hook()
-            infer_state1.hook = None
+        infer_state.hook = _0_hook
 
         # to do moe caclue
         _1_moe_out = layer_weight.experts.masked_group_gemm(_1_recv_x, _1_masked_m, input_embdings1.dtype)
 
-        # 0 combine
+        # 0 hook
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            _0_ffn_out *= self.routed_scaling_factor
+            if self.n_shared_experts is not None:
+                _0_ffn_out.add_(_0_shared_output)
+            input_embdings.add_(_0_ffn_out.view(-1, self.embed_dim_))
+            infer_state.hook = None
+
+        # 1 combine
         _1_ffn_out, _1_hook = layer_weight.experts.low_latency_combine(
             _1_moe_out, _1_topk_idx, _1_topk_weight, _1_handle
         )

@@ -635,5 +635,4 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
 
         input_embdings = self.tpsp_token_forward(input_embdings, infer_state, layer_weight=layer_weight)
         input_embdings1 = self.tpsp_token_forward(input_embdings1, infer_state1, layer_weight=layer_weight)
-
         return input_embdings, input_embdings1

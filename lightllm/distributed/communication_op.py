@@ -137,7 +137,7 @@ class DistributeGroupManager:
 
     def new_deepep_group(self, n_routed_experts):
         moe_mode = os.getenv("MOE_MODE", "TP")
-        num_max_dispatch_tokens_per_rank = os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128)
+        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128))
         if moe_mode == "TP":
             self.ep_buffer = None
             return
