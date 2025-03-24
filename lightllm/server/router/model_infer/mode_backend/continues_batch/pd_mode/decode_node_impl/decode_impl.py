@@ -89,7 +89,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
 
         return
 
-    def post_init(self, uninit_reqs: List[InferReq]):
+    def _post_init_reqs(self, uninit_reqs: List[InferReq]):
         """
         检查请求的 kv len 将可能有问题的请求立即结束掉
         """

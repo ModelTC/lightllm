@@ -160,9 +160,8 @@ class InferenceContext:
         return
 
     def filter_reqs(self, finished_reqs: List["InferReq"]):
-        if len(finished_reqs) == 0:
-            return
-        self.filter([req.req_id for req in finished_reqs])
+        if finished_reqs:
+            self.filter([req.req_id for req in finished_reqs])
         return
 
     @torch.no_grad()

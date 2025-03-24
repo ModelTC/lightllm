@@ -36,70 +36,75 @@ class DPChunkedPrefillBackend(ModeBackend):
         return
 
     def prefill(self, reqs: List[Tuple]):
-        self._init_reqs(reqs)
+        self._init_reqs(reqs, init_req_obj=False)
         return
 
     def decode(self):
-        uinit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
+        uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
         )
-        assert len(uinit_reqs) == 0
 
         if aborted_reqs:
             g_infer_context.filter_reqs(aborted_reqs)
-
-        if ok_finished_reqs:
-            g_infer_context.filter_reqs(ok_finished_reqs)
 
         current_dp_prefill_num = len(prefill_reqs)
         self.reduce_tensor.fill_(current_dp_prefill_num)
         dist.all_reduce(self.reduce_tensor, op=dist.ReduceOp.MAX, group=None, async_op=False)
         max_prefill_num = self.reduce_tensor.item()
         if max_prefill_num != 0:
-            from .pre_process import padded_prepare_prefill_inputs
-
-            kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
-                prefill_reqs, max_prefill_num, is_multimodal=False
-            )
-            logits = self.model.forward(**kwargs)
-            if len(run_reqs) != 0:
-                logits = logits[0 : len(run_reqs), :]
-                next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-                next_token_ids = next_token_ids.detach().cpu().numpy()
-                next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-                self._post_handle(
-                    run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
-                )
-            logits = None
+            self.prefill_reqs(prefill_reqs, max_prefill_num, uninit_reqs, ok_finished_reqs)
 
         self.reduce_tensor.fill_(len(decode_reqs))
         dist.all_reduce(self.reduce_tensor, op=dist.ReduceOp.MAX, group=None, async_op=False)
         max_decode_num = self.reduce_tensor.item()
         if max_decode_num != 0:
             if not self.enable_decode_microbatch_overlap:
-                self.normal_decode(decode_reqs, max_decode_num)
+                self.normal_decode(decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
             else:
-                self.overlap_decode(decode_reqs, max_decode_num)
+                self.overlap_decode(decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
+
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
 
-    def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int):
-        from .pre_process import padded_prepare_decode_inputs
+    def prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
+        from .pre_process import padded_prepare_prefill_inputs
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
-            decode_reqs, max_decode_num, is_multimodal=False
+        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
+            prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
         )
         logits = self.model.forward(**kwargs)
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
             self._post_handle(
-                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
+            )
+        return
+
+    def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
+        from .pre_process import padded_prepare_decode_inputs
+
+        kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
+            decode_reqs, max_decode_num, is_multimodal=False
+        )
+        logits = self.model.forward(**kwargs)
+
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
+
+        if len(run_reqs) != 0:
+            logits = logits[0 : len(run_reqs), :]
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            self._post_handle(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
             )
         logits = None
 
-    def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int):
+    def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
         from .pre_process import padded_overlap_prepare_decode_inputs
 
         (
@@ -111,6 +116,7 @@ class DPChunkedPrefillBackend(ModeBackend):
             padded_req_num1,
         ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=False)
         logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
@@ -122,12 +128,12 @@ class DPChunkedPrefillBackend(ModeBackend):
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
             self._post_handle(
-                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
             )
         if len(run_reqs1) != 0:
             next_token_ids1 = next_token_ids1.detach().cpu().numpy()
             next_token_logprobs1 = torch.log(next_token_probs1).detach().cpu().numpy()
             self._post_handle(
-                run_reqs1, next_token_ids1, next_token_logprobs1, is_chuncked_mode=True, do_filter_finished_reqs=True
+                run_reqs1, next_token_ids1, next_token_logprobs1, is_chuncked_mode=True, do_filter_finished_reqs=False
             )
         return
