@@ -425,6 +425,10 @@ class ModeBackend:
             g_infer_state_lock.release()
         return
 
+    # 一些可以复用的通用功能函数
+    def _trans_req_ids_to_req_objs(self, req_ids: List[int]) -> List[InferReq]:
+        return [g_infer_context.requests_mapping[req_id] for req_id in req_ids]
+
     def preload_prompt_cache_kv_buffer(self, model_cfg):
         self.logger.info("Preload prompt cache kv buffer.")
         cur_rank = dist.get_rank()

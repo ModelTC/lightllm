@@ -5,7 +5,10 @@ from .impl import ContinuesBatchBackend
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
-from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+    prepare_prefill_inputs,
+    prepare_decode_inputs,
+)
 from .post_process import sample
 from lightllm.server.tokenizer import get_tokenizer
 from typing import List, Tuple
@@ -52,7 +55,8 @@ class OutlinesConstraintBackend(ContinuesBatchBackend):
         # import here, 当你不使用这个模式，缺少这些依赖也可以运行
         from outlines.fsm.guide import RegexGuide
 
-        kwargs, run_reqs = prepare_prefill_inputs(req_ids, is_multimodal=self.is_multimodal)
+        req_objs = self._trans_req_ids_to_req_objs(req_ids)
+        kwargs, run_reqs = prepare_prefill_inputs(req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal)
         run_reqs: List[InferReq] = run_reqs
 
         logics = self.model.forward(**kwargs)
@@ -77,7 +81,8 @@ class OutlinesConstraintBackend(ContinuesBatchBackend):
         return
 
     def decode(self):
-        kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
+        req_objs = self._trans_req_ids_to_req_objs(g_infer_context.infer_req_ids)
+        kwargs, run_reqs = prepare_decode_inputs(req_objs)
         run_reqs: List[InferReq] = run_reqs
 
         logits = self.model.forward(**kwargs)
