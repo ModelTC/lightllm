@@ -272,14 +272,19 @@ class ModeBackend:
         return req_ids
 
     # 一些可以复用的通用功能函数
-    def _get_classed_reqs(req_ids: List[int]):
+    def _get_classed_reqs(req_ids: List[int], no_decode: bool = False):
         """
+        当将参数 no_decode 设置为True后，返回的 decode_reqs 永远为空list，主要是
+        PD 分离的某些backend需要用这个参数进行控制，因为P节点永远只进行Prefill,
+        避免一些特殊情况，如 radix cache 命中后，只有1token需要prefill，这个判断
+        条件和decode请求的分类条件相同。所以添加一个参数进行区分。
+
         将请求分类返回:
         1. unit reqs 还未完整初始化的请求
         2. aborted_reqs aborted 的请求
         3. ok_finished_reqs 正常推理完但是还没有释放的请求
-        4. prefill reqs 需要进行prefill操作的请求
-        5. decode reqs 需要进行decode操作的请求
+        4. prefill_reqs 需要进行prefill操作的请求
+        5. decode_reqs 需要进行decode操作的请求
         """
         uinit_reqs = []
         aborted_reqs = []
@@ -303,10 +308,14 @@ class ModeBackend:
                 continue
 
             is_decode = req_obj.cur_kv_len + 1 == req_obj.get_cur_total_len()
+
             if not is_decode:
                 prefill_reqs.append(req_obj)
             else:
-                decode_reqs.append(req_obj)
+                if no_decode:
+                    prefill_reqs.append(req_obj)
+                else:
+                    decode_reqs.append(req_obj)
 
         return uinit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs
 
