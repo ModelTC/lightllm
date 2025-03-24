@@ -97,11 +97,15 @@ class ModeBackend:
 
         # 为 p d 分离模式添加的全局锁管理，用于做一些同步操作。 一定需要在
         # init_process_group 之后调用
-        g_infer_state_lock.obj = InferStateLock(
-            name=get_unique_server_name(),
-            rank_in_dp=self.rank_in_dp,
-            dp_rank_in_node=self.dp_rank_in_node,
-            dp_world_size=self.dp_world_size,
+        g_infer_state_lock.obj = (
+            InferStateLock(
+                name=get_unique_server_name(),
+                rank_in_dp=self.rank_in_dp,
+                dp_rank_in_node=self.dp_rank_in_node,
+                dp_world_size=self.dp_world_size,
+            )
+            if self.run_mode in ["prefill", "decode"]
+            else None
         )
         g_infer_state_lock.dp_world_size = self.dp_world_size
         self.infer_state_lock = g_infer_state_lock
@@ -377,6 +381,30 @@ class ModeBackend:
         if do_filter_finished_reqs:
             g_infer_context.filter(finished_req_ids)
         return finished_req_ids
+
+    # 一些可以复用的通用功能函数
+    def _overlap_req_init_and_filter(self, uninit_reqs: List[InferReq], ok_finished_reqs: List[InferReq]):
+        if uninit_reqs or ok_finished_reqs:
+            # 利用推理的时间，延迟折叠下一个请求的初始化和退出操作
+            with torch.cuda.stream(g_infer_context.get_overlap_stream()):
+                g_infer_state_lock.acquire()
+                g_infer_context.filter_reqs(ok_finished_reqs)
+                g_infer_state_lock.release()
+
+                g_infer_state_lock.acquire()
+                self.post_init(uninit_reqs)
+                g_infer_state_lock.release()
+
+            torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
+        return
+
+    # 一些可以复用的通用功能函数
+    def _filter_reqs(self, reqs: List[InferReq]):
+        if reqs:
+            g_infer_state_lock.acquire()
+            g_infer_context.filter_reqs(reqs)
+            g_infer_state_lock.release()
+        return
 
     def preload_prompt_cache_kv_buffer(self, model_cfg):
         self.logger.info("Preload prompt cache kv buffer.")

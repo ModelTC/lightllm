@@ -11,7 +11,6 @@ from lightllm.server.router.model_infer.infer_batch import g_infer_context, Infe
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
-from .pre_process import prepare_decode_inputs
 from ...post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
@@ -60,54 +59,34 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         return
 
     def decode(self):
+        uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
+            g_infer_context.infer_req_ids,
+            no_decode=False,
+        )
+        # p d 分离模式下， decode 节点不可能存在需要prefill操作的请求
+        assert len(prefill_reqs) == 0
 
-        kwargs, uninit_reqs, finished_reqs, run_reqs = prepare_decode_inputs()
+        self._filter_reqs(aborted_reqs)
 
-        if len(run_reqs) != 0:
+        logits = None
+        if decode_reqs:
+            from lightllm.server.router.model_infer.mode_backend.generic_pre_process import prepare_decode_inputs
+
+            kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
             logits = self.model.forward(**kwargs)
 
-        if len(uninit_reqs) != 0 or len(finished_reqs) != 0:
-            # 利用推理的时间，延迟折叠下一个请求的初始化和退出操作
-            with torch.cuda.stream(g_infer_context.get_overlap_stream()):
-                g_infer_state_lock.acquire()
-                self.filter_finished_reqs(finished_reqs)
-                g_infer_state_lock.release()
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs)
 
-                g_infer_state_lock.acquire()
-                self.post_init(uninit_reqs)
-                g_infer_state_lock.release()
-
-            torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
-
-        if len(run_reqs) != 0:
+        if logits is not None:
 
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-            for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
-                # prefill and decode is same
-                req_obj: InferReq = req_obj
-                req_obj.cur_kv_len = req_obj.get_cur_total_len()
+            self._post_handle(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
+            )
 
-                req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
-                req_obj.cur_output_len += 1
-
-                req_obj.out_token_id_count[next_token_id] += 1
-                req_obj.update_finish_status(self.eos_id)
-
-                if self.is_master_in_dp:
-                    # shm_cur_kv_len shm_cur_output_len 是 router 调度进程需要读的信息
-                    # finish_token_index finish_status candetoken_out_len 是
-                    # detokenization 进程需要的信息，注意这些变量的写入顺序避免异步协同问题。
-                    req_obj.shm_req.shm_cur_kv_len = req_obj.cur_kv_len
-                    req_obj.shm_req.shm_cur_output_len = req_obj.cur_output_len
-
-                    if req_obj.finish_status.is_finished():
-                        req_obj.shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
-                        req_obj.shm_req.finish_status = req_obj.finish_status
-
-                    req_obj.shm_req.candetoken_out_len = req_obj.cur_output_len
         return
 
     def post_init(self, uninit_reqs: List[InferReq]):
@@ -150,9 +129,4 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
             with g_router_lock.obj:
                 self.shared_token_load.add_frozened_token_count(-remove_count, self.dp_rank_in_node)
                 self.shared_token_load.add_estimated_peak_token_count(estimated_peak_token_count, self.dp_rank_in_node)
-        return
-
-    def filter_finished_reqs(self, finished_reqs: List[InferReq]):
-        finished_req_ids = [req.shm_req.request_id for req in finished_reqs]
-        g_infer_context.filter(finished_req_ids)
         return
