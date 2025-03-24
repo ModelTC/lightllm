@@ -40,12 +40,16 @@ class DPChunkedPrefillBackend(ModeBackend):
         return
 
     def decode(self):
-        uinit_reqs, finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(g_infer_context.infer_req_ids)
+        uinit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
+            g_infer_context.infer_req_ids
+        )
         assert len(uinit_reqs) == 0
-        # 如果 finished_reqs 不是空，则先调用filter, 这里主要是可能存在 aborted造成的finished
-        # 需要提前处理，否则会出现请求永远没被清理的情况
-        if len(finished_reqs) != 0:
-            g_infer_context.filter([req.req_id for req in finished_reqs])
+
+        if aborted_reqs:
+            g_infer_context.filter_reqs(aborted_reqs)
+
+        if ok_finished_reqs:
+            g_infer_context.filter_reqs(ok_finished_reqs)
 
         current_dp_prefill_num = len(prefill_reqs)
         self.reduce_tensor.fill_(current_dp_prefill_num)

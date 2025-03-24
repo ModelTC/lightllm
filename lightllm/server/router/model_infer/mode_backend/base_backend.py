@@ -276,12 +276,14 @@ class ModeBackend:
         """
         将请求分类返回:
         1. unit reqs 还未完整初始化的请求
-        2. finished_reqs 已经推理完的请求但是还没有释放
-        3. prefill reqs 需要进行prefill操作的请求
-        4. decode reqs 需要进行decode操作的请求
+        2. aborted_reqs aborted 的请求
+        3. ok_finished_reqs 正常推理完但是还没有释放的请求
+        4. prefill reqs 需要进行prefill操作的请求
+        5. decode reqs 需要进行decode操作的请求
         """
         uinit_reqs = []
-        finished_reqs = []
+        aborted_reqs = []
+        ok_finished_reqs = []
         prefill_reqs = []
         decode_reqs = []
 
@@ -292,8 +294,12 @@ class ModeBackend:
                 uinit_reqs.append(req_obj)
                 continue
 
-            if req_obj.is_finished_or_aborted():
-                finished_reqs.append(req_obj)
+            if req_obj.shm_req.router_aborted:
+                aborted_reqs.append(req_obj)
+                continue
+
+            if req_obj.finish_status.is_finished():
+                ok_finished_reqs.append(req_obj)
                 continue
 
             is_decode = req_obj.cur_kv_len + 1 == req_obj.get_cur_total_len()
@@ -302,7 +308,7 @@ class ModeBackend:
             else:
                 decode_reqs.append(req_obj)
 
-        return uinit_reqs, finished_reqs, prefill_reqs, decode_reqs
+        return uinit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs
 
     # 一些可以复用的通用功能函数
     def _post_handle(
@@ -312,7 +318,7 @@ class ModeBackend:
         next_token_logprobs,
         is_chuncked_mode: bool,
         do_filter_finished_reqs: bool,
-    ):
+    ) -> List[int]:
         finished_req_ids = []
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
@@ -361,7 +367,7 @@ class ModeBackend:
 
         if do_filter_finished_reqs:
             g_infer_context.filter(finished_req_ids)
-        return
+        return finished_req_ids
 
     def preload_prompt_cache_kv_buffer(self, model_cfg):
         self.logger.info("Preload prompt cache kv buffer.")
