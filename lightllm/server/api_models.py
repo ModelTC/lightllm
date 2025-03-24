@@ -5,35 +5,8 @@ from typing import Dict, List, Optional, Union, Literal
 import uuid
 
 
-class ImageData(BaseModel):
-    type: str
-    data: str
-
-
 class ImageURL(BaseModel):
-    url: List[ImageData]
-
-    @field_validator("url", mode="before")
-    def ensure_list(cls, v):
-        if isinstance(v, list):
-            new_list = []
-            for item in v:
-                if isinstance(item, str):
-                    new_list.append({"type": "base64", "data": item})
-                elif isinstance(item, dict):
-                    if "type" not in item:
-                        item["type"] = "base64"
-                    new_list.append(item)
-                else:
-                    new_list.append(item)
-            return new_list
-        elif isinstance(v, str):
-            return [{"type": "base64", "data": v}]
-        elif isinstance(v, dict):
-            if "type" not in v:
-                v["type"] = "base64"
-            return [v]
-        return v
+    url: str
 
 
 class MessageContent(BaseModel):

@@ -20,7 +20,9 @@ import asyncio
 import collections
 import time
 import uvloop
+import requests
 import os
+from io import BytesIO
 import pickle
 from .build_prompt import build_prompt, init_tokenizer
 
@@ -28,6 +30,7 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import ujson as json
 from http import HTTPStatus
 import uuid
+from PIL import Image
 import multiprocessing as mp
 from typing import AsyncGenerator, Union
 from typing import Callable
@@ -40,6 +43,7 @@ from .httpserver.manager import HttpServerManager
 from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
 from .api_lightllm import lightllm_get_score, lightllm_pd_generate_stream
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.server.embed_cache.utils import image2base64
 
 from .api_models import (
     ChatCompletionRequest,
@@ -142,12 +146,11 @@ async def healthcheck(request: Request):
         return JSONResponse({"message": "Error"}, status_code=503)
     from lightllm.utils.health_check import health_check, health_obj
 
-    health_task = asyncio.create_task(health_check(g_objs.args, g_objs.httpserver_manager, None))
-    if not health_obj.is_health():
-        await health_task
-    return JSONResponse(
-        {"message": "Ok" if health_obj.is_health() else "Error"}, status_code=200 if health_obj.is_health() else 503
-    )
+    asyncio.create_task(health_check(g_objs.args, g_objs.httpserver_manager, None))
+    if health_obj.is_health():
+        return JSONResponse({"message": "Ok"}, status_code=200)
+    else:
+        return JSONResponse({"message": "Error"}, status_code=503)
 
 
 @app.get("/token_load", summary="Get the current server's load of tokens")
@@ -240,13 +243,25 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
                 if content.type == "text" and content.text:
                     texts.append(content.text)
                 elif content.type == "image_url" and content.image_url is not None:
-                    for img in content.image_url.url:
-                        data_str = img.data
-                        prefix = "base64,"
-                        idx = data_str.find(prefix)
-                        if idx != -1:
-                            data_str = data_str[idx + len(prefix) :]
-                        multimodal_params_dict["images"].append({"type": "base64", "data": data_str})
+                    img = content.image_url.url
+                    if img.startswith("http://") or img.startswith("https://"):
+                        response = requests.get(img, stream=True, timeout=2)
+                        data = image2base64(response.raw)
+                    elif img.startswith("file://"):
+                        data = image2base64(img[7:])
+                    elif img.startswith("data:image"):
+                        # "data:image/jpeg;base64,{base64_image}"
+                        data_str = img.split(";", 1)[1]
+                        if data_str.startswith("base64,"):
+                            data = data_str[7:]
+                        else:
+                            raise ValueError("Unrecognized image input.")
+                    else:
+                        raise ValueError(
+                            "Unrecognized image input. Supports local path, http url, base64, and PIL.Image."
+                        )
+
+                    multimodal_params_dict["images"].append({"type": "base64", "data": data})
 
             message.content = "\n".join(texts)
 
@@ -348,7 +363,12 @@ async def tokens(request: Request):
         request_dict = await request.json()
         prompt = request_dict.pop("text")
         parameters = request_dict.pop("parameters", {})
-        return JSONResponse({"ntokens": g_objs.httpserver_manager.tokens(prompt, parameters)}, status_code=200)
+        multimodal_params_dict = request_dict.get("multimodal_params", {})
+        multimodal_params = MultimodalParams(**multimodal_params_dict)
+        multimodal_params.verify_and_preload()
+        return JSONResponse(
+            {"ntokens": g_objs.httpserver_manager.tokens(prompt, multimodal_params, parameters)}, status_code=200
+        )
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, f"error: {str(e)}")
 
