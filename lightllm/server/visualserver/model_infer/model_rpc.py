@@ -22,6 +22,7 @@ from lightllm.utils.graceful_utils import graceful_registry
 
 class VisualModelRpcServer(rpyc.Service):
     def exposed_init_model(self, kvargs):
+        kvargs = obtain(kvargs)
         import torch
         import torch.distributed as dist
 
