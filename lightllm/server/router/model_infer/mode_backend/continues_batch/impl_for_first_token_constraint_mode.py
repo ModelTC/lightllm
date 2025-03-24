@@ -4,7 +4,10 @@ import torch
 from .impl import ContinuesBatchBackend
 from typing import List, Tuple
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
-from .pre_process import prepare_prefill_inputs, prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+    prepare_prefill_inputs,
+    prepare_decode_inputs,
+)
 from .post_process import sample
 from lightllm.utils.log_utils import init_logger
 
@@ -29,7 +32,8 @@ class FirstTokenConstraintBackend(ContinuesBatchBackend):
 
     def prefill(self, reqs: List[Tuple]):
         req_ids = self._init_reqs(reqs, init_req_obj=True)
-        kwargs, run_reqs = prepare_prefill_inputs(req_ids, self.is_multimodal)
+        req_objs = self._trans_req_ids_to_req_objs(req_ids)
+        kwargs, run_reqs = prepare_prefill_inputs(req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal)
         logits = self.model.forward(**kwargs)
         # first token constraint
         mask = torch.ones_like(logits, dtype=torch.bool)
@@ -46,7 +50,8 @@ class FirstTokenConstraintBackend(ContinuesBatchBackend):
         return
 
     def decode(self):
-        kwargs, run_reqs = prepare_decode_inputs(g_infer_context.infer_req_ids)
+        req_objs = self._trans_req_ids_to_req_objs(g_infer_context.infer_req_ids)
+        kwargs, run_reqs = prepare_decode_inputs(req_objs)
         logits = self.model.forward(**kwargs)
 
         next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)

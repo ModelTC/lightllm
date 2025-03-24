@@ -97,11 +97,15 @@ class ModeBackend:
 
         # 为 p d 分离模式添加的全局锁管理，用于做一些同步操作。 一定需要在
         # init_process_group 之后调用
-        g_infer_state_lock.obj = InferStateLock(
-            name=get_unique_server_name(),
-            rank_in_dp=self.rank_in_dp,
-            dp_rank_in_node=self.dp_rank_in_node,
-            dp_world_size=self.dp_world_size,
+        g_infer_state_lock.obj = (
+            InferStateLock(
+                name=get_unique_server_name(),
+                rank_in_dp=self.rank_in_dp,
+                dp_rank_in_node=self.dp_rank_in_node,
+                dp_world_size=self.dp_world_size,
+            )
+            if self.run_mode in ["prefill", "decode"]
+            else None
         )
         g_infer_state_lock.dp_world_size = self.dp_world_size
         self.infer_state_lock = g_infer_state_lock
@@ -220,7 +224,6 @@ class ModeBackend:
             self.preload_prompt_cache_kv_buffer(model_cfg)
 
         self.logger.info(f"loaded model class {self.model.__class__}")
-        self.init_custom()
 
         g_infer_context.register(
             req_manager=self.model.req_manager,
@@ -228,6 +231,8 @@ class ModeBackend:
             shm_req_manager=self.shm_req_manager,
             vocab_size=self.model.vocab_size,
         )
+
+        self.init_custom()
         return
 
     def init_custom(self):
@@ -272,16 +277,23 @@ class ModeBackend:
         return req_ids
 
     # 一些可以复用的通用功能函数
-    def _get_classed_reqs(req_ids: List[int]):
+    def _get_classed_reqs(req_ids: List[int], no_decode: bool = False):
         """
+        当将参数 no_decode 设置为True后，返回的 decode_reqs 永远为空list，主要是
+        PD 分离的某些backend需要用这个参数进行控制，因为P节点永远只进行Prefill,
+        避免一些特殊情况，如 radix cache 命中后，只有1token需要prefill，这个判断
+        条件和decode请求的分类条件相同。所以添加一个参数进行区分。
+
         将请求分类返回:
         1. unit reqs 还未完整初始化的请求
-        2. finished_reqs 已经推理完的请求但是还没有释放
-        3. prefill reqs 需要进行prefill操作的请求
-        4. decode reqs 需要进行decode操作的请求
+        2. aborted_reqs aborted 的请求
+        3. ok_finished_reqs 正常推理完但是还没有释放的请求
+        4. prefill_reqs 需要进行prefill操作的请求
+        5. decode_reqs 需要进行decode操作的请求
         """
         uinit_reqs = []
-        finished_reqs = []
+        aborted_reqs = []
+        ok_finished_reqs = []
         prefill_reqs = []
         decode_reqs = []
 
@@ -292,17 +304,25 @@ class ModeBackend:
                 uinit_reqs.append(req_obj)
                 continue
 
-            if req_obj.is_finished_or_aborted():
-                finished_reqs.append(req_obj)
+            if req_obj.shm_req.router_aborted:
+                aborted_reqs.append(req_obj)
+                continue
+
+            if req_obj.finish_status.is_finished():
+                ok_finished_reqs.append(req_obj)
                 continue
 
             is_decode = req_obj.cur_kv_len + 1 == req_obj.get_cur_total_len()
+
             if not is_decode:
                 prefill_reqs.append(req_obj)
             else:
-                decode_reqs.append(req_obj)
+                if no_decode:
+                    prefill_reqs.append(req_obj)
+                else:
+                    decode_reqs.append(req_obj)
 
-        return uinit_reqs, finished_reqs, prefill_reqs, decode_reqs
+        return uinit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs
 
     # 一些可以复用的通用功能函数
     def _post_handle(
@@ -312,7 +332,7 @@ class ModeBackend:
         next_token_logprobs,
         is_chuncked_mode: bool,
         do_filter_finished_reqs: bool,
-    ):
+    ) -> List[int]:
         finished_req_ids = []
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
@@ -361,7 +381,54 @@ class ModeBackend:
 
         if do_filter_finished_reqs:
             g_infer_context.filter(finished_req_ids)
+        return finished_req_ids
+
+    # 一些可以复用的通用功能函数
+    def _overlap_req_init_and_filter(
+        self, uninit_reqs: List[InferReq], ok_finished_reqs: List[InferReq], clear_list=False
+    ):
+        if uninit_reqs or ok_finished_reqs:
+            # 利用推理的时间，延迟折叠下一个请求的初始化和退出操作
+            with torch.cuda.stream(g_infer_context.get_overlap_stream()):
+                if ok_finished_reqs:
+                    g_infer_state_lock.acquire()
+                    g_infer_context.filter_reqs(ok_finished_reqs)
+                    g_infer_state_lock.release()
+
+                if uninit_reqs:
+                    g_infer_state_lock.acquire()
+                    self._post_init_reqs(uninit_reqs)
+                    g_infer_state_lock.release()
+
+            torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
+
+            if clear_list:
+                uninit_reqs.clear()
+                ok_finished_reqs.clear()
+
         return
+
+    # 一些可以复用的通用功能函数
+    def _post_init_reqs(self, uninit_reqs: List[InferReq]):
+        """
+        如req对象在调用 _init_reqs 函数时， init_req_obj 为 False，则在适当的时机调用
+        _post_init_reqs 重新完成req对象的完整初始化
+        """
+        for req in uninit_reqs:
+            req.init_all()
+        return
+
+    # 一些可以复用的通用功能函数
+    def _filter_reqs(self, reqs: List[InferReq]):
+        if reqs:
+            g_infer_state_lock.acquire()
+            g_infer_context.filter_reqs(reqs)
+            g_infer_state_lock.release()
+        return
+
+    # 一些可以复用的通用功能函数
+    def _trans_req_ids_to_req_objs(self, req_ids: List[int]) -> List[InferReq]:
+        return [g_infer_context.requests_mapping[req_id] for req_id in req_ids]
 
     def preload_prompt_cache_kv_buffer(self, model_cfg):
         self.logger.info("Preload prompt cache kv buffer.")

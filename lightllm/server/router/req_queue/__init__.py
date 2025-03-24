@@ -7,8 +7,6 @@ from .dp_base_queue import DpQueue
 
 def build_req_queue(args, router, dp_size_in_node: int):
     queue_class = None
-    if args.run_mode == "decode":
-        queue_class = ContinuesBatchQueueForPDDecode
     if args.diverse_mode:
         queue_class = BeamContinuesBatchQueue
     if args.enable_chunked_prefill:
@@ -19,6 +17,12 @@ def build_req_queue(args, router, dp_size_in_node: int):
         queue_class = ContinuesBatchQueue
     if args.first_token_constraint_mode:
         queue_class = ContinuesBatchQueue
+    if args.run_mode == "decode":
+        queue_class = ContinuesBatchQueueForPDDecode
+    if args.run_mode == "prefill":
+        if args.dp > 1:
+            queue_class = ChunkedPrefillQueue
+
     if queue_class is None:
         queue_class = ContinuesBatchQueue
 

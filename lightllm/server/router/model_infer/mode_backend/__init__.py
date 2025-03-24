@@ -10,3 +10,5 @@ from .dp_backend.impl import DPChunkedPrefillBackend
 from .continues_batch.pd_mode.prefill_node_impl.prefill_impl import ContinuesBatchBackendForPrefillNode
 from .continues_batch.pd_mode.decode_node_impl.decode_impl import ContinuesBatchBackendForDecodeNode
 from .continues_batch.impl_for_xgrammar_mode import XgrammarBackend
+from .continues_batch.pd_mode.prefill_node_impl.prefill_impl_for_dp_chuncked import DPChunkedForPrefillNode
+from .continues_batch.pd_mode.decode_node_impl.decode_impl_for_dp import DPForDecodeNode

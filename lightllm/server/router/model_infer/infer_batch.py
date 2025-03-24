@@ -159,6 +159,11 @@ class InferenceContext:
 
         return
 
+    def filter_reqs(self, finished_reqs: List["InferReq"]):
+        if finished_reqs:
+            self.filter([req.req_id for req in finished_reqs])
+        return
+
     @torch.no_grad()
     def pause_reqs(self, pause_req_ids: List[int]):
         free_token_index = []
