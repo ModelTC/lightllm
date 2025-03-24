@@ -24,7 +24,7 @@ from .decode_impl import ContinuesBatchBackendForDecodeNode
 logger = init_logger(__name__)
 
 
-class DPChunkedForForDecodeNode(ContinuesBatchBackendForDecodeNode):
+class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
     def __init__(self, info_queue: mp.Queue, mem_queue: mp.Queue) -> None:
         super().__init__(info_queue, mem_queue)
         self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap

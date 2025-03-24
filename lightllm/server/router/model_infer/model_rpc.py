@@ -19,6 +19,8 @@ from lightllm.server.router.model_infer.mode_backend import (
     ContinuesBatchBackendForPrefillNode,
     ContinuesBatchBackendForDecodeNode,
     DPChunkedPrefillBackend,
+    DPForDecodeNode,
+    DPChunkedForPrefillNode,
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
@@ -125,9 +127,15 @@ class ModelRpcServer:
             is_decode_node = False
         # use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
         if is_prefill_node:
-            self.backend = ContinuesBatchBackendForPrefillNode(self.info_queue, self.mem_queue)
+            if kvargs.get("args", None).dp > 1:
+                self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
+            else:
+                self.backend = ContinuesBatchBackendForPrefillNode(self.info_queue, self.mem_queue)
         elif is_decode_node:
-            self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+            if kvargs.get("args", None).dp > 1:
+                self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
+            else:
+                self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif enable_chunked_prefill:
             self.backend = ChunkedPrefillBackend()
         elif use_reward_model:
