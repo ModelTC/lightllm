@@ -224,7 +224,6 @@ class ModeBackend:
             self.preload_prompt_cache_kv_buffer(model_cfg)
 
         self.logger.info(f"loaded model class {self.model.__class__}")
-        self.init_custom()
 
         g_infer_context.register(
             req_manager=self.model.req_manager,
@@ -232,6 +231,8 @@ class ModeBackend:
             shm_req_manager=self.shm_req_manager,
             vocab_size=self.model.vocab_size,
         )
+
+        self.init_custom()
         return
 
     def init_custom(self):
