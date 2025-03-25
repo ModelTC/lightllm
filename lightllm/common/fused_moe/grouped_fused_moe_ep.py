@@ -123,6 +123,10 @@ def fused_experts_impl(
         )
 
         # normal dispatch
+        # recv_x [recive_num_tokens, hidden] recv_x_scale [recive_num_tokens, hidden // block_size]
+        # recv_topk_idx [recive_num_tokens, topk_num]
+        # recv_topk_weights [recive_num_tokens, topk_num]
+        # num_recv_tokens_per_expert_list list [cur_node_expert_num] padding with expert_alignment=128
         recv_x, recv_topk_idx, recv_topk_weights, num_recv_tokens_per_expert_list, handle, event = buffer.dispatch(
             (qinput_tensor, input_scale),
             topk_idx=topk_idx,
@@ -138,14 +142,21 @@ def fused_experts_impl(
         )
 
         # scatter
-        all_tokens = sum(num_recv_tokens_per_expert_list)
+        all_tokens = sum(num_recv_tokens_per_expert_list)  # calcu padding all nums.
+        # gather_out shape [recive_num_tokens, hidden]
         gather_out = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
         if all_tokens > 0:
             input_tensor = (
                 torch.empty((all_tokens, K), device=hidden_states.device, dtype=qinput_tensor.dtype),
                 torch.empty((all_tokens, K // 128), device=hidden_states.device, dtype=torch.float32),
             )
+            # when m_indices is filled ok.
+            # m_indices show token use which expert, example, [0, 0, 0, 0, .... 1, 1, 1, 1,...., cur_expert_num - 1, ..]
+            # the count of 0 is num_recv_tokens_per_expert_list[0], the count of 1 is num_recv_tokens_per_expert_list[1]
+            # ...
             m_indices = torch.empty(all_tokens, device=hidden_states.device, dtype=torch.int32)
+            # output_index shape [recive_num_tokens, topk_num]
+            # output_index use to show the token index in input_tensor
             output_index = torch.empty_like(recv_topk_idx)
 
             num_recv_tokens_per_expert = torch.tensor(
@@ -186,7 +197,7 @@ def fused_experts_impl(
             )
 
             # gather and local reduce
-            ep_gather(gemm_out_b, recv_topk_idx, recv_topk_weights, output_index, expert_start_loc, gather_out)
+            ep_gather(gemm_out_b, recv_topk_idx, recv_topk_weights, output_index, gather_out)
         # normal combine
         combined_x, _, event = buffer.combine(
             gather_out,
