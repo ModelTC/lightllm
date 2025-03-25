@@ -121,7 +121,7 @@ class XgrammarBackend(ContinuesBatchBackend):
     def _update_xgrammer_fsm(self, req_obj: InferReq, next_token_id, next_token_logprob):
         import xgrammar as xgr
 
-        if not hasattr(req_obj.sample_param, "xgrammar_matcher"):
+        if not hasattr(req_obj.sampling_param, "xgrammar_matcher"):
             return
 
         matcher = req_obj.sampling_param.xgrammar_matcher

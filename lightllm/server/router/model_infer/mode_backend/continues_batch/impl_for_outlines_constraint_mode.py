@@ -67,7 +67,7 @@ class OutlinesConstraintBackend(ContinuesBatchBackend):
             run_obj: InferReq = run_obj
             sample_params = run_obj.sampling_param
             if sample_params.regular_constraint is not None:
-                sample_params.regex_guide = RegexGuide(sample_params.regular_constraint, self.tokenizer)
+                sample_params.regex_guide = RegexGuide.from_regex(sample_params.regular_constraint, self.tokenizer)
             self._mask_req_out_token(i, run_obj, mask)
 
         logics[mask] = -1000000.0
