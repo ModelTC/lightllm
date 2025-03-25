@@ -121,10 +121,14 @@ class DPChunkedPrefillBackend(ModeBackend):
             logits = logits[0 : len(run_reqs), :]
         if len(run_reqs1) != 0:
             logits1 = logits1[0 : len(run_reqs1), :]
+        run_reqs = run_reqs + run_reqs1
+        if len(run_reqs) == 0:
+            return
+
         logits = torch.cat((logits, logits1), dim=0)
         next_token_ids, next_token_ids = sample(logits, run_reqs, self.eos_id)
 
         self._post_handle(
-            run_reqs + run_reqs1, next_token_ids, next_token_ids, is_chuncked_mode=True, do_filter_finished_reqs=False
+            run_reqs, next_token_ids, next_token_ids, is_chuncked_mode=True, do_filter_finished_reqs=False
         )
         return
