@@ -22,9 +22,6 @@ class OutlinesConstraintBackend(ContinuesBatchBackend):
         super().__init__()
 
     def init_custom(self):
-        # 导入修改 outlines 的部分默认实现
-        import lightllm.server.router.model_infer.mode_backend.continues_batch.outlines_patch.impl as _nouse_
-
         # remove outlines cache
         if self.rank_in_node == 0:
             cache_path = os.path.join(os.path.expanduser("~"), ".cache/outlines")
