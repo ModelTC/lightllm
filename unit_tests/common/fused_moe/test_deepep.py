@@ -360,7 +360,7 @@ def test_scatter_gather():
     for i in range(recv_topk_id.shape[0]):
         for j in range(recv_topk_id.shape[1]):
             if recv_topk_id[i][j] >= 0:
-                dst = expert_start_loc[recv_topk_id[i][j]] + output_indexs[i][j]
+                dst = output_indexs[i][j]
                 output_tensor_ref[dst][:] = recv_x[i][:]
                 output_tensor_scale_ref[dst][:] = recv_x_scale[i][:]
 
@@ -375,9 +375,9 @@ def test_scatter_gather():
     for i in range(recv_topk_id.shape[0]):
         for j in range(recv_topk_id.shape[1]):
             if recv_topk_id[i][j] >= 0:
-                dst = expert_start_loc[recv_topk_id[i][j]] + output_indexs[i][j]
+                dst = output_indexs[i][j]
                 gather_out_ref[i][:] += gather_input[dst][:] * recv_topk_weights[i][j]
-    ep_gather(gather_input, recv_topk_id, recv_topk_weights, output_indexs, expert_start_loc, gather_out)
+    ep_gather(gather_input, recv_topk_id, recv_topk_weights, output_indexs, gather_out)
     assert torch.allclose(gather_out, gather_out_ref, atol=1e-2, rtol=0)
 
 
