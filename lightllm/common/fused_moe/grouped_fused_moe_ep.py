@@ -15,11 +15,14 @@ import numpy as np
 
 logger = init_logger(__name__)
 
-from deep_ep import Buffer, EventOverlap
-import deep_gemm
+try:
+    from deep_ep import Buffer, EventOverlap
+    import deep_gemm
 
-# Set the number of SMs to use
-Buffer.set_num_sms(20)
+    # Set the number of SMs to use
+    Buffer.set_num_sms(20)
+except:
+    logger.warning("no deepep or deep_gemm")
 
 
 def tma_aligned_quantize(
@@ -71,14 +74,14 @@ def fused_experts_impl(
     topk_weights: torch.Tensor,  # [M, topk]
     topk_idx: torch.Tensor,  # [M, topk]
     num_experts: int,
-    buffer: Buffer,
+    buffer: "Buffer",
     is_prefill: bool,
     use_fp8_w8a8: bool = False,
     use_fp8_all2all: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
     w2_scale: Optional[torch.Tensor] = None,
-    previous_event: Optional[EventOverlap] = None,
+    previous_event: Optional["EventOverlap"] = None,
 ):
     # Check constraints.
     assert hidden_states.shape[1] == w1.shape[2], "Hidden size mismatch"

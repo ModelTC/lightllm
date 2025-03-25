@@ -277,7 +277,7 @@ class ModeBackend:
         return req_ids
 
     # 一些可以复用的通用功能函数
-    def _get_classed_reqs(req_ids: List[int], no_decode: bool = False):
+    def _get_classed_reqs(self, req_ids: List[int], no_decode: bool = False):
         """
         当将参数 no_decode 设置为True后，返回的 decode_reqs 永远为空list，主要是
         PD 分离的某些backend需要用这个参数进行控制，因为P节点永远只进行Prefill,
