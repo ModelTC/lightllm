@@ -50,5 +50,5 @@ class InferStateInfo:
             if isinstance(attr_value, torch.Tensor):
                 attr_ = getattr(self, attr_name, None)
                 if attr_ is not None:
-                    attr_.copy_(attr_value)
+                    attr_.copy_(attr_value, non_blocking=True)
         return
