@@ -46,13 +46,14 @@ def masked_group_gemm(
     w1_scale: torch.Tensor,
     w2: torch.Tensor,
     w2_scale: torch.Tensor,
+    num_max_dispatch_tokens_per_rank,
 ):
     padded_m = recv_x[0].shape[1]
     E, N, _ = w1.shape
     block_size = 128
     # groupgemm (masked layout)
     gemm_out_a = torch.empty((E, padded_m, N), device=recv_x[0].device, dtype=dtype)
-    expected_m = padded_m
+    expected_m = num_max_dispatch_tokens_per_rank
     qsilu_out_scale = torch.empty((E, padded_m, N // 2 // block_size), device=recv_x[0].device, dtype=torch.float32)
     qsilu_out = torch.empty((E, padded_m, N // 2), dtype=w1.dtype, device=recv_x[0].device)
     # groupgemm (masked layout)
@@ -208,7 +209,9 @@ def fused_experts_impl(
             return_recv_hook=False,
         )
         # deepgemm
-        gemm_out_b = masked_group_gemm(recv_x, masked_m, hidden_states.dtype, w1, w1_scale, w2, w2_scale)
+        gemm_out_b = masked_group_gemm(
+            recv_x, masked_m, hidden_states.dtype, w1, w1_scale, w2, w2_scale, num_max_dispatch_tokens_per_rank
+        )
         # low latency combine
         combined_x, event_overlap, hook = buffer.low_latency_combine(
             gemm_out_b, topk_idx, topk_weights, handle, async_finish=False, return_recv_hook=False

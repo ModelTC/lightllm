@@ -41,7 +41,7 @@ class CudaGraph:
         # 中的 tensor。
         for _ in range(1):
             torch.cuda.synchronize()
-            decode_func(input_ids, infer_state)
+            decode_func(input_ids, copy.copy(infer_state))
             torch.cuda.synchronize()
 
         with lightllm_capture_graph(dist_group):
@@ -63,7 +63,7 @@ class CudaGraph:
         # warmup
         for _ in range(1):
             torch.cuda.synchronize()
-            decode_func(input_ids, infer_state, input_ids1, infer_state1)
+            decode_func(input_ids, copy.copy(infer_state), input_ids1, copy.copy(infer_state1))
             torch.cuda.synchronize()
         with lightllm_capture_graph(dist_group1):
             with lightllm_capture_graph(dist_group):

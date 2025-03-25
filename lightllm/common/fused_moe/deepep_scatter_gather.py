@@ -233,27 +233,32 @@ def _fwd_kernel_ep_gather(
     output_tensor_stride0,
     output_tensor_stride1,
     topk_col: tl.constexpr,
+    stride_tokens: tl.constexpr,
+    num_tokens: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
     cur_block = tl.program_id(0)
-    cur_token = tl.program_id(1)
+    token_start = tl.program_id(1)
     off_d = tl.arange(0, BLOCK_D)
-    accumulator = tl.zeros([BLOCK_D], dtype=tl.float32)
-    for start_topk in range(0, topk_col):
-        expert_id = tl.load(recv_topk + cur_token * recv_topk_stride0 + start_topk)
-        if expert_id >= 0:
-            expert_offset = tl.load(input_index + cur_token * input_index_stride0 + start_topk)
-            cur_expert_start = tl.load(expert_start_loc + expert_id)
-            acc_weight = tl.load(recv_topk_weight + cur_token * recv_topk_weight_stride0 + start_topk)
-            tmp = tl.load(
-                input_tensor + (cur_expert_start + expert_offset) * input_tensor_stride0 + cur_block * BLOCK_D + off_d
-            )
-            accumulator += tmp.to(tl.float32) * acc_weight
-
-    tl.store(
-        output_tensor + cur_token * output_tensor_stride0 + cur_block * BLOCK_D + off_d,
-        accumulator.to(output_tensor.dtype.element_ty),
-    )
+    for cur_token in range(token_start, num_tokens, stride_tokens):
+        accumulator = tl.zeros([BLOCK_D], dtype=tl.float32)
+        for start_topk in range(0, topk_col):
+            expert_id = tl.load(recv_topk + cur_token * recv_topk_stride0 + start_topk)
+            if expert_id >= 0:
+                expert_offset = tl.load(input_index + cur_token * input_index_stride0 + start_topk)
+                cur_expert_start = tl.load(expert_start_loc + expert_id)
+                acc_weight = tl.load(recv_topk_weight + cur_token * recv_topk_weight_stride0 + start_topk)
+                tmp = tl.load(
+                    input_tensor
+                    + (cur_expert_start + expert_offset) * input_tensor_stride0
+                    + cur_block * BLOCK_D
+                    + off_d
+                )
+                accumulator += tmp.to(tl.float32) * acc_weight
+        tl.store(
+            output_tensor + cur_token * output_tensor_stride0 + cur_block * BLOCK_D + off_d,
+            accumulator.to(output_tensor.dtype.element_ty),
+        )
 
 
 @torch.no_grad()
@@ -266,10 +271,12 @@ def ep_gather(
     output_tensor: torch.Tensor,
 ):
     BLOCK_D = 128  # block size of quantization
+    BLOCK_T = 128  # token blocks
     num_warps = 4
     num_tokens = output_tensor.shape[0]
     hidden_size = input_tensor.shape[1]
-    grid = (triton.cdiv(hidden_size, BLOCK_D), min(num_tokens, 65535))
+    grid_t = triton.cdiv(num_tokens, BLOCK_T)
+    grid = (triton.cdiv(hidden_size, BLOCK_D), grid_t)
     _fwd_kernel_ep_gather[grid](
         input_tensor,
         input_tensor.stride(0),
@@ -288,6 +295,8 @@ def ep_gather(
         output_tensor.stride(0),
         output_tensor.stride(1),
         topk_col=recv_topk.shape[1],
+        stride_tokens=grid_t,
+        num_tokens=num_tokens,
         num_warps=num_warps,
         BLOCK_D=BLOCK_D,
     )
