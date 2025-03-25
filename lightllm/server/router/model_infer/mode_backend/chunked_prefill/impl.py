@@ -46,8 +46,9 @@ class ChunkedPrefillBackend(ModeBackend):
 
         # 再 prefill
         if len(decode_reqs) == 0 or self.forward_step % self.max_wait_step == 0:
-            kwargs, run_reqs = prepare_prefill_inputs(prefill_reqs, is_chuncked_mode=True, is_multimodal=False)
-            self.forward_batch(kwargs, run_reqs)
+            if len(prefill_reqs) != 0:
+                kwargs, run_reqs = prepare_prefill_inputs(prefill_reqs, is_chuncked_mode=True, is_multimodal=False)
+                self.forward_batch(kwargs, run_reqs)
 
         self.forward_step += 1
         return
