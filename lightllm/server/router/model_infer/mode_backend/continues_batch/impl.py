@@ -8,7 +8,7 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
     prepare_prefill_inputs,
     prepare_decode_inputs,
 )
-from .post_process import sample
+from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 
 logger = init_logger(__name__)
 

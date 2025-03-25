@@ -4,7 +4,7 @@ from typing import List, Tuple
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams, g_infer_context
 from lightllm.server.router.model_infer.mode_backend.generic_pre_process import prepare_prefill_inputs
-from .post_process import sample
+from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 
 
 class ReturnPromptLogProbBackend(ContinuesBatchBackend):

@@ -9,7 +9,7 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
     prepare_prefill_inputs,
     prepare_decode_inputs,
 )
-from .post_process import sample
+from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.server.tokenizer import get_tokenizer
 from typing import List, Tuple
 from lightllm.utils.log_utils import init_logger
