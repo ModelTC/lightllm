@@ -102,24 +102,18 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
 
         logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
+        req_num, req_num1 = len(run_reqs), len(run_reqs1)
+        all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
 
-        if len(run_reqs) != 0:
-            logits = logits[0 : len(run_reqs), :]
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        if len(run_reqs1) != 0:
-            logits1 = logits1[0 : len(run_reqs1), :]
-            next_token_ids1, next_token_probs1 = sample(logits1, run_reqs1, self.eos_id)
+        all_logits[0:req_num, :].copy_(logits[0:req_num, :], non_blocking=True)
+        all_logits[req_num : (req_num + req_num1), :].copy_(logits1[0:req_num1, :], non_blocking=True)
 
-        if len(run_reqs) != 0:
+        all_run_reqs = run_reqs + run_reqs1
+        if all_run_reqs:
+            next_token_ids, next_token_probs = sample(all_logits, all_run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
             self._post_handle(
-                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
-            )
-        if len(run_reqs1) != 0:
-            next_token_ids1 = next_token_ids1.detach().cpu().numpy()
-            next_token_logprobs1 = torch.log(next_token_probs1).detach().cpu().numpy()
-            self._post_handle(
-                run_reqs1, next_token_ids1, next_token_logprobs1, is_chuncked_mode=False, do_filter_finished_reqs=False
+                all_run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
         return
