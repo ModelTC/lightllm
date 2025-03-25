@@ -119,21 +119,12 @@ class DPChunkedPrefillBackend(ModeBackend):
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
         if len(run_reqs1) != 0:
             logits1 = logits1[0 : len(run_reqs1), :]
-            next_token_ids1, next_token_probs1 = sample(logits1, run_reqs1, self.eos_id)
+        logits = torch.cat((logits, logits1), dim=0)
+        next_token_ids, next_token_ids = sample(logits, run_reqs, self.eos_id)
 
-        if len(run_reqs) != 0:
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self._post_handle(
-                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
-            )
-        if len(run_reqs1) != 0:
-            next_token_ids1 = next_token_ids1.detach().cpu().numpy()
-            next_token_logprobs1 = torch.log(next_token_probs1).detach().cpu().numpy()
-            self._post_handle(
-                run_reqs1, next_token_ids1, next_token_logprobs1, is_chuncked_mode=True, do_filter_finished_reqs=False
-            )
+        self._post_handle(
+            run_reqs + run_reqs1, next_token_ids, next_token_ids, is_chuncked_mode=True, do_filter_finished_reqs=False
+        )
         return
