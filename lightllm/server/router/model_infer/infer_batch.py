@@ -171,11 +171,14 @@ class InferenceContext:
             req: InferReq = self.requests_mapping[request_id]
             self.infer_req_ids.remove(request_id)
 
-            # 不支持多输出的情况的暂停
-            self.free_a_req_mem(free_token_index, req, is_group_finished=True)
-            req.cur_kv_len = 0
-            req.shm_req.shm_cur_kv_len = req.cur_kv_len
-            req.paused = True  # 暂停信息标记。
+            if req.initialized:
+                # 不支持多输出的情况的暂停
+                self.free_a_req_mem(free_token_index, req, is_group_finished=True)
+                req.cur_kv_len = 0
+                req.shm_req.shm_cur_kv_len = req.cur_kv_len
+                req.paused = True  # 暂停信息标记。
+            else:
+                req.paused = True
 
         if len(free_token_index) != 0:
             free_token_index = torch.cat(free_token_index, dim=-1)
