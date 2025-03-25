@@ -68,16 +68,15 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
 
         self._filter_reqs(aborted_reqs)
 
-        logits = None
         if decode_reqs:
             from lightllm.server.router.model_infer.mode_backend.generic_pre_process import prepare_decode_inputs
 
             kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
             logits = self.model.forward(**kwargs)
 
-        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs)
-
-        if logits is not None:
+            self._overlap_req_init_and_filter(
+                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
+            )
 
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
@@ -87,6 +86,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
 
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
 
     def _post_init_reqs(self, uninit_reqs: List[InferReq]):

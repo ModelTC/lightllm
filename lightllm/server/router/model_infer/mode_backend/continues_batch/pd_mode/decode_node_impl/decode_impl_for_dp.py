@@ -64,8 +64,8 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
                 self.normal_decode(decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
             else:
                 self.overlap_decode(decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
-        else:
-            self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs)
+
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
 
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
@@ -75,7 +75,7 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
             decode_reqs, max_decode_num, is_multimodal=False
         )
         logits = self.model.forward(**kwargs)
-        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs)
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
@@ -84,7 +84,6 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
             self._post_handle(
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
-        logits = None
         return
 
     def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
@@ -102,7 +101,7 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=False)
 
         logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
-        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs)
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
 
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]

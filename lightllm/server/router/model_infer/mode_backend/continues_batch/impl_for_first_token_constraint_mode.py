@@ -45,20 +45,33 @@ class FirstTokenConstraintBackend(ContinuesBatchBackend):
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
         self._post_handle(
-            run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=True
+            run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
         )
         return
 
     def decode(self):
-        req_objs = self._trans_req_ids_to_req_objs(g_infer_context.infer_req_ids)
-        kwargs, run_reqs = prepare_decode_inputs(req_objs)
-        logits = self.model.forward(**kwargs)
-
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
-        self._post_handle(
-            run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=True
+        uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
+            g_infer_context.infer_req_ids
         )
+        assert len(uninit_reqs) == 0
+        assert len(prefill_reqs) == 0
+
+        if aborted_reqs:
+            g_infer_context.filter_reqs(aborted_reqs)
+
+        if decode_reqs:
+            kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
+            logits = self.model.forward(**kwargs)
+
+            self._overlap_req_init_and_filter(uninit_reqs=[], ok_finished_reqs=ok_finished_reqs, clear_list=True)
+
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+
+            self._post_handle(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
+            )
+
+        self._overlap_req_init_and_filter(uninit_reqs=[], ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return

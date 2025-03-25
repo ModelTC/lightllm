@@ -74,5 +74,4 @@ class DPChunkedForPrefillNode(ContinuesBatchBackendForPrefillNode):
                 self._post_handle(
                     run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
                 )
-            logits = None
         return

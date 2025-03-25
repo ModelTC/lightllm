@@ -5,7 +5,7 @@ import rpyc
 import torch
 import socket
 from datetime import timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Callable, Optional
 from transformers.configuration_utils import PretrainedConfig
 from lightllm.models.cohere.model import CohereTpPartModel
 from lightllm.models.mixtral.model import MixtralTpPartModel
@@ -332,7 +332,12 @@ class ModeBackend:
         next_token_logprobs,
         is_chuncked_mode: bool,
         do_filter_finished_reqs: bool,
+        extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
     ) -> List[int]:
+        """
+        extra_post_req_handle_func 用于提供在一个请求确定输出的时候，给出额外的后处理操作，主要是用于
+        约束输出等模式，设置自己请求内部的状态机的状态，并添加额外的停止判定条件等。
+        """
         finished_req_ids = []
 
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
@@ -362,6 +367,9 @@ class ModeBackend:
 
             req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
+
+            if extra_post_req_handle_func is not None:
+                extra_post_req_handle_func(req_obj, next_token_id, next_token_logprob)
 
             # 判断是否已经满足生成结束条件。
             if req_obj.is_finished_or_aborted():
