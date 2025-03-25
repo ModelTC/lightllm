@@ -5,6 +5,4 @@ dist
 *.egg-info
 .idea
 .vscode
-start_server.sh
 tmp/
-.gitignore
