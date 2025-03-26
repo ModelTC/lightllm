@@ -209,7 +209,7 @@ def fused_experts_impl(
         )
     else:
         # low latency dispatch
-        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128))
+        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 256))
         expected_m = triton.cdiv(hidden_states.shape[0] * buffer.group_size * topk_idx.shape[1], num_experts)
         recv_x, masked_m, handle, event, hook = buffer.low_latency_dispatch(
             hidden_states,

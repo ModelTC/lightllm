@@ -128,7 +128,7 @@ class FusedMoeWeightEP(BaseWeight):
             scoring_func=self.scoring_func,
         )
         topk_idx = topk_idx.to(torch.long)
-        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 128))
+        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 256))
         recv_x, masked_m, handle, event, hook = dist_group_manager.ep_buffer.low_latency_dispatch(
             hidden_states,
             topk_idx,

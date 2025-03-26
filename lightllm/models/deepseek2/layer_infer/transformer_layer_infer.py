@@ -606,7 +606,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         # 0 attention
         _0_input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         _0_cache_kv = self._pre_cache_kv(infer_state, layer_weight)
-        _0_q, _0_cache_kv = self._tpsp_get_qkv(input_embdings, _0_cache_kv, infer_state, layer_weight)
+        _0_q, _0_cache_kv = self._tpsp_get_qkv(_0_input1, _0_cache_kv, infer_state, layer_weight)
         _0_input1 = None
         self._post_cache_kv(_0_cache_kv, infer_state, layer_weight)
         _0_o = self._token_attention_kernel(_0_q, infer_state, layer_weight)
@@ -640,7 +640,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         # 1 attention
         _1_input1 = self._att_norm(input_embdings1, infer_state1, layer_weight)
         _1_cache_kv = self._pre_cache_kv(infer_state1, layer_weight)
-        _1_q, _1_cache_kv = self._tpsp_get_qkv(input_embdings1, _1_cache_kv, infer_state1, layer_weight)
+        _1_q, _1_cache_kv = self._tpsp_get_qkv(_1_input1, _1_cache_kv, infer_state1, layer_weight)
         _1_input1 = None
         self._post_cache_kv(_1_cache_kv, infer_state1, layer_weight)
         _1_o = self._token_attention_kernel(_1_q, infer_state1, layer_weight)
