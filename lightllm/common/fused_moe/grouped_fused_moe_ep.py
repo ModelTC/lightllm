@@ -11,6 +11,7 @@ from lightllm.common.fused_moe.moe_silu_and_mul_mix_quant_ep import silu_and_mul
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.deepgemm_quant import get_tma_aligned_size
 from lightllm.common.fused_moe.deepep_scatter_gather import ep_scatter, ep_gather
+from lightllm.utils.envs_utils import get_deepep_num_max_dispatch_tokens_per_rank
 import numpy as np
 
 logger = init_logger(__name__)
@@ -209,7 +210,7 @@ def fused_experts_impl(
         )
     else:
         # low latency dispatch
-        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 256))
+        num_max_dispatch_tokens_per_rank = get_deepep_num_max_dispatch_tokens_per_rank()
         expected_m = triton.cdiv(hidden_states.shape[0] * buffer.group_size * topk_idx.shape[1], num_experts)
         recv_x, masked_m, handle, event, hook = buffer.low_latency_dispatch(
             hidden_states,

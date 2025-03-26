@@ -7,6 +7,7 @@ from .base_weight import BaseWeight
 from lightllm.common.fused_moe.grouped_fused_moe_ep import fused_experts_impl, masked_group_gemm
 from lightllm.distributed import dist_group_manager
 from lightllm.common.fused_moe.topk_select import select_experts
+from lightllm.utils.envs_utils import get_deepep_num_max_dispatch_tokens_per_rank
 
 
 class FusedMoeWeightEP(BaseWeight):
@@ -128,7 +129,7 @@ class FusedMoeWeightEP(BaseWeight):
             scoring_func=self.scoring_func,
         )
         topk_idx = topk_idx.to(torch.long)
-        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 256))
+        num_max_dispatch_tokens_per_rank = get_deepep_num_max_dispatch_tokens_per_rank()
         recv_x, masked_m, handle, event, hook = dist_group_manager.ep_buffer.low_latency_dispatch(
             hidden_states,
             topk_idx,

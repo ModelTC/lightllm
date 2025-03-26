@@ -25,7 +25,7 @@ from torch.distributed import ReduceOp, ProcessGroup
 from typing import List, Dict, Optional, Union
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.device_utils import has_nvlink
-from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.utils.envs_utils import get_env_start_args, get_deepep_num_max_dispatch_tokens_per_rank
 from lightllm.utils.dist_utils import (
     get_current_device_id,
     get_node_world_size,
@@ -137,7 +137,7 @@ class DistributeGroupManager:
 
     def new_deepep_group(self, n_routed_experts):
         moe_mode = os.getenv("MOE_MODE", "TP")
-        num_max_dispatch_tokens_per_rank = int(os.getenv("NUM_MAX_DISPATCH_TOKENS_PER_RANK", 256))
+        num_max_dispatch_tokens_per_rank = get_deepep_num_max_dispatch_tokens_per_rank()
         if moe_mode == "TP":
             self.ep_buffer = None
             return
