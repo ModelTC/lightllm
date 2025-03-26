@@ -16,10 +16,10 @@ from lightllm.server.router.model_infer.mode_backend import (
     OutlinesConstraintBackend,
     XgrammarBackend,
     FirstTokenConstraintBackend,
-    ContinuesBatchBackendForPrefillNode,
-    ContinuesBatchBackendForDecodeNode,
     DPChunkedPrefillBackend,
+    ContinuesBatchBackendForDecodeNode,
     DPForDecodeNode,
+    ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -130,7 +130,7 @@ class ModelRpcServer:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
             else:
-                self.backend = ContinuesBatchBackendForPrefillNode(self.info_queue, self.mem_queue)
+                self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
         elif is_decode_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)

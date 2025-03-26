@@ -12,6 +12,7 @@ from lightllm.server.router.model_infer.infer_batch import InferReq, InferSampli
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
+from lightllm.server.router.model_infer.mode_backend.generic_pre_process import prepare_prefill_inputs
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.common.basemodel.infer_lock import g_router_lock, g_infer_state_lock
 from rpyc.utils.server import ThreadedServer
@@ -22,7 +23,7 @@ from lightllm.utils.envs_utils import get_unique_server_name
 logger = init_logger(__name__)
 
 
-class ContinuesBatchBackendForPrefillNode(ModeBackend):
+class ChunckedPrefillForPrefillNode(ModeBackend):
     def __init__(self, info_queue: mp.Queue, mem_queue: mp.Queue) -> None:
         super().__init__()
         self.info_queue: mp.Queue = info_queue
@@ -72,20 +73,19 @@ class ContinuesBatchBackendForPrefillNode(ModeBackend):
             self.prefill_req_frozen_tokens_and_put_to_kvmove_taskqueue(ok_finished_reqs)
             self._filter_reqs(ok_finished_reqs)
 
-        from lightllm.server.router.model_infer.mode_backend.generic_pre_process import prepare_prefill_inputs
+        if prefill_reqs:
+            kwargs, run_reqs = prepare_prefill_inputs(
+                prefill_reqs, is_chuncked_mode=True, is_multimodal=self.is_multimodal
+            )
 
-        kwargs, run_reqs = prepare_prefill_inputs(
-            prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
-        )
+            logits = self.model.forward(**kwargs)
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        logits = self.model.forward(**kwargs)
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
-        self._post_handle(
-            run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
-        )
+            self._post_handle(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
+            )
         return
 
     def prefill_req_frozen_tokens_and_put_to_kvmove_taskqueue(self, run_reqs: List[InferReq]):

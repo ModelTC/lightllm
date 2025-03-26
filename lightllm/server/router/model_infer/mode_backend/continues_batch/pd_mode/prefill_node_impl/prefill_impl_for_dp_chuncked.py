@@ -18,13 +18,13 @@ from rpyc.utils.server import ThreadedServer
 from .prefill_task_cache import g_kv_move_task_cache
 from lightllm.utils.device_utils import kv_trans_use_p2p
 from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
-from .prefill_impl import ContinuesBatchBackendForPrefillNode
+from .prefill_impl import ChunckedPrefillForPrefillNode
 from lightllm.server.router.model_infer.mode_backend.dp_backend.impl import DPChunkedPrefillBackend
 
 logger = init_logger(__name__)
 
 
-class DPChunkedForPrefillNode(ContinuesBatchBackendForPrefillNode):
+class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
     def __init__(self, info_queue: mp.Queue, mem_queue: mp.Queue) -> None:
         super().__init__(info_queue=info_queue, mem_queue=mem_queue)
         self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap
