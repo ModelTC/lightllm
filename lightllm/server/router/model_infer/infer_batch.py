@@ -16,6 +16,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.multimodal_params import MultimodalParams
+from lightllm.utils.custom_kernel_utis import custom_cat
 
 logger = init_logger(__name__)
 
@@ -89,7 +90,13 @@ class InferenceContext:
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
-            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+            # torch 的异步流中存在非常多的同步bug，下面的写法可以充分的进行异步流折叠操作。
+            cuda_value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len]
+            value = torch.empty_like(cuda_value, pin_memory=True, device="cpu")
+            value.copy_(cuda_value, non_blocking=True)
+            # 进行一次同步，保证写入到 pin_memory 的操作
+            torch.cuda.current_stream().synchronize()
+
             if is_group_finished:
                 prefix_len = self.radix_cache.insert(key, value)
                 old_prefix_len = 0 if req.shared_kv_node is None else req.shared_kv_node.node_prefix_total_len
@@ -142,7 +149,7 @@ class InferenceContext:
             req.shm_req.shm_infer_released = True
             self.shm_req_manager.put_back_req_obj(req.shm_req)
 
-        free_token_index = torch.cat(free_token_index, dim=-1)
+        free_token_index = custom_cat(free_token_index)
         self.req_manager.free(free_req_index, free_token_index)
 
         finished_req_ids_set = set(finished_request_ids)
@@ -181,7 +188,7 @@ class InferenceContext:
                 req.paused = True
 
         if len(free_token_index) != 0:
-            free_token_index = torch.cat(free_token_index, dim=-1)
+            free_token_index = custom_cat(free_token_index)
             self.req_manager.free_token(free_token_index)
 
         return self
@@ -288,7 +295,9 @@ class InferReq:
                 if share_node is not None:
                     self.shared_kv_node = share_node
                     ready_cache_len = share_node.node_prefix_total_len
-                    g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
+                    g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len].copy_(
+                        value_tensor.pin_memory(), non_blocking=True
+                    )
                     self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64，用 int(*)转换
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度
 
