@@ -27,8 +27,8 @@ from lightllm.models.deepseek2.flashinfer_struct import Deepseek2FlashInferState
 from functools import partial
 from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 from lightllm.distributed.communication_op import all_gather, all_gather_into_tensor, all_reduce, reduce_scatter_tensor
-
 from lightllm.utils.envs_utils import enable_env_vars
+from lightllm.utils.dist_utils import get_global_world_size
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
@@ -674,7 +674,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             _1_shared_output = LlamaTransformerLayerInfer._ffn(self, _1_input1, infer_state1, layer_weight)
 
         # moe calu
-        _0_moe_out = layer_weight.experts.masked_group_gemm(_0_recv_x, _0_masked_m, input_embdings.dtype)
+        expected_m = triton.cdiv(
+            input_embdings.shape[0] * get_global_world_size() * self.num_experts_per_tok, self.n_routed_experts
+        )
+        _0_moe_out = layer_weight.experts.masked_group_gemm(_0_recv_x, _0_masked_m, input_embdings.dtype, expected_m)
 
         # 1 hook
         if getattr(infer_state1, "hook", None) is not None:
@@ -689,7 +692,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         infer_state.hook = _0_hook
 
         # to do moe caclue
-        _1_moe_out = layer_weight.experts.masked_group_gemm(_1_recv_x, _1_masked_m, input_embdings1.dtype)
+        _1_moe_out = layer_weight.experts.masked_group_gemm(_1_recv_x, _1_masked_m, input_embdings1.dtype, expected_m)
 
         # 0 hook
         if getattr(infer_state, "hook", None) is not None:

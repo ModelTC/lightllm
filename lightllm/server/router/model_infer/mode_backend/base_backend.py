@@ -91,7 +91,8 @@ class ModeBackend:
 
         init_distributed_env(kvargs)
         self.init_rank_infos()
-        dist_group_manager.create_groups(group_size=1)  # set the default group
+        group_size = 2 if self.args.enable_decode_microbatch_overlap else 1
+        dist_group_manager.create_groups(group_size=group_size)  # set the default group
 
         self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", self.dp_size_in_node)
 

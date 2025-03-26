@@ -140,10 +140,12 @@ class FusedMoeWeightEP(BaseWeight):
         )
         return recv_x, masked_m, topk_idx, topk_weights, handle, hook
 
-    def masked_group_gemm(self, recv_x: Tuple[torch.Tensor], masked_m: torch.Tensor, dtype: torch.dtype):
+    def masked_group_gemm(
+        self, recv_x: Tuple[torch.Tensor], masked_m: torch.Tensor, dtype: torch.dtype, expected_m: int
+    ):
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
-        return masked_group_gemm(recv_x, masked_m, dtype, w1, w1_scale, w2, w2_scale)
+        return masked_group_gemm(recv_x, masked_m, dtype, w1, w1_scale, w2, w2_scale, expected_m=expected_m)
 
     def low_latency_combine(
         self,
