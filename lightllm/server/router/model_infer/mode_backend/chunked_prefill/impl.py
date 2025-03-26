@@ -21,46 +21,53 @@ class ChunkedPrefillBackend(ModeBackend):
         self.forward_step = 0
         args = get_env_start_args()
         self.max_wait_step = args.router_max_wait_tokens
+        self.need_prefill_count = 0
 
     def prefill(self, reqs: List[Tuple]):
-        self._init_reqs(reqs)
-        self.forward_step = 0  # prefill first
+        self._init_reqs(reqs, init_req_obj=False)
+        self.need_prefill_count += 1
         return
 
     def decode(self):
-        uinit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
+        uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
         )
-        assert len(uinit_reqs) == 0
 
         if aborted_reqs:
             g_infer_context.filter_reqs(aborted_reqs)
 
-        if ok_finished_reqs:
-            g_infer_context.filter_reqs(ok_finished_reqs)
-
         # 先 decode
-        if len(decode_reqs) != 0:
+        if decode_reqs:
             kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
-            self.forward_batch(kwargs, run_reqs)
+            logits = self.model.forward(**kwargs)
+            self._overlap_req_init_and_filter(
+                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
+            )
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids = next_token_ids.detach().cpu().numpy()
+            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+            self._post_handle(
+                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
+            )
+            logits = None
 
         # 再 prefill
-        if len(decode_reqs) == 0 or self.forward_step % self.max_wait_step == 0:
-            if len(prefill_reqs) != 0:
+        if len(decode_reqs) == 0 or (self.forward_step % self.max_wait_step == 0) or (self.need_prefill_count > 0):
+            if prefill_reqs:
+                self.need_prefill_count -= 1
                 kwargs, run_reqs = prepare_prefill_inputs(prefill_reqs, is_chuncked_mode=True, is_multimodal=False)
-                self.forward_batch(kwargs, run_reqs)
+                logits = self.model.forward(**kwargs)
+                self._overlap_req_init_and_filter(
+                    uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
+                )
+                next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+                next_token_ids = next_token_ids.detach().cpu().numpy()
+                next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+                self._post_handle(
+                    run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
+                )
+                logits = None
 
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         self.forward_step += 1
-        return
-
-    def forward_batch(self, kwargs, run_reqs):
-        if len(run_reqs) == 0:
-            return
-        logits = self.model.forward(**kwargs)
-        next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-        self._post_handle(
-            run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=True
-        )
         return

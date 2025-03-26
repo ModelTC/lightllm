@@ -93,7 +93,7 @@ class RouterManager:
 
         self.is_token_healing = self.args.token_healing_mode
         self.chunked_prefill_size = args.chunked_prefill_size
-        self.enable_chunked_prefill = args.enable_chunked_prefill
+        self.disable_chunked_prefill = args.disable_chunked_prefill
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
@@ -157,7 +157,7 @@ class RouterManager:
             "nccl_host": self.args.nccl_host,
             "nccl_port": self.args.nccl_port,
             "is_first_token_constraint_mode": self.args.first_token_constraint_mode,
-            "enable_chunked_prefill": self.enable_chunked_prefill,
+            "disable_chunked_prefill": self.disable_chunked_prefill,
             "chunked_prefill_size": self.chunked_prefill_size,
             "is_token_healing": self.args.token_healing_mode,
             "return_all_prompt_logprobs": self.args.return_all_prompt_logprobs,

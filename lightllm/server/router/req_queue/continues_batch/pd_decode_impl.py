@@ -8,7 +8,7 @@ from lightllm.server.router.req_queue.base_queue import BaseQueue
 from lightllm.common.basemodel.infer_lock import g_router_lock
 
 
-class ContinuesBatchQueueForPDDecode(BaseQueue):
+class QueueForPDDecode(BaseQueue):
     def __init__(self, args, router, dp_index, dp_size_in_node) -> None:
         super().__init__(args, router, dp_index, dp_size_in_node)
 

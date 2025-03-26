@@ -87,7 +87,6 @@ def normal_or_p_d_start(args):
 
     # 这些模式不能同时设置。
     assert [
-        args.enable_chunked_prefill,
         args.diverse_mode,
         args.token_healing_mode,
         args.use_reward_model,
@@ -120,7 +119,7 @@ def normal_or_p_d_start(args):
     else:
         args.visual_nccl_ports = args.visual_nccl_ports[: args.visual_dp]
 
-    if not args.enable_chunked_prefill:
+    if args.disbale_chunked_prefill:
         # 普通模式下
         if args.batch_max_tokens is None:
             args.batch_max_tokens = args.max_req_total_len

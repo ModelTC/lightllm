@@ -38,7 +38,7 @@ class StartArgs:
     router_max_wait_tokens: int = field(default=6)
     use_dynamic_prompt_cache: bool = field(default=False)
     chunked_prefill_size: int = field(default=8192)
-    enable_chunked_prefill: bool = field(default=False)
+    disable_chunked_prefill: bool = field(default=False)
     diverse_mode: bool = field(default=False)
     token_healing_mode: bool = field(default=False)
     output_constraint_mode: str = field(default="none", metadata={"choices": ["none", "simple", "xgrammar"]})

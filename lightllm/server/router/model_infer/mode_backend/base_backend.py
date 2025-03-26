@@ -70,7 +70,7 @@ class ModeBackend:
         self.dp_size_in_node = max(1, self.dp_size // self.nnodes)
         self.load_way = kvargs["load_way"]
         self.mode = kvargs["mode"]
-        self.enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)
+        self.disable_chunked_prefill = kvargs.get("disable_chunked_prefill", False)
         self.chunked_prefill_size = kvargs.get("chunked_prefill_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
@@ -125,7 +125,7 @@ class ModeBackend:
             "is_token_healing": kvargs.get("is_token_healing", False),
             "return_all_prompt_logics": self.return_all_prompt_logprobs,
             "use_dynamic_prompt_cache": self.use_dynamic_prompt_cache,
-            "enable_chunked_prefill": self.enable_chunked_prefill,
+            "disable_chunked_prefill": self.disable_chunked_prefill,
             "data_type": kvargs.get("data_type", "float16"),
             "graph_max_batch_size": kvargs.get("graph_max_batch_size", 16),
             "graph_max_len_in_batch": kvargs.get("graph_max_len_in_batch", 8196),

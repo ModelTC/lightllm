@@ -106,7 +106,7 @@ class ModelRpcServer:
         # 填充真正的 rank_id 参数
         kvargs["rank_id"] = self.rank
         self.world_size = kvargs["world_size"]
-        enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)
+        disable_chunked_prefill = kvargs.get("disable_chunked_prefill", False)
         return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         use_reward_model = kvargs.get("use_reward_model", False)
         diverse_mode = kvargs.get("diverse_mode", False)
@@ -125,7 +125,7 @@ class ModelRpcServer:
             is_xgrammar_constraint_mode = False
             is_prefill_node = False
             is_decode_node = False
-        # use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
+
         if is_prefill_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
@@ -138,8 +138,8 @@ class ModelRpcServer:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
-        elif enable_chunked_prefill:
-            self.backend = ChunkedPrefillBackend()
+        elif disable_chunked_prefill:
+            self.backend = ContinuesBatchBackend()
         elif use_reward_model:
             self.backend = RewardModelBackend()
         elif return_all_prompt_logprobs:
@@ -155,7 +155,7 @@ class ModelRpcServer:
         elif is_first_token_constraint_mode:
             self.backend = FirstTokenConstraintBackend()
         else:
-            self.backend = ContinuesBatchBackend()
+            self.backend = ChunkedPrefillBackend()
 
         logger.info(f"use {self.backend.__class__.__name__}")
         self.backend.init_model(kvargs)
