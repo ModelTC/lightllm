@@ -1,6 +1,6 @@
 from .continues_batch.impl import ContinuesBatchQueue
 from .continues_batch.beam_impl import BeamContinuesBatchQueue
-from .continues_batch.pd_decode_impl import QueueForPDDecode
+from .continues_batch.impl_for_pd_decode import QueueForPDDecode
 from .chunked_prefill.impl_for_pd_prefill import QueueForPDChunkedPrefill
 from .chunked_prefill.impl import ChunkedPrefillQueue
 from .dp_base_queue import DpQueue
