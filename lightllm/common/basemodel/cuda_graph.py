@@ -113,7 +113,7 @@ class CudaGraph:
         ) = self.graph[batch_size]
         graph_input_ids.copy_(input_ids)
         graph_infer_state.copy_for_cuda_graph(infer_state)
-        graph_input_ids1.copy_(input_ids)
+        graph_input_ids1.copy_(input_ids1)
         graph_infer_state1.copy_for_cuda_graph(infer_state1)
         graph_obj.replay()
         return graph_predict_logics, graph_predict_logics1
