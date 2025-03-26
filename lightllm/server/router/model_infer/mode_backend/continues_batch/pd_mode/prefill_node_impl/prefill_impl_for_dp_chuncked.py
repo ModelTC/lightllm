@@ -13,7 +13,7 @@ from lightllm.server.core.objs import FinishStatus
 from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
-from lightllm.common.basemodel.infer_lock import g_router_lock, g_infer_state_lock
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from rpyc.utils.server import ThreadedServer
 from .prefill_task_cache import g_kv_move_task_cache
 from lightllm.utils.device_utils import kv_trans_use_p2p

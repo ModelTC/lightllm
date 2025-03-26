@@ -14,7 +14,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
-from lightllm.common.basemodel.infer_lock import g_infer_state_lock, g_router_lock
+from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from .decode_task_cache import g_success_kv_move_task_cache, KVMoveTask
 from lightllm.utils.device_utils import kv_trans_use_p2p
 from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args

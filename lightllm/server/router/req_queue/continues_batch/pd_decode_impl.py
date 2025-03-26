@@ -64,8 +64,9 @@ class QueueForPDDecode(BaseQueue):
         cum_run_len_array = np.cumsum(has_run_len_array)
         size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
         need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
-        return (
-            need_max_token_num,
-            (need_max_token_num + self.router.shared_token_load.get_frozened_token_count(self.dp_index))
-            / self.max_total_tokens,
-        )
+        with g_router_lock.obj:
+            return (
+                need_max_token_num,
+                (need_max_token_num + self.router.shared_token_load.get_frozened_token_count(self.dp_index))
+                / self.max_total_tokens,
+            )
