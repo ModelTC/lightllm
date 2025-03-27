@@ -84,6 +84,11 @@ def get_tokenizer(
 
         image_processor = AutoProcessor.from_pretrained(tokenizer_name)
         tokenizer = QWen2VLTokenizer(tokenizer=tokenizer, image_processor=image_processor, model_cfg=model_cfg)
+    elif model_type == "qwen2_5_vl" and "vision_config" in model_cfg:
+        from transformers import AutoProcessor
+
+        image_processor = AutoProcessor.from_pretrained(tokenizer_name)
+        tokenizer = QWen2VLTokenizer(tokenizer=tokenizer, image_processor=image_processor, model_cfg=model_cfg)
     elif model_type == "internvl_chat":
         tokenizer = InternvlTokenizer(tokenizer, model_cfg, weight_dir=tokenizer_name)
 

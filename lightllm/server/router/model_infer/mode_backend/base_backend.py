@@ -180,6 +180,9 @@ class ModeBackend:
             elif self.model_type == "qwen2_vl":
                 self.model = Qwen2VLTpPartModel(model_kvargs)
                 self.is_multimodal = True
+            elif self.model_type == "qwen2_5_vl":
+                self.model = Qwen2VLTpPartModel(model_kvargs)
+                self.is_multimodal = True
             elif self.model_type == "gemma":
                 self.model = Gemma_2bTpPartModel(model_kvargs)
             elif self.model_type == "cohere":
