@@ -90,12 +90,8 @@ class InferenceContext:
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
-            # torch 的异步流中存在非常多的同步bug，下面的写法可以充分的进行异步流折叠操作。
-            cuda_value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len]
-            value = torch.empty_like(cuda_value, pin_memory=True, device="cpu")
-            value.copy_(cuda_value, non_blocking=True)
-            # 进行一次同步，保证写入到 pin_memory 的操作
-            torch.cuda.current_stream().synchronize()
+            # .cpu() 是 流内阻塞操作
+            value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
 
             if is_group_finished:
                 prefix_len = self.radix_cache.insert(key, value)
@@ -295,9 +291,8 @@ class InferReq:
                 if share_node is not None:
                     self.shared_kv_node = share_node
                     ready_cache_len = share_node.node_prefix_total_len
-                    g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len].copy_(
-                        value_tensor.pin_memory(), non_blocking=True
-                    )
+                    # 从 cpu 到 gpu 是流内阻塞操作
+                    g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
                     self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64，用 int(*)转换
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度
 

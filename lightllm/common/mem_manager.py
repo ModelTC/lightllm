@@ -249,12 +249,8 @@ class MemoryManager:
         if isinstance(free_index, list):
             self.mem_state.numpy()[start:end] = free_index
         else:
-            if free_index.is_cpu:
-                self.mem_state[start:end] = free_index
-            else:
-                # 防止异步折叠因为copy操作，torch进行了全局同步，使折叠失效
-                self.mem_state[start:end].copy_(free_index, non_blocking=True)
-                torch.cuda.current_stream().synchronize()
+            # 从 gpu 到 cpu 的拷贝操作是流内阻塞操作
+            self.mem_state[start:end] = free_index
 
         self.mark_start -= len(free_index)
 
