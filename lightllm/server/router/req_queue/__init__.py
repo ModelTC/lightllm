@@ -14,7 +14,7 @@ def _get_req_queue_class(args, router, dp_size_in_node: int):
     if args.output_constraint_mode != "none":
         return ContinuesBatchQueue
     if args.first_token_constraint_mode:
-        return ContinuesBatchQueue
+        return ChunkedPrefillQueue
     if args.run_mode == "decode":
         return QueueForPDDecode
     if args.run_mode == "prefill":
