@@ -58,7 +58,7 @@ class QueueForPDDecode(BaseQueue):
     def _calcu_batch_token_load_batch_not_none(self, current_batch: Batch):
         is_busy = self.is_busy()
         self._init_cache_list(current_batch, is_busy)
-        if len(self.cache_len_list) == 0:
+        if len(self.cache_len_list) != 0:
             self.cache_len_list.sort(key=lambda x: -x[1])
             left_out_len_array = np.array([e[1] for e in self.cache_len_list])
             has_run_len_array = np.array([e[0] for e in self.cache_len_list])
