@@ -459,7 +459,12 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
         raise
 
     pipe_writer.send("init ok")
+
+    def handle_exception(loop, context):
+        logger.exception(f"Router Caught exception: {str(context)}")
+
     loop = asyncio.new_event_loop()
+    loop.set_exception_handler(handle_exception)
     asyncio.set_event_loop(loop)
     loop.create_task(router.loop_for_fwd())
     loop.run_until_complete(router.loop_for_netio_req())
