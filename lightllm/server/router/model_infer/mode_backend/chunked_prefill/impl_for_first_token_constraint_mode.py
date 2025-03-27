@@ -28,6 +28,7 @@ class FirstTokenConstraintBackend(ChunkedPrefillBackend):
         logger.info(f"first_allowed_tokens : {self.first_allowed_tokens}")
         # check token_id < vocab_size
         assert all(e < self.model.vocab_size for e in self.first_allowed_tokens)
+        self.fill_value = torch.tensor(-1000000.0)
         return
 
     def decode(self):
@@ -92,5 +93,8 @@ class FirstTokenConstraintBackend(ChunkedPrefillBackend):
                         mask[i, :] = True
                         mask[i, self.first_allowed_tokens] = False
             torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
-            logits[mask] = -1000000.0
+            # 不能使用 logits[mask] = -1000000.0
+            # 会存在诡异的多流异步问题, 可能是torch的bug
+            new_logits = torch.where(mask, self.fill_value, logits)
+            logits.copy_(new_logits)
         return
