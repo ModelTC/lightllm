@@ -16,9 +16,8 @@ logger = init_logger(__name__)
 
 
 class ChunkedPrefillBackend(ModeBackend):
-    def __init__(self, is_multimodal) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.is_multimodal = is_multimodal
         self.forward_step = 0
         args = get_env_start_args()
         self.max_wait_step = args.router_max_wait_tokens

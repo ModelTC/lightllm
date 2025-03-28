@@ -125,7 +125,6 @@ class ModelRpcServer:
             is_xgrammar_constraint_mode = False
             is_prefill_node = False
             is_decode_node = False
-        is_multimodal = kvargs.get("enable_multimodal", False)
 
         if is_prefill_node:
             if kvargs.get("args", None).dp > 1:
@@ -156,7 +155,7 @@ class ModelRpcServer:
         elif disable_chunked_prefill:
             self.backend = ContinuesBatchBackend()
         else:
-            self.backend = ChunkedPrefillBackend(is_multimodal)
+            self.backend = ChunkedPrefillBackend()
 
         logger.info(f"use {self.backend.__class__.__name__}")
         self.backend.init_model(kvargs)

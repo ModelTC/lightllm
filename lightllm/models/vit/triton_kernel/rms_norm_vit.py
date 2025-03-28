@@ -18,10 +18,10 @@ def rms_norm_kernel(
     prog_id = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
 
-    w = tl.load(weight + offsets, mask=offsets < N_COLS)
+    w = tl.load(weight + offsets, mask=offsets < N_COLS, other=0.0)
 
     x_ptr = input + prog_id * input_row_stride
-    x = tl.load(x_ptr + offsets, mask=offsets < N_COLS)
+    x = tl.load(x_ptr + offsets, mask=offsets < N_COLS, other=0.0)
     xf = x.to(tl.float32)
 
     var = tl.sum(xf * xf, 0) * float(1.0 / N_COLS)
