@@ -66,7 +66,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 self.softmax_scale = self.softmax_scale * mscale * mscale
         self.enable_cc_method = not os.getenv("DISABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, network_config, mode)
-        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         self.num_heads = network_config["num_attention_heads"]
         self.num_kv_heads = network_config["num_key_value_heads"]
         return
@@ -78,9 +77,8 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def _bind_ffn(self):
         if self.is_moe:
-            if self.enable_dp:
-                moe_mode = os.environ.get("MOE_MODE", "TP")
-                if moe_mode == "EP":
+            moe_mode = os.environ.get("MOE_MODE", "TP")
+            if moe_mode == "EP":
                     self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn_edp, self)
             else:
                 self._ffn = partial(Deepseek2TransformerLayerInfer._moe_ffn, self)

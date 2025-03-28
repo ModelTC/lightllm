@@ -22,7 +22,7 @@ logger = init_logger(__name__)
 class FlashInferStateExtraInfo:
     def __init__(self, model):
         num_heads = model.config["num_attention_heads"]
-        self.tp_q_head_num = num_heads if enable_env_vars("ENABLE_DP") else num_heads // get_dp_world_size()
+        self.tp_q_head_num = num_heads // get_dp_world_size()
         self.qk_nope_head_dim = model.qk_nope_head_dim
         self.qk_rope_head_dim = model.qk_rope_head_dim
         self.kv_lora_rank = model.kv_lora_rank

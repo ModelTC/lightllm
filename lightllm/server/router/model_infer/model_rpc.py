@@ -138,8 +138,6 @@ class ModelRpcServer:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
-        elif disable_chunked_prefill:
-            self.backend = ContinuesBatchBackend()
         elif use_reward_model:
             self.backend = RewardModelBackend()
         elif return_all_prompt_logprobs:
@@ -154,6 +152,8 @@ class ModelRpcServer:
             self.backend = XgrammarBackend()
         elif is_first_token_constraint_mode:
             self.backend = FirstTokenConstraintBackend()
+        elif disable_chunked_prefill:
+            self.backend = ContinuesBatchBackend()
         else:
             self.backend = ChunkedPrefillBackend()
 

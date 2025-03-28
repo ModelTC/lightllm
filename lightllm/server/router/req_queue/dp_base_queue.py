@@ -57,12 +57,13 @@ class DpQueue:
 
     def extend(self, req_group: List[Req]):
         # 同一个组的，要分配在同一个 dp 上，效率最高
+        index = self.round_robin_dp_id
+        self.round_robin_dp_id = (self.round_robin_dp_id + 1) % self.dp_size_in_node
         for req in req_group:
             suggested_dp_index = req.sample_params.suggested_dp_index
             if suggested_dp_index >= self.dp_size_in_node or suggested_dp_index < 0:
                 logger.error(f"input req {req.request_id} dp index {suggested_dp_index} has error")
-                index = self.round_robin_dp_id
-                self.round_robin_dp_id = (self.round_robin_dp_id + 1) % self.dp_size_in_node
+
                 req.sample_params.suggested_dp_index = index
                 self.inner_queues[index].append(req)
             else:

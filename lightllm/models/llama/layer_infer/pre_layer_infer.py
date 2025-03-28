@@ -16,12 +16,8 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
 
     def __init__(self, network_config, mode):
         super().__init__(network_config, mode)
-        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
-        if not self.enable_dp:
-            tp_vob_ids = np.linspace(0, network_config["vocab_size"], self.tp_world_size_ + 1, dtype=np.int64)
-            self.vob_start_id_, self.vob_end_id_ = int(tp_vob_ids[self.tp_rank_]), int(tp_vob_ids[self.tp_rank_ + 1])
-        else:
-            self.vob_start_id_, self.vob_end_id_ = 0, network_config["vocab_size"]
+        tp_vob_ids = np.linspace(0, network_config["vocab_size"], self.tp_world_size_ + 1, dtype=np.int64)
+        self.vob_start_id_, self.vob_end_id_ = int(tp_vob_ids[self.tp_rank_]), int(tp_vob_ids[self.tp_rank_ + 1])
 
         return
 

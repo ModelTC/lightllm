@@ -87,6 +87,7 @@ def normal_or_p_d_start(args):
 
     # 这些模式不能同时设置。
     assert [
+        args.disable_chunked_prefill,
         args.diverse_mode,
         args.token_healing_mode,
         args.use_reward_model,

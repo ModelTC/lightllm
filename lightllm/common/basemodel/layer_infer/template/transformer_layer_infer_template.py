@@ -22,7 +22,6 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         self.tp_o_head_num_ = -1
         self.head_dim_ = -1
         self.embed_dim_ = -1
-        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         return
 
     def _att_norm(self, input, infer_state: InferStateInfo, layer_weight) -> torch.Tensor:

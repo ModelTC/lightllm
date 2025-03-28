@@ -85,10 +85,6 @@ class ModeBackend:
         self.pd_rpyc_ports = kvargs.get("pd_rpyc_ports", None)
         max_total_token_num = kvargs["max_total_token_num"]
 
-        if self.dp_size > 1:
-            assert self.dp_size == self.world_size, "Currently only self-sustaining dp_size == tp_size"
-            os.environ["ENABLE_DP"] = "1"
-
         init_distributed_env(kvargs)
         self.init_rank_infos()
         group_size = 2 if self.args.enable_decode_microbatch_overlap else 1

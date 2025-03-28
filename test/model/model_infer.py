@@ -14,8 +14,6 @@ def test_model_inference(args, model_class):
     ans_queue = Queue()
     workers = []
     dp_size = args.get("dp", 1)
-    if dp_size > 1:
-        os.environ["ENABLE_DP"] = "1"
 
     for rank_id in range(args.tp):
         model_kvargs = {
