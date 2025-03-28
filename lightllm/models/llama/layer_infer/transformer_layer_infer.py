@@ -155,7 +155,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         else:
             q, _ = layer_weight.q_proj.flux_ag_gemm(input)
-            kv, input = layer_weight.kv_proj.flux_ag_gemm(input)
+            kv, _ = layer_weight.kv_proj.flux_ag_gemm(input)
             q = q[: len(infer_state.position_cos)]
             kv = kv[: len(infer_state.position_cos)]
             cache_kv = kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
@@ -321,8 +321,9 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                 )
                 ffn2_out = reduce_o_tensor
         else:
-            up_gate_out, input = layer_weight.gate_up_proj.flux_ag_gemm(input)
-            ffn1_out = self.alloc_tensor((input.size(0), up_gate_out.size(1) // 2), input.dtype)
+            up_gate_out, _ = layer_weight.gate_up_proj.flux_ag_gemm(input)
+            sp_token_num, hidden_dim = input.shape
+            ffn1_out = self.alloc_tensor((sp_token_num * self.tp_world_size_, up_gate_out.size(1) // 2), input.dtype)
             silu_and_mul_fwd(up_gate_out, ffn1_out)
             input = None
             up_gate_out = None

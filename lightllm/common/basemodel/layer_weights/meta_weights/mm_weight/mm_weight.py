@@ -70,27 +70,27 @@ class MMWeightTpl(BaseWeightTpl):
                 out = torch.zeros(shape, dtype=dtype, device=device)
         # logger.debug(f"{input_tensor.shape}, {self.weight.shape}, {out.shape}")
 
-        with flux.util.group_profile(
-            name="gemm_rs_" + os.environ["TORCHELASTIC_RUN_ID"], do_prof=False, group=torch.distributed.group.WORLD
-        ):
-            gemm_rs_op = flux.GemmRS(
-                torch.distributed.group.WORLD,
-                1,
-                (M + 1024 - 1) // 1024 * 1024,
-                N,
-                input_tensor.dtype,
-                out.dtype,
-                transpose_weight=transpose_weight,
-            )
-            # logger.debug(f"gemm_rs_kernel initialized M={M}, N={N}, local_M={local_M}")
-            out = gemm_rs_op.forward(
-                input_tensor,
-                self.weight,
-                bias=self.bias,
-                fast_accum=False,
-                reduce_scatter_option=flux.ReduceScatterOption(),
-            )
-            return out
+        # with flux.util.group_profile(
+        #     name="gemm_rs_" + os.environ["TORCHELASTIC_RUN_ID"], do_prof=False, group=torch.distributed.group.WORLD
+        # ):
+        gemm_rs_op = flux.GemmRS(
+            torch.distributed.group.WORLD,
+            1,
+            (M + 1024 - 1) // 1024 * 1024,
+            N,
+            input_tensor.dtype,
+            out.dtype,
+            transpose_weight=transpose_weight,
+        )
+        # logger.debug(f"gemm_rs_kernel initialized M={M}, N={N}, local_M={local_M}")
+        out = gemm_rs_op.forward(
+            input_tensor,
+            self.weight,
+            bias=self.bias,
+            fast_accum=False,
+            reduce_scatter_option=flux.ReduceScatterOption(),
+        )
+        return out
 
     def flux_ag_gemm(
         self,
@@ -120,31 +120,31 @@ class MMWeightTpl(BaseWeightTpl):
                 out = torch.zeros(shape, dtype=dtype, device=device)
         # logger.debug(f"{input_tensor.shape}, {self.weight.shape}, {out.shape}")
 
-        with flux.util.group_profile(
-            name="ag_gemm_" + os.environ["TORCHELASTIC_RUN_ID"], do_prof=False, group=torch.distributed.group.WORLD
-        ):
-            ag_option = flux.AllGatherOption()
-            ag_gemm_op = flux.AGKernel(
-                torch.distributed.group.WORLD,
-                1,
-                M,
-                N,
-                K,
-                input_tensor.dtype,
-                output_dtype=out.dtype,
-            )
-            full_input = torch.empty((M, K), dtype=input_tensor.dtype, device=input_tensor.device)
-            # logger.debug(f"ag_gemm_kernel initialized M={M}, N={N}, K={K}")
-            out = ag_gemm_op.forward(
-                input_tensor,
-                self.weight,
-                output=out,
-                bias=self.bias,
-                transpose_weight=transpose_weight,
-                gathered_input=full_input,
-                all_gather_option=ag_option,
-            )
-            return out, full_input
+        # with flux.util.group_profile(
+        #     name="ag_gemm_" + os.environ["TORCHELASTIC_RUN_ID"], do_prof=False, group=torch.distributed.group.WORLD
+        # ):
+        ag_option = flux.AllGatherOption()
+        ag_gemm_op = flux.AGKernel(
+            torch.distributed.group.WORLD,
+            1,
+            M,
+            N,
+            K,
+            input_tensor.dtype,
+            output_dtype=out.dtype,
+        )
+        # full_input = torch.empty((M, K), dtype=input_tensor.dtype, device=input_tensor.device)
+        # logger.debug(f"ag_gemm_kernel initialized M={M}, N={N}, K={K}")
+        out = ag_gemm_op.forward(
+            input_tensor,
+            self.weight,
+            output=out,
+            bias=self.bias,
+            transpose_weight=transpose_weight,
+            # gathered_input=full_input,
+            all_gather_option=ag_option,
+        )
+        return out, None
 
     def mm(
         self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
