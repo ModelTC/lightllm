@@ -324,7 +324,7 @@ class RouterManager:
                 # 因为其他节点上的dp可能存在运行的请求，所以本节点也需要调用decode，推理后端的backend会
                 # padding 一些fake的请求来使推理过程可以正常完成。主要是给 deepseekv3 这种类型的大模型
                 # 使用的，其ep并行模式下需要所有节点协同。
-                self._decode_batch(self.running_batch)
+                await self._decode_batch(self.running_batch)
 
             return
 
