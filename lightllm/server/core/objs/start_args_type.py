@@ -73,4 +73,3 @@ class StartArgs:
     quant_cfg: Optional[str] = field(default=None)
     vit_quant_type: Optional[str] = field(default=None)
     vit_quant_cfg: Optional[str] = field(default=None)
-    static_quant: bool = field(default=False)

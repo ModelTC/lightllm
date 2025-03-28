@@ -202,6 +202,19 @@ def make_argument_parser() -> argparse.ArgumentParser:
         only deepseekv3 model supported now.""",
     )
     parser.add_argument(
+        "--enable_flashinfer_prefill",
+        action="store_true",
+        help="""inference backend will use the attention kernel of flashinfer for prefill,
+        only deepseekv3 model supported now.""",
+    )
+    parser.add_argument(
+        "--enable_flashinfer_decode",
+        action="store_true",
+        help="""inference backend will use the attention kernel of flashinfer for decode,
+        only deepseekv3 model supported now.""",
+    )
+
+    parser.add_argument(
         "--cache_capacity", type=int, default=200, help="cache server capacity for multimodal resources"
     )
     parser.add_argument(
@@ -302,10 +315,5 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="""Path of quantization config. It can be used for mixed quantization.
             Examples can be found in lightllm/common/quantization/configs.""",
-    )
-    parser.add_argument(
-        "--static_quant",
-        action="store_true",
-        help="whether to load static quantized weights. Currently, only vllm-w8a8 is supported.",
     )
     return parser
