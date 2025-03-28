@@ -7,6 +7,7 @@ from transformers import AutoTokenizer
 # NOTE: To test, change the model path here
 tokenizer = AutoTokenizer.from_pretrained("/path/to/model")
 
+
 class RequestThread(threading.Thread):
     def __init__(self, url, headers, data):
         threading.Thread.__init__(self)
