@@ -208,7 +208,7 @@ class TpPartBaseModel:
             None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
         )
         if self.graph is not None:
-            if get_env_start_args().enable_decode_microbatch_overlap or get_env_start_args().enable_prefill_microbatch_overlap:
+            if get_env_start_args().enable_decode_microbatch_overlap:
                 self.graph.warmup_overlap(self)
             else:
                 self.graph.warmup(self)
