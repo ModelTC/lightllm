@@ -10,39 +10,6 @@ from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 
 
-def get_classed_reqs(req_ids: List[int]):
-    """
-    将请求分类返回:
-    1. unit reqs
-    2. finished_reqs
-    3. prefill reqs
-    4. decode reqs
-    """
-    uinit_reqs = []
-    finished_reqs = []
-    prefill_reqs = []
-    decode_reqs = []
-
-    for request_id in req_ids:
-        req_obj: InferReq = g_infer_context.requests_mapping[request_id]
-
-        if req_obj.is_uninitialized():
-            uinit_reqs.append(req_obj)
-            continue
-
-        if req_obj.finish_status.is_finished() or req_obj.shm_req.router_aborted:
-            finished_reqs.append(req_obj)
-            continue
-
-        is_decode = req_obj.cur_kv_len + 1 == req_obj.get_cur_total_len()
-        if not is_decode:
-            prefill_reqs.append(req_obj)
-        else:
-            decode_reqs.append(req_obj)
-
-    return uinit_reqs, finished_reqs, prefill_reqs, decode_reqs
-
-
 def padded_prepare_prefill_inputs(req_objs: List[InferReq], max_prefill_num: int, is_multimodal=False):
     assert max_prefill_num != 0
     run_reqs = []

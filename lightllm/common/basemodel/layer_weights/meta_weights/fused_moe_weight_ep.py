@@ -1,10 +1,13 @@
+import os
 import torch
 import threading
 from typing import Optional, Tuple, List, Dict, Any
 from lightllm.utils.dist_utils import get_global_world_size, get_global_rank, get_current_device_id
 from .base_weight import BaseWeight
-from lightllm.common.fused_moe.grouped_fused_moe_ep import fused_experts_impl
+from lightllm.common.fused_moe.grouped_fused_moe_ep import fused_experts_impl, masked_group_gemm
 from lightllm.distributed import dist_group_manager
+from lightllm.common.fused_moe.topk_select import select_experts
+from lightllm.utils.envs_utils import get_deepep_num_max_dispatch_tokens_per_rank
 
 
 class FusedMoeWeightEP(BaseWeight):
@@ -28,6 +31,10 @@ class FusedMoeWeightEP(BaseWeight):
         if self.quant_method is not None:
             self.weight_scale_suffix = self.quant_method.weight_scale_suffix
             self.quant_method.is_moe = True
+            block_size = 1
+            if hasattr(self.quant_method, "block_size"):
+                block_size = self.quant_method.block_size
+            self.block_size = block_size
 
         self.weight_prefix = weight_prefix
         self.w1_weight_name = gate_proj_name
@@ -51,6 +58,15 @@ class FusedMoeWeightEP(BaseWeight):
         self.scoring_func = network_config["scoring_func"]
         self.w1 = [None, None]  # weight, weight_scale
         self.w2 = [None, None]  # weight, weight_scale
+        self.use_fp8_w8a8 = self.quant_method is not None
+
+        self.num_experts_per_tok = network_config["num_experts_per_tok"]
+        self.use_grouped_topk = network_config["n_group"] > 0
+        self.norm_topk_prob = network_config["norm_topk_prob"]
+        self.n_group = network_config["n_group"]
+        self.topk_group = network_config["topk_group"]
+        self.routed_scaling_factor = network_config["routed_scaling_factor"]
+
         self.lock = threading.Lock()
         # init buffer
 
@@ -65,8 +81,6 @@ class FusedMoeWeightEP(BaseWeight):
         num_expert_group,
         is_prefill,
     ):
-        from lightllm.common.fused_moe.topk_select import select_experts
-
         topk_weights, topk_ids = select_experts(
             hidden_states=input_tensor,
             router_logits=router_logits,
@@ -80,7 +94,6 @@ class FusedMoeWeightEP(BaseWeight):
         )
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
-        use_fp8_w8a8 = self.quant_method is not None
         return fused_experts_impl(
             hidden_states=input_tensor,
             w1=w1,
@@ -90,13 +103,62 @@ class FusedMoeWeightEP(BaseWeight):
             num_experts=self.n_routed_experts,  # number of all experts
             buffer=dist_group_manager.ep_buffer,
             is_prefill=is_prefill,
-            use_fp8_w8a8=use_fp8_w8a8,
-            use_fp8_all2all=use_fp8_w8a8,
+            use_fp8_w8a8=self.use_fp8_w8a8,
+            use_fp8_all2all=self.use_fp8_w8a8,
             use_int8_w8a16=False,  # default to False
             w1_scale=w1_scale,
             w2_scale=w2_scale,
             previous_event=None,  # for overlap
         )
+
+    def low_latency_dispatch(
+        self,
+        hidden_states: torch.Tensor,
+        router_logits: torch.Tensor,
+    ):
+
+        topk_weights, topk_idx = select_experts(
+            hidden_states=hidden_states,
+            router_logits=router_logits,
+            correction_bias=self.e_score_correction_bias,
+            use_grouped_topk=self.use_grouped_topk,
+            top_k=self.num_experts_per_tok,
+            renormalize=self.norm_topk_prob,
+            topk_group=self.topk_group,
+            num_expert_group=self.n_group,
+            scoring_func=self.scoring_func,
+        )
+        topk_idx = topk_idx.to(torch.long)
+        num_max_dispatch_tokens_per_rank = get_deepep_num_max_dispatch_tokens_per_rank()
+        recv_x, masked_m, handle, event, hook = dist_group_manager.ep_buffer.low_latency_dispatch(
+            hidden_states,
+            topk_idx,
+            num_max_dispatch_tokens_per_rank,
+            self.n_routed_experts,
+            use_fp8=self.use_fp8_w8a8,
+            async_finish=False,
+            return_recv_hook=True,
+        )
+        return recv_x, masked_m, topk_idx, topk_weights, handle, hook
+
+    def masked_group_gemm(
+        self, recv_x: Tuple[torch.Tensor], masked_m: torch.Tensor, dtype: torch.dtype, expected_m: int
+    ):
+        w1, w1_scale = self.w1
+        w2, w2_scale = self.w2
+        return masked_group_gemm(recv_x, masked_m, dtype, w1, w1_scale, w2, w2_scale, expected_m=expected_m)
+
+    def low_latency_combine(
+        self,
+        gemm_out_b: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        handle: Any,
+    ):
+        combined_x, event_overlap, hook = dist_group_manager.ep_buffer.low_latency_combine(
+            gemm_out_b, topk_idx, topk_weights, handle, async_finish=False, return_recv_hook=True
+        )
+        return combined_x, hook
 
     def _fuse(self):
         if self.quantized_weight:

@@ -9,7 +9,6 @@ class Deepseek2InferStateInfo(LlamaInferStateInfo):
     def __init__(self):
         super().__init__()
         self.kv_starts = None
-        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         super().init_some_extra_state(model, input_ids)

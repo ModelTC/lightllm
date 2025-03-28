@@ -2,6 +2,7 @@ import os
 import torch
 import copy
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 
@@ -16,7 +17,7 @@ class CudaGraph:
         self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
         self.max_batch_size = max_batch_size
         self.graph_max_len_in_batch = max_len_in_batch
-        self.is_overlap_two_micro_batch_mode = False
+        self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap
 
     def can_run(self, batch_size, max_len_in_batch):
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
@@ -40,7 +41,7 @@ class CudaGraph:
         # 中的 tensor。
         for _ in range(1):
             torch.cuda.synchronize()
-            decode_func(input_ids, infer_state)
+            decode_func(input_ids, copy.copy(infer_state))
             torch.cuda.synchronize()
 
         with lightllm_capture_graph(dist_group):
@@ -62,7 +63,7 @@ class CudaGraph:
         # warmup
         for _ in range(1):
             torch.cuda.synchronize()
-            decode_func(input_ids, infer_state, input_ids1, infer_state1)
+            decode_func(input_ids, copy.copy(infer_state), input_ids1, copy.copy(infer_state1))
             torch.cuda.synchronize()
         with lightllm_capture_graph(dist_group1):
             with lightllm_capture_graph(dist_group):
@@ -85,7 +86,7 @@ class CudaGraph:
         Capture the cuda graph for the decoding stage.
         input_ids1 and infer_state1 is used for the overlap.
         """
-        if self.is_overlap_two_micro_batch_mode:
+        if self.enable_decode_microbatch_overlap:
             return self._capture_decode_overlap(decode_func, input_ids, infer_state, input_ids1, infer_state1)
         else:
             assert input_ids1 is None and infer_state1 is None
@@ -112,13 +113,13 @@ class CudaGraph:
         ) = self.graph[batch_size]
         graph_input_ids.copy_(input_ids)
         graph_infer_state.copy_for_cuda_graph(infer_state)
-        graph_input_ids1.copy_(input_ids)
+        graph_input_ids1.copy_(input_ids1)
         graph_infer_state1.copy_for_cuda_graph(infer_state1)
         graph_obj.replay()
         return graph_predict_logics, graph_predict_logics1
 
     def replay(self, input_ids, infer_state, input_ids1=None, infer_state1=None):
-        if self.is_overlap_two_micro_batch_mode:
+        if self.enable_decode_microbatch_overlap:
             return self._replay_overlap(input_ids, infer_state, input_ids1, infer_state1)
         else:
             assert input_ids1 is None and infer_state1 is None
@@ -249,7 +250,6 @@ class CudaGraph:
                     if isinstance(var_value, torch.Tensor):
                         del locals()[var_name]
                 torch.cuda.empty_cache()
-
             _, _ = model.microbatch_overlap_decode(decode_batches[0], decode_batches[1])
 
             model.mem_manager.free_all()

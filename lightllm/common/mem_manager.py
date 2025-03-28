@@ -249,6 +249,7 @@ class MemoryManager:
         if isinstance(free_index, list):
             self.mem_state.numpy()[start:end] = free_index
         else:
+            # 从 gpu 到 cpu 的拷贝操作是流内阻塞操作
             self.mem_state[start:end] = free_index
 
         self.mark_start -= len(free_index)

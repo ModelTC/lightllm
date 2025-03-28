@@ -3,7 +3,7 @@
 # if token_num % sp_world_size != 0, will pad
 # token to token_num % sp_world_size == 0, this.
 # demo: token_num = 3, sp_world_size = 4, will get
-# ans_tensor shape is [4, hidden_dim].
+# ans_tensor shape is [1, hidden_dim].
 import torch
 
 import triton

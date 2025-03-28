@@ -32,7 +32,9 @@ class BaseLayerInfer:
         标记申请的tensor是用于第几个microbatch的，当前这个参数只有在 is_graph_out 为 True的时候会有
         具体的意义，其他情况没有实际意义。
         """
-        return g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=is_graph_out)
+        return g_cache_manager.alloc_tensor(
+            shape, dtype, device=device, is_graph_out=is_graph_out, microbatch_index=microbatch_index
+        )
 
     def tpsp_context_forward(self, input: torch.Tensor, infer_state: InferStateInfo, layer_weight: BaseLayerWeight):
         raise Exception("need to impl")

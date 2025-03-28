@@ -17,7 +17,7 @@ from lightllm.common.basemodel.cuda_graph import CudaGraph
 from lightllm.common.quantization import Quantcfg
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.dist_utils import get_dp_world_size
-from lightllm.utils.envs_utils import enable_env_vars
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 
@@ -56,8 +56,6 @@ class TpPartBaseModel:
         self.return_all_prompt_logics = kvargs.get("return_all_prompt_logics", False)
         assert not (self.is_token_healing and self.return_all_prompt_logics), "can not be true in same time"
         self.use_dynamic_prompt_cache = kvargs.get("use_dynamic_prompt_cache", False)
-        enable_chunked_prefill = kvargs.get("enable_chunked_prefill", False)  # chunked prefill is default on.
-        self.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache or enable_chunked_prefill
         self.data_type = kvargs.get("data_type", "float16")
         self.graph_max_batch_size = kvargs.get("graph_max_batch_size", 16)
         self.graph_max_len_in_batch = kvargs.get("graph_max_len_in_batch", 8192)
@@ -66,6 +64,7 @@ class TpPartBaseModel:
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.mem_fraction = kvargs.get("mem_fraction", 0.9)
         self.tp_world_size_ = get_dp_world_size()
+        self.enable_tpsp_mix_mode = get_env_start_args().enable_tpsp_mix_mode
 
         self._init_datatype()
         self._init_config()
@@ -209,8 +208,10 @@ class TpPartBaseModel:
             None if self.disable_cudagraph else CudaGraph(self.graph_max_batch_size, self.graph_max_len_in_batch)
         )
         if self.graph is not None:
-            self.graph.warmup(self)
-            # to do warmup overlap
+            if get_env_start_args().enable_decode_microbatch_overlap:
+                self.graph.warmup_overlap(self)
+            else:
+                self.graph.warmup(self)
 
     def _init_custom(self):
         pass
@@ -228,7 +229,6 @@ class TpPartBaseModel:
         b_seq_len: torch.Tensor,
         b_ready_cache_len: torch.Tensor = None,
         multimodal_params=None,
-        dist_group: CustomProcessGroup = None,
         is_prefill=True,
     ):
         assert mem_indexes.is_cuda
@@ -245,7 +245,6 @@ class TpPartBaseModel:
                 b_seq_len,
                 b_ready_cache_len,
                 multimodal_params,
-                dist_group,
             )
         else:
             return self._decode(
@@ -258,7 +257,6 @@ class TpPartBaseModel:
                 b_start_loc,
                 b_seq_len,
                 multimodal_params,
-                dist_group,
             )
 
     def _prefill(
@@ -273,7 +271,6 @@ class TpPartBaseModel:
         b_seq_len,
         b_ready_cache_len,
         multimodal_params,
-        dist_group: CustomProcessGroup = None,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
@@ -303,7 +300,7 @@ class TpPartBaseModel:
             dtype=self.data_type,
             device="cuda",
         )
-        infer_state.dist_group = dist_group if dist_group is not None else dist_group_manager.get_default_group()
+        infer_state.dist_group = dist_group_manager.get_default_group()
 
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
@@ -329,7 +326,6 @@ class TpPartBaseModel:
         b_start_loc,
         b_seq_len,
         multimodal_params,
-        dist_group: CustomProcessGroup = None,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = False
@@ -355,7 +351,7 @@ class TpPartBaseModel:
             dtype=self.data_type,
             device="cuda",
         )
-        infer_state.dist_group = dist_group if dist_group is not None else dist_group_manager.get_default_group()
+        infer_state.dist_group = dist_group_manager.get_default_group()
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
@@ -441,7 +437,7 @@ class TpPartBaseModel:
 
     @final
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
-        run_mode_index = 1 if enable_env_vars("LIGHTLLM_USE_TPSP_MIX") else 0
+        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
         g_cache_manager.cache_env_in()
         cuda_input_ids = input_ids
 
@@ -461,7 +457,7 @@ class TpPartBaseModel:
 
     @final
     def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        run_mode_index = 1 if enable_env_vars("LIGHTLLM_USE_TPSP_MIX") else 0
+        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
         g_cache_manager.cache_env_in(
             is_cuda_graph=infer_state.is_cuda_graph,
             cur_batch_size=infer_state.batch_size,

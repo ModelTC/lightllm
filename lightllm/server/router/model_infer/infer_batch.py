@@ -16,6 +16,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.multimodal_params import MultimodalParams
+from lightllm.utils.custom_kernel_utis import custom_cat
 
 logger = init_logger(__name__)
 
@@ -89,7 +90,9 @@ class InferenceContext:
         else:
             input_token_ids = req.get_input_token_ids()
             key = torch.tensor(input_token_ids[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
+            # .cpu() 是 流内阻塞操作
             value = self.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+
             if is_group_finished:
                 prefix_len = self.radix_cache.insert(key, value)
                 old_prefix_len = 0 if req.shared_kv_node is None else req.shared_kv_node.node_prefix_total_len
@@ -142,7 +145,7 @@ class InferenceContext:
             req.shm_req.shm_infer_released = True
             self.shm_req_manager.put_back_req_obj(req.shm_req)
 
-        free_token_index = torch.cat(free_token_index, dim=-1)
+        free_token_index = custom_cat(free_token_index)
         self.req_manager.free(free_req_index, free_token_index)
 
         finished_req_ids_set = set(finished_request_ids)
@@ -159,6 +162,11 @@ class InferenceContext:
 
         return
 
+    def filter_reqs(self, finished_reqs: List["InferReq"]):
+        if finished_reqs:
+            self.filter([req.req_id for req in finished_reqs])
+        return
+
     @torch.no_grad()
     def pause_reqs(self, pause_req_ids: List[int]):
         free_token_index = []
@@ -166,14 +174,17 @@ class InferenceContext:
             req: InferReq = self.requests_mapping[request_id]
             self.infer_req_ids.remove(request_id)
 
-            # 不支持多输出的情况的暂停
-            self.free_a_req_mem(free_token_index, req, is_group_finished=True)
-            req.cur_kv_len = 0
-            req.shm_req.shm_cur_kv_len = req.cur_kv_len
-            req.paused = True  # 暂停信息标记。
+            if req.initialized:
+                # 不支持多输出的情况的暂停
+                self.free_a_req_mem(free_token_index, req, is_group_finished=True)
+                req.cur_kv_len = 0
+                req.shm_req.shm_cur_kv_len = req.cur_kv_len
+                req.paused = True  # 暂停信息标记。
+            else:
+                req.paused = True
 
         if len(free_token_index) != 0:
-            free_token_index = torch.cat(free_token_index, dim=-1)
+            free_token_index = custom_cat(free_token_index)
             self.req_manager.free_token(free_token_index)
 
         return self
@@ -280,6 +291,7 @@ class InferReq:
                 if share_node is not None:
                     self.shared_kv_node = share_node
                     ready_cache_len = share_node.node_prefix_total_len
+                    # 从 cpu 到 gpu 是流内阻塞操作
                     g_infer_context.req_manager.req_to_token_indexs[self.req_idx, 0:ready_cache_len] = value_tensor
                     self.cur_kv_len = int(ready_cache_len)  # 序列化问题, 该对象可能为numpy.int64，用 int(*)转换
                     self.shm_req.prompt_cache_len = self.cur_kv_len  # 记录 prompt cache 的命中长度

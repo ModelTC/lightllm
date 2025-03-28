@@ -19,7 +19,6 @@ from ..triton_kernel.weight_dequant import weight_dequant
 
 class Deepseek2TransformerLayerWeight(TransformerLayerWeight):
     def __init__(self, layer_num, data_type, network_config, mode=[], quant_cfg=None):
-        self.enable_dp = os.getenv("ENABLE_DP", "0").upper() in ["ON", "TRUE", "1"]
         self.enable_cc_method = not os.getenv("DISABLE_CC_METHOD", "False").upper() in ["ON", "TRUE", "1"]
         super().__init__(layer_num, data_type, network_config, mode, quant_cfg)
         return
