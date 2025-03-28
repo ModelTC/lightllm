@@ -73,3 +73,5 @@ class StartArgs:
     quant_cfg: Optional[str] = field(default=None)
     vit_quant_type: Optional[str] = field(default=None)
     vit_quant_cfg: Optional[str] = field(default=None)
+    enable_flashinfer_prefill: bool = field(default=False)
+    enable_flashinfer_decode: bool = field(default=False)
