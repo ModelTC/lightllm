@@ -23,9 +23,9 @@ class Record(object):
     token_id: int
     token_num: int
 
+
 @CacheManagerFactory.register("naive")
 class InMemoryCache(CacheManager):
-
     def __init__(self, args) -> None:
         self._records = dict()
         self._md5_to_record = dict()
@@ -37,9 +37,8 @@ class InMemoryCache(CacheManager):
         self.lock = threading.Lock()
 
         from lightllm.server.tokenizer import get_tokenizer
-        tokenizer = get_tokenizer(
-            args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code
-        )
+
+        tokenizer = get_tokenizer(args.model_dir, args.tokenizer_mode, trust_remote_code=args.trust_remote_code)
         self.cur_token_id = tokenizer.vocab_size + 10000
 
     def _clear(self):
@@ -98,11 +97,7 @@ class InMemoryCache(CacheManager):
                 record.visittime = t
                 record.ref += 1
 
-            return {
-                "id": record.id,
-                "token_id": record.token_id,
-                "token_num": record.token_num
-            }
+            return {"id": record.id, "token_id": record.token_id, "token_num": record.token_num}
 
     def release(self, id: int) -> None:
         with self.lock:
@@ -119,6 +114,6 @@ class InMemoryCache(CacheManager):
 
     def get_item_embed(self, id: int) -> bool:
         return self._records[id].embed
-    
-    def get_max_num(self, id:int) -> int:
+
+    def get_max_num(self, id: int) -> int:
         return self._records[id].max_num

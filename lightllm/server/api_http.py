@@ -19,7 +19,6 @@
 import asyncio
 import collections
 import time
-import json
 import uvloop
 import requests
 import base64
@@ -237,15 +236,15 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
         return create_error_response(HTTPStatus.BAD_REQUEST, "The function call feature is not supported")
 
     created_time = int(time.time())
-    
+
     multimodal_params_dict = {"images": []}
     for message in request.messages:
         if isinstance(message.content, list):
             texts = []
             for content in message.content:
-                if content.type == 'text' and content.text:
+                if content.type == "text" and content.text:
                     texts.append(content.text)
-                elif content.type == 'image_url' and content.image_url is not None:
+                elif content.type == "image_url" and content.image_url is not None:
                     img = content.image_url.url
                     if img.startswith("http://") or img.startswith("https://"):
                         response = requests.get(img, stream=True, timeout=2)
@@ -257,18 +256,17 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
                         data_str = img.split(";", 1)[1]
                         if data_str.startswith("base64,"):
                             data = data_str[7:]
-                        else :
+                        else:
                             raise ValueError("Unrecognized image input.")
                     else:
-                        raise ValueError("Unrecognized image input. Supports local path, http url, base64, and PIL.Image.")
+                        raise ValueError(
+                            "Unrecognized image input. Supports local path, http url, base64, and PIL.Image."
+                        )
 
-                    multimodal_params_dict["images"].append({
-                        "type": "base64",
-                        "data": data
-                    })
-                    
+                    multimodal_params_dict["images"].append({"type": "base64", "data": data})
+
             message.content = "\n".join(texts)
-    
+
     prompt = await build_prompt(request)
     sampling_params_dict = {
         "do_sample": request.do_sample,
@@ -370,7 +368,9 @@ async def tokens(request: Request):
         multimodal_params_dict = request_dict.get("multimodal_params", {})
         multimodal_params = MultimodalParams(**multimodal_params_dict)
         multimodal_params.verify_and_preload()
-        return JSONResponse({"ntokens": g_objs.httpserver_manager.tokens(prompt, multimodal_params, parameters)}, status_code=200)
+        return JSONResponse(
+            {"ntokens": g_objs.httpserver_manager.tokens(prompt, multimodal_params, parameters)}, status_code=200
+        )
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, f"error: {str(e)}")
 

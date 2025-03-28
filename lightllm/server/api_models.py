@@ -8,14 +8,17 @@ import uuid
 class ImageURL(BaseModel):
     url: str
 
+
 class MessageContent(BaseModel):
     type: str
     text: Optional[str] = None
     image_url: Optional[ImageURL] = None
 
+
 class Message(BaseModel):
     role: str
     content: Union[str, List[MessageContent]]
+
 
 class ChatCompletionRequest(BaseModel):
     model: str

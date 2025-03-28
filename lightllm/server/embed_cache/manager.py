@@ -47,8 +47,8 @@ class CacheServer(rpyc.Service):
     def exposed_get_item_embed(self, id: int) -> bool:
         id = obtain(id)
         return self._impl.get_item_embed(id=id)
-    
-    def exposed_get_max_num(self, id:int) -> int:
+
+    def exposed_get_max_num(self, id: int) -> int:
         id = obtain(id)
         return self._impl.get_max_num(id=id)
 
@@ -67,4 +67,3 @@ def start_cache_manager(port: int, args, pipe_writer):
     t = ThreadedServer(service, port=port)
     pipe_writer.send("init ok")
     t.start()
-

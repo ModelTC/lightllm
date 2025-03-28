@@ -6,7 +6,12 @@ import math
 import torch.nn.functional as F
 
 TESLA = "Tesla" in torch.cuda.get_device_name(0)
-HOPPER = "H100" in torch.cuda.get_device_name(0) or "H800" in torch.cuda.get_device_name(0) or "Hopper" in torch.cuda.get_device_name(0)
+HOPPER = (
+    "H100" in torch.cuda.get_device_name(0)
+    or "H200" in torch.cuda.get_device_name(0)
+    or "H800" in torch.cuda.get_device_name(0)
+    or "Hopper" in torch.cuda.get_device_name(0)
+)
 
 
 if triton.__version__ >= "2.1.0":
@@ -155,11 +160,12 @@ try:
     from flash_attn_interface import _flash_attn_forward
 
     _flash_attn_v3_available = True
+
     def flash_attention_v3_fwd(
-            q,
-            k,
-            v,
-            o,
+        q,
+        k,
+        v,
+        o,
     ):
         head_dim = q.shape[-1]
         softmax_scale = head_dim ** -0.5
@@ -167,15 +173,25 @@ try:
             q,
             k,
             v,
-            None, None,  # k_new, v_new
+            None,
+            None,  # k_new, v_new
             None,  # qv
             o,  # out
-            None, None, None,  # cu_seqlens_q/k/k_new
-            None, None,  # seqused_q/k
-            None, None,  # max_seqlen_q/k
-            None, None, None,  # page_table, kv_batch_idx, leftpad_k,
-            None, None,  # rotary_cos/sin
-            None, None, None,
+            None,
+            None,
+            None,  # cu_seqlens_q/k/k_new
+            None,
+            None,  # seqused_q/k
+            None,
+            None,  # max_seqlen_q/k
+            None,
+            None,
+            None,  # page_table, kv_batch_idx, leftpad_k,
+            None,
+            None,  # rotary_cos/sin
+            None,
+            None,
+            None,
             softmax_scale,
             causal=False,
             window_size=(-1, -1),
@@ -185,6 +201,7 @@ try:
             sm_margin=0,
         )
         return
+
 except ImportError:
     print("Failed to import _flash_attn_forward from hopper.flash_attn_interface.")
 
@@ -194,11 +211,10 @@ def flash_attention_fwd(q, k, v, o):
     统一的 Flash Attention 接口。如果 _flash_attn_forward 存在，
     则使用 flash_attention_v3_fwd，否则使用 Triton 版本。
     """
-    if _flash_attn_v3_available and HOPPER :
+    if _flash_attn_v3_available and HOPPER:
         flash_attention_v3_fwd(q, k, v, o)
     else:
         _flash_attention_triton_fwd(q, k, v, o)
-
 
 
 def torch_att(q, k, v):

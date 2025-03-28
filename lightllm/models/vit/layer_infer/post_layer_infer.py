@@ -5,6 +5,7 @@ from lightllm.models.vit.layer_weights.pre_and_post_layer_weight import ViTPreAn
 from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
 from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
 
+
 class ViTPostLayerInfer:
     """ """
 
@@ -46,7 +47,7 @@ class ViTPostLayerInfer:
 
         # vit_embeds_gelu = torch.nn.functional.gelu(vit_embeds_1)
         vit_embeds_gelu = gelu_fwd(vit_embeds_1)
-        
+
         vit_embeds_out = torch.addmm(
             layer_weight.mlp1_3_bias_,
             vit_embeds_gelu.view(-1, self.llm_hidden_size // self.tp_world_size_),

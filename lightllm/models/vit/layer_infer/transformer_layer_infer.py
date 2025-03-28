@@ -13,6 +13,7 @@ from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
 from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
 from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
 
+
 class ViTTransformerLayerInfer:
     """ """
 
