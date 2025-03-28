@@ -57,7 +57,8 @@ class HttpServerManager:
         self.node_rank = args.node_rank
         self.transfer_lock = asyncio.Lock()  # the lock for transfer to next module in multi node mode.
         self.disable_abort = args.nnodes > 1 and args.dp == 1  # mulitnode dp=1 mode, disable abort
-        if args.nnodes > 1:
+        self.is_multinode_tp = args.dp == 1 and args.nnodes > 1
+        if self.is_multinode_tp:
             if args.node_rank == 0:
                 self.multinode_req_manager = []
                 for child_ip in args.child_ips:
