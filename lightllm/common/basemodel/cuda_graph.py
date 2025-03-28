@@ -4,7 +4,7 @@ import copy
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
-from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
+from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch, PrefillMicroBatch
 
 logger = init_logger(__name__)
 
@@ -194,19 +194,34 @@ class CudaGraph:
     def warmup_overlap(self, model):
         logger.info("Begin capture overlap cudagraph, use the --disable_cudagraph to disable it.")
         for batch_size in range(self.max_batch_size, 0, -1):
-            decode_batches = []
-            for micro_batch_index in [0, 1]:
-                # dummy prefill
-                prefill_input_len = 1
-                dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
-                b_req_idx = torch.tensor(
-                    [model.req_manager.alloc() for _ in range(batch_size)], dtype=torch.int32, device="cuda"
-                )
-                mem_indexes = model.mem_manager.alloc(len(dummy_input_ids)).cuda()
-                b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
-                b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
-                b_start_loc = torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
-                total_token_num = prefill_input_len * batch_size
+            # dummy prefill
+            prefill_input_len = 1
+            dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
+            b_req_idx = torch.tensor(
+                [model.req_manager.alloc() for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+            )
+            mem_indexes = model.mem_manager.alloc(len(dummy_input_ids)).cuda()
+            b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
+            b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+            b_start_loc = torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+            total_token_num = prefill_input_len * batch_size
+            if get_env_start_args().enable_prefill_microbatch_overlap:
+                prefill_batches = []
+                for _ in range(2):
+                    micro_batch = PrefillMicroBatch(
+                        batch_size=batch_size,
+                        total_token_num=total_token_num,
+                        max_len_in_batch=prefill_input_len + 1,
+                        input_ids=dummy_input_ids,
+                        mem_indexes=mem_indexes,
+                        b_req_idx=b_req_idx,
+                        b_start_loc=b_start_loc,
+                        b_seq_len=b_seq_len,
+                        b_ready_cache_len=b_ready_cache_len,
+                    )
+                    prefill_batches.append(micro_batch)
+                logics, _ = model.microbatch_overlap_prefill(prefill_batches[0], prefill_batches[1])
+            else:
                 logics = model.forward(
                     batch_size,
                     total_token_num,
@@ -220,38 +235,48 @@ class CudaGraph:
                     is_prefill=True,
                     multimodal_params=[],
                 )
-                mem_indexes = None
-                prob_out = torch.softmax(logics, dim=-1)
-                logics = None
-                predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
-                prob_out = None
-                predict_ids = predict_ids.detach().cpu().numpy()
-                torch.cuda.empty_cache()
+            mem_indexes = None
+            prob_out = torch.softmax(logics, dim=-1)
+            logics = None
+            predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
+            prob_out = None
+            predict_ids = predict_ids.detach().cpu().numpy()
+            torch.cuda.empty_cache()
 
-                # dummy decoding, capture the cudagraph
-                b_start_loc = b_start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
-                total_token_num += batch_size
-                b_seq_len += 1
-                mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
-
-                micro_batch = DecodeMicroBatch(
-                    batch_size=batch_size,
-                    total_token_num=total_token_num,
-                    max_len_in_batch=prefill_input_len + 1,
-                    input_ids=torch.from_numpy(predict_ids).cuda().reshape(-1),
-                    mem_indexes=mem_indexes,
-                    b_req_idx=b_req_idx,
-                    b_start_loc=b_start_loc,
-                    b_seq_len=b_seq_len,
+            # dummy decoding, capture the cudagraph
+            b_start_loc = b_start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+            total_token_num += batch_size
+            b_seq_len += 1
+            mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
+            if get_env_start_args().enable_decode_microbatch_overlap:
+                decode_batches = []
+                for _ in range(2):
+                    micro_batch = DecodeMicroBatch(
+                        batch_size=batch_size,
+                        total_token_num=total_token_num,
+                        max_len_in_batch=prefill_input_len + 1,
+                        input_ids=torch.from_numpy(predict_ids).cuda().reshape(-1),
+                        mem_indexes=mem_indexes,
+                        b_req_idx=b_req_idx,
+                        b_start_loc=b_start_loc,
+                        b_seq_len=b_seq_len,
+                    )
+                    decode_batches.append(micro_batch)
+                _, _ = model.microbatch_overlap_decode(decode_batches[0], decode_batches[1])
+            else:
+                logics = model.forward(
+                    batch_size,
+                    total_token_num,
+                    prefill_input_len + 1,
+                    torch.from_numpy(predict_ids).cuda().reshape(-1),
+                    mem_indexes,
+                    b_req_idx,
+                    b_start_loc,
+                    b_seq_len,
+                    is_prefill=False,
                 )
-                decode_batches.append(micro_batch)
 
-                for var_name, var_value in list(locals().items()):
-                    if isinstance(var_value, torch.Tensor):
-                        del locals()[var_name]
-                torch.cuda.empty_cache()
-            _, _ = model.microbatch_overlap_decode(decode_batches[0], decode_batches[1])
-
+            mem_indexes = None
             model.mem_manager.free_all()
             model.req_manager.free_all()
 
