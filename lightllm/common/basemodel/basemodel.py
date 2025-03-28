@@ -229,7 +229,6 @@ class TpPartBaseModel:
         b_seq_len: torch.Tensor,
         b_ready_cache_len: torch.Tensor = None,
         multimodal_params=None,
-        dist_group: CustomProcessGroup = None,
         is_prefill=True,
     ):
         assert mem_indexes.is_cuda
@@ -246,7 +245,6 @@ class TpPartBaseModel:
                 b_seq_len,
                 b_ready_cache_len,
                 multimodal_params,
-                dist_group,
             )
         else:
             return self._decode(
@@ -259,7 +257,6 @@ class TpPartBaseModel:
                 b_start_loc,
                 b_seq_len,
                 multimodal_params,
-                dist_group,
             )
 
     def _prefill(
@@ -274,7 +271,6 @@ class TpPartBaseModel:
         b_seq_len,
         b_ready_cache_len,
         multimodal_params,
-        dist_group: CustomProcessGroup = None,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
@@ -304,7 +300,7 @@ class TpPartBaseModel:
             dtype=self.data_type,
             device="cuda",
         )
-        infer_state.dist_group = dist_group if dist_group is not None else dist_group_manager.get_default_group()
+        infer_state.dist_group = dist_group_manager.get_default_group()
 
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
@@ -330,7 +326,6 @@ class TpPartBaseModel:
         b_start_loc,
         b_seq_len,
         multimodal_params,
-        dist_group: CustomProcessGroup = None,
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = False
@@ -356,7 +351,7 @@ class TpPartBaseModel:
             dtype=self.data_type,
             device="cuda",
         )
-        infer_state.dist_group = dist_group if dist_group is not None else dist_group_manager.get_default_group()
+        infer_state.dist_group = dist_group_manager.get_default_group()
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
 
         infer_state.init_some_extra_state(self, input_ids)
