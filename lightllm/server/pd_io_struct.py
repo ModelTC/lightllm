@@ -76,6 +76,22 @@ class DecodeNodeInfo:
 
 
 @dataclass
+class PDTransJoinInfo:
+    decode_id: int
+    decode_device_id: int
+    prefill_id: int
+    prefill_device_id: int
+    pd_prefill_nccl_ip: str
+    pd_prefill_nccl_port: int
+
+
+@dataclass
+class PDTransLeaveInfo:
+    decode_id: int
+    prefill_id: int
+
+
+@dataclass
 class KVMoveTask:
     group_request_id: int
     input_tokens: List[int]  # 代表输入的token_id 序列
