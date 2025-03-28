@@ -70,7 +70,7 @@ class ContinuesBatchBackendForDecodeNode(ModeBackend):
         self._filter_reqs(aborted_reqs)
 
         if decode_reqs:
-            
+
             kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
             logits = self.model.forward(**kwargs)
 
