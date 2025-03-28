@@ -48,6 +48,10 @@ class CacheServer(rpyc.Service):
         id = obtain(id)
         return self._impl.get_item_embed(id=id)
 
+    def exposed_get_max_num(self, id: int) -> int:
+        id = obtain(id)
+        return self._impl.get_max_num(id=id)
+
 
 def start_cache_manager(port: int, args, pipe_writer):
     # 注册graceful 退出的处理
@@ -63,7 +67,3 @@ def start_cache_manager(port: int, args, pipe_writer):
     t = ThreadedServer(service, port=port)
     pipe_writer.send("init ok")
     t.start()
-
-
-if __name__ == "__main__":
-    start_cache_manager(2233)

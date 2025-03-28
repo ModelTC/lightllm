@@ -18,7 +18,7 @@ from typing import Union, List, Tuple, Dict, Optional
 from ..tokenizer import get_tokenizer
 from ..pd_io_struct import NodeRole, ObjType
 from ..embed_cache.utils import get_shm_name_data, create_shm
-from ..multimodal_params import MultimodalParams
+from ..multimodal_params import MultimodalParams, ImageItem
 from ..req_id_generator import ReqIDGenerator
 from .async_queue import AsyncQueue
 from lightllm.server.core.objs import Req, FinishStatus
@@ -107,8 +107,8 @@ class HttpServerManager:
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
-    async def _alloc_resource(self, data, num):
-        md5sum = hashlib.md5(data).hexdigest()
+    async def _alloc_resource(self, data, num, max_num):
+        md5sum = hashlib.md5(data).hexdigest() + "_" + str(max_num)
         wait_time = 1
         while True:
             record = self.cache_client.root.alloc(md5sum, num)
@@ -127,8 +127,11 @@ class HttpServerManager:
     async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
+            max_num = multimodal_params.max_num
             for img in multimodal_params.images:
-                record = await self._alloc_resource(img.read(), self.tokenizer.get_image_token_length(img))
+                record = await self._alloc_resource(
+                    img.read(), self.tokenizer.get_image_token_length(img, max_num), max_num
+                )
                 img.uuid = record["id"]
                 img.token_id = record["token_id"]
                 img.token_num = record["token_num"]
@@ -147,10 +150,16 @@ class HttpServerManager:
                         img.token_num = None
         return
 
-    def tokens(self, prompt, kwargs=None):
+    def tokens(self, prompt, multimodal_params, kwargs=None):
         kwargs = {} if kwargs is None else kwargs
         prompt_ids = self.tokenizer.encode(prompt, None, **kwargs)
-        return len(prompt_ids)
+        image_tokens = 0
+        img_count = 0
+        max_num = multimodal_params.max_num
+        for img in multimodal_params.images:
+            img_count += 1
+            image_tokens += self.tokenizer.get_image_token_length(img, max_num)
+        return len(prompt_ids) + image_tokens + img_count
 
     async def loop_for_request(self):
         assert self.args.node_rank > 0
