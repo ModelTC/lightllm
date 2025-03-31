@@ -92,7 +92,9 @@ class LlamaPreLayerInfer(PreLayerInferTpl):
 
         padded_input_embdings = sp_pad_copy(input_embdings, sp_rank_id=self.tp_rank_, sp_world_size=self.tp_world_size_)
 
-        input_embdings1 = self.context_forward(input_ids=input_ids1, infer_state=infer_state1, layer_weight=layer_weight)
+        input_embdings1 = self.context_forward(
+            input_ids=input_ids1, infer_state=infer_state1, layer_weight=layer_weight
+        )
         from lightllm.common.basemodel.triton_kernel.sp_pad_copy import sp_pad_copy
 
         padded_input_embdings1 = sp_pad_copy(

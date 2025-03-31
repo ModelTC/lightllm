@@ -248,6 +248,7 @@ def _padded_prepare_decode_micro_batch(req_objs: List[InferReq], micro_batch_siz
 
     return micro_batch, run_reqs, padded_req_num
 
+
 def padded_overlap_prepare_prefill_inputs(req_objs: List[InferReq], max_prefill_num: int, is_multimodal=False):
     assert max_prefill_num != 0
     micro_batch_size = triton.cdiv(max_prefill_num, 2)

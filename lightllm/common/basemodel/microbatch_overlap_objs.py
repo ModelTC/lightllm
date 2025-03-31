@@ -13,6 +13,7 @@ class DecodeMicroBatch:
     b_start_loc: torch.Tensor
     b_seq_len: torch.Tensor
 
+
 @dataclass
 class PrefillMicroBatch:
     batch_size: int

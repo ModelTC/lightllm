@@ -734,7 +734,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         # 0 attention
         _0_input1 = self._att_norm(input_embdings, infer_state, layer_weight)
         _0_cache_kv = self._pre_cache_kv(infer_state, layer_weight)
-        _0_q, _0_cache_kv = self._tpsp_get_qkv(_0_input1 , _0_cache_kv, infer_state, layer_weight)
+        _0_q, _0_cache_kv = self._tpsp_get_qkv(_0_input1, _0_cache_kv, infer_state, layer_weight)
         _0_input1 = None
         self._post_cache_kv(_0_cache_kv, infer_state, layer_weight)
         _0_o = self._context_attention_kernel(_0_q, _0_cache_kv, infer_state, layer_weight)
@@ -805,12 +805,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
         # 0 moe calu
         _0_moe_out = layer_weight.experts.prefilled_group_gemm(
-            _0_num_recv_tokens_per_expert_list,
-            _0_recv_x,
-            _0_topk_idx,
-            _0_input1,
-            _0_qinput_tensor,
-            _0_topk_weight
+            _0_num_recv_tokens_per_expert_list, _0_recv_x, _0_topk_idx, _0_input1, _0_qinput_tensor, _0_topk_weight
         )
 
         # wait 1 dispatch
@@ -819,19 +814,12 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             infer_state1.hook = None
 
         # 0 combine execute
-        _0_ffn_out, _0_hook = layer_weight.experts.combine(
-            _0_moe_out, _0_handle
-        )
+        _0_ffn_out, _0_hook = layer_weight.experts.combine(_0_moe_out, _0_handle)
         infer_state.hook = _0_hook
 
         # 1 moe calc
         _1_moe_out = layer_weight.experts.prefilled_group_gemm(
-            _1_num_recv_tokens_per_expert_list,
-            _1_recv_x,
-            _1_topk_idx,
-            _1_input1,
-            _1_qinput_tensor,
-            _1_topk_weight
+            _1_num_recv_tokens_per_expert_list, _1_recv_x, _1_topk_idx, _1_input1, _1_qinput_tensor, _1_topk_weight
         )
 
         # wait 0 combine
@@ -845,9 +833,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         input_embdings.add_(_0_ffn_out.view(-1, self.embed_dim_))
 
         # 1 combine execute
-        _1_ffn_out, _1_hook = layer_weight.experts.combine(
-            _1_moe_out, _1_handle
-        )
+        _1_ffn_out, _1_hook = layer_weight.experts.combine(_1_moe_out, _1_handle)
 
         def _1_hook_post():
             _1_hook()

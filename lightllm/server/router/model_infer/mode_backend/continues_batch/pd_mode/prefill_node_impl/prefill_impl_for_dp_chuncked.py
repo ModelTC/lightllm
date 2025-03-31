@@ -65,11 +65,12 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
-    
+
     def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
         from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import (
             padded_prepare_prefill_inputs,
         )
+
         kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
             prefill_reqs, max_prefill_num, is_multimodal=False
         )
@@ -83,7 +84,7 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
             self._post_handle(
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
             )
-    
+
     def overlap_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
         from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import (
             padded_overlap_prepare_prefill_inputs,
@@ -113,4 +114,3 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
             self._post_handle(
                 all_run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
-

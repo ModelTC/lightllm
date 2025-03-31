@@ -458,7 +458,9 @@ class TpPartBaseModel:
             if cur_batch.b_ready_cache_len is not None:
                 infer_state.b_ready_cache_len = cur_batch.b_ready_cache_len
             else:
-                infer_state.b_ready_cache_len = torch.zeros_like(cur_batch.b_seq_len, dtype=cur_batch.b_seq_len.dtype, device=cur_batch.b_seq_len.device)
+                infer_state.b_ready_cache_len = torch.zeros_like(
+                    cur_batch.b_seq_len, dtype=cur_batch.b_seq_len.dtype, device=cur_batch.b_seq_len.device
+                )
             infer_state.multimodal_params = None
             infer_state.microbatch_index = batch_index
 
