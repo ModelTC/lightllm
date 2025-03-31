@@ -251,19 +251,18 @@ def _padded_prepare_decode_micro_batch(req_objs: List[InferReq], micro_batch_siz
 
 def padded_overlap_prepare_prefill_inputs(req_objs: List[InferReq], max_prefill_num: int, is_multimodal=False):
     assert max_prefill_num != 0
-    micro_batch_size = triton.cdiv(max_prefill_num, 2)
     micro_batch1_req_num = triton.cdiv(len(req_objs), 2)
     micro_batch, run_reqs, padded_req_num = _padded_prepare_prefill_micro_batch(
-        req_objs[0:micro_batch1_req_num], micro_batch_size, is_multimodal=is_multimodal
+        req_objs[0:micro_batch1_req_num], is_multimodal=is_multimodal
     )
     micro_batch1, run_reqs1, padded_req_num1 = _padded_prepare_prefill_micro_batch(
-        req_objs[micro_batch1_req_num:], micro_batch_size, is_multimodal=is_multimodal
+        req_objs[micro_batch1_req_num:], is_multimodal=is_multimodal
     )
 
     return micro_batch, run_reqs, padded_req_num, micro_batch1, run_reqs1, padded_req_num1
 
 
-def _padded_prepare_prefill_micro_batch(req_objs: List[InferReq], micro_batch_size: int, is_multimodal=False):
+def _padded_prepare_prefill_micro_batch(req_objs: List[InferReq], is_multimodal=False):
     run_reqs = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
@@ -272,7 +271,9 @@ def _padded_prepare_prefill_micro_batch(req_objs: List[InferReq], micro_batch_si
     nopad_b_req_idx = []
     nopad_b_start_loc = []
     nopad_b_seq_len = []
-    padded_req_num = micro_batch_size - len(req_objs)
+    # prefill 只需要 padding 一个请求形成 micro_batch, 并不需要两个
+    # micro batch 的 batch_size 相同。
+    padded_req_num = 1 if len(req_objs) == 0 else 0
     b_ready_cache_len = []
     batch_multimodal_params = []
     for req in req_objs:
