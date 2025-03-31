@@ -121,7 +121,7 @@ def torch_profile(fn, log_dir=None):
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
         record_shapes=False,
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(log_dir)
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(log_dir),
     ) as prof:
         fn()
     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
@@ -255,28 +255,6 @@ def tppart_model_infer(args, model_class, model_kvargs, batch_size, input_len, o
         if args.profile:
             proton.start(name="forward_prefill", context="python")
 
-    if args.torch_profile:
-        print("Profile Prefill")
-        try:
-            torch_profile(
-                lambda: model_part.forward(
-                    batch_size,
-                    total_token_num,
-                    input_len,
-                    test_data,
-                    mem_indexes,
-                    b_req_idx,
-                    b_start_loc,
-                    b_seq_len,
-                    b_ready_cache_len=b_ready_cache_len,
-                    is_prefill=True,
-                ),
-                log_dir=f"./logs_decode_overlap/forward_prefill_{model_kvargs['rank_id']}",
-            )
-        except Exception as e:
-            print(str(e))
-            raise
-
     logics = model_part.forward(
         batch_size,
         total_token_num,
@@ -299,6 +277,28 @@ def tppart_model_infer(args, model_class, model_kvargs, batch_size, input_len, o
         if args.profile:
             proton.finalize()
         print("prefill time cost:", (time.time() - prefill_start_time) * 1000)
+
+    if args.torch_profile:
+        print("Profile Prefill")
+        try:
+            torch_profile(
+                lambda: model_part.forward(
+                    batch_size,
+                    total_token_num,
+                    input_len,
+                    test_data,
+                    mem_indexes,
+                    b_req_idx,
+                    b_start_loc,
+                    b_seq_len,
+                    b_ready_cache_len=b_ready_cache_len,
+                    is_prefill=True,
+                ),
+                log_dir=f"./logs_sglang/forward_prefill_{model_kvargs['rank_id']}",
+            )
+        except Exception as e:
+            print(str(e))
+            raise
 
     if rank_id == 0:
         if args.profile:
@@ -337,7 +337,7 @@ def tppart_model_infer(args, model_class, model_kvargs, batch_size, input_len, o
                         b_seq_len,
                         total_token_num,
                     ),
-                    log_dir=f"./logs_decode_overlap/forward_decode_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs_sglang/forward_decode_{model_kvargs['rank_id']}",
                 )
         else:
             logits = decode(
@@ -351,7 +351,7 @@ def tppart_model_infer(args, model_class, model_kvargs, batch_size, input_len, o
                 b_seq_len,
                 total_token_num,
             )
-            if i ==0 and args.torch_profile:
+            if i == 0 and args.torch_profile:
                 torch_profile(
                     lambda: decode(
                         model_part,
@@ -364,7 +364,7 @@ def tppart_model_infer(args, model_class, model_kvargs, batch_size, input_len, o
                         b_seq_len,
                         total_token_num,
                     ),
-                    log_dir=f"./logs_decode_overlap/forward_decode_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs_sglang/forward_decode_{model_kvargs['rank_id']}",
                 )
 
         prob_out = torch.softmax(logits, dim=-1)

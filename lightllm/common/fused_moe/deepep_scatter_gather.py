@@ -221,7 +221,7 @@ def ep_gather(
     num_warps = 4
     num_tokens = output_tensor.shape[0]
     hidden_size = input_tensor.shape[1]
-    grid = (triton.cdiv(hidden_size, BLOCK_D), min(num_tokens, 16 * 1024))
+    grid = (triton.cdiv(hidden_size, BLOCK_D), min(num_tokens, 1024))
     _fwd_kernel_ep_gather[grid](
         num_tokens,
         input_tensor,
