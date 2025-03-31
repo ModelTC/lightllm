@@ -8,6 +8,7 @@ from typing import Dict, Iterable, Literal, Tuple, Union, List, Set
 from torch.storage import UntypedStorage
 from dataclasses import field
 from lightllm.utils.log_utils import init_logger
+from lightllm.common.basemodel.triton_kernel.add_in_place import add_in_place
 
 logger = init_logger(__name__)
 
@@ -27,6 +28,9 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
         if storage_weak_ptr in g_cache_manager.ptr_to_bufnode:
             g_cache_manager.changed_ptr.add(storage_weak_ptr)
         return
+
+    def custom_add_(self, other, *, alpha=1):
+        return add_in_place(self, other, alpha=alpha)
 
     @dataclasses.dataclass
     class BufNode:
@@ -94,6 +98,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
         ):
             self.managed_total_tensor_bytes = 0
             setattr(torch.Tensor, "__del__", custom_del)
+            setattr(torch.Tensor, "add_", custom_add_)
             self.is_cuda_graph = is_cuda_graph
             if self.is_cuda_graph:
                 if self.inner_cuda_graph_manager is None:
@@ -106,6 +111,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
 
         def cache_env_out(self):
             delattr(torch.Tensor, "__del__")
+            delattr(torch.Tensor, "add_")
             self.ptr_to_bufnode.clear()
             self.free_shape_dtype_to_bufs.clear()
             self.calcu_shape_cache.clear()
