@@ -12,6 +12,7 @@ from lightllm.models.qwen_vl.qwen_visual import QWenVisionTransformer
 from lightllm.models.llava.llava_visual import LlavaVisionModel
 from lightllm.models.internvl.internvl_visual import InternVLVisionModel
 from lightllm.models.vit.model import VisionTransformer
+from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from lightllm.models.qwen2_vl.qwen2_visual import Qwen2VisionTransformerPretrainedModel
 from lightllm.server.embed_cache.utils import tensor2bytes, read_shm, create_shm, get_shm_name_data, get_shm_name_embed
 from lightllm.utils.infer_utils import set_random_seed
@@ -74,18 +75,13 @@ class VisualModelRpcServer(rpyc.Service):
 
     # @calculate_time(show=True, min_cost_ms=150)
     @torch.no_grad()
-    def forward(self, images_uuids):
-        max_num_list = []
-        for i in range(len(images_uuids)):
-            uid = images_uuids[i]
-            max_num_list.append(self.cache_client.root.get_max_num(uid))
-        return self.model.encode(images_uuids, max_num_list)
+    def forward(self, images:List[ImageItem]):
+        return self.model.encode(images)
 
     # @calculate_time(show=False, min_cost_ms=300)
-    def exposed_encode(self, images_uuids):
-        images_uuids = obtain(images_uuids)
-
-        all_img_embeds, uuids, valid_ids = self.forward(images_uuids)
+    def exposed_encode(self, images:List[ImageItem]):
+        images = obtain(images)
+        all_img_embeds, uuids, valid_ids = self.forward(images)
         all_img_embeds = all_img_embeds.to(torch.device("cpu"))
         if self.tp_rank_id == 0:
             for i in range(len(uuids)):
@@ -132,8 +128,8 @@ class VisualModelRpcClient:
         else:
             return
 
-    async def encode(self, uuids):
-        ans = self._encode(uuids)
+    async def encode(self, images:List[ImageItem]):
+        ans = self._encode(images)
         if self.use_rpc:
             return await ans
         else:

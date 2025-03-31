@@ -33,6 +33,8 @@ class LlavaTokenizer:
         self.image_length = (image_size // patch_size) ** 2
         self.skip_start = model_cfg.get("skip_start", True)
 
+    def init_imageItem_extral_params(self, img: ImageItem, num_images):
+        return
     def get_image_token_length(self, img: ImageItem):
         return self.image_length
 

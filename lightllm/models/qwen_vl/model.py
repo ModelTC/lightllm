@@ -19,6 +19,9 @@ class QWenVLTokenizer:
         # <imgpad>: 151859
         self.image_length = model_cfg["visual"].get("n_queries", 256)
 
+    def init_imageItem_extral_params(self, img: ImageItem, num_images):
+        return
+
     def _list_find(self, input_list, target, start_idx):
         cur_list = input_list[start_idx:]
         if target in cur_list:

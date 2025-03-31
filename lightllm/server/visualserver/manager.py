@@ -117,27 +117,27 @@ class VisualManager:
                     multimodal_params = group_req_indexes.multimodal_params
 
                     for img in multimodal_params.images:
-                        if not self.cache_client.root.get_item_embed(img.uuid):
-                            uuids_need_infer.append(img.uuid)
+                        # if not self.cache_client.root.get_item_embed(img.uuid):
+                        #     uuids_need_infer.append(img.uuid)
 
-                        if len(uuids_need_infer) == self.infer_batch_size:
-                            await self.infer_imgs(uuids_need_infer)
-                            uuids_need_infer = []
+                        if len(multimodal_params.images) == self.infer_batch_size:
+                            await self.infer_imgs(multimodal_params.images)
+                            # uuids_need_infer = []
                             for _group_req_indexes in processing_group_reqs:
                                 self.send_to_router.send_pyobj(_group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
                             processing_group_reqs = []
 
-                    if len(uuids_need_infer) == 0:
+                    if len(multimodal_params.images) == 0:
                         self.send_to_router.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
                     else:
                         processing_group_reqs.append(group_req_indexes)
 
-                if len(uuids_need_infer) > 0:
-                    await self.infer_imgs(uuids_need_infer)
+                if len(multimodal_params.images) > 0:
+                    await self.infer_imgs(multimodal_params.images)
                     for _group_req_indexes in processing_group_reqs:
                         self.send_to_router.send_pyobj(_group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
                     processing_group_reqs = []
-                    uuids_need_infer = []
+                    # uuids_need_infer = []
 
     async def loop_for_netio_req(self):
         while True:

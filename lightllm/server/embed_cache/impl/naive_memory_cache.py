@@ -14,7 +14,6 @@ from ..utils import get_shm_name_data, get_shm_name_embed, free_shm
 class Record(object):
     id: int
     md5sum: str
-    max_num: int
     ref: int
     data: bool
     embed: bool
@@ -70,14 +69,11 @@ class InMemoryCache(CacheManager):
                     self._clear()
                     if self.occupied >= self.capacity:
                         return None
-                _, max_num_str = md5sum.rsplit("_", 1)
-                max_num = int(max_num_str)
                 id = uuid.uuid1()
                 id = id.int
                 record = Record(
                     id=id,
                     md5sum=md5sum,
-                    max_num=max_num,
                     ref=1,
                     data=False,
                     embed=False,
@@ -114,6 +110,3 @@ class InMemoryCache(CacheManager):
 
     def get_item_embed(self, id: int) -> bool:
         return self._records[id].embed
-
-    def get_max_num(self, id: int) -> int:
-        return self._records[id].max_num

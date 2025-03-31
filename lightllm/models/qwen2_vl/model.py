@@ -31,6 +31,9 @@ class QWen2VLTokenizer:
         self.image_end_id = kwargs["model_cfg"]["vision_end_token_id"]
         self.image_token_id = kwargs["model_cfg"]["image_token_id"]
 
+    def init_imageItem_extral_params(self, img: ImageItem, num_images):
+        return
+    
     def get_image_token_length(self, img: ImageItem):
         width = img.image_w
         height = img.image_h

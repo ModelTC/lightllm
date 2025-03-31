@@ -9,6 +9,7 @@ import copy
 import hashlib
 import datetime
 import websockets
+from frozendict import frozendict
 import pickle
 import ujson as json
 import multiprocessing
@@ -107,11 +108,12 @@ class HttpServerManager:
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
-    async def _alloc_resource(self, data, num, max_num):
-        md5sum = hashlib.md5(data).hexdigest() + "_" + str(max_num)
+    async def _alloc_resource(self, img:ImageItem, num_tokens):
+        data = img.read()
+        md5sum = hashlib.md5(data).hexdigest() + "_" + str(hash(frozendict(img.extra_params)))
         wait_time = 1
         while True:
-            record = self.cache_client.root.alloc(md5sum, num)
+            record = self.cache_client.root.alloc(md5sum, num_tokens)
             # hit or new
             if record:
                 uid = record["id"]
@@ -127,10 +129,12 @@ class HttpServerManager:
     async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
-            max_num = multimodal_params.max_num
+            num_images = len(multimodal_params.images)
             for img in multimodal_params.images:
+                self.tokenizer.init_imageItem_extral_params(img, num_images)
+                num_tokens = self.tokenizer.get_image_token_length(img)
                 record = await self._alloc_resource(
-                    img.read(), self.tokenizer.get_image_token_length(img, max_num), max_num
+                    img, num_tokens
                 )
                 img.uuid = record["id"]
                 img.token_id = record["token_id"]
