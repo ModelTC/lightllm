@@ -746,9 +746,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         _0_router_logits = layer_weight.moe_gate.mm(_0_input1)
 
         # wait last 1 combine
-        if getattr(infer_state1, "event_fun", None) is not None:
-            infer_state1.event_fun()
-            infer_state1.event_fun = None
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
 
         # 0 dispatch execute
         (
@@ -758,9 +758,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             _0_topk_weight,
             _0_num_recv_tokens_per_expert_list,
             _0_handle,
-            _0_event,
+            _0_hook,
         ) = layer_weight.experts.dispatch(_0_input1, _0_router_logits)
-        infer_state.event = _0_event
+        infer_state.hook = _0_hook
 
         # 0 shared expert
         if self.n_shared_experts is not None:
@@ -783,9 +783,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         _1_router_logits = layer_weight.moe_gate.mm(_1_input1)
 
         # wait 0 dispatch
-        if getattr(infer_state, "event", None) is not None:
-            infer_state.event.current_stream_wait()
-            infer_state.event = None
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            infer_state.hook = None
 
         # 1 dispatch execute
         (
@@ -795,9 +795,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             _1_topk_weight,
             _1_num_recv_tokens_per_expert_list,
             _1_handle,
-            _1_event,
+            _1_hook,
         ) = layer_weight.experts.dispatch(_1_input1, _1_router_logits)
-        infer_state1.event = _1_event
+        infer_state1.hook = _1_hook
 
         # 1 shared expert
         if self.n_shared_experts is not None:
@@ -814,15 +814,15 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
 
         # wait 1 dispatch
-        if getattr(infer_state1, "event", None) is not None:
-            infer_state1.event.current_stream_wait()
-            infer_state1.event = None
+        if getattr(infer_state1, "hook", None) is not None:
+            infer_state1.hook()
+            infer_state1.hook = None
 
         # 0 combine execute
-        _0_ffn_out, _0_event = layer_weight.experts.combine(
+        _0_ffn_out, _0_hook = layer_weight.experts.combine(
             _0_moe_out, _0_handle
         )
-        infer_state.event = _0_event
+        infer_state.hook = _0_hook
 
         # 1 moe calc
         _1_moe_out = layer_weight.experts.prefilled_group_gemm(
@@ -835,9 +835,9 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
 
         # wait 0 combine
-        if getattr(infer_state, "event", None) is not None:
-            infer_state.event.current_stream_wait()
-            infer_state.event = None
+        if getattr(infer_state, "hook", None) is not None:
+            infer_state.hook()
+            infer_state.hook = None
 
         _0_ffn_out *= self.routed_scaling_factor
         if self.n_shared_experts is not None:
@@ -845,12 +845,12 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         input_embdings.add_(_0_ffn_out.view(-1, self.embed_dim_))
 
         # 1 combine execute
-        _1_ffn_out, _1_event = layer_weight.experts.combine(
+        _1_ffn_out, _1_hook = layer_weight.experts.combine(
             _1_moe_out, _1_handle
         )
 
-        def _1_event_post():
-            _1_event.current_stream_wait()
+        def _1_hook_post():
+            _1_hook()
             nonlocal _1_ffn_out
             _1_ffn_out *= self.routed_scaling_factor
             if self.n_shared_experts is not None:
@@ -858,6 +858,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             input_embdings1.add_(_1_ffn_out.view(-1, self.embed_dim_))
             return
 
-        infer_state1.event_fun = _1_event_post
+        infer_state1.hook = _1_hook_post
 
         return input_embdings, input_embdings1

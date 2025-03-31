@@ -211,7 +211,10 @@ class FusedMoeWeightEP(BaseWeight):
             expert_alignment=128,
         )
 
-        return qinput_tensor, recv_x, recv_topk_idx, recv_topk_weights, num_recv_tokens_per_expert_list, handle, event
+        def hook():
+            event.current_stream_wait()
+
+        return qinput_tensor, recv_x, recv_topk_idx, recv_topk_weights, num_recv_tokens_per_expert_list, handle, hook
 
     def masked_group_gemm(
         self, recv_x: Tuple[torch.Tensor], masked_m: torch.Tensor, dtype: torch.dtype, expected_m: int
@@ -319,7 +322,11 @@ class FusedMoeWeightEP(BaseWeight):
             previous_event=None,
             allocate_on_comm_stream=False,
         )
-        return combined_x, event
+
+        def hook():
+            event.current_stream_wait()
+
+        return combined_x, hook
 
     def _fuse(self):
         if self.quantized_weight:
