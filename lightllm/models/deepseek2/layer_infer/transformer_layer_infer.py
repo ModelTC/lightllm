@@ -254,6 +254,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 compressed_kv,
                 k_rope,
                 infer_state.b_req_idx,
+                infer_state.max_value_in_b_seq_len,
                 infer_state.b_seq_len,
                 infer_state.req_manager.req_to_token_indexs,
                 infer_state.b_kv_start_loc,
