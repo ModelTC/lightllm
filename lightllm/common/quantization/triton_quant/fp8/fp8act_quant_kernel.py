@@ -107,7 +107,6 @@ def lightllm_per_token_group_quant_fp8(
         num_warps=num_warps,
         num_stages=num_stages,
     )
-
     return
 
 
@@ -154,65 +153,42 @@ def _tma_align_input_scale_kernel(
     output_ptr,
     m,
     k_div_block_size,
-    padd_m,
     input_scale_stride_m,
     input_scale_stride_k,
     output_stride_m,
     output_stride_k,
-    BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
 ):
     pid_m = tl.program_id(axis=0)
-    pid_k = tl.program_id(axis=1)
+    grid_m = tl.num_programs(0)
     k_offsets = tl.arange(0, BLOCK_SIZE_K)
-    m_offsets = tl.arange(0, BLOCK_SIZE_M)
 
-    input_offset = (
-        input_scale_ptr
-        + (pid_m * BLOCK_SIZE_M + m_offsets[:, None]) * input_scale_stride_m
-        + (pid_k * BLOCK_SIZE_K + k_offsets[None, :]) * input_scale_stride_k
-    )
-    input_data = tl.load(
-        input_offset,
-        mask=(pid_m * BLOCK_SIZE_M + m_offsets[:, None] < m)
-        & (pid_k * BLOCK_SIZE_K + k_offsets[None, :] < k_div_block_size),
-    )
-    transposed_data = tl.trans(input_data)
-    output_offset = (
-        output_ptr
-        + (pid_k * BLOCK_SIZE_K + k_offsets[:, None]) * output_stride_k
-        + (pid_m * BLOCK_SIZE_M + m_offsets[None, :]) * output_stride_m
-    )
-    mask = (pid_k * BLOCK_SIZE_K + k_offsets[:, None] < k_div_block_size) & (
-        pid_m * BLOCK_SIZE_M + m_offsets[None, :] < m
-    )
-    tl.store(output_offset, transposed_data, mask=mask)
+    for m_base in range(pid_m, m, grid_m):
+        input_offset = input_scale_ptr + m_base * input_scale_stride_m + k_offsets * input_scale_stride_k
+        input_data = tl.load(input_offset, mask=k_offsets < k_div_block_size)
+
+        output_offset = output_ptr + k_offsets * output_stride_k + m_base * output_stride_m
+        tl.store(output_offset, input_data, mask=k_offsets < k_div_block_size)
 
 
 def tma_align_input_scale(input_scale: torch.Tensor):
     assert input_scale.dim() == 2
     m, k_div_block_size = input_scale.shape
     padd_m = get_tma_aligned_size(m, input_scale.element_size())
-    # Create column-major output (k_div_block_size x padd_m)
     output = torch.empty((k_div_block_size, padd_m), dtype=input_scale.dtype, device=input_scale.device)
 
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_K = 128
+    grid_m = min(m, 8192)
+    BLOCK_SIZE_K = triton.next_power_of_2(k_div_block_size)
 
-    grid_m = triton.cdiv(m, BLOCK_SIZE_M)
-    grid_k = triton.cdiv(k_div_block_size, BLOCK_SIZE_K)
-
-    _tma_align_input_scale_kernel[(grid_m, grid_k)](
+    _tma_align_input_scale_kernel[(grid_m,)](
         input_scale_ptr=input_scale,
         output_ptr=output,
         m=m,
         k_div_block_size=k_div_block_size,
-        padd_m=padd_m,
         input_scale_stride_m=input_scale.stride(0),
         input_scale_stride_k=input_scale.stride(1),
         output_stride_m=output.stride(1),  # Note: these are swapped
         output_stride_k=output.stride(0),  # for column-major
-        BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
     )
     return output.t()[:m]
@@ -234,13 +210,21 @@ def torch_quant(x, group_size, dtype=torch.float8_e4m3fn):
 
 
 def test_tma_align():
-    m = 1
+    m = 576
     k = 8192
     x = torch.randn((m, k // 128), dtype=torch.float32).cuda()
-    x_padded = tma_align_input_scale(x)
+    for _ in range(10):
+        x_padded = tma_align_input_scale(x)
     print(x_padded.shape)
+    import time
+
+    torch.cuda.synchronize()
+    start = time.time()
+    for _ in range(100):
+        x_padded = tma_align_input_scale(x)
+    torch.cuda.synchronize()
+    print("Time:", time.time() - start)
     x_padded = tma_align_input_scale(x)
-    print(x_padded.stride())
     print(torch.abs(x_padded - x).max())
 
 
