@@ -23,6 +23,8 @@ def _add_in_place(
 
 @torch.no_grad()
 def add_in_place(input: torch.Tensor, other: torch.Tensor, *, alpha=1):
+    assert input.is_contiguous(), "input tensor must be contiguous"
+    assert other.is_contiguous(), "other tensor must be contiguous"
     n_elements = input.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
     _add_in_place[grid](
