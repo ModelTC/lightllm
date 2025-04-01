@@ -29,7 +29,8 @@ from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 from lightllm.distributed.communication_op import all_gather, all_gather_into_tensor, all_reduce, reduce_scatter_tensor
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.utils.dist_utils import get_global_world_size
-from lightllm.utils.custom_kernel_utis import torch_cat_3
+
+# from lightllm.utils.custom_kernel_utis import torch_cat_3
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
@@ -291,10 +292,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         o_tensor = (
             self.alloc_tensor((q.shape[0], q.shape[1], self.qk_nope_head_dim), dtype=q.dtype) if out is None else out
         )
-        repeat_k_rope = self.alloc_tensor((k_rope.shape[0], self.tp_q_head_num_, k_rope.shape[2]), dtype=k_rope.dtype)
-        repeat_rope(repeat_k_rope, k_rope)
-
-        k = torch_cat_3([k_nope, repeat_k_rope], dim=-1)
+        k = torch.cat([k_nope, torch.repeat_interleave(k_rope, self.tp_q_head_num_, dim=-2)], dim=-1)
         infer_state.prefill_wrapper.run(q, k, v, out=o_tensor)
         return o_tensor
 
@@ -312,7 +310,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
         repeat_k_rope = self.alloc_tensor((k_rope.shape[0], self.tp_q_head_num_, k_rope.shape[2]), dtype=k_rope.dtype)
         repeat_rope(repeat_k_rope, k_rope)
-        k = torch_cat_3([k_nope, repeat_k_rope], dim=-1)
+        k = torch.cat([k_nope, repeat_k_rope], dim=-1)
         infer_state.prefill_wrapper.run(q, k, v, out=o_tensor)
         return o_tensor
 
