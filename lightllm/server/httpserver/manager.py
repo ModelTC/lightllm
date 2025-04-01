@@ -108,8 +108,9 @@ class HttpServerManager:
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
-    async def _alloc_resource(self, img:ImageItem, num_tokens):
+    async def _alloc_resource(self, img: ImageItem):
         data = img.read()
+        num_tokens = self.tokenizer.get_image_token_length(img)
         md5sum = hashlib.md5(data).hexdigest() + "_" + str(hash(frozendict(img.extra_params)))
         wait_time = 1
         while True:
@@ -126,16 +127,12 @@ class HttpServerManager:
                 await asyncio.sleep(wait_time)
                 wait_time = min(wait_time + 2, 9)
 
-    async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams):
+    async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams, image_max_patch_num):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
-            num_images = len(multimodal_params.images)
             for img in multimodal_params.images:
-                self.tokenizer.init_imageItem_extral_params(img, num_images)
-                num_tokens = self.tokenizer.get_image_token_length(img)
-                record = await self._alloc_resource(
-                    img, num_tokens
-                )
+                self.tokenizer.init_imageItem_extral_params(img, multimodal_params, image_max_patch_num)
+                record = await self._alloc_resource(img)
                 img.uuid = record["id"]
                 img.token_id = record["token_id"]
                 img.token_num = record["token_num"]
@@ -234,9 +231,7 @@ class HttpServerManager:
             await self._log_req_header(request_headers, group_request_id)
             # 监控
 
-            prompt_ids = await self._encode(
-                prompt, multimodal_params, add_special_tokens=sampling_params.add_special_tokens
-            )
+            prompt_ids = await self._encode(prompt, multimodal_params, sampling_params)
             prompt_tokens = len(prompt_ids)
             # 监控
             if group_request_id > 0:
@@ -307,15 +302,19 @@ class HttpServerManager:
         return
 
     async def _encode(
-        self, prompt: Union[str, List[int]], multimodal_params: MultimodalParams, add_special_tokens: bool
+        self, prompt: Union[str, List[int]], multimodal_params: MultimodalParams, sampling_params: SamplingParams
     ):
         if isinstance(prompt, str):
             if self.enable_multimodal:
                 assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
-                await self._alloc_multimodal_resources(multimodal_params)
-                prompt_ids = self.tokenizer.encode(prompt, multimodal_params, add_special_tokens=add_special_tokens)
+                await self._alloc_multimodal_resources(
+                    multimodal_params, image_max_patch_num=sampling_params.image_max_patch_num
+                )
+                prompt_ids = self.tokenizer.encode(
+                    prompt, multimodal_params, add_special_tokens=sampling_params.add_special_tokens
+                )
             else:
-                prompt_ids = self.tokenizer.encode(prompt, add_special_tokens=add_special_tokens)
+                prompt_ids = self.tokenizer.encode(prompt, add_special_tokens=sampling_params.add_special_tokens)
             return prompt_ids
 
         # 这里的校验对多模态不是很充分, to do

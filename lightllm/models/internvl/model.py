@@ -11,6 +11,7 @@ from lightllm.models.internvl.layer_weights.pre_and_post_layer_weight import (
     InternVLLlamaPreAndPostLayerWeight,
     InternVLPhi3PreAndPostLayerWeight,
 )
+from lightllm.server.core.objs import SamplingParams
 from lightllm.models.internvl.layer_weights.pre_and_post_layer_weight import InternVLInternlm2PreAndPostLayerWeight
 from lightllm.models.llava.llava_visual import LlavaVisionModel
 
@@ -40,20 +41,29 @@ class InternvlTokenizer:
         self.image_end_id = tokenizer.convert_tokens_to_ids(self.image_end_tag)
         self.get_image_patch_func = get_image_patch_func(kwargs["weight_dir"])
 
-    def init_imageItem_extral_params(self, img: ImageItem, num_images):
-        if img.extra_params["image_patch_max_num"] > 0:
+    def init_imageItem_extral_params(self, img: ImageItem, multi_params: MultimodalParams, image_max_patch_num: int):
+        if image_max_patch_num >= 0:
+            img.extra_params["image_patch_max_num"] = image_max_patch_num
             return
-        if num_images == 1:
-            img.extra_params["image_patch_max_num"] = 12
-        elif num_images > 1 and num_images <= 6:
-            img.extra_params["image_patch_max_num"] = 6
-        elif num_images > 6:
-            img.extra_params["image_patch_max_num"] = 0
+        elif os.getenv("MAX_PATCH_NUM"):
+            img.extra_params["image_patch_max_num"] = int(os.getenv("MAX_PATCH_NUM"))
+            return
+        else:
+            num_images = len(multi_params.images)
+            if num_images == 1:
+                img.extra_params["image_patch_max_num"] = 12
+            elif num_images > 1 and num_images <= 6:
+                img.extra_params["image_patch_max_num"] = 6
+            elif num_images > 6:
+                img.extra_params["image_patch_max_num"] = 0
         return
 
     def get_image_token_length(self, img: ImageItem):
         return (
-            self.get_image_patch_func(img.image_w, img.image_h, max_num=img.extra_params["image_patch_max_num"], use_thumbnail=True) * self.image_length
+            self.get_image_patch_func(
+                img.image_w, img.image_h, max_num=img.extra_params["image_patch_max_num"], use_thumbnail=True
+            )
+            * self.image_length
         )
 
     # only change the impl of the encode func:

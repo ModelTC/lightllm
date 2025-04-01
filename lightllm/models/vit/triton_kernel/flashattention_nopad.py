@@ -204,6 +204,7 @@ try:
 
 except ImportError:
     print("Failed to import _flash_attn_forward from hopper.flash_attn_interface.")
+    _flash_attn_v3_available = False
 
 
 def flash_attention_fwd(q, k, v, o):

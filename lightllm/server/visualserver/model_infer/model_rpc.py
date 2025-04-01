@@ -75,11 +75,11 @@ class VisualModelRpcServer(rpyc.Service):
 
     # @calculate_time(show=True, min_cost_ms=150)
     @torch.no_grad()
-    def forward(self, images:List[ImageItem]):
+    def forward(self, images: List[ImageItem]):
         return self.model.encode(images)
 
     # @calculate_time(show=False, min_cost_ms=300)
-    def exposed_encode(self, images:List[ImageItem]):
+    def exposed_encode(self, images: List[ImageItem]):
         images = obtain(images)
         all_img_embeds, uuids, valid_ids = self.forward(images)
         all_img_embeds = all_img_embeds.to(torch.device("cpu"))
@@ -128,7 +128,7 @@ class VisualModelRpcClient:
         else:
             return
 
-    async def encode(self, images:List[ImageItem]):
+    async def encode(self, images: List[ImageItem]):
         ans = self._encode(images)
         if self.use_rpc:
             return await ans

@@ -8,7 +8,6 @@ import base64
 
 
 class ImageItem:
-    
     def __init__(self, **kwargs):
         self._type = kwargs["type"]
         self._data = kwargs["data"]
@@ -22,7 +21,7 @@ class ImageItem:
         self.image_h = 0
 
         self._preload_data = None
-        self.extra_params = {"image_patch_max_num": kwargs.get("max_num", None)}
+        self.extra_params = {}
 
     def preload(self):
         try:
@@ -74,12 +73,9 @@ class MultimodalParams:
     def __init__(
         self,
         images: List[dict] = [],
-        max_num: int = -1,
     ) -> None:
         self.images = [ImageItem(**i) for i in images]
-        max_num = int(os.getenv("MAX_PATCH_NUM", max_num))
-        for image in self.images:
-            image.extra_params["image_patch_max_num"] = max_num
+        return
 
     def verify_and_preload(self):
         for image in self.images:

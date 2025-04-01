@@ -41,7 +41,7 @@ from .vision_process import get_image
 from transformers import AutoProcessor
 from safetensors import safe_open
 from transformers.utils import TensorType
-from lightllm.server.multimodal_params import MultimodalParams,ImageItem
+from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from lightllm.models.qwen2_vl.vision_process import Qwen2VLImageProcessor
 
 
@@ -445,7 +445,7 @@ class Qwen2VisionTransformerPretrainedModel(nn.Module):
                 img_tensors.append(pixel_values)
                 img_grids.append(image_grid_thw)
             else:
-                raise Exception("Unsupport input types: {} for {}".format(type(url), url))
+                raise Exception("Unsupport input types: {} for {}".format(type(img), img))
 
             # must devide merge_length
             cur_num = img_tensors[-1].shape[0] // (self.spatial_merge_size ** 2)
