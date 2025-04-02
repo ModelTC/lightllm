@@ -24,7 +24,8 @@ def test_add_in_place(dim1, dim2, alpha):
     output = input + other * alpha
     add_in_place(input, other, alpha=alpha)
     rlt = torch.allclose(input, output, atol=1e-5, rtol=0)
-    assert(rlt)
+    assert rlt
+
 
 if __name__ == "__main__":
     pytest.main()

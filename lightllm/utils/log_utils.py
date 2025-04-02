@@ -14,6 +14,7 @@ _LOG_LEVEL = os.environ.get("LIGHTLLM_LOG_LEVEL", "debug")
 _LOG_LEVEL = getattr(logging, _LOG_LEVEL.upper(), 0)
 _LOG_DIR = os.environ.get("LIGHTLLM_LOG_DIR", None)
 
+
 class NewLineFormatter(logging.Formatter):
     """Adds logging prefix to newlines to align multi-line messages."""
 
@@ -45,14 +46,14 @@ def _setup_logger():
         _default_handler.flush = sys.stdout.flush  # type: ignore
         _default_handler.setLevel(_LOG_LEVEL)
         _root_logger.addHandler(_default_handler)
-    
+
     if _default_file_handler is None and _LOG_DIR is not None:
         if not os.path.exists(_LOG_DIR):
             try:
                 os.makedirs(_LOG_DIR)
             except OSError as e:
                 _root_logger.warn(f"Error creating directory {_LOG_DIR} : {e}")
-        _default_file_handler = logging.FileHandler(_LOG_DIR + '/default.log')
+        _default_file_handler = logging.FileHandler(_LOG_DIR + "/default.log")
         _default_file_handler.setLevel(_LOG_LEVEL)
         _default_file_handler.setFormatter(fmt)
         _root_logger.addHandler(_default_file_handler)
@@ -61,6 +62,7 @@ def _setup_logger():
     # Setting this will avoid the message
     # being propagated to the parent logger.
     _root_logger.propagate = False
+
 
 # The logger is initialized when the module is imported.
 # This is thread-safe as the module is only imported once,
@@ -96,7 +98,8 @@ def init_logger(name: str):
 
 _log_time_mark_dict = {}
 
-def log_time_ready(mark_name, time_count:int):
+
+def log_time_ready(mark_name, time_count: int):
     """
     time_count 间隔时间超过多少s调用该函数会返回True，否则返回False
     用于控制一些日志输出的频率
@@ -112,5 +115,3 @@ def log_time_ready(mark_name, time_count:int):
         return True
     else:
         return False
-    
-

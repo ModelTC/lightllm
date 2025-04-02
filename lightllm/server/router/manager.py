@@ -108,8 +108,6 @@ class RouterManager:
         self.schedule_task = None
         self.overlap_event = threading.Event()
         return
-    
-
 
     async def wait_to_model_ready(self):
         # 初始化模型
@@ -322,11 +320,11 @@ class RouterManager:
                 self.running_batch = new_batch
                 await self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
-                
+
                 # 激进调度控制
                 if not self.args.disable_aggressive_schedule:
                     self.has_wait_tokens = self.max_wait_tokens
-                
+
             elif self.is_multinode_and_multidp:
                 # 在多节点多 dp 的模式下，如果当前 running_batch 为None, 也需要不断的调用 decode 操作，
                 # 因为其他节点上的dp可能存在运行的请求，所以本节点也需要调用decode，推理后端的backend会
@@ -341,11 +339,11 @@ class RouterManager:
             new_mini_batch = await self.get_schedule_result(self.running_batch)
             self.has_wait_tokens = 0
             if new_mini_batch is not None:
-                
+
                 # 激进调度控制
                 if not self.args.disable_aggressive_schedule:
                     self.has_wait_tokens = self.max_wait_tokens
-                
+
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
                 await self._prefill_batch(new_mini_batch)
                 if not new_mini_batch.is_clear():
