@@ -763,17 +763,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         if self.n_shared_experts is not None:
             _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
 
-        # 0 dispatch execute
-        (
-            _0_recv_x,
-            _0_recv_topk_idx,
-            _0_recv_topk_weight,
-            _0_num_recv_tokens_per_expert_list,
-            _0_handle,
-            _0_hook,
-        ) = layer_weight.experts.dispatch(_0_qinput_tensor, _0_topk_idx, _0_topk_weight, overlap_event=_0_overlap_event)
-        infer_state.hook = _0_hook
-
         # 1 attention
         _1_input1 = self._att_norm(input_embdings1, infer_state1, layer_weight)
         _1_cache_kv = self._pre_cache_kv(infer_state1, layer_weight)
@@ -789,6 +778,18 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         # to do gate and disptatch
 
         _1_router_logits = layer_weight.moe_gate.mm(_1_input1)
+
+        # 0 dispatch execute
+        (
+            _0_recv_x,
+            _0_recv_topk_idx,
+            _0_recv_topk_weight,
+            _0_num_recv_tokens_per_expert_list,
+            _0_handle,
+            _0_hook,
+        ) = layer_weight.experts.dispatch(_0_qinput_tensor, _0_topk_idx, _0_topk_weight, overlap_event=_0_overlap_event)
+        infer_state.hook = _0_hook
+
         # wait 0 dispatch
         if getattr(infer_state, "hook", None) is not None:
             infer_state.hook()
@@ -797,11 +798,17 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         _1_topk_weight, _1_topk_idx, _1_qinput_tensor = layer_weight.experts.select_experts_and_quant_input(
             _1_input1, _1_router_logits
         )
+
         _1_overlap_event = Buffer.capture()
 
         # 1 shared expert
         if self.n_shared_experts is not None:
             _1_shared_output = LlamaTransformerLayerInfer._ffn(self, _1_input1, infer_state1, layer_weight)
+
+        # 0 moe calu
+        _0_moe_out = layer_weight.experts.prefilled_group_gemm(
+            _0_num_recv_tokens_per_expert_list, _0_recv_x, _0_recv_topk_idx, _0_recv_topk_weight
+        )
 
         # 1 dispatch execute
         (
@@ -813,11 +820,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             _1_hook,
         ) = layer_weight.experts.dispatch(_1_qinput_tensor, _1_topk_idx, _1_topk_weight, overlap_event=_1_overlap_event)
         infer_state1.hook = _1_hook
-
-        # 0 moe calu
-        _0_moe_out = layer_weight.experts.prefilled_group_gemm(
-            _0_num_recv_tokens_per_expert_list, _0_recv_x, _0_recv_topk_idx, _0_recv_topk_weight
-        )
 
         # wait 1 dispatch
         if getattr(infer_state1, "hook", None) is not None:
