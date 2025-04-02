@@ -57,7 +57,7 @@ try:
     import deep_ep
     from deep_gemm.jit_kernels.utils import set_num_sms
 
-    deepep_sms = os.getenv("DEEPEP_SMS", deep_ep.Buffer.num_sms)
+    deepep_sms = int(os.getenv("DEEPEP_SMS", deep_ep.Buffer.num_sms))
     device_sms = get_device_sm_count()
     deep_ep.Buffer.set_num_sms(deepep_sms)
     set_num_sms(device_sms - deepep_sms)
