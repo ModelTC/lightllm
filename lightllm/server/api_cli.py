@@ -163,6 +163,12 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=6,
         help="schedule new requests after every router_max_wait_tokens decode steps.",
     )
+    parser.add_argument(
+        "--disable_aggressive_schedule",
+        action="store_true",
+        help="""aggressive schedule can lead to frequent prefill interruptions during decode.
+                disabling it allows the router_max_wait_tokens parameter to work more effectively.""",
+    )
 
     parser.add_argument("--use_dynamic_prompt_cache", action="store_true", help="use_dynamic_prompt_cache test")
 
@@ -309,7 +315,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vit_quant_type",
         type=str,
-        default=None,
+        default="none",
         help="""Quantization method: ppl-w4a16-128 | flashllm-w6a16
                         | ao-int4wo-[32,64,128,256] | ao-int8wo | ao-fp8w8a16 | ao-fp6w6a16
                         | vllm-w8a8 | vllm-fp8w8a8""",

@@ -22,7 +22,6 @@ try:
     from deep_ep import Buffer, EventOverlap
     import deep_gemm
 
-    # Set the number of SMs to use
 except:
     logger.warning("no deepep or deep_gemm")
 

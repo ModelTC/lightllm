@@ -31,9 +31,6 @@ from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.utils.dist_utils import get_global_world_size
 
 
-# from lightllm.utils.custom_kernel_utis import torch_cat_3
-
-
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, network_config, mode=[]):
         self.tp_k_head_num_ = 1
@@ -759,10 +756,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
         _0_overlap_event = Buffer.capture()
 
-        # 0 shared expert
-        if self.n_shared_experts is not None:
-            _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
-
         # 1 attention
         _1_input1 = self._att_norm(input_embdings1, infer_state1, layer_weight)
         _1_cache_kv = self._pre_cache_kv(infer_state1, layer_weight)
@@ -800,6 +793,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
 
         _1_overlap_event = Buffer.capture()
+
+        # 0 shared expert
+        if self.n_shared_experts is not None:
+            _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
 
         # 1 shared expert
         if self.n_shared_experts is not None:
