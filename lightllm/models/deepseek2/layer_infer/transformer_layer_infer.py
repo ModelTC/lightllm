@@ -31,9 +31,6 @@ from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.utils.dist_utils import get_global_world_size
 
 
-# from lightllm.utils.custom_kernel_utis import torch_cat_3
-
-
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
     def __init__(self, layer_num, network_config, mode=[]):
         self.tp_k_head_num_ = 1

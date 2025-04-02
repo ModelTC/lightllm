@@ -235,6 +235,7 @@ class FusedMoeWeightEP(BaseWeight):
         recv_topk_weights: torch.Tensor,
         hidden_dtype=torch.bfloat16,
     ):
+        device = recv_x[0].device
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
         _, K = recv_x[0].shape
@@ -242,17 +243,17 @@ class FusedMoeWeightEP(BaseWeight):
         # scatter
         all_tokens = sum(num_recv_tokens_per_expert_list)  # calcu padding all nums.
         # gather_out shape [recive_num_tokens, hidden]
-        gather_out = torch.empty_like(recv_x[0], device=recv_x[0].device, dtype=hidden_dtype)
+        gather_out = torch.empty_like(recv_x[0], device=device, dtype=hidden_dtype)
         if all_tokens > 0:
             input_tensor = [
-                torch.empty((all_tokens, K), device=recv_x[0].device, dtype=recv_x[0].dtype),
-                torch.empty((all_tokens, K // 128), device=recv_x[0].device, dtype=torch.float32),
+                torch.empty((all_tokens, K), device=device, dtype=recv_x[0].dtype),
+                torch.empty((all_tokens, K // 128), device=device, dtype=torch.float32),
             ]
             # when m_indices is filled ok.
             # m_indices show token use which expert, example, [0, 0, 0, 0, .... 1, 1, 1, 1,...., cur_expert_num - 1, ..]
             # the count of 0 is num_recv_tokens_per_expert_list[0], the count of 1 is num_recv_tokens_per_expert_list[1]
             # ...
-            m_indices = torch.empty(all_tokens, device=recv_x[0].device, dtype=torch.int32)
+            m_indices = torch.empty(all_tokens, device=device, dtype=torch.int32)
             # output_index shape [recive_num_tokens, topk_num]
             # output_index use to show the token index in input_tensor
             output_index = torch.empty_like(recv_topk_idx)
@@ -276,19 +277,19 @@ class FusedMoeWeightEP(BaseWeight):
             )
             input_tensor[1] = tma_align_input_scale(input_tensor[1])
             # groupgemm (contiguous layout)
-            gemm_out_a = torch.empty((all_tokens, N), device=recv_x[0].device, dtype=hidden_dtype)
+            gemm_out_a = torch.empty((all_tokens, N), device=device, dtype=hidden_dtype)
 
             deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(input_tensor, (w1, w1_scale), gemm_out_a, m_indices)
 
             # silu_and_mul_fwd + qaunt
             # TODO fused kernel
-            silu_out = torch.empty((all_tokens, N // 2), device=recv_x[0].device, dtype=hidden_dtype)
+            silu_out = torch.empty((all_tokens, N // 2), device=device, dtype=hidden_dtype)
 
             silu_and_mul_fwd(gemm_out_a.view(-1, N), silu_out)
             qsilu_out, qsilu_out_scale = tma_aligned_quantize(silu_out)
 
             # groupgemm (contiguous layout)
-            gemm_out_b = torch.empty((all_tokens, K), device=recv_x[0].device, dtype=hidden_dtype)
+            gemm_out_b = torch.empty((all_tokens, K), device=device, dtype=hidden_dtype)
 
             deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(
                 (qsilu_out, qsilu_out_scale), (w2, w2_scale), gemm_out_b, m_indices
