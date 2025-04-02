@@ -23,7 +23,6 @@ try:
     import deep_gemm
 
     # Set the number of SMs to use
-    Buffer.set_num_sms(20)
 except:
     logger.warning("no deepep or deep_gemm")
 
