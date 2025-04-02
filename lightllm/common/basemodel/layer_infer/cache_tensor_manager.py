@@ -98,7 +98,6 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
         ):
             self.managed_total_tensor_bytes = 0
             setattr(torch.Tensor, "__del__", custom_del)
-            setattr(torch.Tensor, "add_", custom_add_)
             self.is_cuda_graph = is_cuda_graph
             if self.is_cuda_graph:
                 if self.inner_cuda_graph_manager is None:
@@ -111,7 +110,6 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
 
         def cache_env_out(self):
             delattr(torch.Tensor, "__del__")
-            delattr(torch.Tensor, "add_")
             self.ptr_to_bufnode.clear()
             self.free_shape_dtype_to_bufs.clear()
             self.calcu_shape_cache.clear()
