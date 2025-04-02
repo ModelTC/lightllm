@@ -152,7 +152,7 @@ class HttpServerManager:
                         img.token_num = None
         return
 
-    def tokens(self, prompt, multimodal_params, samping_params=SamplingParams, kwargs=None):
+    def tokens(self, prompt, multimodal_params, samping_params: SamplingParams, kwargs=None):
         kwargs = {} if kwargs is None else kwargs
         prompt_ids = self.tokenizer.encode(prompt, None, **kwargs)
         image_tokens = 0

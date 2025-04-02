@@ -249,6 +249,7 @@ class SamplingParams(ctypes.Structure):
         ("top_p", ctypes.c_float),
         ("top_k", ctypes.c_int),
         ("ignore_eos", ctypes.c_bool),
+        # the max number of image patches to be used in the internvl model, for the test
         ("image_max_patch_num", ctypes.c_int),
         ("max_new_tokens", ctypes.c_int),
         ("min_new_tokens", ctypes.c_int),

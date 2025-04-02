@@ -63,3 +63,7 @@ def start_cache_manager(port: int, args, pipe_writer):
     t = ThreadedServer(service, port=port)
     pipe_writer.send("init ok")
     t.start()
+
+
+if __name__ == "__main__":
+    start_cache_manager(2233)

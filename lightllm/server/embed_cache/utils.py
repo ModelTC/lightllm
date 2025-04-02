@@ -1,9 +1,7 @@
-import base64
 import torch
 import numpy as np
 from io import BytesIO
 import multiprocessing.shared_memory as shm
-from PIL import Image
 
 
 def tensor2bytes(t):

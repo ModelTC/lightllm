@@ -1,8 +1,6 @@
 import base64
-from io import BytesIO
 from PIL import Image
-
-from lightllm.server.multimodal_params import MultimodalParams, ImageItem
+from io import BytesIO
 
 
 def image2base64(img_str: str):
