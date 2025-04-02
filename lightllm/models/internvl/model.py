@@ -41,9 +41,11 @@ class InternvlTokenizer:
         self.image_end_id = tokenizer.convert_tokens_to_ids(self.image_end_tag)
         self.get_image_patch_func = get_image_patch_func(kwargs["weight_dir"])
 
-    def init_imageItem_extral_params(self, img: ImageItem, multi_params: MultimodalParams, image_max_patch_num: int):
-        if image_max_patch_num >= 0:
-            img.extra_params["image_patch_max_num"] = image_max_patch_num
+    def init_imageItem_extral_params(
+        self, img: ImageItem, multi_params: MultimodalParams, sampling_params: SamplingParams
+    ):
+        if sampling_params.image_max_patch_num >= 0:
+            img.extra_params["image_patch_max_num"] = sampling_params.image_max_patch_num
             return
         elif os.getenv("MAX_PATCH_NUM"):
             img.extra_params["image_patch_max_num"] = int(os.getenv("MAX_PATCH_NUM"))

@@ -110,6 +110,7 @@ class HttpServerManager:
     # connect cache server, calculate md5, alloc resource, return uuid
     async def _alloc_resource(self, img: ImageItem):
         data = img.read()
+        # must after init_imageItem_extral_params
         num_tokens = self.tokenizer.get_image_token_length(img)
         md5sum = hashlib.md5(data).hexdigest() + "_" + str(hash(frozendict(img.extra_params)))
         wait_time = 1
@@ -127,11 +128,11 @@ class HttpServerManager:
                 await asyncio.sleep(wait_time)
                 wait_time = min(wait_time + 2, 9)
 
-    async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams, image_max_patch_num):
+    async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams, sampling_params: SamplingParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
             for img in multimodal_params.images:
-                self.tokenizer.init_imageItem_extral_params(img, multimodal_params, image_max_patch_num)
+                self.tokenizer.init_imageItem_extral_params(img, multimodal_params, sampling_params)
                 record = await self._alloc_resource(img)
                 img.uuid = record["id"]
                 img.token_id = record["token_id"]
@@ -151,15 +152,15 @@ class HttpServerManager:
                         img.token_num = None
         return
 
-    def tokens(self, prompt, multimodal_params, kwargs=None):
+    def tokens(self, prompt, multimodal_params, samping_params=SamplingParams, kwargs=None):
         kwargs = {} if kwargs is None else kwargs
         prompt_ids = self.tokenizer.encode(prompt, None, **kwargs)
         image_tokens = 0
         img_count = 0
-        max_num = multimodal_params.max_num
         for img in multimodal_params.images:
             img_count += 1
-            image_tokens += self.tokenizer.get_image_token_length(img, max_num)
+            self.tokenizer.init_imageItem_extral_params(img, multimodal_params, samping_params)
+            image_tokens += self.tokenizer.get_image_token_length(img)
         return len(prompt_ids) + image_tokens + img_count
 
     async def loop_for_request(self):
@@ -307,9 +308,7 @@ class HttpServerManager:
         if isinstance(prompt, str):
             if self.enable_multimodal:
                 assert len(multimodal_params.images) <= self.args.cache_capacity, "too many images!"
-                await self._alloc_multimodal_resources(
-                    multimodal_params, image_max_patch_num=sampling_params.image_max_patch_num
-                )
+                await self._alloc_multimodal_resources(multimodal_params, sampling_params)
                 prompt_ids = self.tokenizer.encode(
                     prompt, multimodal_params, add_special_tokens=sampling_params.add_special_tokens
                 )

@@ -7,6 +7,7 @@ from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.image_utils import ImageInput
 from transformers.processing_utils import ProcessorMixin
+from lightllm.server.core.objs import SamplingParams
 from transformers.tokenization_utils_base import PaddingStrategy, PreTokenizedInput, TextInput, TruncationStrategy
 from typing import List, Optional, Union
 from transformers.utils import TensorType, logging
@@ -31,7 +32,9 @@ class QWen2VLTokenizer:
         self.image_end_id = kwargs["model_cfg"]["vision_end_token_id"]
         self.image_token_id = kwargs["model_cfg"]["image_token_id"]
 
-    def init_imageItem_extral_params(self, img: ImageItem, multi_params: MultimodalParams, image_max_patch_num: int):
+    def init_imageItem_extral_params(
+        self, img: ImageItem, multi_params: MultimodalParams, sampling_params: SamplingParams
+    ):
         return
 
     def get_image_token_length(self, img: ImageItem):

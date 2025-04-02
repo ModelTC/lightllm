@@ -364,12 +364,22 @@ async def tokens(request: Request):
     try:
         request_dict = await request.json()
         prompt = request_dict.pop("text")
-        parameters = request_dict.pop("parameters", {})
+        sample_params_dict = request_dict.pop("parameters", {})
+
+        sampling_params = SamplingParams()
+        sampling_params.init(tokenizer=g_objs.httpserver_manager.tokenizer, **sample_params_dict)
+        sampling_params.verify()
+
         multimodal_params_dict = request_dict.get("multimodal_params", {})
         multimodal_params = MultimodalParams(**multimodal_params_dict)
         multimodal_params.verify_and_preload()
         return JSONResponse(
-            {"ntokens": g_objs.httpserver_manager.tokens(prompt, multimodal_params, parameters)}, status_code=200
+            {
+                "ntokens": g_objs.httpserver_manager.tokens(
+                    prompt, multimodal_params, sampling_params, sample_params_dict
+                )
+            },
+            status_code=200,
         )
     except Exception as e:
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, f"error: {str(e)}")

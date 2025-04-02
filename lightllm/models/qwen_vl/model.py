@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import unicodedata
+from lightllm.server.core.objs import SamplingParams
 from lightllm.models.qwen.model import QWenTpPartModel
 from .layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
 from lightllm.server.multimodal_params import MultimodalParams, ImageItem
@@ -19,7 +20,9 @@ class QWenVLTokenizer:
         # <imgpad>: 151859
         self.image_length = model_cfg["visual"].get("n_queries", 256)
 
-    def init_imageItem_extral_params(self, img: ImageItem, multi_params: MultimodalParams, image_max_patch_num: int):
+    def init_imageItem_extral_params(
+        self, img: ImageItem, multi_params: MultimodalParams, sampling_params: SamplingParams
+    ):
         return
 
     def _list_find(self, input_list, target, start_idx):
