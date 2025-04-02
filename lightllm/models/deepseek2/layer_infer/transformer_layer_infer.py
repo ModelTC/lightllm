@@ -759,10 +759,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
 
         _0_overlap_event = Buffer.capture()
 
-        # 0 shared expert
-        if self.n_shared_experts is not None:
-            _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
-
         # 1 attention
         _1_input1 = self._att_norm(input_embdings1, infer_state1, layer_weight)
         _1_cache_kv = self._pre_cache_kv(infer_state1, layer_weight)
@@ -800,6 +796,10 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         )
 
         _1_overlap_event = Buffer.capture()
+
+        # 0 shared expert
+        if self.n_shared_experts is not None:
+            _0_shared_output = LlamaTransformerLayerInfer._ffn(self, _0_input1, infer_state, layer_weight)
 
         # 1 shared expert
         if self.n_shared_experts is not None:
