@@ -198,7 +198,7 @@ def tppart_model_infer(args, model_class, model_kvargs, batch_size, input_len, o
 
     enable_decode_overlap = args.enable_decode_microbatch_overlap
     group_size = 1
-    if enable_decode_overlap:
+    if enable_decode_overlap or args.enable_prefill_microbatch_overlap:
         assert batch_size % 2 == 0, "batch size must be even number"
         group_size = 2
     init_distributed_env(model_kvargs)
