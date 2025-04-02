@@ -221,9 +221,9 @@ class HttpServerManager:
         group_request_id = self.alloc_req_id(sampling_params, is_health_req)
 
         try:
-            old_multimodal_params = None
+            original_multimodal_params = None
             if self.nnodes > 1 and self.node_rank == 0 and self.args.dp == 1:
-                old_multimodal_params = copy.deepcopy(multimodal_params)
+                original_multimodal_params = copy.deepcopy(multimodal_params)
 
             if self.pd_mode.is_P_or_NORMAL():
                 multimodal_params.verify_and_preload()
@@ -265,7 +265,7 @@ class HttpServerManager:
             self.req_id_to_out_inf[group_request_id] = req_status
 
             await self.transfer_to_next_module_or_node(
-                prompt, sampling_params, old_multimodal_params, req_status.group_req_objs
+                prompt, sampling_params, original_multimodal_params, req_status.group_req_objs
             )
 
             results_generator = self._wait_to_token_package(
@@ -285,6 +285,8 @@ class HttpServerManager:
 
         except Exception as e:
             logger.error(f"group_request_id: {group_request_id} has exception {str(e)}")
+            # error need to release multimodel resources.
+            await self._release_multimodal_resources(multimodal_params)
             await self.abort(group_request_id)
             raise e
         return
@@ -361,7 +363,7 @@ class HttpServerManager:
         self,
         prompt: str,
         sampling_params: SamplingParams,
-        multimodal_params: MultimodalParams,
+        original_multimodal_params: MultimodalParams,
         group_req_objs: Optional[GroupReqObjs] = None,
     ):
         # 多节点纯tp 运行模式下，保证请求能保持相同的顺序转发到其他节点和当前节点next module.
@@ -369,7 +371,7 @@ class HttpServerManager:
             async with self.transfer_lock:
                 for sender in self.multinode_req_manager:
                     sender.send_pyobj(
-                        (prompt, sampling_params, multimodal_params),
+                        (prompt, sampling_params, original_multimodal_params),
                         protocol=pickle.HIGHEST_PROTOCOL,
                     )
                 await self.transfer_to_next_module(group_req_objs)
