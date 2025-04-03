@@ -288,7 +288,11 @@ class HttpServerManager:
         except Exception as e:
             logger.error(f"group_request_id: {group_request_id} has exception {str(e)}")
             # error need to release multimodel resources.
-            await self._release_multimodal_resources(multimodal_params)
+            # 对于还没有形成正式请求对象管理的多模态资源，需要单独自己释放
+            # 已经放入到 req_id_to_out_inf 中的请求对象，由统一的回收循环
+            # 进行回收。
+            if group_request_id not in self.req_id_to_out_inf:
+                await self._release_multimodal_resources(multimodal_params)
             await self.abort(group_request_id)
             raise e
         return
