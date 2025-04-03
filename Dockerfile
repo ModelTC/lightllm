@@ -40,5 +40,9 @@ RUN pip install -r /lightllm/requirements.txt --no-cache-dir --ignore-installed 
 
 RUN pip install --no-cache-dir nvidia-nccl-cu12==2.25.1  # for allreduce hang issues in multinode H100
 
+RUN git clone https://github.com/Dao-AILab/flash-attention.git -b v2.7.4.post1
+RUN cd hopper
+RUN python setup.py install
+
 COPY . /lightllm
 RUN pip install -e /lightllm --no-cache-dir
