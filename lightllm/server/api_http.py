@@ -385,6 +385,57 @@ async def tokens(request: Request):
         return create_error_response(HTTPStatus.EXPECTATION_FAILED, f"error: {str(e)}")
 
 
+# for special cases
+@app.get("/tokens_num")
+@app.post("/tokens_num")
+async def tokens_num(request: Request):
+    try:
+        request_dict = await request.json()
+        prompt = request_dict.pop("text")
+        sample_params_dict = request_dict.pop("parameters", {})
+
+        sampling_params = SamplingParams()
+        sampling_params.init(tokenizer=g_objs.httpserver_manager.tokenizer, **sample_params_dict)
+        sampling_params.verify()
+
+        multimodal_params_dict = request_dict.get("multimodal_params", {})
+        images_size = multimodal_params_dict.get("images", [])
+
+        prompt_ids = g_objs.httpserver_manager.tokenizer.encode(prompt, None, add_special_tokens=False)
+        image_tokens = 0
+        img_count = 0
+        max_num = 0
+        if sampling_params.image_max_patch_num >= 0:
+            max_num = sampling_params.image_max_patch_num
+        else:
+            num_images = len(images_size)
+            if num_images == 1:
+                max_num = 12
+            elif num_images > 1 and num_images <= 6:
+                max_num = 6
+            elif num_images > 6:
+                max_num = 0
+        image_token_length = int(os.environ.get("INTERNVL_IMAGE_LENGTH", 256))
+
+        for img_size in images_size:
+            img_count += 1
+            image_tokens += (
+                g_objs.httpserver_manager.tokenizer.get_image_patch_func(
+                    img_size[0], img_size[1], max_num=max_num, use_thumbnail=True
+                )
+                * image_token_length
+            )
+
+        num_tokens = len(prompt_ids) + image_tokens + img_count
+
+        return JSONResponse(
+            {"ntokens": num_tokens},
+            status_code=200,
+        )
+    except Exception as e:
+        return create_error_response(HTTPStatus.EXPECTATION_FAILED, f"error: {str(e)}")
+
+
 @app.get("/metrics")
 async def metrics() -> Response:
     data = await g_objs.metric_client.generate_latest()
