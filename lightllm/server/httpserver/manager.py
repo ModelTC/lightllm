@@ -385,7 +385,7 @@ class HttpServerManager:
                 await self.transfer_to_next_module(group_req_objs)
             return
         # 多节点纯tp 的slave节点，需要按照接受到请求的顺序转发，这需要锁和排队机制来保证。
-        # self.request_order_queue 实现了一种简单的排队取出机制，这样master 和 slave 
+        # self.request_order_queue 实现了一种简单的排队取出机制，这样master 和 slave
         # 节点的请求到达各自节点的router的顺序才是一致的，才能完成同步同态调度。
         if self.is_multinode_tp_slave:
             while True:
@@ -588,7 +588,7 @@ class HttpServerManager:
         if self.pd_mode.is_P_or_D():
             self.forwarding_queue = AsyncQueue()
             asyncio.create_task(self.pd_handle_loop())
-        
+
         # 多节点tp模式下的slave节点，需要开启一个协程task用来接收
         # master 转发过来的请求对象。
         if self.is_multinode_tp_slave:
