@@ -32,6 +32,7 @@ from lightllm.utils.config_utils import get_vocab_size
 
 logger = init_logger(__name__)
 
+
 class HttpServerManager:
     def __init__(
         self,
@@ -372,7 +373,7 @@ class HttpServerManager:
                 await self.transfer_to_next_module(group_req_objs)
             return
         # 多节点纯tp 的slave节点，需要按照接受到请求的顺序转发，这需要锁和排队机制来保证。
-        # self.request_order_queue 实现了一种简单的排队取出机制，这样master 和 slave 
+        # self.request_order_queue 实现了一种简单的排队取出机制，这样master 和 slave
         # 节点的请求到达各自节点的router的顺序才是一致的，才能完成同步同态调度。
         if self.is_multinode_tp_slave:
             while True:
@@ -581,7 +582,7 @@ class HttpServerManager:
             from lightllm.server.httpserver.pd_loop import pd_handle_loop
 
             asyncio.create_task(pd_handle_loop(self))
-        
+
         while True:
             try:
                 await asyncio.wait_for(self.recv_from_detokenization.recv_pyobj(), timeout=0.05)
@@ -623,6 +624,7 @@ class HttpServerManager:
 
             self.recycle_event.set()
         return
+
 
 class ReqStatus:
     def __init__(self, group_request_id, multimodal_params, req_objs: List[Req], start_time) -> None:
