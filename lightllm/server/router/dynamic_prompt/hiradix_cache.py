@@ -4,15 +4,20 @@ from typing import Tuple, Dict, Set, List
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.log_utils import init_logger
 from threading import Lock, Thread
+from cache.ffi.pywarp import PyLocalCacheService
 
 logger = init_logger(__name__)
 
 class HiRadixCache(RadixCache):
-    def __init__(self, unique_name, total_token_num, rank_in_node, mem_manager, max_seq_length, py_cache_service):
+    def __init__(self, unique_name, total_token_num, rank_in_node, mem_manager, max_seq_length):
         super().__init__(unique_name, total_token_num, rank_in_node, mem_manager)
+        print(f"Initializing HiRadixCache")
         try:
-            assert py_cache_service is not None
-            self.py_cache_service = py_cache_service
+            all_buffers = self.mem_manager.kv_buffer
+            all_buffers = all_buffers.view(all_buffers.shape[0], all_buffers.shape[1], -1)
+            self.py_cache_service = PyLocalCacheService(
+                file="cache/cache_file", storage_size=32 * (1024**3),
+                num_shard=32, kvcache=all_buffers, num_worker=32)
             self.hi_cache_buffer_len = 0
             self.hi_cache_key_buffer = torch.empty(max_seq_length, dtype=torch.int64, device="cpu")
             self.hi_cache_kv_buffer = self.mem_manager.alloc(max_seq_length)
@@ -53,24 +58,32 @@ class HiRadixCache(RadixCache):
         return self._insert_helper(self.root_node, key, value)
     
     def _store_buffer(self):
+        logger.info(f"Storing buffer size = {self.hi_cache_buffer_len}")
         assert self.moving
         assert self.hi_cache_buffer_len > 0
         assert self.hi_cache_kv_buffer is not None
         key = self.hi_cache_key_buffer[:self.hi_cache_buffer_len].tolist()
-        write_task = self.py_cache_service.create(tokens=key, kv_page_indexer=self.hi_cache_kv_buffer[:self.hi_cache_buffer_len], mode="w")
+        write_task = self.py_cache_service.create(tokens=key, kv_page_indexer=self.hi_cache_kv_buffer[:self.hi_cache_buffer_len].type(torch.int64).cuda(), mode="w")
         while not write_task.ready(): 
             pass
+        logger.info(f"HiCache: stored one kvcache with len = {self.hi_cache_buffer_len}")
         with self.moving_lock:
             self.moving = False
 
     def match_prefix(self, key, update_refs=False):
         assert len(key) != 0
         ans_value_list = []
-        available_hi_result = self.cache_controller.readable_length(key)
-        tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=False)
-        if tree_node == self.root_node or available_hi_result > len(ans_value_list):
-            hi_result = self.cache_controller.read(key)
-            self._insert_helper(tree_node, key, hi_result)
+        tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
+        use_hi_cache = self._query_hi_cache(key, len(ans_value_list))
+        if use_hi_cache:
+            self.free_radix_cache_to_get_enough_token(len(key))
+            buffers = self.mem_manager.alloc(len(key)).type(torch.int64).cuda()
+            read_task = self.py_cache_service.create(tokens=key, kv_page_indexer=buffers, mode="r")
+            while not read_task.ready():
+                pass
+            logger.info(f"HiCache pulled one cache with len = {len(key)}")
+            self._insert_helper(self.root_node, key, buffers)
+        ans_value_list = []
         tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
         if tree_node != self.root_node:
             if len(ans_value_list) != 0:
@@ -81,3 +94,14 @@ class HiRadixCache(RadixCache):
         else:
             self.dec_node_ref_counter(self.root_node)
             return None, 0, None
+    
+    def _query_hi_cache(self, key, gpu_ans_len) -> bool:
+        query_result = self.py_cache_service.query(key)
+        # query_result is a list of bool, find out the max len true continuous from start
+        max_len = 0
+        for result in query_result:
+            if result:
+                max_len += 1
+            else:
+                break
+        return max_len > gpu_ans_len
