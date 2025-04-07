@@ -33,6 +33,10 @@ class ImageItem:
                 img_data = ret.content
             elif self._type == "base64":
                 img_data = base64.b64decode(self._data)
+            elif self._type == "image_size":
+                self.image_w = self._data[0]
+                self.image_h = self._data[1]
+                return
             else:
                 raise ValueError(f"cannot read image which type is {self._type}!")
 

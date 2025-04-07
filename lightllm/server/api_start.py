@@ -11,6 +11,7 @@ from .embed_cache.manager import start_cache_manager
 from .visualserver.manager import start_visual_process
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import set_env_start_args, set_unique_server_name, get_unique_server_name
+from lightllm.utils.envs_utils import get_lightllm_gunicorn_time_out_seconds
 from .detokenization.manager import start_detokenization_process
 from .router.manager import start_router_process
 from lightllm.utils.process_check import is_process_active
@@ -94,6 +95,10 @@ def normal_or_p_d_start(args):
     # 部分模式目前还无法与dynamic_prompt_cache一起跑，to do。
     if args.use_dynamic_prompt_cache:
         assert args.token_healing_mode is False
+
+    # chuncked prefill 需要和 dynamic_prompt_cache 一起使能
+    if not args.disable_chunked_prefill:
+        assert args.use_dynamic_prompt_cache is True
 
     # 部分模式还不能支持与高级动态调度算法协同，to do.
     if args.diverse_mode:
@@ -246,6 +251,8 @@ def normal_or_p_d_start(args):
         "--error-logfile",
         "-",
         "lightllm.server.api_http:app",
+        "--timeout",
+        f"{get_lightllm_gunicorn_time_out_seconds()}",
     ]
 
     # 启动子进程
@@ -303,6 +310,8 @@ def pd_master_start(args):
         "-",
         "--preload",
         "lightllm.server.api_http:app",
+        "--timeout",
+        f"{get_lightllm_gunicorn_time_out_seconds()}",
     ]
 
     http_server_process = subprocess.Popen(command)
