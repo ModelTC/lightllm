@@ -5,13 +5,14 @@ from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.log_utils import init_logger
 from threading import Lock, Thread
 from cache.ffi.pywarp import PyLocalCacheService
+import time
 
 logger = init_logger(__name__)
 
 class HiRadixCache(RadixCache):
     def __init__(self, unique_name, total_token_num, rank_in_node, mem_manager, max_seq_length):
         super().__init__(unique_name, total_token_num, rank_in_node, mem_manager)
-        print(f"Initializing HiRadixCache")
+        logger.info(f"Initializing HiRadixCache")
         try:
             all_buffers = self.mem_manager.kv_buffer
             all_buffers = all_buffers.view(all_buffers.shape[0], all_buffers.shape[1], -1)
@@ -65,7 +66,7 @@ class HiRadixCache(RadixCache):
         key = self.hi_cache_key_buffer[:self.hi_cache_buffer_len].tolist()
         write_task = self.py_cache_service.create(tokens=key, kv_page_indexer=self.hi_cache_kv_buffer[:self.hi_cache_buffer_len].type(torch.int64).cuda(), mode="w")
         while not write_task.ready(): 
-            pass
+            time.sleep(0.5)
         logger.info(f"HiCache: stored one kvcache with len = {self.hi_cache_buffer_len}")
         with self.moving_lock:
             self.moving = False
@@ -74,19 +75,21 @@ class HiRadixCache(RadixCache):
         assert len(key) != 0
         ans_value_list = []
         tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
-        use_hi_cache = self._query_hi_cache(key, len(ans_value_list))
-        if use_hi_cache:
+        max_len = self._query_hi_cache(key)
+        logger.info(f"Matched {len(ans_value_list)} from gpu and {max_len} from disk.")
+        pull_hi_cache = False
+        if max_len > len(ans_value_list):
             pull_hi_cache = True
             try:
-                self.free_radix_cache_to_get_enough_token(len(key))
+                self.free_radix_cache_to_get_enough_token(max_len)
             except:
                 pull_hi_cache = False
         if pull_hi_cache:
-            buffers = self.mem_manager.alloc(len(key)).type(torch.int64).cuda()
-            read_task = self.py_cache_service.create(tokens=key, kv_page_indexer=buffers, mode="r")
+            buffers = self.mem_manager.alloc(max_len).type(torch.int64).cuda()
+            read_task = self.py_cache_service.create(tokens=key[:max_len], kv_page_indexer=buffers, mode="r")
             while not read_task.ready():
-                pass
-            logger.info(f"HiCache pulled one cache with len = {len(key)}")
+                time.sleep(0.5)
+            logger.info(f"HiCache pulled one cache with len = {max_len}")
             self._insert_helper(self.root_node, key, buffers)
             ans_value_list = []
             tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
@@ -100,7 +103,7 @@ class HiRadixCache(RadixCache):
             self.dec_node_ref_counter(self.root_node)
             return None, 0, None
     
-    def _query_hi_cache(self, key, gpu_ans_len) -> bool:
+    def _query_hi_cache(self, key) -> bool:
         query_result = self.py_cache_service.query(key)
         # query_result is a list of bool, find out the max len true continuous from start
         max_len = 0
@@ -109,4 +112,4 @@ class HiRadixCache(RadixCache):
                 max_len += 1
             else:
                 break
-        return max_len > gpu_ans_len
+        return max_len
