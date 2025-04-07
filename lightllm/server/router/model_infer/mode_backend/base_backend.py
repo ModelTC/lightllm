@@ -12,6 +12,7 @@ from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.models import get_model
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
+from lightllm.server.router.dynamic_prompt.hiradix_cache import HiRadixCache
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
@@ -51,6 +52,7 @@ class ModeBackend:
         self.chunked_prefill_size = kvargs.get("chunked_prefill_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = not kvargs.get("disable_dynamic_prompt_cache", False)
+        self.use_hi_dynamic_prompt_cache = kvargs.get("use_hi_dynamic_prompt_cache", False)
         self.eos_id: List[int] = kvargs.get("eos_id", [2])
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
 
@@ -115,7 +117,15 @@ class ModeBackend:
         self.model, self.is_multimodal = get_model(model_cfg, model_kvargs)
         set_random_seed(2147483647)
         self.radix_cache = (
-            RadixCache(
+            HiRadixCache(
+                get_unique_server_name(),
+                self.model.mem_manager.size,
+                self.rank_in_node,
+                mem_manager=self.model.mem_manager,
+                max_seq_length=kvargs.get("max_seq_length", 1024 * 5),
+            )
+            if self.use_dynamic_prompt_cache and self.use_hi_dynamic_prompt_cache
+            else RadixCache(
                 get_unique_server_name(),
                 self.model.mem_manager.size,
                 self.rank_in_node,
