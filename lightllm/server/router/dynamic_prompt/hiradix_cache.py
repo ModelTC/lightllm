@@ -76,15 +76,20 @@ class HiRadixCache(RadixCache):
         tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
         use_hi_cache = self._query_hi_cache(key, len(ans_value_list))
         if use_hi_cache:
-            self.free_radix_cache_to_get_enough_token(len(key))
+            pull_hi_cache = True
+            try:
+                self.free_radix_cache_to_get_enough_token(len(key))
+            except:
+                pull_hi_cache = False
+        if pull_hi_cache:
             buffers = self.mem_manager.alloc(len(key)).type(torch.int64).cuda()
             read_task = self.py_cache_service.create(tokens=key, kv_page_indexer=buffers, mode="r")
             while not read_task.ready():
                 pass
             logger.info(f"HiCache pulled one cache with len = {len(key)}")
             self._insert_helper(self.root_node, key, buffers)
-        ans_value_list = []
-        tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
+            ans_value_list = []
+            tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
         if tree_node != self.root_node:
             if len(ans_value_list) != 0:
                 value = torch.concat(ans_value_list)
