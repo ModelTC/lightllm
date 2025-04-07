@@ -6,6 +6,7 @@ from io import BytesIO
 from PIL import Image
 from lightllm.utils.image_utils import fetch_image
 import base64
+from fastapi import Request
 
 
 class ImageItem:
@@ -24,11 +25,11 @@ class ImageItem:
         self._preload_data = None
         self.extra_params = {}
 
-    async def preload(self):
+    async def preload(self, request: Request):
         try:
             if self._type == "url":
                 timeout = int(os.getenv("REQUEST_TIMEOUT", "5"))
-                img_data = await fetch_image(self._data, timeout=timeout)
+                img_data = await fetch_image(self._data, request, timeout=timeout)
             elif self._type == "base64":
                 img_data = base64.b64decode(self._data)
             elif self._type == "image_size":
@@ -81,9 +82,9 @@ class MultimodalParams:
         self.images = [ImageItem(**i) for i in images]
         return
 
-    async def verify_and_preload(self):
+    async def verify_and_preload(self, request: Request):
         for image in self.images:
-            await image.preload()
+            await image.preload(request)
         return
 
     def to_dict(self):
