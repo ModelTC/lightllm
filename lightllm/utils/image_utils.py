@@ -27,15 +27,16 @@ async def fetch_image(url, request: Request, timeout, proxy=None):
             response.raise_for_status()
             ans_bytes = []
             async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
-                if await request.is_disconnected():
+                if request is not None and await request.is_disconnected():
                     await response.aclose()
                     raise Exception("Request disconnected. User cancelled download.")
                 ans_bytes.append(chunk)
                 # 接收的数据不能大于128M
                 if len(ans_bytes) > 128:
-                    raise Exception("Image data is too big")
+                    raise Exception(f"url {url} Image data is too big")
 
             content = b"".join(ans_bytes)
     end_time = time.time()
-    logger.info("Download image time: {:.2f} seconds".format(end_time - start_time))
+    cost_time = end_time - start_time
+    logger.info(f"Download url {url} image cost time: {cost_time} seconds")
     return content
