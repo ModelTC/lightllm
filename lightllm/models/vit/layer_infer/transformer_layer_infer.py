@@ -61,7 +61,9 @@ class ViTTransformerLayerInfer:
 
     def _att_norm(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
         if layer_weight.norm_type == "rms_norm":
-            b = rms_norm(input, weight=layer_weight.att_norm_weight_.weight, eps=self.eps_)
+            b = rms_norm(
+                input, weight=layer_weight.att_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+            )
         else:
             b = torch.nn.functional.layer_norm(
                 input,
@@ -74,7 +76,9 @@ class ViTTransformerLayerInfer:
 
     def _ffn_norm(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
         if layer_weight.norm_type == "rms_norm":
-            return rms_norm(input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_)
+            return rms_norm(
+                input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+            )
         else:
             return torch.nn.functional.layer_norm(
                 input,
@@ -89,8 +93,12 @@ class ViTTransformerLayerInfer:
             q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
             k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
         else:
-            q_norm = rms_norm(q, weight=layer_weight.q_norm_weight_.weight, eps=self.eps_)
-            k_norm = rms_norm(k, weight=layer_weight.k_norm_weight_.weight, eps=self.eps_)
+            q_norm = rms_norm(
+                q, weight=layer_weight.q_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+            )
+            k_norm = rms_norm(
+                k, weight=layer_weight.k_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+            )
         return q_norm, k_norm
 
     def _get_qkv(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:

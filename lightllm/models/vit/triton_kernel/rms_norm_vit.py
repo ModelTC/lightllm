@@ -33,7 +33,7 @@ def rms_norm_kernel(
     tl.store(out_ptr + offsets, out, mask=offsets < N_COLS)
 
 
-def rms_norm(hidden_states: Tensor, weight: Tensor, eps: float = 1e-5, use_custom_tensor_mananger: bool = True):
+def rms_norm(hidden_states: Tensor, weight: Tensor, eps: float = 1e-5, use_custom_tensor_mananger: bool = False):
     """Rms norm."""
     feat_size = weight.shape[0]
     seq_len = hidden_states.numel() // hidden_states.size(-1)

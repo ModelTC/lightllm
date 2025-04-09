@@ -22,7 +22,7 @@ def gelu_kernel(output_ptr, input_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(output_ptr + offsets, output, mask=mask)
 
 
-def gelu_fwd(input, use_custom_tensor_mananger=True):
+def gelu_fwd(input, use_custom_tensor_mananger=False):
     if use_custom_tensor_mananger:
         shape = input.shape
         dtype = input.dtype
