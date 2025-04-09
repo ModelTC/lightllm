@@ -55,7 +55,7 @@ class VisualManager:
         for dp_rank_id in range(self.vit_dp):
             tp_ports_each_dp = self.visual_model_rpc_ports[dp_rank_id]
             for tp_rank_id in range(self.vit_tp):
-                device_id = dp_rank_id * self.vit_tp + tp_rank_id
+                device_id = self.args.visual_gpu_ids[dp_rank_id * self.vit_tp + tp_rank_id]
                 rpc_model = await start_model_process(
                     port=tp_ports_each_dp[tp_rank_id], vit_tp=self.vit_tp, device_id=device_id
                 )

@@ -66,9 +66,9 @@ def normal_or_p_d_start(args):
     if args.enable_mps:
         from lightllm.utils.device_utils import enable_mps, set_gpu_exclusive_mode
 
-        enable_mps()
         for i in range(args.tp):
             set_gpu_exclusive_mode(gpu_index=i)
+        enable_mps()
 
     if args.run_mode not in ["normal", "prefill", "decode"]:
         return
