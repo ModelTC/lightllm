@@ -48,4 +48,6 @@ class ViTPreLayerInfer:
             group=None,
             async_op=False,
         )
-        return gather_embedding.permute(1, 2, 0).contiguous()
+        output = gather_embedding.permute(1, 2, 0).contiguous()
+        gather_embedding = None
+        return output

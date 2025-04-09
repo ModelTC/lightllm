@@ -85,8 +85,12 @@ class ViTTransformerLayerInfer:
             )
 
     def _qk_norm(self, q, k, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
-        q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
-        k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
+        if self.tp_world_size_ > 1:
+            q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
+            k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
+        else:
+            q_norm = rms_norm(q, weight=layer_weight.q_norm_weight_.weight, eps=self.eps_)
+            k_norm = rms_norm(k, weight=layer_weight.k_norm_weight_.weight, eps=self.eps_)
         return q_norm, k_norm
 
     def _get_qkv(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
@@ -98,7 +102,7 @@ class ViTTransformerLayerInfer:
         return q, k, v
 
     def _context_attention_kernel(self, q, k, v) -> torch.Tensor:
-        out = torch.empty_like(q)
+        out = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device, is_graph_out=False)
         batch_size = q.shape[0]
         seq_len = q.shape[1]
         flash_attention_fwd(q, k, v, out)
