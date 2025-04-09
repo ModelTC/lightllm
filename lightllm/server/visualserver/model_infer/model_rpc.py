@@ -144,7 +144,7 @@ def _init_env(port, device_id):
     # 注册graceful 退出的处理
     graceful_registry(inspect.currentframe().f_code.co_name)
     from lightllm.utils.device_utils import set_sm_limit
-    
+
     if get_env_start_args().enable_mps:
         set_sm_limit(60, device_id)  # the visual server can take up to 60% of the sm
 
