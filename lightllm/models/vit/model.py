@@ -135,8 +135,8 @@ class VisionTransformer:
         input_embs = self.pre_infer.forward(pixel_values, self.pre_post_weight)
         for i in range(self.layers_num + self.select_layer + 1):
             input_embs = self.layers_infer[i].forward(input_embs, self.trans_layers_weight[i])
-        g_cache_manager.cache_env_out()
         input_embs = self.post_infer.forward(input_embs[:, 1:, :], self.pre_post_weight)
+        g_cache_manager.cache_env_out()
         return input_embs
 
     @torch.no_grad()
