@@ -44,7 +44,7 @@ def rms_norm(hidden_states: Tensor, weight: Tensor, eps: float = 1e-5, use_custo
         shape = hidden_states.shape
         dtype = hidden_states.dtype
         device = hidden_states.device
-        output = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+        output = g_cache_manager.alloc_tensor(shape, dtype, device=device)
     else:
         output = torch.empty_like(hidden_states)
 

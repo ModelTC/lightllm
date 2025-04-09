@@ -27,7 +27,7 @@ def gelu_fwd(input, use_custom_tensor_mananger=False):
         shape = input.shape
         dtype = input.dtype
         device = input.device
-        output = g_cache_manager.alloc_tensor(shape, dtype, device=device, is_graph_out=False)
+        output = g_cache_manager.alloc_tensor(shape, dtype, device=device)
     else:
         output = torch.empty_like(input)
     n_elements = input.numel()

@@ -110,7 +110,7 @@ class ViTTransformerLayerInfer:
         return q, k, v
 
     def _context_attention_kernel(self, q, k, v) -> torch.Tensor:
-        out = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device, is_graph_out=False)
+        out = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device)
         batch_size = q.shape[0]
         seq_len = q.shape[1]
         flash_attention_fwd(q, k, v, out)
