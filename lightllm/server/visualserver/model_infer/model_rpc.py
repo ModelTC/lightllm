@@ -139,19 +139,28 @@ class VisualModelRpcClient:
             return ans
 
 
-def _init_env(port):
+def _init_env(port, device_id):
     # 注册graceful 退出的处理
     graceful_registry(inspect.currentframe().f_code.co_name)
+    from lightllm.utils.device_utils import set_sm_limit
+
+    set_sm_limit(60, device_id)  # the visual server can take up to 60% of the gpu memory
 
     t = ThreadedServer(VisualModelRpcServer(), port=port, protocol_config={"allow_pickle": True})
     t.start()
     return
 
 
-async def start_model_process(port, vit_tp):
+async def start_model_process(port, vit_tp, device_id):
     import multiprocessing
 
-    proc = multiprocessing.Process(target=_init_env, args=(port,))
+    proc = multiprocessing.Process(
+        target=_init_env,
+        args=(
+            port,
+            device_id,
+        ),
+    )
     proc.start()
     await asyncio.sleep(2)
     repeat_count = 0
