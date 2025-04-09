@@ -20,6 +20,7 @@ from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.dist_utils import init_vision_distributed_env
 from lightllm.utils.graceful_utils import graceful_registry
+from lightllm.utils.envs_utils import get_env_start_args
 
 
 class VisualModelRpcServer(rpyc.Service):
@@ -143,8 +144,9 @@ def _init_env(port, device_id):
     # 注册graceful 退出的处理
     graceful_registry(inspect.currentframe().f_code.co_name)
     from lightllm.utils.device_utils import set_sm_limit
-
-    set_sm_limit(60, device_id)  # the visual server can take up to 60% of the gpu memory
+    
+    if get_env_start_args().enable_mps:
+        set_sm_limit(60, device_id)  # the visual server can take up to 60% of the sm
 
     t = ThreadedServer(VisualModelRpcServer(), port=port, protocol_config={"allow_pickle": True})
     t.start()
