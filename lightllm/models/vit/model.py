@@ -19,6 +19,7 @@ from io import BytesIO
 from rpyc.utils.classic import obtain
 from lightllm.common.quantization import Quantcfg
 from lightllm.utils.dist_utils import get_dp_world_size
+from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
 logger = init_logger(__name__)
@@ -128,10 +129,13 @@ class VisionTransformer:
         else:
             raise ValueError(f"Unsupport datatype {self.data_type}!")
 
+    @torch.no_grad()
     def forward(self, pixel_values):
+        g_cache_manager.cache_env_in()
         input_embs = self.pre_infer.forward(pixel_values, self.pre_post_weight)
         for i in range(self.layers_num + self.select_layer + 1):
             input_embs = self.layers_infer[i].forward(input_embs, self.trans_layers_weight[i])
+        g_cache_manager.cache_env_out()
         input_embs = self.post_infer.forward(input_embs[:, 1:, :], self.pre_post_weight)
         return input_embs
 
