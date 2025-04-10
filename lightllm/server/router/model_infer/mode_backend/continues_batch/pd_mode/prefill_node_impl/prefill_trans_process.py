@@ -20,7 +20,7 @@ def _handle_kvmove_task(
     move_tasks: List[KVMoveTask],
     task_out_queue: mp.Queue,
     mem_managers: List[MemoryManager],
-    connect_id_to_comm: Dict[int, PyNcclCommunicator],
+    connect_id_to_comm: Dict[str, PyNcclCommunicator],
     connect_id: str,
     dp_size_in_node: int,
 ):
