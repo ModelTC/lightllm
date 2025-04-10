@@ -66,14 +66,14 @@ class PrefillKVMoveManager:
         self.release_tasks_thread.start()
 
         from .prefill_trans_obj import KVTransProcess
-        
+
         self.kv_trans_processes: List[KVTransProcess] = [None] * self.node_world_size
         for device_id in range(self.node_world_size):
             self.kv_trans_processes[device_id] = KVTransProcess()
             assert self.kv_trans_processes[device_id].init_all(device_id, self)
 
         return
-    
+
     # ==================================================================================
     # 主任务循环，接收需要进行kv传输的请求进行处理
     # ==================================================================================
@@ -95,7 +95,7 @@ class PrefillKVMoveManager:
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
             raise e
-    
+
     # ==================================================================================
     # 请求出错或者完成kv传输后的处理队列和线程loop
     # ==================================================================================
@@ -117,7 +117,7 @@ class PrefillKVMoveManager:
             else:
                 self._remove_req_refs_from_prompt_cache(handle_list)
         return
-    
+
     # ==================================================================================
     # 定时检测传输进程的健康状态，出现问题拉崩整个系统触发重启
     # ==================================================================================
@@ -128,11 +128,11 @@ class PrefillKVMoveManager:
                 for device_id in range(self.node_world_size):
                     if not self.kv_trans_processes[device_id].is_trans_process_health():
                         raise Exception(f"device_id {device_id} kv process is unhealth")
-                    
+
                 time.sleep(10.0)
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
-            
+
             for device_id in range(self.node_world_size):
                 self.kv_trans_processes[device_id].killself()
 
@@ -140,9 +140,9 @@ class PrefillKVMoveManager:
             os.kill(os.getppid(), signal.SIGKILL)
             os.kill(os.getpid(), signal.SIGKILL)
             raise e
-    
+
     # ==================================================================================
-    # 与推理进程交互接口,  _remove_req_refs_from_prompt_cache 和 
+    # 与推理进程交互接口,  _remove_req_refs_from_prompt_cache 和
     # _put_mem_manager_to_mem_queue 都是通过 rpyc 与推理进程进行交互的接口
     # ==================================================================================
 
@@ -172,7 +172,7 @@ class PrefillKVMoveManager:
     async def wait_all_future_finish(self, futures: List[AsyncResult]):
         await asyncio.gather(*[asyncio.to_thread(future.wait) for future in futures])
         return
-    
+
     # ==================================================================================
     # 辅助功能接口
     # ==================================================================================
@@ -191,18 +191,18 @@ class PrefillKVMoveManager:
                 trans_obj.set_has_error()
                 logger.error(f"remove tran obj id {trans_obj.decode_node_id}")
         return
-    
+
     def __get_trans_obj(self, task: KVMoveTask):
         self.__remove_dead_trans_obj()
         # 如果已经存在连接对象，直接返回
         for obj in self.connect_id_to_trans_obj.values():
             if obj.decode_node_id == task.decode_node.node_id:
                 return obj
-        
+
         # 如果不存在连接对象，创建新的连接对象
         gc.collect()
         from .prefill_trans_obj import KVTransConnectObj
-        
+
         trans_obj = KVTransConnectObj()
         trans_obj.create(task.decode_node.node_id, task.decode_node.ip, task.decode_node.rpyc_port, self)
         self.connect_id_to_trans_obj[trans_obj.connect_id] = trans_obj
@@ -220,6 +220,7 @@ class PrefillKVMoveManager:
         if del_connect_ids:
             gc.collect()
         return
+
 
 def _init_env(args, info_queue: mp.Queue, mem_queues: List[mp.Queue], event: mp.Event):
     import lightllm.utils.rpyc_fix_utils as _

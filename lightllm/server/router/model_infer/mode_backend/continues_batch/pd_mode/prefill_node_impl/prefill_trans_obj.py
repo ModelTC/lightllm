@@ -26,7 +26,7 @@ class KVTransConnectObj:
     connect_id: str = None
     decode_node_id: int = None
     rpyc_conn: object = None  # rpyc_con 的连接对象
-    kv_trans_process: 'KVTransProcess' = None
+    kv_trans_process: "KVTransProcess" = None
     device_index: int = None  # 使用的gpu序号
     manager: "PrefillKVMoveManager" = None
     has_error: bool = False
@@ -51,7 +51,7 @@ class KVTransConnectObj:
         con = rpyc.connect(
             host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True
         )
-        
+
         # 创建 nccl 连接
         with self.kv_trans_process.device_lock:
             self.kv_trans_process.task_in_queue.put(
@@ -62,7 +62,7 @@ class KVTransConnectObj:
                     pd_prefill_nccl_port=self.kv_trans_process.kv_trans_port,
                     decode_id=decode_node_id,
                     decode_device_id=-1,
-                    connect_id=self.connect_id
+                    connect_id=self.connect_id,
                 )
             )
 
@@ -96,8 +96,10 @@ class KVTransConnectObj:
         self.kv_trans_thread = threading.Thread(target=self.kv_trans_handle_loop, daemon=True)
         self.kv_trans_thread.start()
 
-        logger.info(f"create KVTransConnectObj success: connect_id : {self.connect_id} prefill_id: {prefill_node_id}"
-                    f" decode_id: {decode_node_id} device_index: {device_index} ")
+        logger.info(
+            f"create KVTransConnectObj success: connect_id : {self.connect_id} prefill_id: {prefill_node_id}"
+            f" decode_id: {decode_node_id} device_index: {device_index} "
+        )
         return
 
     def _get_request_tasks(self, datas: List[KVMoveTask]):
@@ -114,7 +116,7 @@ class KVTransConnectObj:
             else:
                 break
         return ans_list
-    
+
     # ==================================================================================
     # 与 decode 节点进行元数据交互，申请锁定资源准备进行kv的传输
     # ==================================================================================
@@ -162,7 +164,9 @@ class KVTransConnectObj:
                         logger.info(f"prefill node kv move task req_id: {move_task.id()} not send, decode is busy")
 
                 if ok_trans_list:
-                    self.ready_kv_trans_task_queue.put(ok_trans_list, error_handle_func=self.manager.put_to_release_task_queue)
+                    self.ready_kv_trans_task_queue.put(
+                        ok_trans_list, error_handle_func=self.manager.put_to_release_task_queue
+                    )
 
             except BaseException as e:
                 logger.exception(str(e))
@@ -175,7 +179,7 @@ class KVTransConnectObj:
 
         logger.error(f"{func_name}, {self.to_log_info()} thread quit")
         return
-    
+
     # ==================================================================================
     # 将准备好 kv 传输的请求进行 kv 传输
     # ==================================================================================
@@ -231,7 +235,7 @@ class KVTransConnectObj:
 
         logger.error(f"trans kv thread, {self.to_log_info()} thread quit")
         return
-    
+
     # ==================================================================================
     # 错误处理检测操作的一些通用函数
     # ==================================================================================
@@ -247,7 +251,7 @@ class KVTransConnectObj:
             return True
 
         return False
-    
+
     def timer_check_status(self, raise_exception=True):
         if self.timer_checker.has_exceeded():
             try:
@@ -260,7 +264,7 @@ class KVTransConnectObj:
                 self.set_has_error()
                 if raise_exception:
                     raise e
-                
+
         return
 
     def set_has_error(self):
@@ -271,7 +275,7 @@ class KVTransConnectObj:
 
         if self.request_kv_trans_task_queue is not None:
             self.request_kv_trans_task_queue.has_error = True
-        
+
         if self.ready_kv_trans_task_queue is not None:
             self.ready_kv_trans_task_queue.has_error = True
 
@@ -300,23 +304,24 @@ class KVTransConnectObj:
 
             # 传输进程清理掉 nccl 连接
             if self.connect_id is not None:
-                self.kv_trans_process.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, 
-                                                        prefill_id=self.prefill_node_id, 
-                                                        connect_id=self.connect_id))
-              
+                self.kv_trans_process.task_in_queue.put(
+                    PDTransLeaveInfo(
+                        decode_id=self.decode_node_id, prefill_id=self.prefill_node_id, connect_id=self.connect_id
+                    )
+                )
+
         except BaseException as e:
             logger.exception(str(e))
 
         logger.error(f"trans obj deled, info: {self.to_log_info()}")
 
-    
     def to_log_info(self):
         log = f"connect_id: {self.connect_id} "
         log += f"decode_node_id: {self.decode_node_id} "
         log += f"prefill_node_id: {self.prefill_node_id} "
         log += f"device_index: {self.device_index} "
         return log
-    
+
 
 @dataclass
 class KVTransProcess:
@@ -334,7 +339,7 @@ class KVTransProcess:
         self.task_in_queue = mp.Queue()
         self.task_out_queue = mp.Queue()
         self.kv_trans_port = find_available_port(manager.args.pd_p_allowed_port_min, manager.args.pd_p_allowed_port_max)
-        
+
         try:
             from .prefill_trans_process import start_prefill_trans_process
 
@@ -356,7 +361,7 @@ class KVTransProcess:
             logger.warning(f"Failed start kv trans process for device {device_id}: {e}")
             logger.exception(str(e))
             return False
-    
+
     def is_trans_process_health(self):
         try:
             process = psutil.Process(self.process.pid)
@@ -367,6 +372,6 @@ class KVTransProcess:
                 return True
         except:
             return False
-        
+
     def killself(self):
         self.process.kill()

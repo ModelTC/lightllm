@@ -83,7 +83,9 @@ def _init_env(args, device_id: int, task_in_queue: mp.Queue, task_out_queue: mp.
         while True:
             task: Union[KVMoveTaskGroup, PDTransJoinInfo, PDTransLeaveInfo] = task_in_queue.get()
             if isinstance(task, KVMoveTaskGroup):
-                _handle_kvmove_task(task, task_out_queue, mem_managers, connect_id_to_comm, task.connect_id, dp_size_in_node)
+                _handle_kvmove_task(
+                    task, task_out_queue, mem_managers, connect_id_to_comm, task.connect_id, dp_size_in_node
+                )
             elif isinstance(task, PDTransJoinInfo):
                 _handle_prefill_join(task, task_out_queue, connect_id_to_comm)
             elif isinstance(task, PDTransLeaveInfo):

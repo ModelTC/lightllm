@@ -32,7 +32,9 @@ def _handle_kvmove_task(
             logger.info(f"trans start: {move_tasks[0].to_prefill_log_info()}")
             cur_mem = mem_managers[device_index]
             if kv_trans_use_p2p():
-                cur_mem.send_to_decode_node_p2p(move_tasks, mem_managers, dp_size_in_node, connect_id_to_comm[connect_id])
+                cur_mem.send_to_decode_node_p2p(
+                    move_tasks, mem_managers, dp_size_in_node, connect_id_to_comm[connect_id]
+                )
             else:
                 cur_mem.send_to_decode_node(move_tasks, mem_managers, dp_size_in_node, connect_id_to_comm[connect_id])
             logger.info(f"trans finished: {move_tasks[0].to_prefill_log_info()} move len: {total_move_kv_len}")
@@ -48,7 +50,10 @@ def _handle_kvmove_task(
 
 
 def _handle_decode_join(
-    node_info: PDTransJoinInfo, task_out_queue: mp.Queue, connect_id_to_comm: Dict[str, PyNcclCommunicator], store: TCPStore
+    node_info: PDTransJoinInfo,
+    task_out_queue: mp.Queue,
+    connect_id_to_comm: Dict[str, PyNcclCommunicator],
+    store: TCPStore,
 ):
     try:
         group = StatelessP2PProcessGroup.create(node_info.prefill_id, node_info.decode_id, True, store)
@@ -83,7 +88,9 @@ def _init_env(
         while True:
             task: Union[KVMoveTaskGroup, PDTransJoinInfo, PDTransLeaveInfo] = task_in_queue.get()
             if isinstance(task, KVMoveTaskGroup):
-                _handle_kvmove_task(task.tasks, task_out_queue, mem_managers, connect_id_to_comm, task.connect_id, dp_size_in_node)
+                _handle_kvmove_task(
+                    task.tasks, task_out_queue, mem_managers, connect_id_to_comm, task.connect_id, dp_size_in_node
+                )
             elif isinstance(task, PDTransJoinInfo):
                 _handle_decode_join(task, task_out_queue, connect_id_to_comm, master_store)
             elif isinstance(task, PDTransLeaveInfo):

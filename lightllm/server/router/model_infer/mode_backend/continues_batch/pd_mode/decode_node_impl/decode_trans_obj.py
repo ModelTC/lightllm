@@ -16,11 +16,12 @@ logger = init_logger(__name__)
 
 KV_MOVE_MAX_NUM = 16
 
+
 @dataclass
 class KVTransConnectObj:
     connect_id: str = None
     prefill_node_id: int = None
-    kv_trans_process: 'KVTransProcess' = None
+    kv_trans_process: "KVTransProcess" = None
     pd_prefill_nccl_ip: str = None
     pd_prefill_nccl_port: int = None
     device_index: int = None
@@ -33,8 +34,13 @@ class KVTransConnectObj:
     timer_checker: TimeChecker = None
 
     def create(
-        self, connect_id: str, prefill_node_id: str, pd_prefill_nccl_ip: str, pd_prefill_nccl_port: int, manager: "DecodeKVMoveManager"
-    ): 
+        self,
+        connect_id: str,
+        prefill_node_id: str,
+        pd_prefill_nccl_ip: str,
+        pd_prefill_nccl_port: int,
+        manager: "DecodeKVMoveManager",
+    ):
         self.connect_id = connect_id
         self.device_index = manager.get_next_device_index()
         self.kv_trans_process = manager.kv_trans_processes[self.device_index]
@@ -49,7 +55,7 @@ class KVTransConnectObj:
                     pd_prefill_nccl_port=pd_prefill_nccl_port,
                     decode_id=decode_node_id,
                     decode_device_id=self.device_index,
-                    connect_id=self.connect_id
+                    connect_id=self.connect_id,
                 )
             )
             assert self.kv_trans_process.task_out_queue.get(timeout=60) == "nccl_ok"
@@ -74,7 +80,7 @@ class KVTransConnectObj:
         self.put_to_radix_thread = threading.Thread(target=self.put_to_radix_loop, daemon=True)
         self.put_to_radix_thread.start()
         return
-    
+
     # ==================================================================================
     # 处理接受所有进行 kv 传输的请求，完成后，将请求放入到 move_finished_queue 中
     # ==================================================================================
@@ -106,7 +112,7 @@ class KVTransConnectObj:
                 logger.error(f"error get need 1, but get {len(move_tasks)}")
                 assert False
 
-            move_tasks:List[KVMoveTask] = move_tasks[0]
+            move_tasks: List[KVMoveTask] = move_tasks[0]
             for task in move_tasks:
                 logger.info(f"{func_name} get task {task.to_decode_log_info()}")
 
@@ -128,7 +134,7 @@ class KVTransConnectObj:
 
         logger.error(f"{func_name}  thread quit")
         return
-    
+
     # ==================================================================================
     # 将传输完成的请求，放入到 radix cache 中进行管理。
     # ==================================================================================
@@ -168,11 +174,11 @@ class KVTransConnectObj:
 
         logger.error(f"{func_name} thread quit, info: {self.to_log_info()}")
         return
-    
+
     # ==================================================================================
     # 错误处理检测操作的一些通用函数
     # ==================================================================================
-    
+
     def timer_to_check_status(self, raise_exception=True):
         if self.timer_checker.has_exceeded():
             try:
@@ -203,10 +209,10 @@ class KVTransConnectObj:
 
         if self.ready_to_move_queue is not None:
             self.ready_to_move_queue.has_error = True
-        
+
         if self.move_finished_queue is not None:
             self.move_finished_queue.has_error = True
-        
+
         if self.manager is not None:
             self.manager.remove_trans_obj(self.connect_id)
         return
@@ -219,15 +225,19 @@ class KVTransConnectObj:
 
             join_if_alive(self.kv_move_thread)
             join_if_alive(self.put_to_radix_thread)
-            
+
             if self.connect_id is not None and self.kv_trans_process is not None:
-                self.kv_trans_process.task_in_queue.put(PDTransLeaveInfo(decode_id=self.decode_node_id, prefill_id=self.prefill_node_id, connect_id=self.connect_id))
+                self.kv_trans_process.task_in_queue.put(
+                    PDTransLeaveInfo(
+                        decode_id=self.decode_node_id, prefill_id=self.prefill_node_id, connect_id=self.connect_id
+                    )
+                )
 
             if self.ready_to_move_queue is not None:
                 self.ready_to_move_queue.clear_tasks()
             if self.move_finished_queue is not None:
                 self.move_finished_queue.clear_tasks()
-            
+
         except BaseException as e:
             logger.exception(str(e))
 
@@ -240,6 +250,7 @@ class KVTransConnectObj:
         log += f"device_index: {self.device_index} "
         return log
 
+
 @dataclass
 class KVTransProcess:
     process: mp.Process = None
@@ -248,7 +259,6 @@ class KVTransProcess:
     task_in_queue: mp.Queue = None
     task_out_queue: mp.Queue = None
     device_id: int = None
-
 
     def init_all(self, device_id: int, manager: "DecodeKVMoveManager"):
         self.device_lock = threading.Lock()
@@ -271,12 +281,12 @@ class KVTransProcess:
             assert self.task_out_queue.get(timeout=60) == "get_mem_managers_ok"
 
             return True
-        
+
         except Exception as e:
             logger.warning(f"Failed start kv trans process for device {device_id}: {e}")
             logger.exception(str(e))
             return False
-    
+
     def is_trans_process_health(self):
         try:
             process = psutil.Process(self.process.pid)
@@ -287,6 +297,6 @@ class KVTransProcess:
                 return True
         except:
             return False
-        
+
     def killself(self):
         self.process.kill()

@@ -30,6 +30,7 @@ thread_local_data = threading.local()
 
 KV_MOVE_MAX_NUM = 16
 
+
 class DecodeKVMoveManager(rpyc.Service):
     def __init__(self, args, info_queue: mp.Queue, mem_queues: List[mp.Queue]):
         super().__init__()
@@ -45,7 +46,7 @@ class DecodeKVMoveManager(rpyc.Service):
         self.mem_queues = mem_queues
         self.infer_rpyc_lock = threading.Lock()
         self.infer_rpyc_objs: List[PDDecodeInferRpcServer] = []
-        
+
         from .decode_trans_obj import KVTransConnectObj
 
         self.connect_id_to_trans_obj: Dict[str, KVTransConnectObj] = {}
@@ -70,16 +71,16 @@ class DecodeKVMoveManager(rpyc.Service):
 
         # 在不使用p2p 复制kv 的方案时，需要全局的传输锁进行控制。这个时候kv传输的效率会下降。
         self.kv_trans_lock = threading.Lock()
-        
+
         from .decode_trans_obj import KVTransProcess
-        
+
         self.kv_trans_processes: List[KVTransProcess] = [None] * self.node_world_size
         for device_id in range(self.node_world_size):
             self.kv_trans_processes[device_id] = KVTransProcess()
             assert self.kv_trans_processes[device_id].init_all(device_id, self)
 
         return
-    
+
     # ==================================================================================
     # _dp_alloc_to_frozen_some_tokens
     # _put_kv_received_to_radix_cache
@@ -158,13 +159,13 @@ class DecodeKVMoveManager(rpyc.Service):
             for obj in self.infer_rpyc_objs:
                 obj.put_mem_manager_to_mem_queue()
         return
-    
+
     # ==================================================================================
     # put_to_fail_release_task_queue 将因为一些原因失败，需要释放锁定的kv资源的请求放入到
     # 对应的处理队列中，handle_fail_release_task_loop 是一个循环的线程，专门处理这些失败的请求
     # 通过调用与推理进程交互的接口，释放掉申请锁定的 kv 资源。
     # ==================================================================================
-    
+
     def put_to_fail_release_task_queue(self, task: Union[KVMoveTask, List[KVMoveTask]]):
         if isinstance(task, KVMoveTask):
             self.fail_to_release_queue.put(task)
@@ -182,9 +183,9 @@ class DecodeKVMoveManager(rpyc.Service):
             else:
                 self._fail_to_realese_forzen_tokens(handle_list)
         return
-    
+
     # ==================================================================================
-    # on_connect 
+    # on_connect
     # on_disconnect
     # exposed_check_alive
     # exposed_build_trans_process
@@ -278,12 +279,14 @@ class DecodeKVMoveManager(rpyc.Service):
             self.remove_trans_obj(tasks[0].connect_id)
             logger.exception(str(e))
             raise e
-        
+
         if alloc_tokened_tasks:
-            trans_obj.ready_to_move_queue.put(alloc_tokened_tasks, error_handle_func=self.put_to_fail_release_task_queue)
+            trans_obj.ready_to_move_queue.put(
+                alloc_tokened_tasks, error_handle_func=self.put_to_fail_release_task_queue
+            )
 
         return ans_list
-    
+
     # ==================================================================================
     # 定时检测kv 传输成功，但是长时间没有pd master来触发推理的请求，
     # 释放这些超时请求占用的kv资源
@@ -308,11 +311,11 @@ class DecodeKVMoveManager(rpyc.Service):
                 for device_id in range(self.node_world_size):
                     if not self.kv_trans_processes[device_id].is_trans_process_health():
                         raise Exception(f"device_id {device_id} kv process is unhealth")
-                    
+
                 time.sleep(10.0)
         except (BaseException, RuntimeError) as e:
             logger.exception(str(e))
-            
+
             for device_id in range(self.node_world_size):
                 self.kv_trans_processes[device_id].killself()
 
@@ -320,12 +323,12 @@ class DecodeKVMoveManager(rpyc.Service):
             os.kill(os.getppid(), signal.SIGKILL)
             os.kill(os.getpid(), signal.SIGKILL)
             raise e
-        
+
     # ==================================================================================
     # 常用辅助功能函数
     # ==================================================================================
     def get_next_device_index(self):
-        counts = [0  for _ in range(self.node_world_size)]
+        counts = [0 for _ in range(self.node_world_size)]
         for obj in self.connect_id_to_trans_obj.values():
             counts[obj.device_index] += 1
         device_index = int(np.argmin(counts))
