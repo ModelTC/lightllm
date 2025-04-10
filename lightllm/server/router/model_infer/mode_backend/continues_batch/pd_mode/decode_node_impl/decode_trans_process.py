@@ -55,15 +55,16 @@ def _handle_prefill_join(
     try:
         logger.info(f"connect start {node_info}")
         store_client = TCPStore(
-            host_name=node_info.pd_prefill_nccl_ip, port=node_info.pd_prefill_nccl_port, is_master=False, use_libuv=True, timeout=timedelta(seconds=30)
+            host_name=node_info.pd_prefill_nccl_ip,
+            port=node_info.pd_prefill_nccl_port,
+            is_master=False,
+            use_libuv=True,
+            timeout=timedelta(seconds=30),
         )
         src_id = node_info.prefill_id
         dest_id = node_info.connect_id
         logger.info(f"connect src_id {src_id} dest_id {dest_id}")
-        group = StatelessP2PProcessGroup.create(src_id=src_id,
-                                                dest_id=dest_id, 
-                                                is_server=False,
-                                                store=store_client)
+        group = StatelessP2PProcessGroup.create(src_id=src_id, dest_id=dest_id, is_server=False, store=store_client)
         comm = PyNcclCommunicator(group, node_info.decode_device_id)
         connect_id_to_comm[node_info.connect_id] = comm
         logger.info(f"{node_info} kv trans connected")

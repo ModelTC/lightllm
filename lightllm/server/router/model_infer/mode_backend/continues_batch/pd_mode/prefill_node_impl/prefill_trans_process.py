@@ -61,10 +61,7 @@ def _handle_decode_join(
         src_id = node_info.prefill_id
         dest_id = node_info.connect_id
         logger.info(f"connect src_id {src_id} dest_id {dest_id}")
-        group = StatelessP2PProcessGroup.create(src_id=src_id,
-                                                dest_id=dest_id, 
-                                                is_server=True,
-                                                store=store)
+        group = StatelessP2PProcessGroup.create(src_id=src_id, dest_id=dest_id, is_server=True, store=store)
         comm = PyNcclCommunicator(group, node_info.prefill_device_id)
         connect_id_to_comm[node_info.connect_id] = comm
         logger.info(f"{node_info} kv trans connected!")
@@ -94,7 +91,9 @@ def _init_env(
     try:
         torch.cuda.set_device(device_id)
         graceful_registry(inspect.currentframe().f_code.co_name)
-        master_store = TCPStore(host_name=store_ip, port=store_port, is_master=True, use_libuv=True, timeout=timedelta(seconds=30))
+        master_store = TCPStore(
+            host_name=store_ip, port=store_port, is_master=True, use_libuv=True, timeout=timedelta(seconds=30)
+        )
         dp_size_in_node = max(1, args.dp // args.nnodes)
         task_out_queue.put("proc_start")
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
