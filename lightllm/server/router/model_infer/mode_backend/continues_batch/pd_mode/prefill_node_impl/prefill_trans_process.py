@@ -2,6 +2,7 @@ import torch
 import time
 import sys
 import inspect
+import threading
 import torch.multiprocessing as mp
 from torch.distributed import TCPStore
 from datetime import timedelta
@@ -61,9 +62,22 @@ def _handle_decode_join(
         src_id = node_info.prefill_id
         dest_id = node_info.connect_id
         logger.info(f"connect src_id {src_id} dest_id {dest_id}")
-        group = StatelessP2PProcessGroup.create(src_id=src_id, dest_id=dest_id, is_server=True, store=store)
-        comm = PyNcclCommunicator(group, node_info.prefill_device_id)
-        connect_id_to_comm[node_info.connect_id] = comm
+        result_list = []
+
+        def async_connect():
+            torch.cuda.set_device(node_info.prefill_device_id)
+            group = StatelessP2PProcessGroup.create(src_id=src_id, dest_id=dest_id, is_server=True, store=store)
+            comm = PyNcclCommunicator(group, node_info.prefill_device_id)
+            result_list.append(comm)
+            return
+
+        connect_task = threading.Thread(target=async_connect, daemon=True)
+        connect_task.start()
+        connect_task.join(timeout=50)
+        if connect_task.is_alive():
+            raise Exception(f"{node_info} connect time out")
+
+        connect_id_to_comm[node_info.connect_id] = result_list[0]
         logger.info(f"{node_info} kv trans connected!")
         task_out_queue.put("nccl_ok")
     except Exception as e:
