@@ -47,10 +47,17 @@ class KVTransConnectObj:
         self.kv_trans_process = manager.kv_trans_processes[device_index]
         prefill_node_id = manager.args.pd_node_id
         self.connect_id = str(uuid.uuid4())
+        self.decode_node_id = decode_node_id
+        self.prefill_node_id = prefill_node_id
+        self.device_index = device_index
+        self.manager = manager
+        self.timer_checker = TimeChecker(3)
 
         con = rpyc.connect(
             host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True
         )
+
+        self.rpyc_conn = con
 
         # 创建 nccl 连接
         with self.kv_trans_process.device_lock:
@@ -79,13 +86,6 @@ class KVTransConnectObj:
             self.max_kv_trans_token_num = max_kv_trans_token_num
             assert self.kv_trans_process.task_out_queue.get(timeout=60) == "nccl_ok"
 
-        self.decode_node_id = decode_node_id
-        self.prefill_node_id = prefill_node_id
-        self.rpyc_conn = con
-        self.device_index = device_index
-        self.manager = manager
-        self.timer_checker = TimeChecker(3)
-
         self.request_kv_trans_task_queue = TaskQueue(
             get_func=self._get_request_tasks, fail_func=self.manager.put_to_release_task_queue
         )
@@ -96,10 +96,7 @@ class KVTransConnectObj:
         self.kv_trans_thread = threading.Thread(target=self.kv_trans_handle_loop, daemon=True)
         self.kv_trans_thread.start()
 
-        logger.info(
-            f"create KVTransConnectObj success: connect_id : {self.connect_id} prefill_id: {prefill_node_id}"
-            f" decode_id: {decode_node_id} device_index: {device_index} "
-        )
+        logger.info(f"create KVTransConnectObj success: {self.to_log_info()}")
         return
 
     def _get_request_tasks(self, datas: List[KVMoveTask]):

@@ -45,6 +45,13 @@ class KVTransConnectObj:
         self.device_index = manager.get_next_device_index()
         self.kv_trans_process = manager.kv_trans_processes[self.device_index]
         decode_node_id = manager.args.pd_node_id
+        self.prefill_node_id = prefill_node_id
+        self.decode_node_id = decode_node_id
+        self.pd_prefill_nccl_ip = pd_prefill_nccl_ip
+        self.pd_prefill_nccl_port = pd_prefill_nccl_port
+
+        self.manager = manager
+        self.timer_checker = TimeChecker(3)
 
         with self.kv_trans_process.device_lock:
             self.kv_trans_process.task_in_queue.put(
@@ -59,14 +66,6 @@ class KVTransConnectObj:
                 )
             )
             assert self.kv_trans_process.task_out_queue.get(timeout=60) == "nccl_ok"
-
-        self.prefill_node_id = prefill_node_id
-        self.decode_node_id = decode_node_id
-        self.pd_prefill_nccl_ip = pd_prefill_nccl_ip
-        self.pd_prefill_nccl_port = pd_prefill_nccl_port
-
-        self.manager = manager
-        self.timer_checker = TimeChecker(3)
 
         self.ready_to_move_queue = TaskQueue(
             get_func=lambda datas: datas[0:1], fail_func=self.manager.put_to_fail_release_task_queue
