@@ -51,7 +51,7 @@ class KVTransConnectObj:
         self.prefill_node_id = prefill_node_id
         self.device_index = device_index
         self.manager = manager
-        self.timer_checker = TimeChecker(3)
+        self.timer_checker = TimeChecker(6)
 
         con = rpyc.connect(
             host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True

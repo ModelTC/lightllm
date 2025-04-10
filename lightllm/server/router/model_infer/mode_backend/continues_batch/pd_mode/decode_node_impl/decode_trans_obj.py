@@ -51,7 +51,7 @@ class KVTransConnectObj:
         self.pd_prefill_nccl_port = pd_prefill_nccl_port
 
         self.manager = manager
-        self.timer_checker = TimeChecker(3)
+        self.timer_checker = TimeChecker(6)
 
         with self.kv_trans_process.device_lock:
             self.kv_trans_process.task_in_queue.put(

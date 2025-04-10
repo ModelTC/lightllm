@@ -4,6 +4,7 @@ import sys
 import inspect
 import torch.multiprocessing as mp
 from torch.distributed import TCPStore
+from datetime import timedelta
 from typing import List, Dict, Union
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
@@ -52,12 +53,17 @@ def _handle_prefill_join(
     node_info: PDTransJoinInfo, task_out_queue: mp.Queue, connect_id_to_comm: Dict[str, PyNcclCommunicator]
 ):
     try:
+        logger.info(f"connect start {node_info}")
         store_client = TCPStore(
-            host_name=node_info.pd_prefill_nccl_ip, port=node_info.pd_prefill_nccl_port, is_master=False, use_libuv=True
+            host_name=node_info.pd_prefill_nccl_ip, port=node_info.pd_prefill_nccl_port, is_master=False, use_libuv=True, timeout=timedelta(seconds=30)
         )
-        group = StatelessP2PProcessGroup.create(
-            src_id=node_info.prefill_id, dest_id=node_info.decode_id, is_server=False, store=store_client
-        )
+        src_id = node_info.prefill_id
+        dest_id = node_info.connect_id
+        logger.info(f"connect src_id {src_id} dest_id {dest_id}")
+        group = StatelessP2PProcessGroup.create(src_id=src_id,
+                                                dest_id=dest_id, 
+                                                is_server=False,
+                                                store=store_client)
         comm = PyNcclCommunicator(group, node_info.decode_device_id)
         connect_id_to_comm[node_info.connect_id] = comm
         logger.info(f"{node_info} kv trans connected")
@@ -68,6 +74,13 @@ def _handle_prefill_join(
 
 
 def _init_env(args, device_id: int, task_in_queue: mp.Queue, task_out_queue: mp.Queue, mem_queues: List[mp.Queue]):
+    import os
+
+    # os.environ["NCCL_DEBUG"] = "INFO"
+    os.environ["NCCL_MAX_NCHANNELS"] = "2"
+    os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
+    os.environ["NCCL_SOCKET_NTHREADS"] = "1"
+    torch.backends.cudnn.enabled = False
 
     dp_size_in_node = max(1, args.dp // args.nnodes)
 

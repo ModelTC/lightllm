@@ -4,6 +4,7 @@ import sys
 import inspect
 import torch.multiprocessing as mp
 from torch.distributed import TCPStore
+from datetime import timedelta
 from typing import List, Dict, Union
 from lightllm.utils.log_utils import init_logger
 from lightllm.common.mem_manager import MemoryManager
@@ -56,7 +57,14 @@ def _handle_decode_join(
     store: TCPStore,
 ):
     try:
-        group = StatelessP2PProcessGroup.create(node_info.prefill_id, node_info.decode_id, True, store)
+        logger.info(f"connect start {node_info}")
+        src_id = node_info.prefill_id
+        dest_id = node_info.connect_id
+        logger.info(f"connect src_id {src_id} dest_id {dest_id}")
+        group = StatelessP2PProcessGroup.create(src_id=src_id,
+                                                dest_id=dest_id, 
+                                                is_server=True,
+                                                store=store)
         comm = PyNcclCommunicator(group, node_info.prefill_device_id)
         connect_id_to_comm[node_info.connect_id] = comm
         logger.info(f"{node_info} kv trans connected!")
@@ -75,10 +83,18 @@ def _init_env(
     task_out_queue: mp.Queue,
     mem_queues: List[mp.Queue],
 ):
+    import os
+
+    # os.environ["NCCL_DEBUG"] = "INFO"
+    os.environ["NCCL_MAX_NCHANNELS"] = "2"
+    os.environ["NCCL_NSOCKS_PER_CHANNEL"] = "1"
+    os.environ["NCCL_SOCKET_NTHREADS"] = "1"
+    torch.backends.cudnn.enabled = False
+
     try:
         torch.cuda.set_device(device_id)
         graceful_registry(inspect.currentframe().f_code.co_name)
-        master_store = TCPStore(host_name=store_ip, port=store_port, is_master=True, use_libuv=True)
+        master_store = TCPStore(host_name=store_ip, port=store_port, is_master=True, use_libuv=True, timeout=timedelta(seconds=30))
         dp_size_in_node = max(1, args.dp // args.nnodes)
         task_out_queue.put("proc_start")
         mem_managers: List[MemoryManager] = [mem_queue.get(timeout=60) for mem_queue in mem_queues]
