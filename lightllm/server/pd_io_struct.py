@@ -79,7 +79,7 @@ class DecodeNodeInfo:
 class PDTransJoinInfo:
     decode_id: int
     decode_device_id: int
-    prefill_id: int 
+    prefill_id: int
     prefill_device_id: int
     pd_prefill_nccl_ip: str
     pd_prefill_nccl_port: int
@@ -143,6 +143,7 @@ class KVMoveTask:
             return time.time() - self.mark_start_time
         else:
             return 100000000000
+
 
 @dataclass
 class KVMoveTaskGroup:
