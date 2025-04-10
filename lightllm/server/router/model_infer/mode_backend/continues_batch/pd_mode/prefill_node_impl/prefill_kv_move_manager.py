@@ -189,7 +189,7 @@ class PrefillKVMoveManager:
             trans_obj = self.connect_id_to_trans_obj.pop(connect_id, None)
             if trans_obj is not None:
                 trans_obj.set_has_error()
-                logger.error(f"remove tran obj id {trans_obj.decode_node_id}")
+                logger.error(f"remove tran obj decode_node_id {trans_obj.decode_node_id}")
         return
 
     def __get_trans_obj(self, task: KVMoveTask):

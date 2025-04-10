@@ -59,7 +59,7 @@ def _handle_prefill_join(
             src_id=node_info.prefill_id, dest_id=node_info.decode_id, is_server=False, store=store_client
         )
         comm = PyNcclCommunicator(group, node_info.decode_device_id)
-        connect_id_to_comm[node_info.prefill_id] = comm
+        connect_id_to_comm[node_info.connect_id] = comm
         logger.info(f"{node_info} kv trans connected")
         task_out_queue.put("nccl_ok")
     except Exception as e:
@@ -84,13 +84,13 @@ def _init_env(args, device_id: int, task_in_queue: mp.Queue, task_out_queue: mp.
             task: Union[KVMoveTaskGroup, PDTransJoinInfo, PDTransLeaveInfo] = task_in_queue.get()
             if isinstance(task, KVMoveTaskGroup):
                 _handle_kvmove_task(
-                    task, task_out_queue, mem_managers, connect_id_to_comm, task.connect_id, dp_size_in_node
+                    task.tasks, task_out_queue, mem_managers, connect_id_to_comm, task.connect_id, dp_size_in_node
                 )
             elif isinstance(task, PDTransJoinInfo):
                 _handle_prefill_join(task, task_out_queue, connect_id_to_comm)
             elif isinstance(task, PDTransLeaveInfo):
                 if task.connect_id in connect_id_to_comm:
-                    connect_id_to_comm[task.prefill_id].destroy()
+                    connect_id_to_comm[task.connect_id].destroy()
                     logger.info(f"destory {task} nccl communicator.")
                 else:
                     logger.info(f"no connect_id {task.connect_id} found in connect_id_to_comm")
