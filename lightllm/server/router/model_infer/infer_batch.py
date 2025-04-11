@@ -266,6 +266,8 @@ class InferReq:
         # 当开启后，mtp_gen_token_ids 保存多生成的多余的token_id,但是在后面的
         # 步骤中需要重新进行校验。
         self.mtp_gen_token_ids: List[int] = []
+        self.remote_prefilling = False
+        self.kv_transfering = False
 
     def init_all(self):
         if self.initialized is False:
@@ -307,6 +309,8 @@ class InferReq:
 
         self.initialized = True
         self.paused = False
+        self.remote_prefilling = False
+        self.kv_transfering = False
         return
 
     def is_uninitialized(self):
