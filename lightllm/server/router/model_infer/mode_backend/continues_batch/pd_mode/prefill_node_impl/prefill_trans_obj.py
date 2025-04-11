@@ -54,10 +54,10 @@ class KVTransConnectObj:
         self.timer_checker = TimeChecker(6)
 
         con = rpyc.connect(
-            host=decode_node_ip, 
-            port=decode_node_rpyc_port, 
-            config={"allow_pickle": True, "sync_request_timeout": 60}, 
-            keepalive=True
+            host=decode_node_ip,
+            port=decode_node_rpyc_port,
+            config={"allow_pickle": True, "sync_request_timeout": 60},
+            keepalive=True,
         )
 
         self.rpyc_conn = con
