@@ -16,7 +16,7 @@ from lightllm.utils.device_utils import kv_trans_use_p2p
 from lightllm.utils.time_utils import TimeChecker
 from .prefill_kv_move_manager import PrefillKVMoveManager
 from lightllm.utils.net_utils import find_available_port
-from ..utils import join_if_alive
+from ..utils import join_if_alive, clear_queue
 
 logger = init_logger(__name__)
 
@@ -54,13 +54,18 @@ class KVTransConnectObj:
         self.timer_checker = TimeChecker(6)
 
         con = rpyc.connect(
-            host=decode_node_ip, port=decode_node_rpyc_port, config={"allow_pickle": True}, keepalive=True
+            host=decode_node_ip, 
+            port=decode_node_rpyc_port, 
+            config={"allow_pickle": True, "sync_request_timeout": 60}, 
+            keepalive=True
         )
 
         self.rpyc_conn = con
 
         # 创建 nccl 连接
         with self.kv_trans_process.device_lock:
+            clear_queue(self.kv_trans_process.task_out_queue)
+
             self.kv_trans_process.task_in_queue.put(
                 PDTransJoinInfo(
                     prefill_id=prefill_node_id,
@@ -182,6 +187,7 @@ class KVTransConnectObj:
     # ==================================================================================
     def _transfer_kv(self, move_tasks: List[KVMoveTask]):
         with self.kv_trans_process.device_lock:
+            clear_queue(self.kv_trans_process.task_out_queue)
             kv_move_group = KVMoveTaskGroup(tasks=move_tasks.copy(), connect_id=self.connect_id)
             self.kv_trans_process.task_in_queue.put(kv_move_group, timeout=10)
             assert self.kv_trans_process.task_out_queue.get(timeout=60) == "ok"

@@ -10,7 +10,7 @@ from lightllm.server.pd_io_struct import KVMoveTask, UpKVStatus, PDTransJoinInfo
 from lightllm.utils.device_utils import kv_trans_use_p2p
 from .decode_kv_move_manager import DecodeKVMoveManager
 from lightllm.utils.time_utils import TimeChecker
-from ..utils import join_if_alive
+from ..utils import join_if_alive, clear_queue
 
 logger = init_logger(__name__)
 
@@ -54,6 +54,7 @@ class KVTransConnectObj:
         self.timer_checker = TimeChecker(6)
 
         with self.kv_trans_process.device_lock:
+            clear_queue(self.kv_trans_process.task_out_queue)
             self.kv_trans_process.task_in_queue.put(
                 PDTransJoinInfo(
                     prefill_id=prefill_node_id,
@@ -86,6 +87,7 @@ class KVTransConnectObj:
 
     def _transfer_kv(self, move_tasks: List[KVMoveTask]):
         with self.kv_trans_process.device_lock:
+            clear_queue(self.kv_trans_process.task_out_queue)
             kv_move_group = KVMoveTaskGroup(tasks=move_tasks.copy(), connect_id=self.connect_id)
             kv_move_group.connect_id = self.connect_id
             self.kv_trans_process.task_in_queue.put(kv_move_group, timeout=10)

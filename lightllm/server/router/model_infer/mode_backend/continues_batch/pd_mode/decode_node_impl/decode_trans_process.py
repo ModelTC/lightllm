@@ -77,7 +77,7 @@ def _handle_prefill_join(
 
         connect_task = threading.Thread(target=async_connect, daemon=True)
         connect_task.start()
-        connect_task.join(timeout=50)
+        connect_task.join(timeout=36)
         if connect_task.is_alive():
             raise Exception(f"{node_info} connect time out")
 
