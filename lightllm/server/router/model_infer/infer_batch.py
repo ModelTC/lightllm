@@ -257,6 +257,8 @@ class InferReq:
         self.vocab_size = vocab_size
         self.initialized = False
         self.paused = False
+        self.remote_prefilling = False
+        self.kv_transfering = False
 
     def init_all(self):
         if self.initialized is False:
@@ -300,6 +302,8 @@ class InferReq:
 
         self.initialized = True
         self.paused = False
+        self.remote_prefilling = False
+        self.kv_transfering = False
         return
 
     def is_uninitialized(self):
