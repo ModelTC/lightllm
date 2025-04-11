@@ -98,6 +98,7 @@ class RouterManager:
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
         self.is_pd_run_mode = self.args.run_mode in ["prefill", "decode"]
+        self.is_pd_decode_mode = self.args.run_mode == "decode"
         # p d 分离模式下，需要调度锁来同步调度端和推理端的一些数据操作
         # 主要是为了防止调度失误，造成 OOM 等错误
         self.router_lock = mp.Lock()
@@ -249,7 +250,8 @@ class RouterManager:
                             f"dp_i {d_i} token used ratio: {token_ratio1} not contain prompt cache tree unrefed token\n"
                             f"dp_i {d_i} token used ratio: {token_ratio2} contain prompt cache tree unrefed token"
                         )
-                self.req_queue.update_token_load(self.running_batch, force_update=False)
+                # pd decode mode need to update token_load more frequently
+                self.req_queue.update_token_load(self.running_batch, force_update=self.is_pd_decode_mode)
                 self.stats_tool.print_stats()
                 self.metric_client.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
                 self.metric_client.gauge_set("lightllm_batch_pause_size", self.req_queue.get_paused_req_num())
