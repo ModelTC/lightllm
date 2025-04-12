@@ -47,10 +47,10 @@ class CohereTransformerLayerInfer(TransformerLayerCohereInferTpl):
         ).squeeze(1)
 
     def _q_norm(self, input, infer_state, layer_weight: CohereTransformerLayerWeight):
-        return layernorm_forward(input, layer_weight.q_norm_weight_.weight, self.eps_)
+        return layernorm_forward(input, layer_weight.q_norm_weight_.weight.repeat(self.tp_q_head_num_, 1), self.eps_)
 
     def _k_norm(self, input, infer_state, layer_weight: CohereTransformerLayerWeight):
-        return layernorm_forward(input, layer_weight.k_norm_weight_.weight, self.eps_)
+        return layernorm_forward(input, layer_weight.k_norm_weight_.weight.repeat(self.tp_k_head_num_, 1), self.eps_)
 
     def _bind_norm(self):
         self._att_norm = partial(CohereTransformerLayerInfer._att_norm, self)
