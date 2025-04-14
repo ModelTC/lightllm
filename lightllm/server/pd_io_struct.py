@@ -46,7 +46,21 @@ class PD_Client_Obj:
 
     def to_llm_url(self):
         return f"http://{self.client_ip_port}/pd_generate_stream"
+    
+@dataclass
+class PD_Master_Obj:
+    node_id: int
+    host_ip_port: str
 
+    def __post_init__(self):
+        if not self.host_ip_port or not self.node_id:
+            error_info = f"host_ip_port must be set"
+            logger.error(error_info)
+            raise ValueError(error_info)
+        return
+    
+    def to_log_str(self):
+        return f"PD_MASTER host_ip_port: {self.host_ip_port}"
 
 @dataclass
 class UpKVStatus:
