@@ -244,17 +244,19 @@ class RouterManager:
                         estimated_peak_token_count = self.shared_token_load.get_estimated_peak_token_count(d_i)
                         logger.debug(
                             f"dp_i {d_i} current batch size: {len(self.running_batch.reqs)} \n"
-                            f"dp_i {d_i} paused req num: {self.req_queue.get_paused_req_num()} \n"
+                            f"dp_i {d_i} paused req num: {self.req_queue.get_paused_req_num(d_i)} \n"
                             f"dp_i {d_i} frozen token num: {frozen_token_num} \n"
                             f"dp_i {d_i} estimated_peak_token_count: {estimated_peak_token_count} \n"
                             f"dp_i {d_i} token used ratio: {token_ratio1} not contain prompt cache tree unrefed token\n"
                             f"dp_i {d_i} token used ratio: {token_ratio2} contain prompt cache tree unrefed token"
                         )
+                        self.metric_client.gauge_set(
+                            "lightllm_batch_pause_size", self.req_queue.get_paused_req_num(d_i)
+                        )
                 # pd decode mode need to update token_load more frequently
                 self.req_queue.update_token_load(self.running_batch, force_update=self.is_pd_decode_mode)
                 self.stats_tool.print_stats()
                 self.metric_client.gauge_set("lightllm_batch_current_size", len(self.running_batch.reqs))
-                self.metric_client.gauge_set("lightllm_batch_pause_size", self.req_queue.get_paused_req_num())
                 self.metric_client.gauge_set("lightllm_queue_size", self.req_queue.get_wait_req_num())
                 self.metric_client.gauge_set(
                     "lightllm_batch_current_max_tokens",
@@ -358,15 +360,13 @@ class RouterManager:
 
         # Check if need pause some requests for decode.
         for dp_index in range(self.dp_size_in_node):
-            if self._can_decode(self.running_batch, dp_index=dp_index):
-                continue
-            else:
+            while not self._can_decode(self.running_batch, dp_index=dp_index):
                 # pause strategy
                 paused_reqs = select_paused_reqs(
                     self.running_batch, self.pause_strategy, self.req_queue, self.max_total_token_num, dp_index=dp_index
                 )
                 await self._pause_reqs(paused_reqs)
-                logger.debug(f"DP index {dp_index} pasues req num: {self.req_queue.get_paused_req_num()}")
+                logger.debug(f"DP index {dp_index} pasues req num: {self.req_queue.get_paused_req_num(dp_index)}")
                 self.has_wait_tokens = 0
 
         # Decode
