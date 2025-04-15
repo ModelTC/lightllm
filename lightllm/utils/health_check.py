@@ -27,7 +27,7 @@ class HealthObj:
     _failure_threshold: int = int(os.getenv("HEALTH_FAILURE_THRESHOLD", 3))
     timeout: int = int(os.getenv("HEALTH_TIMEOUT", 100))
     dynamic_timeout: int = int(os.getenv("HEALTH_TIMEOUT", 100))
-    latest_req_inferece_timemark = SharedInt(f"{get_unique_server_name()}_latest_req_inference_timemark")
+    latest_success_infer_time_mark = SharedInt(f"{get_unique_server_name()}_latest_success_infer_time_mark")
 
     def begin_check(self):
         self._is_health_checking = True
@@ -53,7 +53,7 @@ class HealthObj:
         return self._is_health_checking
 
     def has_latest_inference(self):
-        last_timemark = self.latest_req_inferece_timemark.get_value()
+        last_timemark = self.latest_success_infer_time_mark.get_value()
         time_diff = time.time() - last_timemark
         return time_diff < self.timeout
 
@@ -62,8 +62,12 @@ health_obj = HealthObj()
 
 
 async def health_check(args, httpserver_manager: HttpServerManager, request: Request):
-    if health_obj.is_checking() or health_obj.has_latest_inference():
+    if health_obj.is_checking():
         return health_obj.is_health()
+
+    if health_obj.is_health() and health_obj.has_latest_inference():
+        return health_obj.is_health()
+
     health_obj.begin_check()
     try:
         request_dict = {"inputs": "你好！", "parameters": {"do_sample": True, "temperature": 0.8, "max_new_tokens": 2}}
