@@ -36,7 +36,7 @@ async def pd_handle_loop(manager: HttpServerManager):
 
     while True:
         try:
-            id_to_pd_master_obj = await _get_pd_master_objs(manager)
+            id_to_pd_master_obj = await _get_pd_master_objs(manager.args)
             logger.info(f"get pd_master_objs {id_to_pd_master_obj}")
             
             if id_to_pd_master_obj is not None:
@@ -122,22 +122,22 @@ async def _pd_handle_task(manager: HttpServerManager, pd_master_obj: PD_Master_O
             logger.info("reconnection to pd_master")
 
 
-async def _get_pd_master_objs(manager: HttpServerManager)->Optional[Dict[int, PD_Master_Obj]]:
+async def _get_pd_master_objs(args)->Optional[Dict[int, PD_Master_Obj]]:
     """
     get_pd_master_objs 主要负责从 pd master 获取所有的pd master对象。
     """
-    use_config_server = manager.args.config_server_host and manager.args.config_server_port
+    use_config_server = args.config_server_host and args.config_server_port
 
     # 如果不使用config_server服务来发现所有的 pd_master, 则需要使用启动参数中的
     # --pd_master_ip 和--pd_master_port 设置的唯一pd_master来进行连接, 其默认
     # node_id 为 0
     if not use_config_server:
         ans = dict()
-        ans[0] = PD_Master_Obj(node_id=0, host_ip_port=f"{manager.pd_master_ip}:{manager.args.pd_master_port}")
+        ans[0] = PD_Master_Obj(node_id=0, host_ip_port=f"{args.pd_master_ip}:{args.pd_master_port}")
         return ans
     
     # 使用 config_server 服务来发现所有的 pd_master 节点。
-    uri = f"ws://{manager.args.config_server_host}:{manager.args.config_server_port}/registered_objects"
+    uri = f"ws://{args.config_server_host}:{args.config_server_port}/registered_objects"
 
     try:
         async with httpx.AsyncClient() as client:

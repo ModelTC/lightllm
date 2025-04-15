@@ -183,6 +183,7 @@ class HttpServerManagerForPDMaster:
             "ip": d_start_args["host"],
             "rpyc_port": d_start_args["pd_decode_rpyc_port"],
             "max_new_tokens": sampling_params.max_new_tokens - 1,
+            "pd_master_node_id": self.args.pd_node_id,
         }
 
         old_max_new_tokens = sampling_params.max_new_tokens

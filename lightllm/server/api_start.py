@@ -284,7 +284,14 @@ def pd_master_start(args):
     if args.run_mode != "pd_master":
         return
     
-    args.pd_node_id = uuid.uuid4().int
+    # when use config_server to support multi pd_master node, we
+    # need generate unique node id for each pd_master node.
+    # otherwise, we use the 0 for single pd_master node. 
+    if args.config_server_host and args.config_server_port:
+        args.pd_node_id = uuid.uuid4().int
+    else:
+        args.pd_node_id = 0
+
     logger.info(f"use tgi api: {args.use_tgi_api}")
     logger.info(f"all start args:{args}")
 

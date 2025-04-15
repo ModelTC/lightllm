@@ -205,6 +205,9 @@ class DecodeNode(ctypes.Structure):
         ("ip", ctypes.c_int32 * 4),
         ("rpyc_port", ctypes.c_int),
         ("max_new_tokens", ctypes.c_int),
+        # 记录当前请求使用的 pd_master 节点的 id
+        ("pd_master_node_id_high", ctypes.c_uint64),
+        ("pd_master_node_id_low", ctypes.c_uint64),
     ]
 
     def initialize(self, data_dict):
@@ -224,15 +227,19 @@ class DecodeNode(ctypes.Structure):
         self.rpyc_port = data_dict["rpyc_port"]
         self.max_new_tokens = data_dict["max_new_tokens"]
 
+        pd_master_node_id = data_dict["pd_master_node_id"]
+        self.pd_master_node_id_high = (pd_master_node_id >> 64) & 0xFFFFFFFFFFFFFFFF
+        self.pd_master_node_id_low = pd_master_node_id & 0xFFFFFFFFFFFFFFFF
+
     def to_dict(self):
         if not self.exists:
             return None
-        uuid_int = (self.node_id_high << 64) | self.node_id_low
         return {
-            "node_id": uuid_int,
+            "node_id": ((self.node_id_high << 64) | self.node_id_low),
             "ip": ".".join(str(self.ip[i]) for i in range(4)),
             "rpyc_port": self.rpyc_port,
             "max_new_tokens": self.max_new_tokens,
+            "pd_master_node_id": ((self.pd_master_node_id_high << 64) | self.pd_master_node_id_low),
         }
 
 
