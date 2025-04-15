@@ -119,7 +119,6 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         if self.tp_world_size_ > 1:
             all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
-        print(input_embdings)
         return input_embdings
 
     def tpsp_context_forward(self, input_embdings: torch.Tensor, infer_state: InferStateInfo, layer_weight):
