@@ -131,19 +131,20 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, input, infer_state: LlamaInferStateInfo, layer_weight: Gemma3TransformerLayerWeight
     ) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
-        up_gate_out = layer_weight.gate_up_proj.mm(input.view(-1, self.embed_dim_)).float()
-        ffn1_out = self.alloc_tensor((input.size(0), up_gate_out.size(1) // 2), dtype=torch.float32)
+        gate = layer_weight.gate_proj.mm(input.view(-1, self.embed_dim_))
+        up = layer_weight.up_proj.mm(input.view(-1, self.embed_dim_))
         # gelu_and_mul_fwd(up_gate_out, ffn1_out)
-        ffn1_out = nn.functional.gelu(up_gate_out[:, :up_gate_out.size(1)//2], approximate="tanh") * up_gate_out[:, up_gate_out.size(1)//2:]
+        ffn1_out = nn.functional.gelu(gate, approximate="tanh") * up
         input = None
-        up_gate_out = None
-        ffn2_out = layer_weight.down_proj.mm(ffn1_out.to(torch.bfloat16))
+        ffn2_out = layer_weight.down_proj.mm(ffn1_out)
         ffn1_out = None
         return ffn2_out
     
     def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         input_embdings = input_embdings.to(torch.bfloat16)
+        # if self.layer_num_ == 0: print('0: layer_input_before_norm', input_embdings)
         input1 = self._att_norm(input_embdings.view(-1, self.embed_dim_).float(), infer_state, layer_weight).to(torch.bfloat16)
+        # if self.layer_num_ == 0: print('0: layer_input_after_norm', input1)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
@@ -154,15 +155,20 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         if self.tp_world_size_ > 1:
             all_reduce(o, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
         o = self._ffn_norm(o.float(), infer_state, layer_weight).to(torch.bfloat16)
+        # if self.layer_num_ == 0: print("0:o_after_norm", o)
         input_embdings.add_(o.view(-1, self.embed_dim_))
         o = None
 
+        #if self.layer_num_ == 0: print("0:ffn_hidden_before_norm", input_embdings)
         input1 = self._pre_feedforward_layernorm(input_embdings.float(), infer_state, layer_weight).to(torch.bfloat16)
+        #if self.layer_num_ == 0: print("0:ffn_hidden_after_norm", input1)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
             all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
+        # if self.layer_num_ == 0: print("0:ffn_out", ffn_out)
         ffn_out = self._post_feedforward_layernorm(ffn_out.float(), infer_state, layer_weight).to(torch.bfloat16)
+        # if self.layer_num_ == 0: print("0:ffn_out_after_norm", ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
 
         # if self.layer_num_ == 0: print("0:res", input_embdings)

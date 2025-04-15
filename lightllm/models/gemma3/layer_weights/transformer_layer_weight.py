@@ -26,6 +26,25 @@ class Gemma3TransformerLayerWeight(LlamaTransformerLayerWeight):
         self._pre_feedforward_layernorm_name = f'model.layers.{self.layer_num_}.pre_feedforward_layernorm.weight'
         self._post_feedforward_layernorm_name = f'model.layers.{self.layer_num_}.post_feedforward_layernorm.weight'
 
+    def _init_ffn(self):
+        self.gate_proj = ROWMMWeight(
+            weight_name=self._gate_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._gate_bias_name,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            name="gate_proj",
+        )
+        self.up_proj = ROWMMWeight(
+            weight_name=self._up_weight_name,
+            data_type=self.data_type_,
+            bias_name=self._up_bias_name,
+            quant_cfg=self.quant_cfg,
+            layer_num=self.layer_num_,
+            name="up_proj",
+        )
+        super()._init_ffn()
+
     def _init_qkv(self):
         self.k_proj = ROWMMWeight(
             weight_name=self._k_weight_name,

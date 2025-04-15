@@ -22,7 +22,7 @@ class Gemma3PostLayerInfer(LlamaPostLayerInfer):
         output = output * (1.0 + weight.float())
         if out is not None:
             out = output.to(out.dtype)
-        return output.to(out.dtype)
+        return output
 
     def _norm(self, input, infer_state, layer_weight) -> torch.Tensor:
         return self.gemma3_rmsnorm(input, layer_weight.final_norm_weight_, eps=self.eps_)
@@ -31,15 +31,12 @@ class Gemma3PostLayerInfer(LlamaPostLayerInfer):
         # print('last_hidden_before_norm', input_embdings)
         last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)
         input_embdings_dtype = input_embdings.dtype
-        input_embdings = None
         last_input = self._norm(last_input.float(), infer_state, layer_weight).to(torch.bfloat16)
-        # print('last_hidden_after_norm', last_input)
         last_input = last_input.permute(1, 0).view(-1, token_num)
         logic_batch = self.alloc_tensor(
             (layer_weight.lm_head_weight_.shape[0], last_input.shape[1]), dtype=last_input.dtype
         )
         torch.mm(layer_weight.lm_head_weight_.to(last_input.dtype), last_input, out=logic_batch)
-        # print('logits', logic_batch)
         last_input = None
         if self.tp_world_size_ == 1:
             gather_data = logic_batch

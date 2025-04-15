@@ -64,11 +64,11 @@ class Gemma3VisionModel:
                     if "multi_modal_projector.mm_input_projection_weight" in k:
                         self.projector_weights[
                             k.replace("multi_modal_projector.mm_input_projection_weight", "model.mm_projector.linear")
-                        ] = d.get_tensor(k).half()
+                        ] = d.get_tensor(k).to(torch.bfloat16)
                     if "multi_modal_projector.mm_soft_emb_norm.weight" in k:
                         self.projector_weights[
                             k.replace("multi_modal_projector.mm_soft_emb_norm.weight", "model.mm_projector.norm")
-                        ] = d.get_tensor(k).half()
+                        ] = d.get_tensor(k).to(torch.bfloat16)
 
     def cuda(self):
         self.vision_tower = self.vision_tower.cuda()
@@ -76,18 +76,18 @@ class Gemma3VisionModel:
             self.projector_weights[k] = v.cuda()
         return self
 
-    def gemma3_rms_norm(self, x, weight, eps: float = 1e-6):
+    def gemma3_rms_norm(self, input, weight, eps: float = 1e-6):
         def _norm(x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
-        output = _norm(x.float())
+        output = _norm(input.float())
         # Llama does x.to(float16) * w whilst Gemma3 is (x * w).to(float16)
         # See https://github.com/huggingface/transformers/pull/29402
         output = output * (1.0 + weight.float())
-        return output.type_as(x)
+        return output.type_as(input)
 
     # batch images infer
     def forward(self, x):
-        x = x.half().cuda()
+        x = x.to(torch.bfloat16).cuda()
         x = self.vision_tower(x, output_hidden_states=True).last_hidden_state
         
         batch_size, _, seq_length = x.shape
@@ -102,10 +102,10 @@ class Gemma3VisionModel:
         pooled_vision_outputs = pooled_vision_outputs.flatten(2)
         pooled_vision_outputs = pooled_vision_outputs.transpose(1, 2)
 
-        normed_vision_outputs = self.gemma3_rms_norm(pooled_vision_outputs, self.projector_weights['model.mm_projector.norm'])
+        normed_vision_outputs = self.gemma3_rms_norm(pooled_vision_outputs.float(), self.projector_weights['model.mm_projector.norm']).to(torch.float32)
 
         projected_vision_outputs = torch.matmul(normed_vision_outputs, self.projector_weights['model.mm_projector.linear'])
-
+        #print(projected_vision_outputs.type_as(x))
         return projected_vision_outputs.type_as(x)
 
     def encode(self, images: List[ImageItem]):
@@ -118,8 +118,9 @@ class Gemma3VisionModel:
             if isinstance(img, ImageItem):
                 uuids.append(img.uuid)
                 image_data = read_shm(get_shm_name_data(img.uuid))
-                image_data = Image.open(BytesIO(image_data)).convert("RGB")
+                image_data = Image.open(BytesIO(image_data))
                 t = self.image_processor.preprocess(image_data, return_tensors="pt")["pixel_values"]
+                #print(t)
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(img), img))

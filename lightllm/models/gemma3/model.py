@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from lightllm.common.mem_utils import select_mem_manager_class
 from lightllm.models.gemma3.infer_struct import Gemma3InferStateInfo
+from lightllm.models.gemma3.layer_infer.post_layer_infer import Gemma3PostLayerInfer
 from lightllm.models.gemma3.layer_infer.pre_layer_infer import Gemma3PreLayerInfer
 from lightllm.models.gemma3.layer_infer.transformer_layer_infer import Gemma3TransformerLayerInfer
 from lightllm.models.gemma3.layer_weights.pre_and_post_layer_weight import Gemma3PreAndPostLayerWeight
@@ -80,6 +81,7 @@ class Gemma3TpPartModel(LlamaTpPartModel):
     # infer class
     pre_layer_infer_class = Gemma3PreLayerInfer
     transformer_layer_infer_class = Gemma3TransformerLayerInfer
+    post_layer_infer_class = Gemma3PostLayerInfer
 
     infer_state_class = Gemma3InferStateInfo
 

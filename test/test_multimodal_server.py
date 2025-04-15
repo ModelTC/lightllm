@@ -27,8 +27,8 @@ def image_to_base64(image):
 
 
 question = "Describe this picture to me."
-question = f"<bos><start_of_turn>user\nYou are an AI assistant whose name is SenseChat-Vision(日日新多模态). \
-            <start_of_image>{question}<end_of_turn>\n"
+question = f"user\nYou are an AI assistant whose name is SenseChat-Vision(日日新多模态). \
+            <start_of_image>{question}\n"
 
 url = "http://localhost:9999/generate"
 headers = {"Content-Type": "application/json"}
