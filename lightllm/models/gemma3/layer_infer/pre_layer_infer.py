@@ -9,10 +9,12 @@ class Gemma3PreLayerInfer(LlamaMultimodalPreLayerInfer):
         return
 
     def context_forward(self, input_ids, infer_state, layer_weight):
+        input_dtype = input_ids.dtype
         input_embedding = super().context_forward(input_ids, infer_state, layer_weight)
-        return input_embedding.float() * self.embed_scale.to(input_embedding.device).float()
+        return (input_embedding.float() * self.embed_scale.to(input_embedding.device).float()).to(input_dtype)
 
     def token_forward(self, input_ids, infer_state, layer_weight):
+        input_dtype = input_ids.dtype
         input_embedding = super().token_forward(input_ids, infer_state, layer_weight)
-        return input_embedding.float() * self.embed_scale.to(input_embedding.device).float()
+        return input_embedding.float() * self.embed_scale.to(input_embedding.device).float().to(input_dtype)
 

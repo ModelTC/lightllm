@@ -27,7 +27,7 @@ for i in range(1):
         'inputs': 'San Francisco is a',
         # 'temperature': 0.1,
         'parameters' : {
-            "max_new_tokens": 1,
+            "max_new_tokens": 10,
             'do_sample': False,
         }
     }
