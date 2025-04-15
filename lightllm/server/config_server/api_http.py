@@ -34,12 +34,12 @@ async def healthcheck(request: Request):
     return JSONResponse({"message": "Ok"}, status_code=200)
 
 
-@app.websocket("/ws")
+@app.websocket("/pd_master_register")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     client_ip, client_port = websocket.client
     logger.info(f"ws connected from IP: {client_ip}, Port: {client_port}")
-    registered_pd_master_obj: PD_Master_Obj = pickle.load(await websocket.receive_bytes())
+    registered_pd_master_obj: PD_Master_Obj = pickle.loads(await websocket.receive_bytes())
     logger.info(f"recieved registered_pd_master_obj {registered_pd_master_obj}")
     
     with registered_pd_master_obj_lock:

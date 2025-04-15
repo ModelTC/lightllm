@@ -340,6 +340,13 @@ class HttpServerManagerForPDMaster:
         self.infos_queues = AsyncQueue()
         asyncio.create_task(self.timer_log())
 
+        use_config_server = self.args.config_server_host or self.args.config_server_port
+
+        if use_config_server:
+            from lightllm.server.httpserver_for_pd_master.register_loop import register_loop
+
+            asyncio.create_task(register_loop(self))
+
         while True:
             objs = await self.infos_queues.wait_to_get_all_data()
 
