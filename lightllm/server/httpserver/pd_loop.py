@@ -24,26 +24,37 @@ async def timer_log(manager: HttpServerManager):
 
 
 async def pd_handle_loop(manager: HttpServerManager):
+    assert manager.args.host not in ["127.0.0.1", "localhost"], "pd mode must specify host ip"
+    if manager.args.host in ["0.0.0.0"]:
+        manager.host_ip = get_hostname_ip()
+    else:
+        manager.host_ip = manager.args.host
+
     asyncio.create_task(timer_log(manager))
 
     id_to_handle_task:Dict[int, asyncio.Task] = {}
 
     while True:
-        id_to_pd_master_obj = await _get_pd_master_objs(manager)
-        logger.info(f"get pd_master_objs {id_to_pd_master_obj}")
+        try:
+            id_to_pd_master_obj = await _get_pd_master_objs(manager)
+            logger.info(f"get pd_master_objs {id_to_pd_master_obj}")
+            
+            if id_to_pd_master_obj is not None:
+                for node_id, pd_master_obj in id_to_handle_task.items():
+                    if node_id not in id_to_pd_master_obj:
+                        id_to_handle_task[node_id].cancel()
+                        id_to_handle_task.pop(node_id, None)
+                        logger.info(f"pd_handle_task {pd_master_obj} cancelled")
+
+                for node_id, pd_master_obj in id_to_pd_master_obj.items():
+                    if node_id not in id_to_handle_task:
+                        id_to_handle_task[node_id] = asyncio.create_task(_pd_handle_task(manager, pd_master_obj))
+
+            await asyncio.sleep(30)
         
-        if id_to_pd_master_obj is not None:
-            for node_id, pd_master_obj in id_to_handle_task.items():
-                if node_id not in id_to_pd_master_obj:
-                    id_to_handle_task[node_id].cancel()
-                    id_to_handle_task.pop(node_id, None)
-                    logger.info(f"pd_handle_task {pd_master_obj} cancelled")
-
-            for node_id, pd_master_obj in id_to_pd_master_obj.items():
-                if node_id not in id_to_handle_task:
-                    id_to_handle_task[node_id] = asyncio.create_task(_pd_handle_task(manager, pd_master_obj))
-
-        await asyncio.sleep(30)
+        except Exception as e:
+            logger.exception(str(e))
+            await asyncio.sleep(10)
 
 
 async def _pd_handle_task(manager: HttpServerManager, pd_master_obj: PD_Master_Obj):
@@ -53,10 +64,6 @@ async def _pd_handle_task(manager: HttpServerManager, pd_master_obj: PD_Master_O
     """
     # 创建转发队列
     forwarding_queue = AsyncQueue()
-        
-    manager.host_ip = get_hostname_ip()
-    if manager.host_ip is None:
-        manager.host_ip = manager.args.host
 
     while True:
         forwarding_tokens_task = None
@@ -139,9 +146,11 @@ async def _get_pd_master_objs(manager: HttpServerManager)->Optional[Dict[int, PD
                 base64data  = response.json()["data"]
                 id_to_pd_master_obj = pickle.loads(base64.b64decode(base64data))
                 return id_to_pd_master_obj
+            else:
+                logger.error(f"get pd_master_objs error {response.status_code}")
+                return None
     except Exception as e:
         logger.exception(str(e))
-        logger.error(f"Failed to fetch PD Master objects: {response.status_code}, {response.text}")
         await asyncio.sleep(10)
         return None
 

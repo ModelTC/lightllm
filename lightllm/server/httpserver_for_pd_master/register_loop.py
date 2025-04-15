@@ -11,9 +11,11 @@ from ..pd_io_struct import PD_Master_Obj
 logger = init_logger(__name__)
 
 async def register_loop(manager: HttpServerManagerForPDMaster):
-    
-    manager.host_ip = get_hostname_ip()
-    if manager.host_ip is None:
+    assert manager.args.host not in ["127.0.0.1", "localhost"], "pd mode must specify host ip"
+
+    if manager.args.host in ["0.0.0.0"]:
+        manager.host_ip = get_hostname_ip()
+    else:
         manager.host_ip = manager.args.host
 
     while True:
