@@ -29,6 +29,7 @@ from .pause_strategy import Fcfs, select_paused_reqs
 from lightllm.utils.log_utils import init_logger, log_time_ready
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.server.metrics.manager import MetricClient
+from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.common.basemodel.infer_lock import g_router_lock
 from lightllm.common.mem_manager import ReadOnlyStaticsMemoryManager
 from lightllm.utils.graceful_utils import graceful_registry
@@ -70,6 +71,11 @@ class RouterManager:
             self.shared_token_load.set_current_load(0.0, dp_index)
             self.shared_token_load.set_logical_max_load(0.0, dp_index)
             self.shared_token_load.set_dynamic_max_load(0.0, dp_index)
+
+        # The timemark of the latest inference(prefill/decode) which is used to check the health status of the system.
+        # If the timemark is not updated for a pre-set time, a prob request will be sent to the backend.
+        self.latest_req_inference_timemark = SharedInt(f"{get_unique_server_name()}_latest_req_inference_timemark")
+        self.latest_req_inference_timemark.set_value(int(time.time()))
 
         self.pause_strategy = Fcfs()
         self.running_batch: Batch = None
@@ -390,6 +396,8 @@ class RouterManager:
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "prefill"
         )
+        # update inference timemark
+        self.latest_req_inference_timemark.set_value(int(time.time()))
         return
 
     async def _decode_batch(self, batch: Batch):
@@ -405,6 +413,8 @@ class RouterManager:
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
         )
+        # update inference timemark
+        self.latest_req_inference_timemark.set_value(int(time.time()))
         return
 
     async def _pause_reqs(self, pasue_reqs):
