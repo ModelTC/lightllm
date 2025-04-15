@@ -209,6 +209,7 @@ class ModeBackend:
                 self.is_multimodal = True
             elif self.model_type == "gemma3":
                 self.model = Gemma3TpPartModel(model_kvargs)
+                self.is_multimodal = True
             else:
                 raise Exception(f"can not support {self.model_type} now")
         except Exception as e:

@@ -6,3 +6,6 @@ dist
 .idea
 .vscode
 tmp/
+
+start_server.sh
+transformers_gemma3.py

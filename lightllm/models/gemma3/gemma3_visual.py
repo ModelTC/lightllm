@@ -37,10 +37,8 @@ class Gemma3VisionModel:
         self.vision_tower.requires_grad_(False)
         self.device = torch.device("cpu")
 
-        assert "model.mm_projector.0.weight" in self.projector_weights
-        assert "model.mm_projector.0.bias" in self.projector_weights
-        assert "model.mm_projector.2.weight" in self.projector_weights
-        assert "model.mm_projector.2.bias" in self.projector_weights
+        assert "model.mm_projector.linear" in self.projector_weights
+        assert "model.mm_projector.norm" in self.projector_weights
 
     def load_hf_model(self, config, weight_dir):
         from transformers import AutoConfig, AutoProcessor, Gemma3ForConditionalGeneration
