@@ -176,7 +176,7 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
 
     def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         input_embdings = input_embdings.to(torch.bfloat16)
-        input1 = self._att_norm(input_embdings, infer_state, layer_weight)
+        input1 = self._att_norm(input_embdings.view(-1, self.embed_dim_).float(), infer_state, layer_weight).to(torch.bfloat16)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None
@@ -186,15 +186,15 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         o = self._get_o(o, infer_state, layer_weight)
         if self.tp_world_size_ > 1:
             all_reduce(o, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
-        o = self._ffn_norm(o, infer_state, layer_weight)
+        o = self._ffn_norm(o.float(), infer_state, layer_weight).to(torch.bfloat16)
         input_embdings.add_(o.view(-1, self.embed_dim_))
         o = None
 
-        input1 = self._pre_feedforward_layernorm(input_embdings, infer_state, layer_weight)
+        input1 = self._pre_feedforward_layernorm(input_embdings.float(), infer_state, layer_weight).to(torch.bfloat16)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
             all_reduce(ffn_out, op=dist.ReduceOp.SUM, group=infer_state.dist_group, async_op=False)
-        ffn_out = self._post_feedforward_layernorm(ffn_out, infer_state, layer_weight)
+        ffn_out = self._post_feedforward_layernorm(ffn_out.float(), infer_state, layer_weight).to(torch.bfloat16)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
         return input_embdings
