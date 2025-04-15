@@ -39,6 +39,7 @@ class BaseQueue:
         return
 
     def get_paused_req_num(self, fake_dp_index: int = 0):
+        assert fake_dp_index == 0
         return len(self.pause_req_dict)
 
     def get_wait_req_num(self):
