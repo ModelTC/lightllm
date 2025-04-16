@@ -2,7 +2,6 @@ import asyncio
 import pickle
 import websockets
 import socket
-import pickle
 from lightllm.utils.net_utils import get_hostname_ip
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.httpserver_for_pd_master.manager import HttpServerManagerForPDMaster

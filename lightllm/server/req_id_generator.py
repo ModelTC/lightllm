@@ -37,7 +37,8 @@ class ReqIDGenerator:
             else:
                 while True:
                     try:
-                        url = f"http://{self.args.config_server_host}:{self.args.config_server_port}/allocate_global_unique_id_range"
+                        config_server_ip_port = f"{self.args.config_server_host}:{self.args.config_server_port}"
+                        url = f"http://{config_server_ip_port}/allocate_global_unique_id_range"
                         response = requests.get(url)
                         if response.status_code == 200:
                             id_range = response.json()
