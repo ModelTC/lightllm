@@ -1,5 +1,8 @@
+import os
 from typing import List, Dict
 from lightllm.server.core.objs import Req
+
+LIGHTLLM_DECODE_PREFIX_LENGTH = int(os.getenv("LIGHTLLM_DECODE_PREFIX_LENGTH", 5))
 
 
 class DecodeReq:
@@ -11,10 +14,9 @@ class DecodeReq:
         self.group_req_id = req.group_req_id
         self.prompt_ids = req.shm_prompt_ids.arr[0 : req.input_len].tolist()
         self.output_ids = []
-        self.output_tokens = []
+        self.prefix_offset = max(len(self.prompt_ids) - LIGHTLLM_DECODE_PREFIX_LENGTH, 0)
+        self.read_offset = len(self.prompt_ids)
         self.output_str = ""
-        self.sub_texts = []
-        self.current_sub_text = []
         self.req = req
         self.input_len = self.req.input_len
         self.prefix_str = ""
@@ -38,6 +40,11 @@ class DecodeReq:
     def get_next_token_id_and_index(self):
         src_index = self.input_len + len(self.output_ids)
         return self.req.shm_prompt_ids.arr[src_index], src_index
+
+    def get_decode_tokens(self):
+        prefix_tokens = self.req.shm_prompt_ids.arr[self.prefix_offset : self.read_offset].tolist()
+        read_tokens = self.req.shm_prompt_ids.arr[self.prefix_offset : self.input_len + len(self.output_ids)].tolist()
+        return prefix_tokens, read_tokens
 
     def can_set_release_mark(self):
         if self.req.is_aborted:

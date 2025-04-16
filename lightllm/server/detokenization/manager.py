@@ -119,31 +119,26 @@ class DeTokenizationManager:
                 count_output_tokens = len(decode_req.output_ids)
 
                 exist_decode = True
-                out_text = decode_token(
+                new_text = decode_token(
                     self.tokenizer,
                     decode_req,
                     int(new_token_id),
                     self.eos_id,
                 )
-                if out_text.endswith("\ufffd"):
-                    new_text = ""
-                else:
-                    new_text = out_text[len(decode_req.output_str) :]
-                    decode_req.output_str = out_text
+                decode_req.output_str += new_text
 
-                    # 对应 token_healing 的特殊处理
-                    if self.args.token_healing_mode:
-                        if new_text.startswith(decode_req.prefix_str):
-                            new_text = new_text[len(decode_req.prefix_str) :]
-                            decode_req.prefix_str = ""
-                        elif decode_req.prefix_str.startswith(new_text):
-                            decode_req.prefix_str = decode_req.prefix_str[len(new_text) :]
-                            new_text = ""
-                        else:
-                            logger.error(
-                                f"error token healing state, prefix_str {decode_req.prefix_str} new_text {new_text}"
-                            )
-
+                # 对应 token_healing 的特殊处理
+                if self.args.token_healing_mode:
+                    if new_text.startswith(decode_req.prefix_str):
+                        new_text = new_text[len(decode_req.prefix_str) :]
+                        decode_req.prefix_str = ""
+                    elif decode_req.prefix_str.startswith(new_text):
+                        decode_req.prefix_str = decode_req.prefix_str[len(new_text) :]
+                        new_text = ""
+                    else:
+                        logger.error(
+                            f"error token healing state, prefix_str {decode_req.prefix_str} new_text {new_text}"
+                        )
                 decode_req.req.out_tokens_queue.push(new_text, src_index, special, count_output_tokens)
 
             if decode_req.need_detoken():
