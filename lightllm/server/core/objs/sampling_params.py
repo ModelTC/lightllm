@@ -271,7 +271,7 @@ class SamplingParams(ctypes.Structure):
         ("allowed_token_ids", AllowedTokenIds),
         ("stop_sequences", StopSequenceGroups),
         ("exponential_decay_length_penalty", ExponentialDecayLengthPenalty),
-        ("group_request_id", ctypes.c_int),  # p d mode used params
+        ("group_request_id", ctypes.c_int64),  # p d mode used params
         ("suggested_dp_index", ctypes.c_int),  # suggest dp index, deepseekv2 dp mode, use to suggest used dp_index
         ("move_kv_to_decode_node", DecodeNode),  # move kv to deocde node, only used in pd mode
         ("skip_special_tokens", ctypes.c_bool),  # whether to skip special tokens when decoding
