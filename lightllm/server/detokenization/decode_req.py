@@ -16,7 +16,7 @@ class DecodeReq:
         self.prompt_ids = req.shm_prompt_ids.arr[0 : req.input_len].tolist()
         self.output_ids = []
         self.prefix_offset = max(len(self.prompt_ids) - LIGHTLLM_DECODE_PREFIX_LENGTH, 0)
-        
+
         if is_pd_decode_mode:
             # pd decode mode 需要模拟一下 prefill 输出的第一个token
             self.read_offset = max(0, len(self.prompt_ids) - 1)
