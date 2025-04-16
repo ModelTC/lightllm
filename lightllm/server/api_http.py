@@ -392,6 +392,7 @@ async def metrics() -> Response:
 @app.websocket("/pd_register")
 async def register_and_keep_alive(websocket: WebSocket):
     await websocket.accept()
+    websocket._receive_bytes_max_size = 16 * 1024 * 1024  # 关键修改
     client_ip, client_port = websocket.client
     logger.info(f"Client connected from IP: {client_ip}, Port: {client_port}")
     regist_json = json.loads(await websocket.receive_text())

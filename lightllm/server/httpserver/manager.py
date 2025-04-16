@@ -326,7 +326,7 @@ class HttpServerManager:
 
         # 这里的校验对多模态不是很充分, to do
         if all(isinstance(e, int) for e in prompt):
-            if not self.enable_multimodal:
+            if not self.enable_multimodal and not self.pd_mode.is_D():
                 if all(e < self.vocab_size for e in prompt):
                     return prompt
                 else:
@@ -649,7 +649,9 @@ class HttpServerManager:
             forwarding_tokens_task = None
             try:
                 uri = f"ws://{self.args.pd_master_ip}:{self.args.pd_master_port}/pd_register"
-                async with websockets.connect(uri, max_queue=(2048 * 1024, 2048 * 1023)) as websocket:
+                async with websockets.connect(
+                    uri, max_size=16 * 1024 * 1024, max_queue=(2048 * 1024, 2048 * 1023)
+                ) as websocket:
                     import socket
 
                     sock = websocket.transport.get_extra_info("socket")
