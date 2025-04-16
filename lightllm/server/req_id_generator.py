@@ -19,7 +19,7 @@ class ReqIDGenerator:
         from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
         
         self.args = get_env_start_args()
-        self.use_config_server = self.args.config_server_host and self.args.config_server_port
+        self.use_config_server = self.args.config_server_host and self.args.config_server_port and self.args.run_mode == "pd_master"
         self.current_id = ShmArray(f"{get_unique_server_name()}_req_id_gen", (2,), dtype=np.int64)
         self.current_id.create_shm()
         self.current_id.arr[0] = 0

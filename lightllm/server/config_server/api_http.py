@@ -85,10 +85,10 @@ async def allocate_global_id_range():
     global global_req_id
     range_size = 800000
     with global_req_id_lock:
-        if req_id + range_size > 2**63 - 1:
-            req_id = 0    
-        start_id = req_id
-        req_id += range_size
-        end_id = req_id
+        if global_req_id + range_size > 2**63 - 1:
+            global_req_id = 0    
+        start_id = global_req_id
+        global_req_id += range_size
+        end_id = global_req_id
 
     return {"start_id": start_id, "end_id": end_id}
