@@ -30,63 +30,52 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         self.head_dim_ = 256
         self.sliding_window_pattern = 6
         return
-    
-    def gemma3_rmsnorm(self, input, weight, eps: float = 1e-6, out = None):
+
+    def gemma3_rmsnorm(self, input, weight, eps: float = 1e-6, out=None):
         def _norm(x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
+
         output = _norm(input.float())
         output = output * (1.0 + weight.float())
         if out is not None:
             out = output.to(out.dtype)
         return output
-    
+
     def _pre_feedforward_layernorm(self, input, infer_state, layer_weight: Gemma3TransformerLayerWeight):
         out = self.alloc_tensor(input.shape, input.dtype)
-        out = self.gemma3_rmsnorm(
-            input, layer_weight.pre_feedforward_layernorm_weight_.weight, self.eps_, out=out
-        )
+        out = self.gemma3_rmsnorm(input, layer_weight.pre_feedforward_layernorm_weight_.weight, self.eps_, out=out)
         return out
 
     def _post_feedforward_layernorm(self, input, infer_state, layer_weight: Gemma3TransformerLayerWeight):
         out = self.alloc_tensor(input.shape, input.dtype)
-        out = self.gemma3_rmsnorm(
-            input, layer_weight.post_feedforward_layernorm_weight_.weight, self.eps_, out=out
-        )
+        out = self.gemma3_rmsnorm(input, layer_weight.post_feedforward_layernorm_weight_.weight, self.eps_, out=out)
         return out
-    
+
     def _k_norm(self, input, infer_state, layer_weight: Gemma3TransformerLayerWeight):
         out = self.alloc_tensor(input.shape, input.dtype)
-        out = self.gemma3_rmsnorm(
-            input, layer_weight.k_norm_weight_.weight, self.eps_, out=out
-        )
+        out = self.gemma3_rmsnorm(input, layer_weight.k_norm_weight_.weight, self.eps_, out=out)
         return out
-    
+
     def _q_norm(self, input, infer_state, layer_weight: Gemma3TransformerLayerWeight):
         out = self.alloc_tensor(input.shape, input.dtype)
-        out = self.gemma3_rmsnorm(
-            input, layer_weight.q_norm_weight_.weight, self.eps_, out=out
-        )
+        out = self.gemma3_rmsnorm(input, layer_weight.q_norm_weight_.weight, self.eps_, out=out)
         return out
-    
+
     def _att_norm(self, input, infer_state, layer_weight):
         out = self.alloc_tensor(input.shape, input.dtype)
-        out = self.gemma3_rmsnorm(
-            input, layer_weight.att_norm_weight_.weight, self.eps_, out=out
-        )
+        out = self.gemma3_rmsnorm(input, layer_weight.att_norm_weight_.weight, self.eps_, out=out)
         return out
-    
+
     def _ffn_norm(self, input, infer_state, layer_weight):
         out = self.alloc_tensor(input.shape, input.dtype)
-        out = self.gemma3_rmsnorm(
-            input, layer_weight.ffn_norm_weight_.weight, self.eps_, out=out
-        )
+        out = self.gemma3_rmsnorm(input, layer_weight.ffn_norm_weight_.weight, self.eps_, out=out)
         return out
 
     def _bind_norm(self):
         self._att_norm = partial(Gemma3TransformerLayerInfer._att_norm, self)
         self._ffn_norm = partial(Gemma3TransformerLayerInfer._ffn_norm, self)
         self._q_norm = partial(Gemma3TransformerLayerInfer._q_norm, self)
-        self._k_norm = partial(Gemma3TransformerLayerInfer._k_norm, self)        
+        self._k_norm = partial(Gemma3TransformerLayerInfer._k_norm, self)
         self._pre_feedforward_layernorm = partial(Gemma3TransformerLayerInfer._pre_feedforward_layernorm, self)
         self._post_feedforward_layernorm = partial(Gemma3TransformerLayerInfer._post_feedforward_layernorm, self)
 
@@ -94,12 +83,12 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: Gemma3TransformerLayerWeight
     ) -> torch.Tensor:
         q = layer_weight.q_proj.mm(input)
-        #kv = layer_weight.kv_proj.mm(input)
-        #kv = kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
+        # kv = layer_weight.kv_proj.mm(input)
+        # kv = kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
         k = layer_weight.k_proj.mm(input)
         v = layer_weight.v_proj.mm(input)
         cache_kv[:, 0 : self.tp_k_head_num_, :] = k.view(-1, self.tp_k_head_num_, self.head_dim_)
-        cache_kv[:, self.tp_k_head_num_:, :] = v.view(-1, self.tp_v_head_num_, self.head_dim_)
+        cache_kv[:, self.tp_k_head_num_ :, :] = v.view(-1, self.tp_v_head_num_, self.head_dim_)
 
         # gemma3 use qk norm
         q = q.view(-1, self.tp_q_head_num_, self.head_dim_)
@@ -115,7 +104,6 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.position_cos_local.to(q.dtype),
                 infer_state.position_sin_local.to(q.dtype),
             )
-            #if self.layer_num_ == 0: print('after rotary',infer_state.position_sin_local.to(q.dtype), infer_state.position_cos_local.to(q.dtype), q, cache_kv[:, 0 : self.tp_k_head_num_, :])
         else:
             rotary_emb_fwd(
                 q.view(-1, self.tp_q_head_num_, self.head_dim_),
@@ -123,13 +111,9 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
                 infer_state.position_cos_global.to(q.dtype),
                 infer_state.position_sin_global.to(q.dtype),
             )
-            #if self.layer_num_ == 0: print('after rotary',infer_state.position_sin_global.to(q.dtype), infer_state.position_cos_global.to(q.dtype), q, cache_kv[:, 0 : self.tp_k_head_num_, :])
         return q, cache_kv
 
-
-    def _ffn(
-        self, input, infer_state: LlamaInferStateInfo, layer_weight: Gemma3TransformerLayerWeight
-    ) -> torch.Tensor:
+    def _ffn(self, input, infer_state: LlamaInferStateInfo, layer_weight: Gemma3TransformerLayerWeight) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
         gate = layer_weight.gate_proj.mm(input.view(-1, self.embed_dim_))
         up = layer_weight.up_proj.mm(input.view(-1, self.embed_dim_))
@@ -139,11 +123,13 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         ffn2_out = layer_weight.down_proj.mm(ffn1_out)
         ffn1_out = None
         return ffn2_out
-    
+
     def context_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         input_embdings = input_embdings.to(torch.bfloat16)
         # if self.layer_num_ == 0: print('0: layer_input_before_norm', input_embdings)
-        input1 = self._att_norm(input_embdings.view(-1, self.embed_dim_).float(), infer_state, layer_weight).to(torch.bfloat16)
+        input1 = self._att_norm(input_embdings.view(-1, self.embed_dim_).float(), infer_state, layer_weight).to(
+            torch.bfloat16
+        )
         # if self.layer_num_ == 0: print('0: layer_input_after_norm', input1)
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
@@ -159,9 +145,9 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         input_embdings.add_(o.view(-1, self.embed_dim_))
         o = None
 
-        #if self.layer_num_ == 0: print("0:ffn_hidden_before_norm", input_embdings)
+        # if self.layer_num_ == 0: print("0:ffn_hidden_before_norm", input_embdings)
         input1 = self._pre_feedforward_layernorm(input_embdings.float(), infer_state, layer_weight).to(torch.bfloat16)
-        #if self.layer_num_ == 0: print("0:ffn_hidden_after_norm", input1)
+        # if self.layer_num_ == 0: print("0:ffn_hidden_after_norm", input1)
         ffn_out = self._ffn(input1, infer_state, layer_weight)
         input1 = None
         if self.tp_world_size_ > 1:
@@ -170,19 +156,13 @@ class Gemma3TransformerLayerInfer(LlamaTransformerLayerInfer):
         ffn_out = self._post_feedforward_layernorm(ffn_out.float(), infer_state, layer_weight).to(torch.bfloat16)
         # if self.layer_num_ == 0: print("0:ffn_out_after_norm", ffn_out)
         input_embdings.add_(ffn_out.view(-1, self.embed_dim_))
-
-        # if self.layer_num_ == 0: print("0:res", input_embdings)
-        # if self.layer_num_ == 1: print("1:res", input_embdings)
-        # if self.layer_num_ == 2: print("2:res", input_embdings)
-        # if self.layer_num_ == 3: print("3:res", input_embdings)
-        # if self.layer_num_ == 4: print("4:res", input_embdings)
-        # if self.layer_num_ == 5: print("5:res", input_embdings)
-        # if self.layer_num_ == 10: print("10:res", input_embdings)
         return input_embdings
 
     def token_forward(self, input_embdings, infer_state: InferStateInfo, layer_weight):
         input_embdings = input_embdings.to(torch.bfloat16)
-        input1 = self._att_norm(input_embdings.view(-1, self.embed_dim_).float(), infer_state, layer_weight).to(torch.bfloat16)
+        input1 = self._att_norm(input_embdings.view(-1, self.embed_dim_).float(), infer_state, layer_weight).to(
+            torch.bfloat16
+        )
         cache_kv = self._pre_cache_kv(infer_state, layer_weight)
         q, cache_kv = self._get_qkv(input1, cache_kv, infer_state, layer_weight)
         input1 = None

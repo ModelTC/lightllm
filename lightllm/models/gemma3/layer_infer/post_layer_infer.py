@@ -6,7 +6,6 @@ from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInf
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 
 
-
 class Gemma3PostLayerInfer(LlamaPostLayerInfer):
     """ """
 
@@ -15,9 +14,10 @@ class Gemma3PostLayerInfer(LlamaPostLayerInfer):
         self.eps_ = 1e-6
         return
 
-    def gemma3_rmsnorm(self, input, weight, eps: float = 1e-6, out = None):
+    def gemma3_rmsnorm(self, input, weight, eps: float = 1e-6, out=None):
         def _inner_norm(x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
+
         output = _inner_norm(input.float())
         output = output * (1.0 + weight.float())
         if out is not None:
@@ -26,7 +26,7 @@ class Gemma3PostLayerInfer(LlamaPostLayerInfer):
 
     def _norm(self, input, infer_state, layer_weight) -> torch.Tensor:
         return self.gemma3_rmsnorm(input, layer_weight.final_norm_weight_, eps=self.eps_)
-    
+
     def token_forward(self, input_embdings, infer_state, layer_weight):
         # print('last_hidden_before_norm', input_embdings)
         last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)

@@ -15,7 +15,7 @@ def rename_weight_keys(weights):
 
 class Gemma3PreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
     def __init__(self, data_type, network_config, mode):
-        network_config['tie_word_embeddingse'] = True
+        network_config["tie_word_embeddingse"] = True
         super().__init__(data_type, network_config, mode)
         return
 

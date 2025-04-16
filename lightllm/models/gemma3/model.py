@@ -32,7 +32,7 @@ class Gemma3Tokenizer:
         self.eoi_token_index: int = model_cfg.get("eoi_token_index", 256_000)
         self.image_token_index: int = model_cfg.get("image_token_index", 262_144)
         self.mm_tokens_per_image: int = model_cfg.get("mm_tokens_per_image", 256)
-        
+
         self.image_length = self.mm_tokens_per_image
 
     def init_imageItem_extral_params(
@@ -44,10 +44,10 @@ class Gemma3Tokenizer:
         return self.image_length
 
     # only change the impl of the encode func:
-    def encode(self, prompt, multimodal_params: MultimodalParams = None, add_special_tokens = False):
+    def encode(self, prompt, multimodal_params: MultimodalParams = None, add_special_tokens=False):
         if multimodal_params is None:
-            return self.tokenizer(x).input_ids
-        
+            return self.tokenizer(prompt).input_ids
+
         ids_chunks = [self.tokenizer(x).input_ids for x in prompt.split(self.boi_token)]
         input_ids = ids_chunks[0]
         image_id = 0
@@ -100,24 +100,24 @@ class Gemma3TpPartModel(LlamaTpPartModel):
         if "max_sequence_length" in self.config:
             max_seq_len = self.config["max_sequence_length"]
         else:
-            max_position_embeddings = self.config.get(
-                "max_position_embeddings", 16384
-            )
+            max_position_embeddings = self.config.get("max_position_embeddings", 16384)
             max_seq_len = max_position_embeddings * rope_scaling_factor
 
         inv_freq_local = 1.0 / (
             10000.0 ** (torch.arange(0, partial_head_dim, 2, dtype=torch.int64).float().cuda() / partial_head_dim)
         )
-        inv_freq_global = 1.0 / (
-            1000000.0 ** (torch.arange(0, partial_head_dim, 2, dtype=torch.int64).float().cuda() / partial_head_dim)
-        ) / rope_scaling_factor
+        inv_freq_global = (
+            1.0
+            / (1000000.0 ** (torch.arange(0, partial_head_dim, 2, dtype=torch.int64).float().cuda() / partial_head_dim))
+            / rope_scaling_factor
+        )
         # local default
         # global linear
-        #print(inv_freq_local, inv_freq_global, partial_head_dim)
-        t = (
-            torch.arange(max(max_seq_len + 1024 * 128, self.max_seq_length), dtype=torch.float32).to(inv_freq_local.device)
+        # print(inv_freq_local, inv_freq_global, partial_head_dim)
+        t = torch.arange(max(max_seq_len + 1024 * 128, self.max_seq_length), dtype=torch.float32).to(
+            inv_freq_local.device
         )
-        
+
         freqs_global = torch.outer(t, inv_freq_global)
         freqs_local = torch.outer(t, inv_freq_local)
 
@@ -153,7 +153,7 @@ class Gemma3TpPartModel(LlamaTpPartModel):
         if "text_config" in self.config:
             config = AutoConfig.from_pretrained(self.weight_dir_, trust_remote_code=True)
             self.config = config.text_config.to_dict()
-        
+
         repair_config(self.config, same_names=["num_attention_heads", "n_head"])
         repair_config(self.config, same_names=["hidden_size", "n_embd", "n_embed"])
         repair_config(self.config, same_names=["num_hidden_layers", "n_layer"])

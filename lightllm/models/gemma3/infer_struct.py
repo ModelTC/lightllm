@@ -27,20 +27,36 @@ class Gemma3InferStateInfo(LlamaInferStateInfo):
             self.position_cos = torch.index_select(model._cos_cached, 0, position_ids).view(position_ids.shape[0], -1)
             self.position_sin = torch.index_select(model._sin_cached, 0, position_ids).view(position_ids.shape[0], -1)
 
-            self.position_cos_local = torch.index_select(model._cos_cached_local, 0, position_ids).view(position_ids.shape[0], -1)
-            self.position_sin_local = torch.index_select(model._sin_cached_local, 0, position_ids).view(position_ids.shape[0], -1)
+            self.position_cos_local = torch.index_select(model._cos_cached_local, 0, position_ids).view(
+                position_ids.shape[0], -1
+            )
+            self.position_sin_local = torch.index_select(model._sin_cached_local, 0, position_ids).view(
+                position_ids.shape[0], -1
+            )
 
-            self.position_cos_global = torch.index_select(model._cos_cached_global, 0, position_ids).view(position_ids.shape[0], -1)
-            self.position_sin_global = torch.index_select(model._sin_cached_global, 0, position_ids).view(position_ids.shape[0], -1)
+            self.position_cos_global = torch.index_select(model._cos_cached_global, 0, position_ids).view(
+                position_ids.shape[0], -1
+            )
+            self.position_sin_global = torch.index_select(model._sin_cached_global, 0, position_ids).view(
+                position_ids.shape[0], -1
+            )
             position_ids = None
         else:
             position_ids = self.b_seq_len - 1
             self.position_cos = torch.index_select(model._cos_cached, 0, position_ids).view(self.b_seq_len.shape[0], -1)
             self.position_sin = torch.index_select(model._sin_cached, 0, position_ids).view(self.b_seq_len.shape[0], -1)
 
-            self.position_cos_local = torch.index_select(model._cos_cached_local, 0, position_ids).view(self.b_seq_len.shape[0], -1)
-            self.position_sin_local = torch.index_select(model._sin_cached_local, 0, position_ids).view(self.b_seq_len.shape[0], -1)
+            self.position_cos_local = torch.index_select(model._cos_cached_local, 0, position_ids).view(
+                self.b_seq_len.shape[0], -1
+            )
+            self.position_sin_local = torch.index_select(model._sin_cached_local, 0, position_ids).view(
+                self.b_seq_len.shape[0], -1
+            )
 
-            self.position_cos_global = torch.index_select(model._cos_cached_global, 0, position_ids).view(self.b_seq_len.shape[0], -1)
-            self.position_sin_global = torch.index_select(model._sin_cached_global, 0, position_ids).view(self.b_seq_len.shape[0], -1)
+            self.position_cos_global = torch.index_select(model._cos_cached_global, 0, position_ids).view(
+                self.b_seq_len.shape[0], -1
+            )
+            self.position_sin_global = torch.index_select(model._sin_cached_global, 0, position_ids).view(
+                self.b_seq_len.shape[0], -1
+            )
         return
