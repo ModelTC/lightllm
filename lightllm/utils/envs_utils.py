@@ -59,3 +59,6 @@ def get_deepep_num_max_dispatch_tokens_per_rank():
 
 def get_lightllm_gunicorn_time_out_seconds():
     return int(os.getenv("LIGHTLMM_GUNICORN_TIME_OUT", 180))
+
+
+LIGHTLLM_WEBSOCKET_MAX_SIZE = int(os.getenv("LIGHTLLM_WEBSOCKET_MAX_SIZE", 16 * 1024 * 1024))  # 16MB
