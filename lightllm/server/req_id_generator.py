@@ -17,9 +17,11 @@ class ReqIDGenerator:
         from lightllm.server.core.objs.atomic_lock import AtomicShmLock
         from lightllm.server.core.objs.shm_array import ShmArray
         from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
-        
+
         self.args = get_env_start_args()
-        self.use_config_server = self.args.config_server_host and self.args.config_server_port and self.args.run_mode == "pd_master"
+        self.use_config_server = (
+            self.args.config_server_host and self.args.config_server_port and self.args.run_mode == "pd_master"
+        )
         self.current_id = ShmArray(f"{get_unique_server_name()}_req_id_gen", (2,), dtype=np.int64)
         self.current_id.create_shm()
         self.current_id.arr[0] = 0
@@ -43,7 +45,9 @@ class ReqIDGenerator:
                             # 保证id满足倍乘关系
                             self.current_id.arr[0] = (id_range["start_id"] // MAX_BEST_OF + 1) * MAX_BEST_OF
                             self.current_id.arr[1] = id_range["end_id"]
-                            assert self.current_id.arr[0] + MAX_BEST_OF < self.current_id.arr[1], f"get id range error {self.current_id.arr[0]} {self.current_id.arr[1]}"
+                            assert (
+                                self.current_id.arr[0] + MAX_BEST_OF < self.current_id.arr[1]
+                            ), f"get id range error {self.current_id.arr[0]} {self.current_id.arr[1]}"
                             return
                         else:
                             raise RuntimeError(f"Failed to fetch ID range from config server: {response.status_code}")

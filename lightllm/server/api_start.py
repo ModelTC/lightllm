@@ -283,10 +283,10 @@ def pd_master_start(args):
     set_unique_server_name(args)
     if args.run_mode != "pd_master":
         return
-    
+
     # when use config_server to support multi pd_master node, we
     # need generate unique node id for each pd_master node.
-    # otherwise, we use the 0 for single pd_master node. 
+    # otherwise, we use the 0 for single pd_master node.
     if args.config_server_host and args.config_server_port:
         args.pd_node_id = uuid.uuid4().int
     else:
@@ -344,7 +344,7 @@ def config_server_start(args):
     set_unique_server_name(args)
     if args.run_mode != "config_server":
         return
-    
+
     logger.info(f"all start args:{args}")
 
     set_env_start_args(args)

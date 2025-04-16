@@ -17,6 +17,7 @@ logger = init_logger(__name__)
 
 _g_health_req_id_gen = ReqIDGenerator()
 
+
 @dataclass
 class HealthObj:
     _is_health: bool = False
@@ -76,9 +77,9 @@ async def health_check(args, httpserver_manager: HttpServerManager, request: Req
         sampling_params = SamplingParams()
         sampling_params.init(tokenizer=httpserver_manager.tokenizer, **sample_params_dict)
         sampling_params.verify()
-        
+
         if get_env_start_args().run_mode == "pd_master":
-            # Since the id assigned by pd master needs to be passed to prefill and decode nodes for inference, 
+            # Since the id assigned by pd master needs to be passed to prefill and decode nodes for inference,
             # a normal request id is required instead of a negative id.
             sampling_params.group_request_id = _g_health_req_id_gen.generate_id()
         else:

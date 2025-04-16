@@ -46,14 +46,16 @@ class PD_Client_Obj:
 
     def to_llm_url(self):
         return f"http://{self.client_ip_port}/pd_generate_stream"
-    
+
+
 @dataclass
 class PD_Master_Obj:
     node_id: int
     host_ip_port: str
-    
+
     def to_log_str(self):
         return f"PD_MASTER host_ip_port: {self.host_ip_port} node_id: {self.node_id}"
+
 
 @dataclass
 class UpKVStatus:
@@ -73,7 +75,7 @@ class UpKVStatus:
             error_info = "group_request_id only can be int"
             logger.error(error_info)
             raise ValueError(error_info)
-        
+
         if not isinstance(self.pd_master_node_id, int):
             error_info = "pd_master_node_id only can be int"
             logger.error(error_info)

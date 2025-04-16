@@ -12,7 +12,7 @@ import requests
 logger = init_logger(__name__)
 app = FastAPI()
 
-registered_pd_master_objs:Dict[str, PD_Master_Obj] = {}
+registered_pd_master_objs: Dict[str, PD_Master_Obj] = {}
 registered_pd_master_obj_lock = Lock()
 
 global_req_id = 0
@@ -61,12 +61,14 @@ async def websocket_endpoint(websocket: WebSocket):
             registered_pd_master_objs.pop(registered_pd_master_obj.node_id, None)
     return
 
+
 @app.get("/registered_objects")
 async def get_registered_objects():
     with registered_pd_master_obj_lock:
         serialized_data = pickle.dumps(registered_pd_master_objs)
-        base64_encoded = base64.b64encode(serialized_data).decode('utf-8')
+        base64_encoded = base64.b64encode(serialized_data).decode("utf-8")
         return {"data": base64_encoded}
+
 
 @app.get("/allocate_global_unique_id_range")
 async def allocate_global_id_range():
@@ -85,8 +87,8 @@ async def allocate_global_id_range():
     global global_req_id
     range_size = 800000
     with global_req_id_lock:
-        if global_req_id + range_size > 2**63 - 1:
-            global_req_id = 0    
+        if global_req_id + range_size > 2 ** 63 - 1:
+            global_req_id = 0
         start_id = global_req_id
         global_req_id += range_size
         end_id = global_req_id
