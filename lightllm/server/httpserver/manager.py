@@ -8,16 +8,14 @@ import time
 import copy
 import hashlib
 import datetime
-import websockets
-from frozendict import frozendict
 import pickle
-import ujson as json
-import multiprocessing
+from frozendict import frozendict
+
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 from typing import Union, List, Tuple, Dict, Optional
 from ..tokenizer import get_tokenizer
-from ..pd_io_struct import NodeRole, ObjType
+from ..pd_io_struct import NodeRole
 from ..embed_cache.utils import get_shm_name_data, create_shm
 from ..multimodal_params import MultimodalParams, ImageItem
 from ..req_id_generator import ReqIDGenerator
@@ -27,12 +25,12 @@ from lightllm.server.core.objs import SamplingParams
 from lightllm.server.core.objs.io_objs import GroupReqObjs
 from fastapi import Request
 from lightllm.server.core.objs.shm_req_manager import ShmReqManager
+from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from lightllm.utils.log_utils import init_logger
-from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.utils.statics_utils import MovingAverage
-from lightllm.utils.net_utils import get_hostname_ip
 from lightllm.utils.config_utils import get_vocab_size
+from lightllm.utils.envs_utils import get_unique_server_name
 
 logger = init_logger(__name__)
 
@@ -107,6 +105,10 @@ class HttpServerManager:
         # 有的模型的vocab size 读取tokenizer和config.json中不一致
         self.vocab_size = max(get_vocab_size(args.model_dir), self.tokenizer.vocab_size)
 
+        # The timemark of the latest inference(prefill/decode) which is used to check the health status of the system.
+        # If the timemark is not updated for a pre-set time, a prob request will be sent to the backend.
+        self.latest_success_infer_time_mark = SharedInt(f"{get_unique_server_name()}_latest_success_infer_time_mark")
+        self.latest_success_infer_time_mark.set_value(int(time.time()))
         return
 
     # connect cache server, calculate md5, alloc resource, return uuid
@@ -279,11 +281,7 @@ class HttpServerManager:
                 request,
             )
             async for sub_req_id, request_output, metadata, finish_status in results_generator:
-                # p d 模式下，将 token 数据放入到转发队列中
-                if self.pd_mode.is_P_or_D() and sub_req_id >= 0:
-                    await self.forwarding_queue.put((sub_req_id, request_output, metadata, finish_status))
-                else:
-                    yield sub_req_id, request_output, metadata, finish_status
+                yield sub_req_id, request_output, metadata, finish_status
 
         except Exception as e:
             logger.error(f"group_request_id: {group_request_id} has exception {str(e)}")
@@ -491,6 +489,9 @@ class HttpServerManager:
 
                     out_token_counter += 1
 
+                    # update inference timemark
+                    self.latest_success_infer_time_mark.set_value(int(time.time()))
+
                     yield sub_req_id, out_str, metadata, finish_status
                     # 如果有子请求完成，就更新计数
                     if finish_status.is_finished():
@@ -585,14 +586,15 @@ class HttpServerManager:
         self.recycle_event = asyncio.Event()
         asyncio.create_task(self.recycle_resource_loop())
 
-        if self.pd_mode.is_P_or_D():
-            self.forwarding_queue = AsyncQueue()
-            asyncio.create_task(self.pd_handle_loop())
-
         # 多节点tp模式下的slave节点，需要开启一个协程task用来接收
         # master 转发过来的请求对象。
         if self.is_multinode_tp_slave:
             asyncio.create_task(self.loop_for_request())
+
+        if self.pd_mode.is_P_or_D():
+            from lightllm.server.httpserver.pd_loop import pd_handle_loop
+
+            asyncio.create_task(pd_handle_loop(self))
 
         while True:
             try:
@@ -635,93 +637,6 @@ class HttpServerManager:
 
             self.recycle_event.set()
         return
-
-    async def pd_handle_loop(self):
-        asyncio.create_task(self.timer_log())
-        if self.pd_mode not in [NodeRole.P, NodeRole.D]:
-            return
-
-        self.host_ip = get_hostname_ip()
-        if self.host_ip is None:
-            self.host_ip = self.args.host
-
-        while True:
-            forwarding_tokens_task = None
-            try:
-                uri = f"ws://{self.args.pd_master_ip}:{self.args.pd_master_port}/pd_register"
-                async with websockets.connect(
-                    uri, max_size=16 * 1024 * 1024, max_queue=(2048 * 1024, 2048 * 1023)
-                ) as websocket:
-                    import socket
-
-                    sock = websocket.transport.get_extra_info("socket")
-                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-                    args_dict = vars(self.args)
-                    args_dict["host"] = self.host_ip
-                    # 发送注册信息
-                    regist_json = {
-                        "node_id": self.args.pd_node_id,
-                        "client_ip_port": f"{self.host_ip}:{self.args.port}",
-                        "mode": self.pd_mode.value,
-                        "start_args": args_dict,
-                    }
-
-                    await websocket.send(json.dumps(regist_json))
-                    logger.info(f"Sent registration JSON: {regist_json}")
-
-                    # 转发token的task
-                    async def up_tokens_to_pd_master(forwarding_queue: AsyncQueue, websocket):
-                        while True:
-                            handle_list = await forwarding_queue.wait_to_get_all_data()
-                            if len(handle_list) != 0:
-                                await websocket.send(pickle.dumps((ObjType.TOKEN_PACKS, handle_list)))
-                        return
-
-                    forwarding_tokens_task = asyncio.create_task(
-                        up_tokens_to_pd_master(self.forwarding_queue, websocket)
-                    )
-
-                    while True:
-                        recv_bytes = await websocket.recv()
-                        obj = pickle.loads(recv_bytes)
-                        if obj[0] == ObjType.REQ:
-                            prompt, sampling_params, multimodal_params = obj[1]
-
-                            # 触发推理的task
-                            async def pd_process_generate(
-                                manager: "HttpServerManager", prompt, sampling_params, multimodal_params
-                            ):
-                                try:
-                                    async for _, _, _, _ in manager.generate(
-                                        prompt, sampling_params, multimodal_params, None
-                                    ):
-                                        pass
-                                except BaseException as e:
-                                    logger.error(str(e))
-
-                            asyncio.create_task(pd_process_generate(self, prompt, sampling_params, multimodal_params))
-
-                        elif obj[0] == ObjType.ABORT:
-                            group_req_id = obj[1]
-                            await self.abort(group_req_id)
-                        else:
-                            logger.error(f"recevie error obj {str(obj)}")
-
-            except Exception as e:
-                logger.error("connetion to pd_master has error")
-                logger.exception(str(e))
-                if forwarding_tokens_task is not None:
-                    forwarding_tokens_task.cancel()
-                await asyncio.sleep(10)
-                await self.forwarding_queue.get_all_data()
-                logger.info("reconnection to pd_master")
-
-    async def timer_log(self):
-        while True:
-            await asyncio.sleep(30)
-            self.first_time_costs.print_log("mean first cost")
-            self.per_token_costs.print_log("mean per token cost")
 
 
 class ReqStatus:

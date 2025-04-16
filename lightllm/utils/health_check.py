@@ -1,19 +1,21 @@
 import os
+import time
 import asyncio
 import numpy as np
 from dataclasses import dataclass
 from lightllm.server.core.objs import SamplingParams
 from lightllm.server.multimodal_params import MultimodalParams
 from lightllm.server.httpserver.manager import HttpServerManager
+from lightllm.server.router.dynamic_prompt.shared_arr import SharedInt
 from fastapi import Request
 from lightllm.server.req_id_generator import ReqIDGenerator
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
 
 logger = init_logger(__name__)
 
 
 _g_health_req_id_gen = ReqIDGenerator()
-_g_health_req_id_gen.generate_id()
 
 
 @dataclass
@@ -24,6 +26,7 @@ class HealthObj:
     _failure_threshold: int = int(os.getenv("HEALTH_FAILURE_THRESHOLD", 3))
     timeout: int = int(os.getenv("HEALTH_TIMEOUT", 100))
     dynamic_timeout: int = int(os.getenv("HEALTH_TIMEOUT", 100))
+    latest_success_infer_time_mark = SharedInt(f"{get_unique_server_name()}_latest_success_infer_time_mark")
 
     def begin_check(self):
         self._is_health_checking = True
@@ -48,6 +51,11 @@ class HealthObj:
     def is_checking(self):
         return self._is_health_checking
 
+    def has_latest_inference(self):
+        last_timemark = self.latest_success_infer_time_mark.get_value()
+        time_diff = time.time() - last_timemark
+        return time_diff < self.timeout
+
 
 health_obj = HealthObj()
 
@@ -55,6 +63,10 @@ health_obj = HealthObj()
 async def health_check(args, httpserver_manager: HttpServerManager, request: Request):
     if health_obj.is_checking():
         return health_obj.is_health()
+
+    if health_obj.is_health() and health_obj.has_latest_inference():
+        return health_obj.is_health()
+
     health_obj.begin_check()
     try:
         request_dict = {"inputs": "你好！", "parameters": {"do_sample": True, "temperature": 0.8, "max_new_tokens": 2}}
@@ -65,7 +77,13 @@ async def health_check(args, httpserver_manager: HttpServerManager, request: Req
         sampling_params = SamplingParams()
         sampling_params.init(tokenizer=httpserver_manager.tokenizer, **sample_params_dict)
         sampling_params.verify()
-        sampling_params.group_request_id = -_g_health_req_id_gen.generate_id()  # health monitor 的 id 是负的
+
+        if get_env_start_args().run_mode == "pd_master":
+            # Since the id assigned by pd master needs to be passed to prefill and decode nodes for inference,
+            # a normal request id is required instead of a negative id.
+            sampling_params.group_request_id = _g_health_req_id_gen.generate_id()
+        else:
+            sampling_params.group_request_id = -_g_health_req_id_gen.generate_id()  # health monitor 的 id 是负的
         multimodal_params_dict = request_dict.get("multimodal_params", {})
         multimodal_params = MultimodalParams(**multimodal_params_dict)
         results_generator = httpserver_manager.generate(
