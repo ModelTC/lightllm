@@ -9,14 +9,20 @@ class DecodeReq:
     def __init__(
         self,
         req: Req,
+        is_pd_decode_mode: bool,
     ) -> None:
         self.request_id = req.request_id
         self.group_req_id = req.group_req_id
         self.prompt_ids = req.shm_prompt_ids.arr[0 : req.input_len].tolist()
         self.output_ids = []
         self.prefix_offset = max(len(self.prompt_ids) - LIGHTLLM_DECODE_PREFIX_LENGTH, 0)
-        self.read_offset = len(self.prompt_ids)
-        self.output_str = ""
+        
+        if is_pd_decode_mode:
+            # pd decode mode 需要模拟一下 prefill 输出的第一个token
+            self.read_offset = max(0, len(self.prompt_ids) - 1)
+        else:
+            self.read_offset = len(self.prompt_ids)
+
         self.req = req
         self.input_len = self.req.input_len
         self.prefix_str = ""

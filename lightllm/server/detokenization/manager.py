@@ -44,7 +44,7 @@ class DeTokenizationManager:
         self.req_id_to_out: Dict[int, DecodeReq] = {}
         self.eos_id = eos_id
         self._init_get_token_id_to_token_str()
-        self.is_decode_mode = self.args.run_mode == "decode"
+        self.is_pd_decode_mode = self.args.run_mode == "decode"
         self.shm_req_manager = ShmReqManager()
 
     def _init_get_token_id_to_token_str(self):
@@ -71,8 +71,8 @@ class DeTokenizationManager:
                         )
 
                         # p d 分离模式，decode节点的解码需要做一些特殊的修复。
-                        decode_req = DecodeReq(req)
-                        if self.is_decode_mode:
+                        decode_req = DecodeReq(req, self.is_pd_decode_mode)
+                        if self.is_pd_decode_mode:
                             decode_req = decode_mode_fix(decode_req, self.tokenizer, self.eos_id)
                         # token_healing mode 的特殊初始化
                         if self.args.token_healing_mode:
@@ -125,7 +125,6 @@ class DeTokenizationManager:
                     int(new_token_id),
                     self.eos_id,
                 )
-                decode_req.output_str += new_text
 
                 # 对应 token_healing 的特殊处理
                 if self.args.token_healing_mode:
