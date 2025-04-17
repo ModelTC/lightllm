@@ -27,7 +27,7 @@ def image_to_base64(image):
 
 
 question = "Describe this picture to me."
-question = f"user\nYou are an AI assistant whose name is SenseChat-Vision(日日新多模态). \
+question = f"user\nYou are an AI assistant whose name is goodAI. \
             <start_of_image>{question}\n"
 
 url = "http://localhost:9999/generate"
