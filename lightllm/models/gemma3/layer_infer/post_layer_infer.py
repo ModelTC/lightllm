@@ -28,7 +28,6 @@ class Gemma3PostLayerInfer(LlamaPostLayerInfer):
         return self.gemma3_rmsnorm(input, layer_weight.final_norm_weight_, eps=self.eps_)
 
     def token_forward(self, input_embdings, infer_state, layer_weight):
-        # print('last_hidden_before_norm', input_embdings)
         last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)
         input_embdings_dtype = input_embdings.dtype
         last_input = self._norm(last_input.float(), infer_state, layer_weight).to(torch.bfloat16)
