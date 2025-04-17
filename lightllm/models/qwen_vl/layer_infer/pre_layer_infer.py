@@ -38,6 +38,7 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
         img_token_lens = []
         img_start_loc = 0
         img_start_locs = []
+
         device = layer_weight.wte_weight_.device
         dtype = layer_weight.wte_weight_.dtype
         hidden_size = layer_weight.wte_weight_.shape[1]
