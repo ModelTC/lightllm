@@ -34,7 +34,7 @@ class ContinuesBatchBackend(ModeBackend):
                 prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
             )
             logits = self.model.forward(**kwargs)
-            
+
             self.store_hicache_after_prefill(run_reqs)
 
             self._overlap_req_init_and_filter(
