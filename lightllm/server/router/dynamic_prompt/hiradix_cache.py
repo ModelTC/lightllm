@@ -10,6 +10,7 @@ import time
 
 logger = init_logger(__name__)
 
+
 class HiRadixCache(RadixCache):
     def __init__(self, unique_name, total_token_num, rank_in_node, mem_manager, max_seq_length):
         super().__init__(unique_name, total_token_num, rank_in_node, mem_manager)
@@ -20,14 +21,18 @@ class HiRadixCache(RadixCache):
             all_buffers = self.mem_manager.kv_buffer
             all_buffers = all_buffers.view(all_buffers.shape[0], all_buffers.shape[1], -1)
             self.py_cache_service = PyLocalCacheService(
-                file="cache/cache_file", storage_size=128 * (1024**3),
-                num_shard=32, kvcache_tensor=all_buffers, num_worker=32)
+                file="cache/cache_file",
+                storage_size=128 * (1024 ** 3),
+                num_shard=32,
+                kvcache_tensor=all_buffers,
+                num_worker=32,
+            )
             self.working_tasks = {}
         except Exception as e:
             logger.error(f"error alloc hi cache buffer {e}, fallback to normal radix cache")
             self.hi_cache_kv_buffer = None
             self.is_hi_radix_cache = False
-    
+
     # write a new function, only insert input(after prefill), call after prefill,
     # then when the decode finishes, do syncronize to see whether this can be free
     # no buffer, parallel insert inputs
@@ -36,7 +41,7 @@ class HiRadixCache(RadixCache):
             self.wait_till_finish(req_id)
         self.working_tasks[req_id] = self.py_cache_service.create(tokens=key, kv_page_indexer=value, mode="w")
         logger.info(f"Created store task for req {req_id}.")
-    
+
     def wait_till_finish(self, req_id):
         if req_id not in self.working_tasks:
             return
@@ -52,7 +57,7 @@ class HiRadixCache(RadixCache):
     #     assert len(key) == len(value)  # and len(key) >= 1
     #     if len(key) == 0:
     #         return 0
-        
+
     #     # current implement is serial, TODO: make it parallel
     #     # if no hi_cache_buffer, work with normal radix cache
     #     if self.hi_cache_kv_buffer is not None:
@@ -80,7 +85,7 @@ class HiRadixCache(RadixCache):
     #             self._store_buffer()
 
     #     return self._insert_helper(self.root_node, key, value)
-    
+
     # def _store_buffer(self):
     #     logger.info(f"Storing buffer size = {self.hi_cache_buffer_len}")
     #     assert self.hi_cache_buffer_len > 0
@@ -99,7 +104,7 @@ class HiRadixCache(RadixCache):
         # add a parameter if get long enough (>50%)
         first_query_time = time.time()
         logger.info(f"HiCache of [{self.rank_in_node}]: No.1 First GPU query took {first_query_time - st_time}")
-        max_len = self._query_hi_cache(key) # x64
+        max_len = self._query_hi_cache(key)  # x64
         hi_cache_query_time = time.time()
         logger.info(f"HiCache of [{self.rank_in_node}]: No.2 Disk query took {hi_cache_query_time - first_query_time}")
         logger.info(f"Matched {len(ans_value_list)} from gpu and {max_len} from disk.")
@@ -113,7 +118,9 @@ class HiRadixCache(RadixCache):
         if pull_hi_cache:
             buffers = self.mem_manager.alloc(max_len)
             before_pull_time = time.time()
-            logger.info(f"HiCache of [{self.rank_in_node}]: No.2.5 Before disk pull took {before_pull_time - hi_cache_query_time}")
+            logger.info(
+                f"HiCache of [{self.rank_in_node}]: No.2.5 Before disk pull took {before_pull_time - hi_cache_query_time}"
+            )
             read_task = self.py_cache_service.create(tokens=key[:max_len], kv_page_indexer=buffers, mode="r")
             while not read_task.ready():
                 time.sleep(0.1)
@@ -136,7 +143,7 @@ class HiRadixCache(RadixCache):
         else:
             self.dec_node_ref_counter(self.root_node)
             return None, 0, None
-    
+
     def _query_hi_cache(self, key) -> bool:
         query_result = self.py_cache_service.query(key)
         # query_result is a list of bool, find out the max len true continuous from start
