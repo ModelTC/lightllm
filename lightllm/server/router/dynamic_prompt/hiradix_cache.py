@@ -14,7 +14,7 @@ logger = init_logger(__name__)
 class HiRadixCache(RadixCache):
     def __init__(self, unique_name, total_token_num, rank_in_node, mem_manager, max_seq_length):
         super().__init__(unique_name, total_token_num, rank_in_node, mem_manager)
-        logger.info(f"Initializing HiRadixCache")
+        logger.info("Initializing HiRadixCache")
         self.rank_in_node = rank_in_node
         try:
             self.is_hi_radix_cache = True
@@ -66,7 +66,7 @@ class HiRadixCache(RadixCache):
     #         with self.moving_lock:
     #             if (not self.start_store_task) and self.write_task is not None:
     #                 if self.write_task.ready():
-    #                     logger.info(f"HiCache of [{self.rank_in_node}]: stored one kvcache with len = {self.hi_cache_buffer_len}")
+    #                     logger.info(f"HiCache of [{self.rank_in_node}]: stored len = {self.hi_cache_buffer_len}")
     #                     self.start_store_task = True # ensure ready => start new only one kvcache stores
     #                     do_copy = True
     #             elif self.write_task is None and self.starting:
@@ -119,7 +119,7 @@ class HiRadixCache(RadixCache):
             buffers = self.mem_manager.alloc(max_len)
             before_pull_time = time.time()
             logger.info(
-                f"HiCache of [{self.rank_in_node}]: No.2.5 Before disk pull took {before_pull_time - hi_cache_query_time}"
+                f"HiCache of [{self.rank_in_node}]: No.2.5 Before pull took {before_pull_time - hi_cache_query_time}"
             )
             read_task = self.py_cache_service.create(tokens=key[:max_len], kv_page_indexer=buffers, mode="r")
             while not read_task.ready():
