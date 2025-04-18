@@ -35,6 +35,7 @@ class ContinuesBatchBackend(ModeBackend):
             )
             model_output = self.model.forward(model_input)
             logits = model_output.logits
+            self.store_hicache_after_prefill(run_reqs)
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
