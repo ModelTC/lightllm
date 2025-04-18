@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Set, List
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.log_utils import init_logger
 from threading import Lock
-from cache.ffi.pywarp import PyLocalCacheService
+from kvcache.python.jit import PyLocalCacheService
 import time
 
 logger = init_logger(__name__)
@@ -21,7 +21,7 @@ class HiRadixCache(RadixCache):
             all_buffers = all_buffers.view(all_buffers.shape[0], all_buffers.shape[1], -1)
             self.py_cache_service = PyLocalCacheService(
                 file="cache/cache_file", storage_size=64 * (1024**3),
-                num_shard=32, kvcache=all_buffers, num_worker=32)
+                num_shard=32, kvcache_tensor=all_buffers, num_worker=32)
             self.hi_cache_buffer_len = 0
             self.hi_cache_key_buffer = torch.empty(max_seq_length, dtype=torch.int64, device="cpu")
             self.hi_cache_kv_buffer = self.mem_manager.alloc(max_seq_length)
@@ -76,7 +76,7 @@ class HiRadixCache(RadixCache):
         assert self.hi_cache_kv_buffer is not None
         key = self.hi_cache_key_buffer[:self.hi_cache_buffer_len].tolist()
         self.write_task = self.py_cache_service.create(
-            tokens=key, kv_page_indexer=self.hi_cache_kv_buffer[:self.hi_cache_buffer_len].type(torch.int64).cuda(), mode="w")
+            tokens=key, kv_page_indexer=self.hi_cache_kv_buffer[:self.hi_cache_buffer_len], mode="w")
         with self.moving_lock:
             self.start_store_task = False
 
@@ -100,7 +100,7 @@ class HiRadixCache(RadixCache):
             except:
                 pull_hi_cache = False
         if pull_hi_cache:
-            buffers = self.mem_manager.alloc(max_len).type(torch.int64).cuda() # type change & no .cuda()
+            buffers = self.mem_manager.alloc(max_len)
             read_task = self.py_cache_service.create(tokens=key[:max_len], kv_page_indexer=buffers, mode="r")
             while not read_task.ready():
                 time.sleep(0.01)
@@ -108,7 +108,7 @@ class HiRadixCache(RadixCache):
             logger.info(f"HiCache of [{self.rank_in_node}]: No.3 Disk pull took {hicache_pull_time - hi_cache_query_time}")
             logger.info(f"HiCache pulled one cache with len = {max_len}")
             # maybe try: add a function to only insert middle part of kv cache
-            self._insert_helper(self.root_node, key, buffers.cpu()) # no .cpu()
+            self._insert_helper(self.root_node, key, buffers)
             insert_time = time.time()
             logger.info(f"HiCache of [{self.rank_in_node}]: No.4 Reinsert took {insert_time - hicache_pull_time}")
             ans_value_list = []
@@ -133,4 +133,4 @@ class HiRadixCache(RadixCache):
                 max_len += 1
             else:
                 break
-        return max_len
+        return max_len * self.py_cache_service.tokens_per_block
