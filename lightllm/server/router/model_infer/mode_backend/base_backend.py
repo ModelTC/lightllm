@@ -164,6 +164,13 @@ class ModeBackend:
     def decode(self):
         """This method can be overridden in subclasses."""
         raise NotImplementedError()
+    
+    def store_hicache_after_prefill(self, run_reqs):
+        if self.use_hi_dynamic_prompt_cache and self.radix_cache is not None:
+            for req in run_reqs:
+                key = torch.tensor(req.get_input_token_ids()[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
+                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+                self.radix_cache.insert_disk(req.req_id, key, value)
 
     def pause_reqs(self, req_ids):
         if self.dp_size_in_node != 1:
