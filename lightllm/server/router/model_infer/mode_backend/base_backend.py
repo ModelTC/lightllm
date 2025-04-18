@@ -164,7 +164,7 @@ class ModeBackend:
     def decode(self):
         """This method can be overridden in subclasses."""
         raise NotImplementedError()
-    
+
     def store_hicache_after_prefill(self, run_reqs):
         if self.use_hi_dynamic_prompt_cache and self.radix_cache is not None:
             for req in run_reqs:

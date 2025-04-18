@@ -115,7 +115,7 @@ class RadixCache:
             f"{unique_name}_tree_total_tokens_num_{rank_in_node}", (1,), dtype=np.int64
         )
         self.tree_total_tokens_num.arr[0] = 0
-        
+
         self.is_hi_radix_cache = False
 
     def insert(self, key, value=None):
