@@ -1,16 +1,17 @@
 import json
 import numpy as np
 import unicodedata
+from lightllm.common.basemodel.tokenizer import BaseMultiModalTokenizerWrapper
 from lightllm.server.core.objs import SamplingParams
 from lightllm.models.qwen.model import QWenTpPartModel
 from .layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
-from lightllm.server.multimodal_params import MultimodalParams, ImageItem
+from lightllm.server.multimodal_params import AudioItem, MultimodalParams, ImageItem
 
 
 # Warp of the origal tokenizer
-class QWenVLTokenizer:
+class QWenVLTokenizer(BaseMultiModalTokenizerWrapper):
     def __init__(self, tokenizer, model_cfg):
-        self.tokenizer = tokenizer
+        super().__init__(tokenizer)
         # <img>: 151857
         self.image_start_tag = tokenizer.image_start_tag
         self.image_start_id = tokenizer.img_start_id
@@ -25,6 +26,11 @@ class QWenVLTokenizer:
     ):
         return
 
+    def init_audioItem_extral_params(
+        self, audio: AudioItem, multi_params: MultimodalParams, sampling_params: SamplingParams
+    ):
+        raise NotImplementedError
+
     def _list_find(self, input_list, target, start_idx):
         cur_list = input_list[start_idx:]
         if target in cur_list:
@@ -33,6 +39,9 @@ class QWenVLTokenizer:
 
     def get_image_token_length(self, img: ImageItem):
         return self.image_length
+
+    def get_audio_token_length(self, audio: AudioItem):
+        raise NotImplementedError
 
     # <img>xxx</img> -> Picture {image_idx}:<img>xxx</img>\n
     def _format_prompt(self, prompt):
@@ -80,12 +89,6 @@ class QWenVLTokenizer:
             image_cnt = len(multimodal_params.images)
             assert image_cnt == image_id, "invalid image tag num: {} vs {}!".format(image_cnt, image_id)
         return input_ids
-
-    def __getattr__(self, name):
-        obj_dict = object.__getattribute__(self, "__dict__")
-        if name in obj_dict:
-            return obj_dict[name]
-        return getattr(self.tokenizer, name)
 
 
 class QWenVLTpPartModel(QWenTpPartModel):
