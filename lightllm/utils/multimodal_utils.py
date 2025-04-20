@@ -32,7 +32,7 @@ async def fetch_resource(url, request: Request, timeout, proxy=None):
                 ans_bytes.append(chunk)
                 # 接收的数据不能大于128M
                 if len(ans_bytes) > 128:
-                    raise Exception(f"url {url} Image data is too big")
+                    raise Exception(f"url {url} recv data is too big")
 
             content = b"".join(ans_bytes)
     end_time = time.time()
