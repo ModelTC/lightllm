@@ -1,6 +1,6 @@
 import os
 import json
-from lightllm.common.basemodel.tokenizer import BaseMultiModalTokenizerWrapper
+from lightllm.common.basemodel.multimodal_tokenizer import BaseMultiModalTokenizer
 from lightllm.common.build_utils import repair_config
 from lightllm.server.core.objs import SamplingParams
 from lightllm.server.multimodal_params import AudioItem, MultimodalParams, ImageItem
@@ -25,7 +25,7 @@ AUDIO_END_TOKEN = "</audio>"
 
 
 # Warp of the origal tokenizer
-class InternvlTokenizer(BaseMultiModalTokenizerWrapper):
+class InternvlTokenizer(BaseMultiModalTokenizer):
     def __init__(self, tokenizer, model_cfg, **kwargs):
         super().__init__(tokenizer)
         self.llm_model_type = model_cfg.get("llm_config").get("model_type")
@@ -44,7 +44,7 @@ class InternvlTokenizer(BaseMultiModalTokenizerWrapper):
         self.audio_end_id = tokenizer.convert_tokens_to_ids(self.audio_end_tag)
         self.get_image_patch_func = get_image_patch_func(kwargs["weight_dir"])
 
-    def init_imageItem_extral_params(
+    def init_imageitem_extral_params(
         self, img: ImageItem, multi_params: MultimodalParams, sampling_params: SamplingParams
     ):
         if sampling_params.image_max_patch_num >= 0:
@@ -63,7 +63,7 @@ class InternvlTokenizer(BaseMultiModalTokenizerWrapper):
                 img.extra_params["image_patch_max_num"] = 0
         return
 
-    def init_audioItem_extral_params(
+    def init_audioitem_extral_params(
         self, audio: AudioItem, multi_params: MultimodalParams, sampling_params: SamplingParams
     ):
         return

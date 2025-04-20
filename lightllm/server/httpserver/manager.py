@@ -114,7 +114,7 @@ class HttpServerManager:
     async def _alloc_resource(self, item: Union[ImageItem, AudioItem]):
         if isinstance(item, ImageItem):
             data = item.read()
-            # must after init_imageItem_extral_params
+            # must after init_imageitem_extral_params
             num_tokens = self.tokenizer.get_image_token_length(item)
         elif isinstance(item, AudioItem):
             data = item.read()
@@ -142,13 +142,13 @@ class HttpServerManager:
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
             for img in multimodal_params.images:
-                self.tokenizer.init_imageItem_extral_params(img, multimodal_params, sampling_params)
+                self.tokenizer.init_imageitem_extral_params(img, multimodal_params, sampling_params)
                 record = await self._alloc_resource(img)
                 img.uuid = record["id"]
                 img.token_id = record["token_id"]
                 img.token_num = record["token_num"]
             for audio in multimodal_params.audios:
-                self.tokenizer.init_audioItem_extral_params(audio, multimodal_params, sampling_params)
+                self.tokenizer.init_audioitem_extral_params(audio, multimodal_params, sampling_params)
                 record = await self._alloc_resource(audio)
                 audio.uuid = record["id"]
                 audio.token_id = record["token_id"]
@@ -184,11 +184,11 @@ class HttpServerManager:
         audio_count = 0
         for img in multimodal_params.images:
             img_count += 1
-            self.tokenizer.init_imageItem_extral_params(img, multimodal_params, samping_params)
+            self.tokenizer.init_imageitem_extral_params(img, multimodal_params, samping_params)
             image_tokens += self.tokenizer.get_image_token_length(img)
         for audio in multimodal_params.audios:
             audio_count += 1
-            self.tokenizer.init_audioItem_extral_params(audio, multimodal_params, samping_params)
+            self.tokenizer.init_audioitem_extral_params(audio, multimodal_params, samping_params)
             audio_tokens += self.tokenizer.get_audio_token_length(audio)
         return len(prompt_ids) + image_tokens + img_count + audio_tokens + audio_count
 

@@ -1,7 +1,7 @@
 import json
 import numpy as np
 import unicodedata
-from lightllm.common.basemodel.tokenizer import BaseMultiModalTokenizerWrapper
+from lightllm.common.basemodel.multimodal_tokenizer import BaseMultiModalTokenizer
 from lightllm.server.core.objs import SamplingParams
 from lightllm.models.qwen.model import QWenTpPartModel
 from .layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
@@ -9,7 +9,7 @@ from lightllm.server.multimodal_params import AudioItem, MultimodalParams, Image
 
 
 # Warp of the origal tokenizer
-class QWenVLTokenizer(BaseMultiModalTokenizerWrapper):
+class QWenVLTokenizer(BaseMultiModalTokenizer):
     def __init__(self, tokenizer, model_cfg):
         super().__init__(tokenizer)
         # <img>: 151857
@@ -21,12 +21,12 @@ class QWenVLTokenizer(BaseMultiModalTokenizerWrapper):
         # <imgpad>: 151859
         self.image_length = model_cfg["visual"].get("n_queries", 256)
 
-    def init_imageItem_extral_params(
+    def init_imageitem_extral_params(
         self, img: ImageItem, multi_params: MultimodalParams, sampling_params: SamplingParams
     ):
         return
 
-    def init_audioItem_extral_params(
+    def init_audioitem_extral_params(
         self, audio: AudioItem, multi_params: MultimodalParams, sampling_params: SamplingParams
     ):
         raise NotImplementedError

@@ -2,7 +2,7 @@ import os
 import re
 import json
 import numpy as np
-from lightllm.common.basemodel.tokenizer import BaseMultiModalTokenizerWrapper
+from lightllm.common.basemodel.multimodal_tokenizer import BaseMultiModalTokenizer
 from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.models.qwen_vl.layer_infer.pre_layer_infer import LlamaMultimodalPreLayerInfer
 from lightllm.models.llava.layer_weights.pre_and_post_layer_weight import LlavaPreAndPostLayerWeight
@@ -13,7 +13,7 @@ from transformers import AutoConfig
 
 
 # Warp of the origal tokenizer
-class LlavaTokenizer(BaseMultiModalTokenizerWrapper):
+class LlavaTokenizer(BaseMultiModalTokenizer):
     def __init__(self, tokenizer, model_cfg):
         super().__init__(tokenizer)
         self.image_token = model_cfg.get("image_token", "<image>")
@@ -35,12 +35,12 @@ class LlavaTokenizer(BaseMultiModalTokenizerWrapper):
         self.image_length = (image_size // patch_size) ** 2
         self.skip_start = model_cfg.get("skip_start", True)
 
-    def init_imageItem_extral_params(
+    def init_imageitem_extral_params(
         self, img: ImageItem, multi_params: MultimodalParams, sampling_params: SamplingParams
     ):
         return
 
-    def init_audioItem_extral_params(
+    def init_audioitem_extral_params(
         self, audio: AudioItem, multi_params: MultimodalParams, sampling_params: SamplingParams
     ):
         raise NotImplementedError
