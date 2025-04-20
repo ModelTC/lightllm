@@ -88,7 +88,7 @@ class WhisperAudioModel:
         self.max_seconds = 30
         self.sampling_rate = 16000
         self.max_length = self.max_seconds * self.sampling_rate
-        self.cache_port = kvargs["client_port"]
+        self.cache_port = kvargs["cache_port"]
         self.cache_client = rpyc.connect("localhost", self.cache_port)
         data_type = kvargs["data_type"]
         if data_type in ["bf16", "bfloat16"]:

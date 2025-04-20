@@ -20,7 +20,7 @@ class AudioModelRpcServer(rpyc.Service):
         model_cfg, _ = PretrainedConfig.get_config_dict(weight_dir)
         audio_config = model_cfg["audio_config"]
 
-        model_kvargs = {"client_port": kvargs["client_port"], "data_type": kvargs["data_type"]}
+        model_kvargs = {"cache_port": kvargs["cache_port"], "data_type": kvargs["data_type"]}
         try:
             self.model_type = audio_config["model_type"]
             if self.model_type == "clap_audio_model" or self.model_type == "whisper":

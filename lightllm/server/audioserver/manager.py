@@ -22,7 +22,7 @@ class AudioManager:
         args,
         router_port,
         audio_port,
-        client_port,
+        cache_port,
         infer_batch_size=4,
     ):
         context = zmq.asyncio.Context(2)
@@ -31,8 +31,8 @@ class AudioManager:
 
         self.recv_from_visualserver = context.socket(zmq.PULL)
         self.recv_from_visualserver.bind(f"{args.zmq_mode}127.0.0.1:{audio_port}")
-        self.cache_client = rpyc.connect("localhost", client_port)
-        self.client_port = client_port
+        self.cache_client = rpyc.connect("localhost", cache_port)
+        self.cache_port = cache_port
         self.waiting_reqs: List[GroupReqIndexes] = []
         self.model_weightdir = args.model_dir
         self.tp_world_size = args.tp
@@ -55,7 +55,7 @@ class AudioManager:
                 "weight_dir": self.model_weightdir,
                 "trust_remote_code": self.trust_remote_code,
                 "rank_id": rank_id,
-                "client_port": self.client_port,
+                "cache_port": self.cache_port,
                 "data_type": self.args.data_type,
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
@@ -131,7 +131,7 @@ class AudioManager:
         return
 
 
-def start_audio_process(args, router_port, audio_port, client_port, pipe_writer):
+def start_audio_process(args, router_port, audio_port, cache_port, pipe_writer):
     # 注册graceful 退出的处理
     from lightllm.utils.graceful_utils import graceful_registry
     import inspect
@@ -139,7 +139,7 @@ def start_audio_process(args, router_port, audio_port, client_port, pipe_writer)
     graceful_registry(inspect.currentframe().f_code.co_name)
 
     try:
-        audioserver = AudioManager(args, router_port, audio_port, client_port)
+        audioserver = AudioManager(args, router_port, audio_port, cache_port)
         asyncio.run(audioserver.wait_to_model_ready())
     except Exception as e:
         logger.exception(str(e))
