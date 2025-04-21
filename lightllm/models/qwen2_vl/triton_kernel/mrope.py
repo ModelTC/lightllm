@@ -3,7 +3,6 @@ import torch
 import triton
 import triton.language as tl
 
-
 @triton.jit
 def mrope_kernel_combined(
     Q_ptr,
@@ -170,6 +169,3 @@ def test():
     print(f"torch {t_ref:.2f} ms/iter")
     print(f"triton {t_tri:.2f} ms/iter")
 
-
-if __name__ == "__main__":
-    test()
