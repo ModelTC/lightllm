@@ -21,6 +21,8 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPForDecodeNode,
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
+    PDNIXLBackendForPrefillNode,
+    PDNIXLBackendForDecodeNode
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
@@ -40,12 +42,14 @@ class ModelRpcServer:
         rpc_event: multiprocessing.Event,
         rpc_finished_event: multiprocessing.Event,
         info_queue: mp.Queue,
+        result_queue: mp.Queue,
         mem_queue: mp.Queue,
     ):
         super().__init__()
         self.args = args
         self.node_world_size = node_world_size
         self.info_queue = info_queue
+        self.result_queue = result_queue
         self.mem_queue = mem_queue
         self.rpc_event = rpc_event
         self.rpc_finished_event = rpc_finished_event
@@ -130,12 +134,18 @@ class ModelRpcServer:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
             else:
-                self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
+                # self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
+                self.backend = PDNIXLBackendForPrefillNode(self.info_queue,
+                                                           self.result_queue,
+                                                           self.mem_queue)
         elif is_decode_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
             else:
-                self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+                # self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+                self.backend = PDNIXLBackendForDecodeNode(self.info_queue,
+                                                          self.result_queue,
+                                                          self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
@@ -274,6 +284,7 @@ def _init_env(
     rank_in_node,
     node_world_size,
     info_queue,
+    result_queue,
     mem_queue,
     router_lock,
     rpc_event: mp.Event,
@@ -292,7 +303,7 @@ def _init_env(
     g_router_lock.obj = router_lock
 
     model_rpc_server = ModelRpcServer(
-        args, rank, rank_in_node, node_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue
+        args, rank, rank_in_node, node_world_size, rpc_event, rpc_finished_event, info_queue, result_queue, mem_queue
     )
     success_event.set()
 
@@ -308,11 +319,11 @@ async def start_model_process(
     rpc_event,
     rpc_finished_event,
     info_queue: mp.Queue,
+    result_queue: mp.Queue,
     mem_queue: mp.Queue,
     router_lock: mp.Queue,
 ):
     import lightllm.utils.rpyc_fix_utils as _
-
     # 单卡单机时不使用 rpc
     if node_world_size == 1 and args.nnodes == 1:
         return ModelRpcServer(
@@ -323,6 +334,7 @@ async def start_model_process(
             rpc_event,
             rpc_finished_event,
             info_queue,
+            result_queue,
             mem_queue,
         )
 
@@ -335,6 +347,7 @@ async def start_model_process(
             rank_in_node,
             node_world_size,
             info_queue,
+            result_queue,
             mem_queue,
             router_lock,
             rpc_event,
