@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Union, Any
 from lightllm.common.req_manager import ReqManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.core.objs import Req, SamplingParams, FinishStatus, ShmReqManager
+from lightllm.server.core.objs import Req, SamplingParams, FinishStatus, ShmReqManager, PDChunkedPrefillReq
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNode
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
@@ -118,7 +118,7 @@ class InferenceContext:
         https://arxiv.org/abs/2403.01241
         """
         prompt_cache_token_id = list(self.radix_cache.root_node.children.values())[0].token_id_key
-        print(f"prompt_cache_token_id : {prompt_cache_token_id}")
+        # print(f"prompt_cache_token_id : {prompt_cache_token_id}")
         index = range(len(prompt_cache_token_id))
         prompt_cache_kv_buffer = self.radix_cache.mem_manager.get_index_kv_buffer(index)
         torch.save(prompt_cache_kv_buffer, f"prompt_cache_rank_{dist.get_rank()}.pt")
@@ -257,14 +257,17 @@ class InferReq:
         self.vocab_size = vocab_size
         self.initialized = False
         self.paused = False
-        self.remote_prefilling = False
-        self.kv_transfering = False
+        self.in_prefill_or_transfer = False
 
     def init_all(self):
         if self.initialized is False:
             self.shm_req = g_infer_context.shm_req_manager.get_req_obj_by_index(self.shm_index)
             self.shm_req.link_prompt_ids_shm_array()
             self.shm_req.link_logprobs_shm_array()
+            if isinstance(self.shm_req, PDChunkedPrefillReq):
+                self.shm_req.link_pd_req_state_shm_array()
+                self.in_prefill_or_transfer = False
+
             self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)
             if self.sampling_param.shm_param.input_penalty:
                 self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
@@ -282,6 +285,10 @@ class InferReq:
             self.cur_kv_len = 0
             self.cur_output_len = 0
             self.finish_status = FinishStatus()
+
+
+            # print(f"[INFO] init_all: {self.shm_req.group_req_id} {self.shm_req.get_pd_req_state()} {self.remote_prefilling}",
+            #       f"{self.cur_kv_len} {self.get_cur_total_len()}")
 
         if self.paused or not self.initialized:
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
