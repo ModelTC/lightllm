@@ -46,8 +46,7 @@ class BeamContinuesBatchQueue(BaseQueue):
         # prefill token 计算
         for req in cur_handle_group_reqs:
             new_batch_first_router_need_tokens += req.shm_cur_output_len
-        new_batch_first_router_need_tokens += req.input_len
-
+        new_batch_first_router_need_tokens += req.get_first_router_need_tokens()
         ok_token_num = (
             need_max_token_num + self.router.shared_token_load.get_frozened_token_count(self.dp_index)
             < self.max_total_tokens
