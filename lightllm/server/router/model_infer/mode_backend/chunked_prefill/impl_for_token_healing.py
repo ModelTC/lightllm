@@ -12,6 +12,7 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
+
 class TokenHealingBackend(ChunkedPrefillBackend):
     def __init__(self) -> None:
         super().__init__()
@@ -38,7 +39,7 @@ class TokenHealingBackend(ChunkedPrefillBackend):
         )
         self.token_indexes = torch.tensor([e[1] for e in self.sorted_tokens], dtype=torch.int64, device="cuda")
         return
-    
+
     def decode(self):
         uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
@@ -56,7 +57,7 @@ class TokenHealingBackend(ChunkedPrefillBackend):
             )
 
             self._init_prefix_infos(run_reqs=run_reqs)
-            
+
             all_no_prefix = all([len(e.prefix_str) == 0 for e in run_reqs])
             if not all_no_prefix:
                 mask = torch.ones_like(logits, dtype=torch.bool)
@@ -182,7 +183,7 @@ class TokenHealingBackend(ChunkedPrefillBackend):
         for req_obj in run_reqs:
             req_obj.sampling_param.shm_param.top_k = req_obj.origin_topk
         return
-    
+
     def _init_prefix_infos(self, run_reqs: List[InferReq]):
         for i, run_obj in enumerate(run_reqs):
             if not hasattr(run_obj, "prefix_str"):

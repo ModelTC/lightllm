@@ -35,10 +35,10 @@ class XgrammarBackend(ChunkedPrefillBackend):
         eos_token_ids.append(self.tokenizer.eos_token_id)
         eos_token_ids.extend(self.args.eos_id)
         return
-    
+
     @calculate_time(show=False, min_cost_ms=300)
     def decode(self):
-  
+
         uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
         )
@@ -86,7 +86,7 @@ class XgrammarBackend(ChunkedPrefillBackend):
                 self._overlap_req_init_and_filter(
                     uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
                 )
-                
+
                 self._init_req_xgrammer_matcher_infos(run_reqs=run_reqs)
                 for i, run_obj in enumerate(run_reqs):
                     self._mask_req_out_token(i, run_obj, logits[i])
@@ -125,15 +125,15 @@ class XgrammarBackend(ChunkedPrefillBackend):
 
     def _mask_req_out_token(self, i, run_obj: InferReq, logits):
         import xgrammar as xgr
-        
+
         if run_obj.get_chuncked_input_token_len() == run_obj.get_cur_total_len():
             sample_params = run_obj.sampling_param
             if sample_params.guided_grammar is not None or sample_params.guided_json is not None:
                 sample_params.xgrammar_matcher.fill_next_token_bitmask(self.xgrammar_token_bitmask)
                 xgr.apply_token_bitmask_inplace(logits, self.xgrammar_token_bitmask.to(logits.device))
         return
-    
-    def _init_req_xgrammer_matcher_infos(self, run_reqs:List[InferReq]):
+
+    def _init_req_xgrammer_matcher_infos(self, run_reqs: List[InferReq]):
         import xgrammar as xgr
 
         for i, run_obj in enumerate(run_reqs):

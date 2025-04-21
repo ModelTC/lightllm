@@ -43,7 +43,7 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
         self.tokenizer.eos_token_ids = eos_token_ids
         logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
         return
-    
+
     def decode(self):
         uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
@@ -59,7 +59,7 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
-            
+
             self._init_guide_infos(run_reqs)
             all_has_no_constraint = all([not e.sampling_param.has_constraint_setting() for e in run_reqs])
             if not all_has_no_constraint:
@@ -105,9 +105,9 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
                 next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
                 self._post_handle(
                     run_reqs,
-                    next_token_ids, 
-                    next_token_logprobs, 
-                    is_chuncked_mode=True, 
+                    next_token_ids,
+                    next_token_logprobs,
+                    is_chuncked_mode=True,
                     do_filter_finished_reqs=False,
                     extra_post_req_handle_func=self._update_state_fsm,
                 )
@@ -143,10 +143,10 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
                 mask[i, :] = False
         else:
             # no constraint
-            mask[i, :] = False 
+            mask[i, :] = False
         return
-    
-    def _init_guide_infos(self, run_reqs:List[InferReq]):
+
+    def _init_guide_infos(self, run_reqs: List[InferReq]):
         from outlines.fsm.guide import RegexGuide
 
         for i, run_obj in enumerate(run_reqs):
