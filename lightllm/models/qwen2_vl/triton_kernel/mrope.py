@@ -34,7 +34,6 @@ def mrope_kernel_combined(
     head_q = head_local
     head_k = head_local - H_q
 
-    # choose base pointer and per-batch head count
     base_ptr = tl.where(is_q, Q_ptr, K_ptr)
     out_ptr = tl.where(is_q, Q_out_ptr, K_out_ptr)
     h_sub = tl.where(is_q, head_q, head_k)
@@ -67,11 +66,6 @@ def mrope_kernel_combined(
 
 
 def mrope_triton(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, mrope_section):
-    """
-    q : [B, H_q, L, D]
-    k : [B, H_k, L, D]
-    cos/sin : [3, 1, L, D]   (broadcast 3 模态 × batch)
-    """
     B, H_q, L, D = q.shape
     H_k = k.shape[1]
 
@@ -108,8 +102,6 @@ def mrope_triton(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch
 
 
 # ----------------  test ---------------- #
-
-
 def test():
 
     # torch实现
