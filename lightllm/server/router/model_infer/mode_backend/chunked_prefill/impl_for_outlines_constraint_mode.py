@@ -45,9 +45,6 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
         return
     
     def decode(self):
-        # import here, 当你不使用这个模式，缺少这些依赖也可以运行
-        from outlines.fsm.guide import RegexGuide
-
         uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
         )
@@ -62,7 +59,8 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
-
+            
+            self._init_guide_infos(run_reqs)
             all_has_no_constraint = all([not e.sampling_param.has_constraint_setting() for e in run_reqs])
             if not all_has_no_constraint:
                 mask = torch.ones_like(logits, dtype=torch.bool)
@@ -95,12 +93,9 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
                     uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
                 )
                 # 对于不能满足前缀匹配的logic位置，将其logics设置为一个较大负值，将其概率掩盖为 0
+                self._init_guide_infos(run_reqs)
                 mask = torch.ones_like(logits, dtype=torch.bool)
                 for i, run_obj in enumerate(run_reqs):
-                    run_obj: InferReq = run_obj
-                    sample_params = run_obj.sampling_param
-                    if sample_params.regular_constraint is not None:
-                        sample_params.regex_guide = RegexGuide.from_regex(sample_params.regular_constraint, self.tokenizer)
                     self._mask_req_out_token(i, run_obj, mask)
 
                 logits[mask] = -1000000.0
@@ -150,3 +145,13 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
             # no constraint
             mask[i, :] = False 
         return
+    
+    def _init_guide_infos(self, run_reqs:List[InferReq]):
+        from outlines.fsm.guide import RegexGuide
+
+        for i, run_obj in enumerate(run_reqs):
+            run_obj: InferReq = run_obj
+            sample_params = run_obj.sampling_param
+            if sample_params.regular_constraint is not None:
+                if not hasattr(sample_params, "regex_guide"):
+                    sample_params.regex_guide = RegexGuide.from_regex(sample_params.regular_constraint, self.tokenizer)

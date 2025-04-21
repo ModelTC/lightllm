@@ -38,9 +38,7 @@ class XgrammarBackend(ChunkedPrefillBackend):
     
     @calculate_time(show=False, min_cost_ms=300)
     def decode(self):
-        import xgrammar as xgr
-
-
+  
         uninit_reqs, aborted_reqs, ok_finished_reqs, prefill_reqs, decode_reqs = self._get_classed_reqs(
             g_infer_context.infer_req_ids
         )
@@ -56,6 +54,7 @@ class XgrammarBackend(ChunkedPrefillBackend):
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
 
+            self._init_req_xgrammer_matcher_infos(run_reqs=run_reqs)
             all_has_no_constraint = all([not e.sampling_param.has_constraint_setting() for e in run_reqs])
             if not all_has_no_constraint:
                 for i, run_obj in enumerate(run_reqs):
@@ -88,15 +87,8 @@ class XgrammarBackend(ChunkedPrefillBackend):
                     uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
                 )
                 
+                self._init_req_xgrammer_matcher_infos(run_reqs=run_reqs)
                 for i, run_obj in enumerate(run_reqs):
-                    run_obj: InferReq = run_obj
-                    sample_params = run_obj.sampling_param
-                    if sample_params.guided_grammar is not None:
-                        xgrammar_compiled_grammar = self.xgrammar_compiler.compile_grammar(sample_params.guided_grammar)
-                        sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
-                    elif sample_params.guided_json is not None:
-                        xgrammar_compiled_grammar = self.xgrammar_compiler.compile_json_schema(sample_params.guided_json)
-                        sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
                     self._mask_req_out_token(i, run_obj, logits[i])
 
                 # fix the logics with -inf to a large negative value
@@ -139,4 +131,20 @@ class XgrammarBackend(ChunkedPrefillBackend):
             if sample_params.guided_grammar is not None or sample_params.guided_json is not None:
                 sample_params.xgrammar_matcher.fill_next_token_bitmask(self.xgrammar_token_bitmask)
                 xgr.apply_token_bitmask_inplace(logits, self.xgrammar_token_bitmask.to(logits.device))
+        return
+    
+    def _init_req_xgrammer_matcher_infos(self, run_reqs:List[InferReq]):
+        import xgrammar as xgr
+
+        for i, run_obj in enumerate(run_reqs):
+            run_obj: InferReq = run_obj
+            sample_params = run_obj.sampling_param
+            if sample_params.guided_grammar is not None:
+                if not hasattr(sample_params, "xgrammar_matcher"):
+                    xgrammar_compiled_grammar = self.xgrammar_compiler.compile_grammar(sample_params.guided_grammar)
+                    sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
+            elif sample_params.guided_json is not None:
+                if not hasattr(sample_params, "xgrammar_matcher"):
+                    xgrammar_compiled_grammar = self.xgrammar_compiler.compile_json_schema(sample_params.guided_json)
+                    sample_params.xgrammar_matcher = xgr.GrammarMatcher(xgrammar_compiled_grammar)
         return
