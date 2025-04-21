@@ -6,6 +6,7 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
     prepare_prefill_inputs,
     prepare_decode_inputs,
 )
+from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq

@@ -184,6 +184,9 @@ def make_argument_parser() -> argparse.ArgumentParser:
                 disabling it allows the router_max_wait_tokens parameter to work more effectively.""",
     )
 
+    parser.add_argument("--use_dynamic_prompt_cache",
+                        action="store_true",
+                        help="This argument is deprecated and no longer in use.")
     parser.add_argument("--disable_dynamic_prompt_cache", action="store_true", help="disable dynamic prompt cache")
 
     parser.add_argument("--chunked_prefill_size", type=int, default=8192, help="chunked prefill size")

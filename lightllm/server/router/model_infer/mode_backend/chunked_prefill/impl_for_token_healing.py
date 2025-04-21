@@ -8,7 +8,9 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
 )
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.server.tokenizer import get_tokenizer
+from lightllm.utils.log_utils import init_logger
 
+logger = init_logger(__name__)
 
 class TokenHealingBackend(ChunkedPrefillBackend):
     def __init__(self) -> None:
@@ -23,7 +25,8 @@ class TokenHealingBackend(ChunkedPrefillBackend):
         )
         vob_dict = self.tokenizer.get_vocab()
         self.token_to_token_id = vob_dict
-        assert len(vob_dict) == self.model.vocab_size
+        if len(vob_dict) == self.model.vocab_size:
+            logger.warning(f"tokenizer error: {len(vob_dict)} != {self.model.vocab_size}")
         self.max_token_str_len = max([len(key) for key in vob_dict.keys()])
         self.logger.info(f"max vob token str len: {self.max_token_str_len}")
         self.pad_token_str = "\U0010FFFF" * self.max_token_str_len
@@ -52,7 +55,8 @@ class TokenHealingBackend(ChunkedPrefillBackend):
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
 
-            # 对 logits 添加 prefix 限制
+            self._init_prefix_infos(run_reqs=run_reqs)
+            
             all_no_prefix = all([len(e.prefix_str) == 0 for e in run_reqs])
             if not all_no_prefix:
                 mask = torch.ones_like(logits, dtype=torch.bool)
@@ -87,15 +91,10 @@ class TokenHealingBackend(ChunkedPrefillBackend):
                 )
 
                 # 对于不能满足前缀匹配的logic位置，将其logics设置为一个较大负值，将其概率掩盖为 0
+                self._init_prefix_infos(run_reqs=run_reqs)
                 mask = torch.ones_like(logits, dtype=torch.bool)
                 for i, run_obj in enumerate(run_reqs):
-                    if not hasattr(run_obj, "prefix_str"):
-                        run_obj: InferReq = run_obj
-                        prefix_token_str = "".join([self.token_id_to_token[e] for e in run_obj.prefix_token_ids])
-                        run_obj.prefix_str = prefix_token_str
-                    
                     self._mask_not_prefix_token(i, run_obj, mask)
-
                 logits[mask] = -1000000.0
 
                 # 有prefix
@@ -182,4 +181,12 @@ class TokenHealingBackend(ChunkedPrefillBackend):
     def _topk_recover(self, run_reqs: list[InferReq]):
         for req_obj in run_reqs:
             req_obj.sampling_param.shm_param.top_k = req_obj.origin_topk
+        return
+    
+    def _init_prefix_infos(self, run_reqs: List[InferReq]):
+        for i, run_obj in enumerate(run_reqs):
+            if not hasattr(run_obj, "prefix_str"):
+                run_obj: InferReq = run_obj
+                prefix_token_str = "".join([self.token_id_to_token[e] for e in run_obj.prefix_token_ids])
+                run_obj.prefix_str = prefix_token_str
         return
