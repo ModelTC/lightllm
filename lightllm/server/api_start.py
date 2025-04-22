@@ -105,11 +105,11 @@ def normal_or_p_d_start(args):
         assert args.disable_dynamic_prompt_cache is False
         assert args.disable_chunked_prefill is False
     if args.use_reward_model:
-        assert args.disable_dynamic_prompt_cache is True, f"need add --disable_dynamic_prompt_cache"
-        assert args.disable_chunked_prefill is True, f"need add --disable_chunked_prefill"
+        assert args.disable_dynamic_prompt_cache is True, "need add --disable_dynamic_prompt_cache"
+        assert args.disable_chunked_prefill is True, "need add --disable_chunked_prefill"
     if args.return_all_prompt_logprobs:
-        assert args.disable_dynamic_prompt_cache is True, f"need add --disable_dynamic_prompt_cache"
-        assert args.disable_chunked_prefill is True, f"need add --disable_chunked_prefill"
+        assert args.disable_dynamic_prompt_cache is True, "need add --disable_dynamic_prompt_cache"
+        assert args.disable_chunked_prefill is True, "need add --disable_chunked_prefill"
 
     # 部分模式还不能支持与高级动态调度算法协同，to do.
     if args.diverse_mode:
