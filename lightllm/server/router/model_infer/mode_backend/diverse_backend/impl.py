@@ -38,8 +38,7 @@ class DiversehBackend(ModeBackend):
         for i in range(len(groups)):
             req_group = groups[i]
             best_of = req_group.best_of()
-            _0_req_obj = req_group.get_req(0)
-            if best_of > 1 and _0_req_obj.get_chuncked_input_token_len() == _0_req_obj.get_cur_total_len():
+            if best_of > 1:
                 req_group.diverse_copy(g_infer_context.req_manager, is_prefill=True)
                 batch_idx.extend([i for _ in range(best_of)])
             else:
@@ -58,7 +57,6 @@ class DiversehBackend(ModeBackend):
 
         if aborted_reqs:
             g_infer_context.filter_reqs(aborted_reqs)
-
         if prefill_reqs:
             group_reqs = [
                 g_infer_context.requests_mapping[req.req_id]
