@@ -36,6 +36,11 @@ def test_mrope_triton_correctness(B, H_q, H_k, L, D, mrope_section):
     """
     Test that the Triton kernel matches the reference PyTorch implementation.
     """
+    axis_map = []
+    for i, n in enumerate(mrope_section * 2):
+        axis_map += [i % 3] * n
+    axis_map = torch.tensor(axis_map, dtype=torch.int32, device="cuda")
+
     torch.manual_seed(0)
     device = "cuda"
 
@@ -46,7 +51,7 @@ def test_mrope_triton_correctness(B, H_q, H_k, L, D, mrope_section):
 
     ref_q, ref_k = apply_multimodal_rotary_pos_emb(q, k, cos, sin, mrope_section, unsqueeze_dim=1)
 
-    out_q, out_k = mrope_triton(q, k, cos, sin, mrope_section)
+    out_q, out_k = mrope_triton(q, k, cos, sin, axis_map)
 
     assert torch.allclose(out_q, ref_q, rtol=1e-3, atol=1e-3)
     assert torch.allclose(out_k, ref_k, rtol=1e-3, atol=1e-3)
