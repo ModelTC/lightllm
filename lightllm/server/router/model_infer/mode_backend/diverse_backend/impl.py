@@ -24,12 +24,13 @@ class DiversehBackend(ModeBackend):
     def init_custom(self):
         pass
 
-    def build_group(self, reqs: List[InferReq]):
-        for req in reqs:
+    def build_group(self, req_ids: List[int]):
+        for r_id in req_ids:
+            req: InferReq = g_infer_context.requests_mapping[r_id]
             group_req_id = req.shm_req.group_req_id
             if group_req_id not in g_infer_context.group_mapping:
                 g_infer_context.group_mapping[group_req_id] = InferReqGroup(group_req_id=group_req_id)
-            g_infer_context.group_mapping[group_req_id].add_req(req.req_id)
+            g_infer_context.group_mapping[group_req_id].add_req(r_id)
 
     def diverse_copy(self, groups: List[InferReqGroup]):
         batch_idx = []
@@ -73,10 +74,12 @@ class DiversehBackend(ModeBackend):
                 group_reqs, is_chuncked_mode=True, is_multimodal=self.is_multimodal
             )
             logits = self.model.forward(**kwargs)
+
+            uninit_req_ids = [req.req_id for req in uninit_reqs]
             self._overlap_req_init_and_filter(
-                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=False
+                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
-            self.build_group(uninit_reqs)
+            self.build_group(uninit_req_ids)
             batch_idx, run_reqs = self.diverse_copy(groups)
             logits = logits[batch_idx]
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
@@ -90,11 +93,11 @@ class DiversehBackend(ModeBackend):
         if decode_reqs:
             kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
             logits = self.model.forward(**kwargs)
-
+            uninit_req_ids = [req.req_id for req in uninit_reqs]
             self._overlap_req_init_and_filter(
-                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=False
+                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
-            self.build_group(uninit_reqs)
+            self.build_group(uninit_req_ids)
 
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
@@ -103,9 +106,7 @@ class DiversehBackend(ModeBackend):
             self._post_handle(
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
-
-        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=False)
-        self.build_group(uninit_reqs)
-        uninit_reqs.clear()
-        ok_finished_reqs.clear()
+        uninit_req_ids = [req.req_id for req in uninit_reqs]
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
+        self.build_group(uninit_req_ids)
         return
