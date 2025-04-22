@@ -286,7 +286,7 @@ class InferReq:
             if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
                 input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
                 key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
-                key = key[0 : len(key) - 1]  # 最后两个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
+                key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
                 share_node, kv_len, value_tensor = g_infer_context.radix_cache.match_prefix(key, update_refs=True)
                 if share_node is not None:
                     self.shared_kv_node = share_node
@@ -396,14 +396,14 @@ class InferReqGroup:
         else:
             prefix_len = 0
         prefix_len = max(prefix_len, prev_req.cur_kv_len)
-        pre_input_token_ids = prev_req.get_chuncked_input_token_ids()
-        cache_token_id = req_manager.req_to_token_indexs[prev_req.req_idx][prefix_len : len(pre_input_token_ids)]
+        pre_input_len = prev_req.get_chuncked_input_token_len()
+        cache_token_id = req_manager.req_to_token_indexs[prev_req.req_idx][prefix_len:pre_input_len]
         # update the InferReq status and mem_manager status for cache sharing
         for req_id in self.req_ids_group[:]:
             if req_id == convert_sub_id_to_group_id(req_id):
                 continue
             req = g_infer_context.requests_mapping[req_id]
             req.finish_status.set_status(FinishStatus.NO_FINISH)
-            input_token_ids = req.get_chuncked_input_token_ids()
-            req_manager.req_to_token_indexs[req.req_idx][prefix_len : len(input_token_ids)] = cache_token_id
-            assert len(input_token_ids) == len(pre_input_token_ids)
+            input_len = req.get_chuncked_input_token_len()
+            req_manager.req_to_token_indexs[req.req_idx][prefix_len:input_len] = cache_token_id
+            assert input_len == pre_input_len
