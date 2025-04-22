@@ -4,7 +4,7 @@ from io import BytesIO
 import multiprocessing.shared_memory as shm
 
 
-def tensor2bytes(t:torch.Tensor):
+def tensor2bytes(t: torch.Tensor):
     # t = t.cpu().numpy().tobytes()
     # return t
     buf = BytesIO()
