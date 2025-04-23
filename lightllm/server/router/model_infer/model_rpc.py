@@ -22,7 +22,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
     PDNIXLBackendForPrefillNode,
-    PDNIXLBackendForDecodeNode
+    PDNIXLBackendForDecodeNode,
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
@@ -142,9 +142,7 @@ class ModelRpcServer:
 
         elif is_nixl_prefill_node:
             assert kvargs.get("args", None).dp == 1
-            self.backend = PDNIXLBackendForPrefillNode(self.info_queue,
-                                                       self.result_queue,
-                                                       self.mem_queue)
+            self.backend = PDNIXLBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
         elif is_decode_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
@@ -153,9 +151,7 @@ class ModelRpcServer:
 
         elif is_nixl_decode_node:
             assert kvargs.get("args", None).dp == 1
-            self.backend = PDNIXLBackendForDecodeNode(self.info_queue,
-                                                      self.result_queue,
-                                                      self.mem_queue)
+            self.backend = PDNIXLBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
@@ -334,6 +330,7 @@ async def start_model_process(
     router_lock: mp.Queue,
 ):
     import lightllm.utils.rpyc_fix_utils as _
+
     # 单卡单机时不使用 rpc
     if node_world_size == 1 and args.nnodes == 1:
         return ModelRpcServer(
