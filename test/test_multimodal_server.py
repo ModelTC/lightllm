@@ -107,8 +107,11 @@ def image_to_base64(image):
 
 # Please replace the question template as QUESTION_TEMPLATES:
 question = "Describe this picture to me."
-question = f"user\nYou are an AI assistant whose name is goodAI. \
-            <start_of_image>{question}\n"
+question = (
+    f"<|im_start|>system\n"
+    f"You are an AI assistant whose name is InternLM(书生·浦语).<|im_end|>"
+    f"<|im_start|>user\n<image>\n{question}<|im_end|><|im_start|>assistant\n"
+)
 
 url = "http://localhost:9999/generate"
 headers = {"Content-Type": "application/json"}
