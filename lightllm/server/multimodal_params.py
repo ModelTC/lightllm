@@ -156,7 +156,7 @@ class MultimodalParams:
 
     @classmethod
     def from_dict(cls, data: dict):
-        if 'images' not in data:
+        if "images" not in data:
             return cls()
         return cls(images=data["images"])
 
