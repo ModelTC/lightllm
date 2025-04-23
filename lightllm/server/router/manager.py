@@ -16,7 +16,7 @@ from .batch import Batch, Req
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import build_req_queue
 from lightllm.server.core.objs.io_objs import GroupReqIndexes
-from lightllm.server.core.objs import ShmReqManager, StartArgs
+from lightllm.server.core.objs import ShmReqManager, StartArgs, PDChunkedPrefillReq
 from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
 from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
@@ -239,6 +239,8 @@ class RouterManager:
             req = self.shm_req_manager.get_req_obj_by_index(req_index)
             req.multimodal_params = group_req_indexes.multimodal_params
             req.start_time = group_req_indexes.time_mark
+            if isinstance(req, PDChunkedPrefillReq):
+                req.dp_world_size = self.world_size
             req_group.append(req)
 
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
