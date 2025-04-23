@@ -43,7 +43,7 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
     logits.div_(temperatures.view((-1, 1)))
     probs = torch.softmax(logits, dim=-1)
 
-    if get_env_start_args().sampling_backend == "triton": 
+    if get_env_start_args().sampling_backend == "triton":
         probs_sort, probs_idx = _top_p_top_k(probs, top_ps, top_ks)
         sampled_index = torch.multinomial(probs_sort, num_samples=1, replacement=True)
 
@@ -56,12 +56,12 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
         from sgl_kernel import top_k_top_p_sampling_from_probs
 
         batch_next_token_ids = top_k_top_p_sampling_from_probs(
-                        probs,
-                        top_ks,
-                        top_ps,
-                        filter_apply_order="joint",
-                        check_nan=True,
-                    )
+            probs,
+            top_ks,
+            top_ps,
+            filter_apply_order="joint",
+            check_nan=True,
+        )
         int64_batch_next_token_ids = torch.empty_like(batch_next_token_ids, dtype=torch.int64)
         int64_batch_next_token_ids[:] = batch_next_token_ids
         batch_next_token_probs = torch.gather(probs, dim=1, index=int64_batch_next_token_ids.view(-1, 1))
