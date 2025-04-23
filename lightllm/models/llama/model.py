@@ -11,9 +11,11 @@ from lightllm.models.llama.layer_weights.ds_load_utils import load_ds_weights
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
 
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
+from lightllm.models.llama.flashattention_infer_struct import FlashAttentionStateInfo
 from lightllm.common.basemodel import TpPartBaseModel
 from lightllm.common.mem_utils import select_mem_manager_class
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.envs_utils import get_env_start_args
 
 logger = init_logger(__name__)
 
@@ -32,6 +34,8 @@ class LlamaTpPartModel(TpPartBaseModel):
     infer_state_class = LlamaInferStateInfo
 
     def __init__(self, kvargs):
+        if get_env_start_args().enable_fa3:
+            self.infer_state_class = FlashAttentionStateInfo
         super().__init__(kvargs)
         return
 
