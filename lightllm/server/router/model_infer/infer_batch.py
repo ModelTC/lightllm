@@ -316,8 +316,7 @@ class InferReq:
 
         self.initialized = True
         self.paused = False
-        self.remote_prefilling = False
-        self.kv_transfering = False
+        self.in_prefill_or_transfer = False
         return
 
     def is_uninitialized(self):
