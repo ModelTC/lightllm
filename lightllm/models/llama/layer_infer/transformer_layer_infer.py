@@ -61,15 +61,15 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return
 
     def _bind_attention(self):
-        self._context_attention_kernel = partial(LlamaTransformerLayerInfer._context_attention_kernel, self)
-
         if get_env_start_args().enable_fa3:
+            self._context_attention_kernel = partial(LlamaTransformerLayerInfer._context_attention_flashattention, self)
             self._token_attention_kernel = partial(
                 LlamaTransformerLayerInfer._token_decode_attention_flashattention, self
             )
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
             return
 
+        self._context_attention_kernel = partial(LlamaTransformerLayerInfer._context_attention_kernel, self)
         if "ppl_int8kv" in self.mode:
             self._token_attention_kernel = partial(LlamaTransformerLayerInfer._token_decode_attention_ppl_int8kv, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_ppl_int8kv, self)
@@ -252,6 +252,37 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             )
 
         return o_tensor
+
+    def _context_attention_flashattention(self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None):
+
+        cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :].reshape(
+            -1, 1, self.tp_k_head_num_, self.head_dim_
+        )
+        cache_v = infer_state.mem_manager.kv_buffer[self.layer_num_][
+            :, self.tp_k_head_num_ : self.tp_k_head_num_ + self.tp_v_head_num_, :
+        ].reshape(-1, 1, self.tp_v_head_num_, self.head_dim_)
+        q = q.reshape(-1, self.tp_q_head_num_, self.head_dim_)
+        k_descale, v_descale = None, None  # disable quantization
+        Lq = q.shape[-1]
+        sm_scale = 1.0 / (Lq ** 0.5)
+        o = flash_attn_with_kvcache(
+            q=q,
+            k_cache=cache_k,
+            v_cache=cache_v,
+            page_table=infer_state.page_table,
+            cache_seqlens=infer_state.b_seq_len,
+            cu_seqlens_q=infer_state.cu_seqlens_q,
+            cu_seqlens_k_new=infer_state.cu_seqlens_k,
+            max_seqlen_q=infer_state.q_max_seq_len,
+            softmax_scale=sm_scale,
+            causal=True,
+            window_size=(-1, -1),
+            softcap=0.0,
+            k_descale=k_descale,
+            v_descale=v_descale,
+            return_softmax_lse=False,
+        )
+        return o
 
     def _get_o(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
@@ -642,7 +673,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         )
 
     def _token_decode_attention_flashattention(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
-        from lightllm.models.llama.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
 
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :].reshape(
             -1, 1, self.tp_k_head_num_, self.head_dim_
@@ -662,7 +692,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             cache_seqlens=infer_state.b_seq_len,
             cu_seqlens_q=infer_state.cu_seqlens_q,
             cu_seqlens_k_new=infer_state.cu_seqlens_k,
-            max_seqlen_q=infer_state.max_len_in_batch,
+            max_seqlen_q=1,
             softmax_scale=sm_scale,
             causal=True,
             window_size=(-1, -1),
