@@ -293,10 +293,6 @@ class InferReq:
             self.cur_output_len = 0
             self.finish_status = FinishStatus()
 
-
-            # print(f"[INFO] init_all: {self.shm_req.group_req_id} {self.shm_req.get_pd_req_state()} {self.remote_prefilling}",
-            #       f"{self.cur_kv_len} {self.get_cur_total_len()}")
-
         if self.paused or not self.initialized:
             # 如果是具有 prompt_cache 的使用特性则需要进行提前的填充和恢复操作。
             if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
