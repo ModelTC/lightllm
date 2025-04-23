@@ -34,8 +34,6 @@ class LlamaTpPartModel(TpPartBaseModel):
     infer_state_class = LlamaInferStateInfo
 
     def __init__(self, kvargs):
-        if get_env_start_args().enable_fa3:
-            self.infer_state_class = FlashAttentionStateInfo
         super().__init__(kvargs)
         return
 
@@ -72,6 +70,8 @@ class LlamaTpPartModel(TpPartBaseModel):
         """
         模型特殊的一些初始化
         """
+        if get_env_start_args().enable_fa3:
+            self.infer_state_class = FlashAttentionStateInfo
         if self.config.get("use_rope_yarn", False) or (
             self.config.get("rope_scaling", None) is not None
             and self.config.get("rope_scaling", {}).get("type", "base") == "yarn"

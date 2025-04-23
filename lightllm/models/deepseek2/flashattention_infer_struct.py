@@ -1,0 +1,55 @@
+import os
+import torch
+import numpy as np
+import torch.distributed as dist
+from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
+from lightllm.utils.dist_utils import get_current_device_id
+
+
+class Deepseek2FlashAttentionStateInfo(Deepseek2InferStateInfo):
+    _shared_page_table_buffer = None
+
+    def __init__(self):
+        super().__init__()
+
+    @classmethod
+    def set_page_table_buffer(cls, graph_max_batch_size: int, max_seq_len: int):
+        cls._shared_page_table_buffer = [
+            torch.empty(graph_max_batch_size * max_seq_len, dtype=torch.int32).to(get_current_device_id()),
+            torch.empty(graph_max_batch_size * max_seq_len, dtype=torch.int32).to(get_current_device_id()),
+        ]
+
+    def init_some_extra_state(self, model, input_ids: torch.Tensor):
+        super().init_some_extra_state(model, input_ids)
+        if self.is_prefill:
+            self.cu_seqlens_q = torch.nn.functional.pad(
+                torch.cumsum(self.b_seq_len - self.b_ready_cache_len, dim=0, dtype=torch.int32), (1, 0)
+            )
+            self.cu_seqlens_k = torch.nn.functional.pad(self.b_start_loc, (1, 0))
+            self.page_table = torch.empty((self.batch_size, self.max_seq_len), dtype=torch.int32).to(input_ids.device)
+            self.page_table.copy_(model.req_manager.req_to_token_indexs[self.b_req_idx, : self.max_seq_len])
+        else:
+            if self._shared_page_table_buffer is None:
+                Deepseek2FlashAttentionStateInfo.set_page_table_buffer(
+                    graph_max_batch_size=model.graph_max_batch_size,
+                    max_seq_len=model.graph_max_len_in_batch,
+                )
+            # Meta information of flashattention for decoding
+            self.cu_seqlens_q = torch.arange(0, self.batch_size + 1, dtype=torch.int32, device=input_ids.device)
+            self.cu_seqlens_k = torch.nn.functional.pad(self.b_start_loc, (1, 0))
+            b_seq_len_numpy = self.b_seq_len.cpu().numpy()
+            max_seq_len_k = b_seq_len_numpy.max()
+            if self.batch_size <= model.graph_max_batch_size and self.max_len_in_batch <= model.graph_max_len_in_batch:
+                self.page_table = self._shared_page_table_buffer[self.microbatch_index][
+                    : self.batch_size * self.max_len_in_batch
+                ].reshape(self.batch_size, self.max_len_in_batch)
+            else:
+                self.page_table = torch.empty((self.batch_size, self.max_len_in_batch), dtype=torch.int32).to(
+                    input_ids.device
+                )
+
+            self.page_table[:, :max_seq_len_k].copy_(
+                model.req_manager.req_to_token_indexs[self.b_req_idx, :max_seq_len_k]
+            )
+            self.page_table[:, max_seq_len_k:].fill_(0)
+        return

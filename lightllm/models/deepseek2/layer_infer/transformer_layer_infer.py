@@ -29,6 +29,14 @@ from lightllm.models.llama.yarn_rotary_utils import get_deepseek_mscale
 from lightllm.distributed.communication_op import all_gather, all_gather_into_tensor, all_reduce, reduce_scatter_tensor
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.utils.dist_utils import get_global_world_size
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
+
+try:
+    from sgl_kernel.flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
+except:
+    logger.warning("sgl_kernel is not installed, or the installed version does not support fa3!")
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
@@ -93,7 +101,11 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             )
         else:
             self._copy_kv_to_mem_cache = partial(Deepseek2TransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
-            if get_env_start_args().enable_flashinfer_decode:
+            if get_env_start_args().enable_fa3:
+                self._token_attention_kernel = partial(
+                    Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashattention, self
+                )
+            elif get_env_start_args().enable_flashinfer_decode:
                 self._token_attention_kernel = partial(
                     Deepseek2TransformerLayerInfer._token_gqa_decode_attention_flashinfer, self
                 )
@@ -448,6 +460,35 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                 self.softmax_scale,
             )
 
+        return o_tensor
+
+    def _token_gqa_decode_attention_flashattention(
+        self, q, infer_state: Deepseek2FlashInferStateInfo, layer_weight: Deepseek2TransformerLayerWeight, out=None
+    ):
+        q_nope, q_rope = q[:, :, : -self.qk_rope_head_dim], q[:, :, -self.qk_rope_head_dim :]
+        q_nope = layer_weight.k_b_proj_.bmm(q_nope.transpose(0, 1)).transpose(0, 1)
+        kv = infer_state.mem_manager.kv_buffer[self.layer_num_]
+        k_rope = kv[:, :, -self.qk_rope_head_dim :].reshape(-1, 1, 1, self.qk_rope_head_dim)
+        kv_nope = kv[:, :, : -self.qk_rope_head_dim].reshape(-1, 1, 1, self.kv_lora_rank)
+        k_descale, v_descale = None, None
+        o_tensor = flash_attn_with_kvcache(
+            q=q_rope,
+            k_cache=k_rope,
+            v_cache=kv_nope,
+            qv=q_nope,
+            page_table=infer_state.page_table,
+            cache_seqlens=infer_state.b_seq_len,
+            cu_seqlens_q=infer_state.cu_seqlens_q,
+            cu_seqlens_k_new=infer_state.cu_seqlens_k,
+            max_seqlen_q=1,
+            softmax_scale=self.softmax_scale,
+            causal=True,
+            window_size=(-1, -1),
+            softcap=0.0,
+            k_descale=k_descale,
+            v_descale=v_descale,
+            return_softmax_lse=False,
+        )
         return o_tensor
 
     def _token_gqa_decode_attention_flashinfer(
