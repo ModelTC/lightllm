@@ -33,7 +33,7 @@ class ShmReqManager:
         if args.token_healing_mode:
             return TokenHealingReq
 
-        if args.run_mode == 'prefill' or args.run_mode == 'decode':
+        if args.run_mode in ["nixl_prefill", "nixl_decode"]:
             return PDChunkedPrefillReq
 
         if args.disable_chunked_prefill:

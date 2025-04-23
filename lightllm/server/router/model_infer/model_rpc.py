@@ -124,28 +124,38 @@ class ModelRpcServer:
             ), "only one constraint mode can be true"
             is_prefill_node = kvargs.get("args", None).run_mode == "prefill"
             is_decode_node = kvargs.get("args", None).run_mode == "decode"
+            is_nixl_prefill_node = kvargs.get("args", None).run_mode == "nixl_prefill"
+            is_nixl_decode_node = kvargs.get("args", None).run_mode == "nixl_decode"
         else:
             is_outlines_constraint_mode = False
             is_xgrammar_constraint_mode = False
             is_prefill_node = False
             is_decode_node = False
+            is_nixl_prefill_node = False
+            is_nixl_decode_node = False
 
         if is_prefill_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
             else:
-                # self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
-                self.backend = PDNIXLBackendForPrefillNode(self.info_queue,
-                                                           self.result_queue,
-                                                           self.mem_queue)
+                self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
+
+        elif is_nixl_prefill_node:
+            assert kvargs.get("args", None).dp == 1
+            self.backend = PDNIXLBackendForPrefillNode(self.info_queue,
+                                                       self.result_queue,
+                                                       self.mem_queue)
         elif is_decode_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
             else:
-                # self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
-                self.backend = PDNIXLBackendForDecodeNode(self.info_queue,
-                                                          self.result_queue,
-                                                          self.mem_queue)
+                self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+
+        elif is_nixl_decode_node:
+            assert kvargs.get("args", None).dp == 1
+            self.backend = PDNIXLBackendForDecodeNode(self.info_queue,
+                                                      self.result_queue,
+                                                      self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
