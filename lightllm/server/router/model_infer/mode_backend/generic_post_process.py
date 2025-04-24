@@ -22,7 +22,7 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
         mask_eos_reqs,
     ) = _get_post_sample_tensors(reqs)
 
-    eos_ids = torch.tensor(eos_id, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True) 
+    eos_ids = torch.tensor(eos_id, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
 
     logits = logits.contiguous()
 
@@ -111,7 +111,7 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
         temperatures.append(sample_param.shm_param.temperature)
         top_ps.append(sample_param.shm_param.top_p)
         top_ks.append(sample_param.shm_param.top_k)
-        
+
         p_token_ids.extend(list(id_to_count.keys()))
         p_token_counts.extend(list(id_to_count.values()))
         p_seq_len.append(len(id_to_count))
