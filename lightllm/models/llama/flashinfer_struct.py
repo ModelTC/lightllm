@@ -31,7 +31,7 @@ class LlamaFlashInferStateInfo(LlamaInferStateInfo):
                     self.kv_indices = torch.empty(
                         self.batch_size * self.flashinfer_extra_state.max_seq_length, dtype=torch.int32
                     ).to(input_ids.device)
-                
+
                 repack_kv_index(
                     self.req_manager.req_to_token_indexs,
                     self.b_req_idx,
