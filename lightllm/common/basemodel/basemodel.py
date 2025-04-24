@@ -303,10 +303,9 @@ class TpPartBaseModel:
         infer_state.req_manager = self.req_manager
 
         infer_state.mem_index = mem_indexes
-        infer_state.kv_buffer = torch.empty(
+        infer_state.kv_buffer_shapedtype = (
             (input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-            dtype=self.data_type,
-            device="cuda",
+            self.data_type,
         )
         infer_state.dist_group = dist_group_manager.get_default_group()
 
@@ -351,10 +350,9 @@ class TpPartBaseModel:
         infer_state.req_manager = self.req_manager
 
         infer_state.mem_index = mem_indexes
-        infer_state.kv_buffer = torch.empty(
+        infer_state.kv_buffer_shapedtype = (
             (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-            dtype=self.data_type,
-            device="cuda",
+            self.data_type,
         )
         infer_state.dist_group = dist_group_manager.get_default_group()
         copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
@@ -395,10 +393,9 @@ class TpPartBaseModel:
             infer_state.req_manager = self.req_manager
 
             infer_state.mem_index = cur_batch.mem_indexes
-            infer_state.kv_buffer = torch.empty(
+            infer_state.kv_buffer_shapedtype = (
                 (cur_batch.batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
+                self.data_type,
             )
             infer_state.dist_group = dist_group_manager.get_group(batch_index)
             copy_kv_index_to_req(
@@ -469,10 +466,9 @@ class TpPartBaseModel:
             infer_state.req_manager = self.req_manager
 
             infer_state.mem_index = cur_batch.mem_indexes
-            infer_state.kv_buffer = torch.empty(
+            infer_state.kv_buffer_shapedtype = (
                 (cur_batch.input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                dtype=self.data_type,
-                device="cuda",
+                self.data_type,
             )
             infer_state.dist_group = dist_group_manager.get_group(batch_index)
             init_req_to_token_indexes(

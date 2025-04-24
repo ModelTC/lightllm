@@ -26,7 +26,7 @@ class InferStateInfo:
         self.req_manager: ReqManager = None
 
         self.mem_index = None
-        self.kv_buffer = None
+        self.kv_buffer_shapedtype = None
 
         self.is_token_healing = False
         self.return_all_prompt_logics = False
