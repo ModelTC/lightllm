@@ -46,9 +46,8 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
 
     def _post_cache_kv(self, cache_kv, infer_state: InferStateInfo, layer_weight):
         mem_manager = infer_state.mem_manager
-        if not infer_state.mem_is_contiguous:
-            self._copy_kv_to_mem_cache(cache_kv, infer_state.mem_index, mem_manager)
-            return
+        self._copy_kv_to_mem_cache(cache_kv, infer_state.mem_index, mem_manager)
+        return
 
     def _copy_kv_to_mem_cache(self, buffer, mem_index, mem_manager):
         destindex_copy_kv(buffer, mem_index, mem_manager.kv_buffer[self.layer_num_])
