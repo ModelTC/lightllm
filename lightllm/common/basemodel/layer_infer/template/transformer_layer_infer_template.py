@@ -31,12 +31,7 @@ class TransformerLayerInferTpl(TransformerLayerInfer):
         raise Exception("need to impl")
 
     def _pre_cache_kv(self, infer_state: InferStateInfo, layer_weight) -> Tuple[torch.Tensor, torch.Tensor]:
-        if infer_state.mem_is_contiguous:
-            cache_kv = infer_state.mem_manager.kv_buffer[self.layer_num_][
-                infer_state.mem_start : infer_state.mem_end, :, :
-            ]
-        else:
-            cache_kv = infer_state.kv_buffer
+        cache_kv = infer_state.kv_buffer
         return cache_kv
 
     def _get_qkv(

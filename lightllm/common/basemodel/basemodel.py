@@ -302,7 +302,6 @@ class TpPartBaseModel:
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager
 
-        infer_state.mem_is_contiguous = False
         infer_state.mem_index = mem_indexes
         infer_state.kv_buffer = torch.empty(
             (input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
@@ -351,9 +350,6 @@ class TpPartBaseModel:
         infer_state.mem_manager = self.mem_manager
         infer_state.req_manager = self.req_manager
 
-        # 在使用 cuda graph 特性的时候，必须保证每次推理的流程一致
-        # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
-        infer_state.mem_is_contiguous = False
         infer_state.mem_index = mem_indexes
         infer_state.kv_buffer = torch.empty(
             (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
@@ -398,9 +394,6 @@ class TpPartBaseModel:
             infer_state.mem_manager = self.mem_manager
             infer_state.req_manager = self.req_manager
 
-            # 在使用 cuda graph 特性的时候，必须保证每次推理的流程一致
-            # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
-            infer_state.mem_is_contiguous = False
             infer_state.mem_index = cur_batch.mem_indexes
             infer_state.kv_buffer = torch.empty(
                 (cur_batch.batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
@@ -475,9 +468,6 @@ class TpPartBaseModel:
             infer_state.mem_manager = self.mem_manager
             infer_state.req_manager = self.req_manager
 
-            # 在使用 cuda graph 特性的时候，必须保证每次推理的流程一致
-            # 所以不再使用分配连续的mem带来的优化，保证推理流程的一致
-            infer_state.mem_is_contiguous = False
             infer_state.mem_index = cur_batch.mem_indexes
             infer_state.kv_buffer = torch.empty(
                 (cur_batch.input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),

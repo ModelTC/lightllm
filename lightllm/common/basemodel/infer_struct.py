@@ -25,10 +25,7 @@ class InferStateInfo:
         self.mem_manager: MemoryManager = None
         self.req_manager: ReqManager = None
 
-        self.mem_is_contiguous = None
         self.mem_index = None
-        self.mem_start = None
-        self.mem_end = None
         self.kv_buffer = None
 
         self.is_token_healing = False
