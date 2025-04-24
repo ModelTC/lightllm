@@ -30,6 +30,14 @@ class LlamaFlashInferStateExtraInfo:
         self.head_dim = model.config["hidden_size"] // model.config["num_attention_heads"]
         self.workspace_buffer = torch.empty(256 * 1024 * 1024, dtype=torch.int8).to(get_current_device_id())
         self.max_seq_length = model.max_seq_length
+        self.kv_indices_buffer = [
+            torch.empty(model.graph_max_batch_size * self.max_seq_length, dtype=torch.int32).to(
+                get_current_device_id()
+            ),
+            torch.empty(model.graph_max_batch_size * self.max_seq_length, dtype=torch.int32).to(
+                get_current_device_id()
+            ),
+        ]
         self.q_data_type = model.data_type
         self.kv_data_type = model.data_type
 
@@ -51,8 +59,6 @@ class LlamaTpPartModel(TpPartBaseModel):
         self.enable_flashinfer = (
             get_env_start_args().enable_flashinfer_prefill or get_env_start_args().enable_flashinfer_decode
         )
-        if self.enable_flashinfer:
-            self.infer_state_class = LlamaFlashInferStateInfo
         super().__init__(kvargs)
         return
 
@@ -61,8 +67,6 @@ class LlamaTpPartModel(TpPartBaseModel):
         # rename key
         # repair_config()
         self._reset_num_key_value_heads()
-        if self.enable_flashinfer:
-            self.flashinfer_extra_state = LlamaFlashInferStateExtraInfo(self)
         return
 
     def _reset_num_key_value_heads(self):
@@ -90,6 +94,9 @@ class LlamaTpPartModel(TpPartBaseModel):
     def _init_inferstate_cls(self):
         if get_env_start_args().enable_fa3:
             self.infer_state_class = FlashAttentionStateInfo
+        elif self.enable_flashinfer:
+            self.infer_state_class = LlamaFlashInferStateInfo
+            self.flashinfer_extra_state = LlamaFlashInferStateExtraInfo(self)
 
     def _init_custom(self):
         """

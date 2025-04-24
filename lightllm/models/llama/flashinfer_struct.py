@@ -23,9 +23,15 @@ class LlamaFlashInferStateInfo(LlamaInferStateInfo):
         if not self.is_prefill:
             if get_env_start_args().enable_flashinfer_decode:
                 self.kv_last_page_len_buffer = torch.full((self.batch_size,), 1, dtype=torch.int32).to(input_ids.device)
-                self.kv_indices = torch.empty(
-                    self.batch_size * self.flashinfer_extra_state.max_seq_length, dtype=torch.int32
-                ).to(input_ids.device)
+                if self.batch_size <= model.graph_max_batch_size:
+                    self.kv_indices = self.flashinfer_extra_state.kv_indices_buffer[self.microbatch_index][
+                        : self.batch_size * self.flashinfer_extra_state.max_seq_length
+                    ]
+                else:
+                    self.kv_indices = torch.empty(
+                        self.batch_size * self.flashinfer_extra_state.max_seq_length, dtype=torch.int32
+                    ).to(input_ids.device)
+                
                 repack_kv_index(
                     self.req_manager.req_to_token_indexs,
                     self.b_req_idx,
