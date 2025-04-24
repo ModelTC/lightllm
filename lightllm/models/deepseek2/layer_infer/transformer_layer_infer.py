@@ -290,6 +290,30 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         k_nope, v = torch.split(kv_nope, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
         return k_nope, k_rope, v
 
+    def _context_attention_flashattention_kernel_with_CC(
+        self,
+        q: torch.Tensor,
+        kv,
+        infer_state: Deepseek2FlashInferStateInfo,
+        layer_weight: Deepseek2TransformerLayerWeight,
+        out=None,
+    ) -> torch.Tensor:
+        k_nope, k_rope, v = self._decompress_kv(kv, infer_state, layer_weight, False)
+        k = torch.cat([k_nope, torch.repeat_interleave(k_rope, self.tp_q_head_num_, dim=-2)], dim=-1)
+        o_tensor = flash_attn_varlen_func(
+            q=q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim),
+            k=k.view(-1, self.tp_k_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim),
+            v=v.view(-1, self.tp_v_head_num_, self.v_head_dim),
+            cu_seqlens_q=infer_state.cu_seqlens_q,
+            cu_seqlens_k=infer_state.cu_seqlens_k,
+            max_seqlen_q=infer_state.q_max_seq_len,
+            max_seqlen_k=infer_state.max_seq_len,
+            softmax_scale=self.softmax_scale,
+            causal=True,
+            return_softmax_lse=False,
+        )
+        return o_tensor
+
     def _context_attention_flashinfer_kernel_with_CC(
         self,
         q: torch.Tensor,
