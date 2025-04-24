@@ -124,7 +124,11 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
                         Deepseek2TransformerLayerInfer._context_attention_kernel_with_CC_fp8, self
                     )
             else:
-                if get_env_start_args().enable_flashinfer_prefill:
+                if get_env_start_args().enable_fa3:
+                    self._context_attention_kernel = partial(
+                        Deepseek2TransformerLayerInfer._context_attention_flashattention_kernel_with_CC, self
+                    )
+                elif get_env_start_args().enable_flashinfer_prefill:
                     self._context_attention_kernel = partial(
                         Deepseek2TransformerLayerInfer._context_attention_flashinfer_kernel_with_CC, self
                     )

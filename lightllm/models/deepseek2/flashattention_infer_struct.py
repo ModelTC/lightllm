@@ -40,9 +40,9 @@ class Deepseek2FlashAttentionStateInfo(Deepseek2InferStateInfo):
                 page_buffer = Deepseek2FlashAttentionStateInfo.get_page_table_buffer(
                     model.graph_max_batch_size, model.graph_max_len_in_batch
                 )
-                self.page_table = page_buffer[self.microbatch_index][: self.batch_size * self.max_len_in_batch].reshape(
-                    self.batch_size, self.max_len_in_batch
-                )
+                self.page_table = page_buffer[self.microbatch_index][
+                    : self.batch_size * model.graph_max_len_in_batch
+                ].reshape(self.batch_size, model.graph_max_len_in_batch)
             else:
                 self.page_table = torch.empty((self.batch_size, self.max_len_in_batch), dtype=torch.int32).to(
                     input_ids.device

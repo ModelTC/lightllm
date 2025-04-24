@@ -66,12 +66,14 @@ class LlamaTpPartModel(TpPartBaseModel):
         )
         return
 
+    def _init_inferstate_cls(self):
+        if get_env_start_args().enable_fa3:
+            self.infer_state_class = FlashAttentionStateInfo
+
     def _init_custom(self):
         """
         模型特殊的一些初始化
         """
-        if get_env_start_args().enable_fa3:
-            self.infer_state_class = FlashAttentionStateInfo
         if self.config.get("use_rope_yarn", False) or (
             self.config.get("rope_scaling", None) is not None
             and self.config.get("rope_scaling", {}).get("type", "base") == "yarn"
