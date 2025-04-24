@@ -22,7 +22,7 @@ from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import build_req_queue
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.core.objs.io_objs import GroupReqIndexes
-from lightllm.server.core.objs import ShmReqManager
+from lightllm.server.core.objs import ShmReqManager, PDChunkedPrefillReq
 from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
 from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
@@ -34,6 +34,7 @@ from lightllm.common.mem_manager import ReadOnlyStaticsMemoryManager
 from lightllm.utils.graceful_utils import graceful_registry
 from lightllm.utils.process_check import start_parent_check_thread
 from lightllm.utils.envs_utils import get_unique_server_name
+from lightllm.server.pd_io_struct import DistInfo
 
 logger = init_logger(__name__)
 
@@ -49,6 +50,7 @@ class RouterManager:
         self.dp_size = args.dp
         # 兼容多机纯tp的运行模式，这时候 1 // 2 == 0, 需要兼容
         self.dp_size_in_node = max(1, args.dp // self.nnodes)
+        self.dp_world_size = self.world_size // self.dp_size
         self.is_multinode_tp = args.nnodes > 1 and args.dp == 1
         self.is_multinode_and_multidp = args.nnodes > 1 and args.dp > 1
         # 判断是否是保守调度，保守调度不会发生暂停 req 的情况，但是有些场景可能影响吞吐
@@ -97,8 +99,8 @@ class RouterManager:
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         self.metric_client = MetricClient(metric_port)
-        self.is_pd_run_mode = self.args.run_mode in ["prefill", "decode"]
-        self.is_pd_decode_mode = self.args.run_mode == "decode"
+        self.is_pd_run_mode = self.args.run_mode in ["prefill", "decode", "nixl_prefill", "nixl_decode"]
+        self.is_pd_decode_mode = self.args.run_mode in ["decode", "nixl_decode"]
         # p d 分离模式下，需要调度锁来同步调度端和推理端的一些数据操作
         # 主要是为了防止调度失误，造成 OOM 等错误
         self.router_lock = mp.Lock()
@@ -116,14 +118,16 @@ class RouterManager:
         # 用于 kv move 管理进程 和 推理进程进行task信息的交互。
         self.info_queue: mp.Queue = mp.Queue()
         self.mem_queues: List[torch.multiprocessing.Queue] = [
-            torch.multiprocessing.Queue() for _ in range(self.world_size)
+            torch.multiprocessing.Queue() for _ in range(self.node_world_size)
         ]
+        self.result_queues: List[mp.Queue] = [mp.Queue() for _ in range(self.node_world_size)]
         self.rpc_event = multiprocessing.Event()
         self.rpc_finished_event = multiprocessing.Event()
 
         assert (self.world_size % self.nnodes) == 0
         node_world_size = self.world_size // self.nnodes
         for rank_id in range(self.node_rank * node_world_size, (self.node_rank + 1) * node_world_size):
+
             rpc_model = await start_model_process(
                 args=self.args,
                 rank=rank_id,
@@ -132,7 +136,8 @@ class RouterManager:
                 rpc_event=self.rpc_event,
                 rpc_finished_event=self.rpc_finished_event,
                 info_queue=self.info_queue,
-                mem_queue=self.mem_queues[rank_id],
+                result_queue=self.result_queues[rank_id % node_world_size],
+                mem_queue=self.mem_queues[rank_id % node_world_size],
                 router_lock=self.router_lock,
             )
             self.model_rpc_servers.append(rpc_model)
@@ -187,7 +192,7 @@ class RouterManager:
                 get_unique_server_name(),
                 self.max_total_token_num,
                 node_world_size=self.node_world_size,
-                dp_world_size=self.world_size // self.dp_size,
+                dp_world_size=self.dp_world_size,
             )
         self.req_queue = build_req_queue(self.args, self, self.dp_size_in_node)
         logger.info(f"use req queue {self.req_queue.__class__.__name__}")
@@ -200,6 +205,30 @@ class RouterManager:
 
             start_prefill_kv_move_manager_process(self.args, self.info_queue, self.mem_queues)
 
+        if self.args.run_mode == "nixl_prefill":
+            from lightllm.server.router.model_infer.mode_backend.pd_nixl.pd_remote_prefill import (
+                start_pd_remote_prefill_server_process,
+            )
+
+            dist_info = DistInfo(
+                self.world_size,
+                self.nnodes,
+                self.dp_size,
+                self.dp_world_size,
+                self.dp_size_in_node,
+                self.node_world_size,
+            )
+
+            start_pd_remote_prefill_server_process(
+                self.args.pd_node_id,
+                dist_info=dist_info,
+                http_server_port=self.args.pd_remote_prefill_http_port,
+                server_port=self.args.pd_remote_prefill_port,
+                from_backend_queue=self.info_queue,
+                to_backend_queues=self.result_queues,
+                agent_meta_queues=self.mem_queues,
+            )
+
         if self.args.run_mode == "decode":
             # 启动 decode kv move 管理进程
             from lightllm.server.router.model_infer.mode_backend.continues_batch.pd_mode.decode_node_impl import (
@@ -207,6 +236,28 @@ class RouterManager:
             )
 
             start_decode_kv_move_manager_process(self.args, self.info_queue, self.mem_queues)
+
+        if self.args.run_mode == "nixl_decode":
+            from lightllm.server.router.model_infer.mode_backend.pd_nixl.pd_remote_prefill import (
+                start_pd_remote_prefill_client_process,
+            )
+
+            dist_info = DistInfo(
+                self.world_size,
+                self.nnodes,
+                self.dp_size,
+                self.dp_world_size,
+                self.dp_size_in_node,
+                self.node_world_size,
+            )
+
+            start_pd_remote_prefill_client_process(
+                self.args.pd_node_id,
+                dist_info,
+                from_backend_queue=self.info_queue,
+                to_backend_queues=self.result_queues,
+                agent_meta_queues=self.mem_queues,
+            )
 
         return
 
@@ -216,6 +267,8 @@ class RouterManager:
             req = self.shm_req_manager.get_req_obj_by_index(req_index)
             req.multimodal_params = group_req_indexes.multimodal_params
             req.start_time = group_req_indexes.time_mark
+            if isinstance(req, PDChunkedPrefillReq):
+                req.dp_world_size = self.dp_world_size
             req_group.append(req)
 
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")

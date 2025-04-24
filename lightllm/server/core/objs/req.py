@@ -94,6 +94,7 @@ class Req(ctypes.Structure):
         ("reward_score", ctypes.c_float),
         # 请求回复累计概率和
         ("cumlogprob", ctypes.c_float),
+        ("dp_world_size", ctypes.c_int),
     ]
 
     def get_str(self):
@@ -102,6 +103,7 @@ class Req(ctypes.Structure):
             f"shm_cur_kv_len:{self.shm_cur_kv_len},"
             f"shm_cur_output_len:{self.shm_cur_output_len},"
             f"finish_status:{self.finish_status.is_finished()}"
+            f"group_id: {self.group_req_id}"
         )
 
     def init(
@@ -333,3 +335,46 @@ class TokenHealingReq(ChunkedPrefillReq):
         # 错误问题。
         self.sample_params.max_new_tokens = self.sample_params.max_new_tokens + self.prefix_token_ids.size + 6
         return
+
+
+class PDChunkedPrefillReq(ChunkedPrefillReq):
+    _pack_ = 4
+    _MAX_TP_SIZE = 128
+
+    def post_init(self):
+        super().post_init()
+        self.create_pd_req_state_shm_array()
+        self.dp_world_size = 0
+
+    def create_pd_req_state_shm_array(self):
+        service_uni_name = get_unique_server_name()
+        name = f"{service_uni_name}_shm_pd_req_state_{self.index_in_shm_mem}"
+        # self.dp_world_size = PDChunkedPrefillReq._MAX_TP_SIZE # get_dp_world_size()
+        self.pd_req_state_shm = ShmArray(name, (PDChunkedPrefillReq._MAX_TP_SIZE + 1,), dtype=np.int8)
+        self.pd_req_state_shm.create_shm()
+        self.pd_req_state_shm.arr.fill(0)
+        return
+
+    def link_pd_req_state_shm_array(self):
+        service_uni_name = get_unique_server_name()
+        # self.dp_world_size = PDChunkedPrefillReq._MAX_TP_SIZE #get_dp_world_size()
+        name = f"{service_uni_name}_shm_pd_req_state_{self.index_in_shm_mem}"
+        self.pd_req_state_shm = ShmArray(name, (PDChunkedPrefillReq._MAX_TP_SIZE + 1,), dtype=np.int8)
+        self.pd_req_state_shm.link_shm()
+        return
+
+    # called by each tp rank, no contention
+    def set_pd_req_rank_state(self, tp_id: int, state: int):
+        self.pd_req_state_shm.arr[tp_id] = state
+
+    # state: -1 for failed, 0 for in progress, 1 for success
+    # set by router
+    def set_pd_req_state(self):
+        assert self.dp_world_size > 0, "dp_world_size should be set before calling this"
+        unique_state = np.unique(self.pd_req_state_shm.arr[: self.dp_world_size])
+        self.pd_req_state_shm.arr[self.dp_world_size] = unique_state[0]
+
+    # read by all rank
+    def get_pd_req_state(self):
+        assert self.dp_world_size > 0, "dp_world_size should be set before calling this"
+        return self.pd_req_state_shm.arr[self.dp_world_size]
