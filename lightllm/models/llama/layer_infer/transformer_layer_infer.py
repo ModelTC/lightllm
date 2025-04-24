@@ -254,7 +254,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return o_tensor
 
     def _context_attention_flashattention(self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None):
-
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :].reshape(
             -1, 1, self.tp_k_head_num_, self.head_dim_
         )
@@ -264,7 +263,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         q = q.reshape(-1, self.tp_q_head_num_, self.head_dim_)
         k_descale, v_descale = None, None  # disable quantization
         Lq = q.shape[-1]
-        sm_scale = 1.0 / (Lq ** 0.5)
+        sm_scale = 1.0 / (Lq**0.5)
         o = flash_attn_with_kvcache(
             q=q,
             k_cache=cache_k,
@@ -565,7 +564,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         # at::Tensor v,  at::Tensor v_s, at::Tensor b_loc, at::Tensor b_seq_len, int max_len_in_batch)
         fp16_decode_attention(
             o_tensor.view(calcu_shape1),
-            1.0 / (self.head_dim_ ** 0.5),
+            1.0 / (self.head_dim_**0.5),
             q.view(calcu_shape1),
             infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :],
             infer_state.mem_manager.kv_buffer[self.layer_num_][
@@ -673,7 +672,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         )
 
     def _token_decode_attention_flashattention(self, q, infer_state: LlamaInferStateInfo, layer_weight, out=None):
-
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :].reshape(
             -1, 1, self.tp_k_head_num_, self.head_dim_
         )
@@ -683,7 +681,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         q = q.reshape(-1, self.tp_q_head_num_, self.head_dim_)
         k_descale, v_descale = None, None  # disable quantization
         Lq = q.shape[-1]
-        sm_scale = 1.0 / (Lq ** 0.5)
+        sm_scale = 1.0 / (Lq**0.5)
         o = flash_attn_with_kvcache(
             q=q,
             k_cache=cache_k,
@@ -711,7 +709,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         infer_state1: LlamaInferStateInfo,
         layer_weight: LlamaTransformerLayerWeight,
     ):
-
         input_embdings = self.tpsp_token_forward(input_embdings, infer_state, layer_weight=layer_weight)
         input_embdings1 = self.tpsp_token_forward(input_embdings1, infer_state1, layer_weight=layer_weight)
         return input_embdings, input_embdings1
