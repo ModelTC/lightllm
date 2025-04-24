@@ -12,12 +12,26 @@ from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weight
 
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.flashattention_infer_struct import FlashAttentionStateInfo
+from lightllm.models.llama.flashinfer_struct import LlamaFlashInferStateInfo
 from lightllm.common.basemodel import TpPartBaseModel
 from lightllm.common.mem_utils import select_mem_manager_class
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.utils.dist_utils import get_dp_world_size, get_current_device_id
 
 logger = init_logger(__name__)
+
+
+class LlamaFlashInferStateExtraInfo:
+    def __init__(self, model):
+        tp_world_size = get_dp_world_size()
+        self.tp_q_head_num = model.config["num_attention_heads"] // tp_world_size
+        self.tp_kv_head_num = model.config["num_key_value_heads"] // tp_world_size
+        self.head_dim = model.config["hidden_size"] // model.config["num_attention_heads"]
+        self.workspace_buffer = torch.empty(256 * 1024 * 1024, dtype=torch.int8).to(get_current_device_id())
+        self.max_seq_length = model.max_seq_length
+        self.q_data_type = model.data_type
+        self.kv_data_type = model.data_type
 
 
 class LlamaTpPartModel(TpPartBaseModel):
@@ -34,6 +48,11 @@ class LlamaTpPartModel(TpPartBaseModel):
     infer_state_class = LlamaInferStateInfo
 
     def __init__(self, kvargs):
+        self.enable_flashinfer = (
+            get_env_start_args().enable_flashinfer_prefill or get_env_start_args().enable_flashinfer_decode
+        )
+        if self.enable_flashinfer:
+            self.infer_state_class = LlamaFlashInferStateInfo
         super().__init__(kvargs)
         return
 
@@ -42,6 +61,8 @@ class LlamaTpPartModel(TpPartBaseModel):
         # rename key
         # repair_config()
         self._reset_num_key_value_heads()
+        if self.enable_flashinfer:
+            self.flashinfer_extra_state = LlamaFlashInferStateExtraInfo(self)
         return
 
     def _reset_num_key_value_heads(self):
