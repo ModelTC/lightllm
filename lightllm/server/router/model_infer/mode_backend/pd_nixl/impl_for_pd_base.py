@@ -160,7 +160,7 @@ class PDNIXLBackendBase(ModeBackend):
 
         kv_transfer_req = KVMoveRequest(
             group_req_id=group_req_id,
-            token_ids=token_index[ : req.cur_kv_len].tolist(),
+            token_ids=token_index[: req.cur_kv_len].tolist(),
             prev_kv_len=transfer_state.current_kv_len,
             cur_kv_len=req.cur_kv_len,
         )
@@ -175,7 +175,6 @@ class PDNIXLBackendBase(ModeBackend):
 
         transfer_state.current_kv_len = req.cur_kv_len
         transfer_state.current_chunk_id += 1
-
 
     def _decode_filter_reqs(
         self, prefill_reqs: List[InferReq], aborted_reqs: List[InferReq], decode_reqs: List[InferReq]
