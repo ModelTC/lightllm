@@ -23,6 +23,8 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPChunkedForPrefillNode,
     PDNIXLBackendForPrefillNode,
     PDNIXLBackendForDecodeNode,
+    PDNIXLDPBackendForPrefillNode,
+    PDNIXLDPBackendForDecodeNode,
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
@@ -141,8 +143,11 @@ class ModelRpcServer:
                 self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
 
         elif is_nixl_prefill_node:
-            assert kvargs.get("args", None).dp == 1
-            self.backend = PDNIXLBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
+            if kvargs.get("args", None).dp > 1:
+                self.backend = PDNIXLDPBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
+            else:
+                self.backend = PDNIXLBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
+
         elif is_decode_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
@@ -150,8 +155,11 @@ class ModelRpcServer:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
 
         elif is_nixl_decode_node:
-            assert kvargs.get("args", None).dp == 1
-            self.backend = PDNIXLBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+            if kvargs.get("args", None).dp > 1:
+                self.backend = PDNIXLDPBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+            else:
+                self.backend = PDNIXLBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
