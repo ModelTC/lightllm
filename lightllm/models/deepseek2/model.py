@@ -71,7 +71,6 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
             self.infer_state_class = Deepseek2FlashAttentionStateInfo
         elif self.enable_flashinfer:
             self.infer_state_class = Deepseek2FlashInferStateInfo
-            self.flashinfer_extra_state = DeepSeek2FlashInferStateExtraInfo(self)
 
     def _init_some_value(self):
         super()._init_some_value()
@@ -83,6 +82,8 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.q_lora_rank = self.config["q_lora_rank"]
         self.kv_lora_rank = self.config["kv_lora_rank"]
         self.head_dim_ = self.kv_lora_rank + self.qk_rope_head_dim
+        if self.enable_flashinfer:
+            self.flashinfer_extra_state = DeepSeek2FlashInferStateExtraInfo(self)
 
     def _init_custom(self):
         self._init_to_get_yarn_rotary()
