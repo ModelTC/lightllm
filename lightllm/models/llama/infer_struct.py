@@ -11,7 +11,7 @@ class LlamaInferStateInfo(InferStateInfo):
         self.position_sin = None
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
-        super().init_some_extra_state(self, model, input_ids)
+        super().init_some_extra_state(model, input_ids)
         if self.is_prefill:
             b_ready_cache_len_numpy = self.b_ready_cache_len.cpu().numpy()
             self.b_ready_cache_len_numpy = b_ready_cache_len_numpy
