@@ -147,7 +147,7 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
 
     tools = None
     if request.tools and request.tool_choice != "none":
-        request.skip_special_tokens = False
+        # request.skip_special_tokens = False
         if not isinstance(request.tool_choice, str):
             tools = [
                 item.function.model_dump()
@@ -236,12 +236,11 @@ async def chat_completions(request: ChatCompletionRequest, raw_request: Request)
                         "Failed to parse fc related info to json format!",
                     )
 
-            chat_message = ChatMessage(role="assistant", content=text)
+            chat_message = ChatMessage(role="assistant", content=text, tool_calls=tool_calls)
             choice = ChatCompletionResponseChoice(
                 index=i,
                 message=chat_message,
                 finish_reason=finish_reason,
-                tool_calls=tool_calls,
             )
             choices.append(choice)
         resp = ChatCompletionResponse(
