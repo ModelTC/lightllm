@@ -1,4 +1,5 @@
 # Adaptive from SGlang [https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/function_call_parser.py]
+# Copyright 2025 ModelTC Team
 # Copyright 2023-2024 SGLang Team
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

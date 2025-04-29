@@ -216,6 +216,12 @@ async def compat_generate(request: Request) -> Response:
         return await generate(request)
 
 
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
+    resp = await chat_completions_impl(request, raw_request)
+    return resp
+
+
 @app.get("/tokens")
 @app.post("/tokens")
 async def tokens(request: Request):
@@ -322,9 +328,3 @@ async def startup_event():
     loop.create_task(g_objs.httpserver_manager.handle_loop())
     logger.info(f"server start up ok, loop use is {asyncio.get_event_loop()}")
     return
-
-
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
-async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
-    resp = await chat_completions_impl(request, raw_request)
-    return resp
