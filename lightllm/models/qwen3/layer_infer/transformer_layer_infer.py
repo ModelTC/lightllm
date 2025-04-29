@@ -41,7 +41,6 @@ class Qwen3TransformerLayerInfer(LlamaTransformerLayerInfer):
             eps=self.eps_,
             out=q.reshape(-1, self.head_dim_),
         )
-
         rmsnorm_forward(
             cache_kv[:, : self.tp_k_head_num_, :].reshape(-1, self.head_dim_),
             weight=layer_weight.k_norm_weight_.weight,
