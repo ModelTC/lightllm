@@ -57,7 +57,6 @@ class Qwen3MOETransformerLayerInfer(LlamaTransformerLayerInfer):
     ) -> torch.Tensor:
         input = input.view(-1, self.embed_dim_)
         q = layer_weight.q_proj.mm(input)
-        print(q.shape, infer_state.batch_size)
         cache_kv = layer_weight.kv_proj.mm(
             input, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_)
         ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
