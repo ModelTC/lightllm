@@ -50,63 +50,15 @@ from .api_models import (
 logger = init_logger(__name__)
 
 
-@dataclass
-class G_Objs:
-    app: FastAPI = None
-    metric_client: MetricClient = None
-    args: object = None
-    g_generate_func: Callable = None
-    g_generate_stream_func: Callable = None
-    httpserver_manager: Union[HttpServerManager, HttpServerManagerForPDMaster] = None
-    shared_token_load: TokenLoad = None
-
-    def set_args(self, args):
-        self.args = args
-        from .api_lightllm import lightllm_generate, lightllm_generate_stream
-        from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
-
-        if args.use_tgi_api:
-            self.g_generate_func = tgi_generate_impl
-            self.g_generate_stream_func = tgi_generate_stream_impl
-        else:
-            self.g_generate_func = lightllm_generate
-            self.g_generate_stream_func = lightllm_generate_stream
-
-        if args.run_mode == "pd_master":
-            self.metric_client = MetricClient(args.metric_port)
-            self.httpserver_manager = HttpServerManagerForPDMaster(
-                args,
-                metric_port=args.metric_port,
-            )
-        else:
-            init_tokenizer(args)  # for openai api
-            SamplingParams.load_generation_cfg(args.model_dir)
-            self.metric_client = MetricClient(args.metric_port)
-            self.httpserver_manager = HttpServerManager(
-                args,
-                router_port=args.router_port,
-                cache_port=args.cache_port,
-                detokenization_pub_port=args.detokenization_pub_port,
-                visual_port=args.visual_port,
-                enable_multimodal=args.enable_multimodal,
-                metric_port=args.metric_port,
-            )
-            dp_size_in_node = max(1, args.dp // args.nnodes)  # 兼容多机纯tp的运行模式，这时候 1 // 2 == 0, 需要兼容
-            self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", dp_size_in_node)
-
-
-g_objs = G_Objs()
-
-app = FastAPI()
-
-
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
+    from .api_http import g_objs
+
     g_objs.metric_client.counter_inc("lightllm_request_failure")
     return JSONResponse({"message": message}, status_code=status_code.value)
 
 
-@app.post("/chat/completions", response_model=ChatCompletionResponse)
-async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
+async def chat_completions_impl(request: ChatCompletionRequest, raw_request: Request) -> Response:
+    from .api_http import g_objs
 
     if request.logit_bias is not None:
         return create_error_response(

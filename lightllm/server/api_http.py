@@ -25,7 +25,6 @@ import base64
 import os
 from io import BytesIO
 import pickle
-from .build_prompt import build_prompt, init_tokenizer
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import ujson as json
@@ -44,21 +43,70 @@ from .httpserver.manager import HttpServerManager
 from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
 from .api_lightllm import lightllm_get_score, lightllm_pd_generate_stream
 from lightllm.utils.envs_utils import get_env_start_args, get_lightllm_websocket_max_message_size
-
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.metrics.manager import MetricClient
 from lightllm.utils.envs_utils import get_unique_server_name
 from dataclasses import dataclass
 
-from .api_openai import app as openai_api
-from .api_openai import g_objs
+from .api_openai import chat_completions_impl
+from .api_models import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+)
+from .build_prompt import build_prompt, init_tokenizer
 
 logger = init_logger(__name__)
 
+
+@dataclass
+class G_Objs:
+    app: FastAPI = None
+    metric_client: MetricClient = None
+    args: object = None
+    g_generate_func: Callable = None
+    g_generate_stream_func: Callable = None
+    httpserver_manager: Union[HttpServerManager, HttpServerManagerForPDMaster] = None
+    shared_token_load: TokenLoad = None
+
+    def set_args(self, args):
+        self.args = args
+        from .api_lightllm import lightllm_generate, lightllm_generate_stream
+        from .api_tgi import tgi_generate_impl, tgi_generate_stream_impl
+
+        if args.use_tgi_api:
+            self.g_generate_func = tgi_generate_impl
+            self.g_generate_stream_func = tgi_generate_stream_impl
+        else:
+            self.g_generate_func = lightllm_generate
+            self.g_generate_stream_func = lightllm_generate_stream
+
+        if args.run_mode == "pd_master":
+            self.metric_client = MetricClient(args.metric_port)
+            self.httpserver_manager = HttpServerManagerForPDMaster(
+                args,
+                metric_port=args.metric_port,
+            )
+        else:
+            init_tokenizer(args)  # for openai api
+            SamplingParams.load_generation_cfg(args.model_dir)
+            self.metric_client = MetricClient(args.metric_port)
+            self.httpserver_manager = HttpServerManager(
+                args,
+                router_port=args.router_port,
+                cache_port=args.cache_port,
+                detokenization_pub_port=args.detokenization_pub_port,
+                visual_port=args.visual_port,
+                enable_multimodal=args.enable_multimodal,
+                metric_port=args.metric_port,
+            )
+            dp_size_in_node = max(1, args.dp // args.nnodes)  # 兼容多机纯tp的运行模式，这时候 1 // 2 == 0, 需要兼容
+            self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", dp_size_in_node)
+
+
+g_objs = G_Objs()
+
 app = FastAPI()
 g_objs.app = app
-
-app.mount("/v1", openai_api)
 
 
 def create_error_response(status_code: HTTPStatus, message: str) -> JSONResponse:
@@ -274,3 +322,9 @@ async def startup_event():
     loop.create_task(g_objs.httpserver_manager.handle_loop())
     logger.info(f"server start up ok, loop use is {asyncio.get_event_loop()}")
     return
+
+
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+async def chat_completions(request: ChatCompletionRequest, raw_request: Request) -> Response:
+    resp = await chat_completions_impl(request, raw_request)
+    return resp
