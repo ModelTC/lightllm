@@ -15,6 +15,7 @@ from lightllm.models.llama.model import LlamaTpPartModel
 from lightllm.models.starcoder.model import StarcoderTpPartModel
 from lightllm.models.starcoder2.model import Starcoder2TpPartModel
 from lightllm.models.qwen.model import QWenTpPartModel
+from lightllm.models.qwen3_moe.model import Qwen3MOEModel
 from lightllm.models.chatglm2.model import ChatGlm2TpPartModel
 from lightllm.models.internlm.model import InternlmTpPartModel
 from lightllm.models.stablelm.model import StablelmTpPartModel
@@ -197,6 +198,8 @@ class ModeBackend:
                     self.model = Qwen2RewardTpPartModel(model_kvargs)
                 else:
                     self.model = Qwen2TpPartModel(model_kvargs)
+            elif self.model_type == "qwen3_moe":
+                self.model = Qwen3MOEModel(model_kvargs)
             elif self.model_type in ["qwen2_vl", "qwen2_5_vl"]:
                 self.model = Qwen2VLTpPartModel(model_kvargs)
                 self.is_multimodal = True
