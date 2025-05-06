@@ -23,7 +23,6 @@ logger = init_logger(__name__)
 
 class DeepSeek2FlashInferStateExtraInfo:
     def __init__(self, model):
-        print(model)
         num_heads = model.config["num_attention_heads"]
         self.tp_q_head_num = num_heads // get_dp_world_size()
         self.qk_nope_head_dim = model.qk_nope_head_dim
