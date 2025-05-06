@@ -96,7 +96,7 @@ def fast_post_handle(
 
         # 判断是否已经满足生成结束条件。
         is_finished = req_obj.finish_status.is_finished()
-        if is_finished or req_obj.shm_req.router_aborted:
+        if is_finished or shm_req.router_aborted:
             finished_req_ids.append(shm_req.request_id)
 
         if is_master_in_dp:
