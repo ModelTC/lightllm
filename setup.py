@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+from Cython.Build import cythonize
 
 package_data = {"lightllm": ["common/all_kernel_configs/*/*.json"]}
 setup(
@@ -28,4 +29,10 @@ setup(
         "triton",
     ],
     package_data=package_data,
+    ext_modules=cythonize(
+        [
+            "lightllm/server/router/model_infer/mode_backend/cython_fast_impl.pyx",
+        ]
+    ),
+    zip_safe=False,
 )
