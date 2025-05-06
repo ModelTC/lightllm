@@ -1,5 +1,6 @@
 import torch
 from typing import final
+from lightllm.models.registry import ModelRegistry
 from lightllm.models.deepseek2.layer_infer.transformer_layer_infer import Deepseek2TransformerLayerInfer
 from lightllm.models.deepseek2.layer_weights.transformer_layer_weight import Deepseek2TransformerLayerWeight
 from lightllm.models.deepseek2.infer_struct import Deepseek2InferStateInfo
@@ -22,6 +23,7 @@ logger = init_logger(__name__)
 
 class DeepSeek2FlashInferStateExtraInfo:
     def __init__(self, model):
+        print(model)
         num_heads = model.config["num_attention_heads"]
         self.tp_q_head_num = num_heads // get_dp_world_size()
         self.qk_nope_head_dim = model.qk_nope_head_dim
@@ -49,6 +51,7 @@ class DeepSeek2FlashInferStateExtraInfo:
                 self.softmax_scale = self.softmax_scale * mscale * mscale
 
 
+@ModelRegistry(["deepseek_v2", "deepseek_v3"])
 class Deepseek2TpPartModel(LlamaTpPartModel):
     # weight class
     transformer_weight_class = Deepseek2TransformerLayerWeight
