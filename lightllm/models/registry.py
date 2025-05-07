@@ -4,7 +4,7 @@ from lightllm.utils.log_utils import init_logger
 logger = init_logger(__name__)
 
 from dataclasses import dataclass
-from typing import Type, Dict, Optional, Callable, List
+from typing import Type, Dict, Optional, Callable, List, Union
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -23,7 +23,7 @@ class _ModelRegistries:
 
     def __call__(
         self,
-        model_type: str,
+        model_type: Union[str, List[str]],
         is_multimodal: bool = False,
         condition: Optional[Callable[[dict], bool]] = None,
     ):
@@ -58,6 +58,7 @@ class _ModelRegistries:
         if len(matches) > 1:
             # Keep conditionally matched models
             matches = [m for m in matches if m.condition is not None]
+        
         assert (
             len(matches) == 1
         ), "Existence of coupled conditon, inability to determine the class of models instantiated"
@@ -78,23 +79,14 @@ def get_model(model_cfg: dict, model_kvargs: dict):
         raise
 
 
-def has_visual_config(cfg: dict) -> bool:
-    return "visual" in cfg
-
-
 def is_reward_model() -> Callable[[Dict[str, any]], bool]:
-    return lambda c: "RewardModel" in c.get("architectures", [])
+    return lambda model_cfg : "RewardModel" in model_cfg.get("architectures", [""])[0]
 
 
-def architecture_is(name: str) -> Callable[[Dict[str, any]], bool]:
-    """Predicate: matches first element of model_cfg['architectures'] == name."""
-    return lambda c: c.get("architectures", [""])[0] == name
-
-
-def llm_model_type_is(name: str) -> Callable[[Dict[str, any]], bool]:
-    names = [name] if isinstance(name, str) else name
+def llm_model_type_is(name: Union[str, List[str]]) -> Callable[[Dict[str, any]], bool]:
     """Predicate: matches model_cfg.get("llm_config").get("model_type") == name."""
-    return lambda c: (
-        c.get("llm_config", {}).get("model_type", "") in names
-        or c.get("text_config", {}).get("model_type", "") in names
+    names = [name] if isinstance(name, str) else name
+    return lambda model_cfg : (
+        model_cfg.get("llm_config", {}).get("model_type", "") in names
+        or model_cfg.get("text_config", {}).get("model_type", "") in names
     )
