@@ -45,8 +45,6 @@ class _ModelRegistries:
         """Get model"""
         model_type = model_cfg.get("model_type", "")
         configs = self._registry.get(model_type, [])
-        model = None
-        is_multimodal = False
         matches = []
         for cfg in configs:
             if cfg.condition is None or cfg.condition(model_cfg):
