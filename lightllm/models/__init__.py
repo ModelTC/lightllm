@@ -35,3 +35,4 @@ from lightllm.models.tarsier2.model import (
     Tarsier2Qwen2VLTpPartModel,
     Tarsier2LlamaTpPartModel,
 )
+from .registry import get_model

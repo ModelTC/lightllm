@@ -56,7 +56,7 @@ class _ModelRegistries:
         if len(matches) > 1:
             # Keep conditionally matched models
             matches = [m for m in matches if m.condition is not None]
-        
+
         assert (
             len(matches) == 1
         ), "Existence of coupled conditon, inability to determine the class of models instantiated"
@@ -78,13 +78,14 @@ def get_model(model_cfg: dict, model_kvargs: dict):
 
 
 def is_reward_model() -> Callable[[Dict[str, any]], bool]:
-    return lambda model_cfg : "RewardModel" in model_cfg.get("architectures", [""])[0]
+    """Predicate: whether the model is RewardModel."""
+    return lambda model_cfg: "RewardModel" in model_cfg.get("architectures", [""])[0]
 
 
 def llm_model_type_is(name: Union[str, List[str]]) -> Callable[[Dict[str, any]], bool]:
     """Predicate: matches model_cfg.get("llm_config").get("model_type") == name."""
     names = [name] if isinstance(name, str) else name
-    return lambda model_cfg : (
+    return lambda model_cfg: (
         model_cfg.get("llm_config", {}).get("model_type", "") in names
         or model_cfg.get("text_config", {}).get("model_type", "") in names
     )
