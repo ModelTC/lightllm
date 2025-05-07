@@ -23,7 +23,6 @@ from lightllm.utils.dist_utils import get_dp_world_size, get_current_device_id
 logger = init_logger(__name__)
 
 
-@ModelRegistry("llama")
 class LlamaFlashInferStateExtraInfo:
     def __init__(self, model):
         tp_world_size = get_dp_world_size()
@@ -45,6 +44,7 @@ class LlamaFlashInferStateExtraInfo:
         self.kv_data_type = model.data_type
 
 
+@ModelRegistry("llama")
 class LlamaTpPartModel(TpPartBaseModel):
     # weight class
     pre_and_post_weight_class = LlamaPreAndPostLayerWeight
