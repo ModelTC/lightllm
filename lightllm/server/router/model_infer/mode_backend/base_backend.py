@@ -168,13 +168,6 @@ class ModeBackend:
         """This method can be overridden in subclasses."""
         raise NotImplementedError()
 
-    def store_hicache_after_prefill(self, run_reqs):
-        if self.use_hi_dynamic_prompt_cache and self.radix_cache is not None:
-            for req in run_reqs:
-                key = torch.tensor(req.get_input_token_ids()[0 : req.cur_kv_len], dtype=torch.int64, device="cpu")
-                value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
-                self.radix_cache.insert_disk(req.req_id, key, value)
-
     def pause_reqs(self, req_ids):
         if self.dp_size_in_node != 1:
             req_ids = [req_id for req_id in req_ids if req_id in g_infer_context.requests_mapping]
@@ -368,6 +361,23 @@ class ModeBackend:
             if clear_list:
                 uninit_reqs.clear()
                 ok_finished_reqs.clear()
+
+        return
+
+    def _overlap_store_prefill_reqs(self, run_reqs: List[InferReq]):
+        if run_reqs:
+            with torch.cuda.stream(g_infer_context.get_overlap_stream()):
+                if self.use_hi_dynamic_prompt_cache and self.radix_cache is not None:
+                    for req in run_reqs:
+                        if req.cur_output_len > 1:
+                            continue
+                        key = torch.tensor(
+                            req.get_input_token_ids()[0 : req.cur_kv_len], dtype=torch.int64, device="cpu"
+                        )
+                        value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+                        self.radix_cache.insert_disk(req.req_id, key, value)
+
+            torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
 
         return
 

@@ -111,7 +111,7 @@ class InferenceContext:
                     req.shared_kv_node = None
 
             if self.radix_cache.is_hi_radix_cache:
-                self.radix_cache.wait_till_finish(req.req_id)
+                self.radix_cache.abort_req_store_task(req.req_id)
 
     def _save_promptcache_kvbuffer(self):
         """
