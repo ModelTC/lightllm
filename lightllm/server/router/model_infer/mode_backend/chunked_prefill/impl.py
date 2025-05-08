@@ -43,6 +43,7 @@ class ChunkedPrefillBackend(ModeBackend):
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
+            self._overlap_store_prefill_reqs(run_reqs=run_reqs)
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
@@ -59,7 +60,6 @@ class ChunkedPrefillBackend(ModeBackend):
                     prefill_reqs, is_chuncked_mode=True, is_multimodal=self.is_multimodal
                 )
                 logits = self.model.forward(**kwargs)
-                self.store_hicache_after_prefill(run_reqs)
                 self._overlap_req_init_and_filter(
                     uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
                 )

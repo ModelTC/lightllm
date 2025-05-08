@@ -17,6 +17,9 @@ class HiRadixCache(RadixCache):
         logger.info("Initializing HiRadixCache")
         self.rank_in_node = rank_in_node
         try:
+            # TODO: determine by model type && dp, tp
+            store_once = True  # Deepseek -> True, Llama -> False
+            self.do_store = store_once and self.rank_in_node == 0
             self.is_hi_radix_cache = True
             all_buffers = self.mem_manager.kv_buffer
             all_buffers = all_buffers.view(all_buffers.shape[0], all_buffers.shape[1], -1)
@@ -37,83 +40,111 @@ class HiRadixCache(RadixCache):
     # then when the decode finishes, do syncronize to see whether this can be free
     # no buffer, parallel insert inputs
     def insert_disk(self, req_id, key, value):
+        if not self.do_store:
+            return
         if req_id in self.working_tasks:
-            self.wait_till_finish(req_id)
+            self.abort_req_store_task(req_id)
         self.working_tasks[req_id] = self.py_cache_service.create(tokens=key, kv_page_indexer=value, mode="w")
         logger.info(f"Created store task for req {req_id}.")
 
-    def wait_till_finish(self, req_id):
-        if req_id not in self.working_tasks:
+    def abort_req_store_task(self, req_id):
+        if not self.do_store:
             return
-        starting_time = time.time()
-        while not self.working_tasks[req_id].ready():
-            time.sleep(0.01)
-        logger.info(f"Waited {time.time() - starting_time}s for req {req_id}.")
+        if self.working_tasks[req_id].ready():
+            logger.info(f"Calling abort for req {req_id}, but is finished.")
+            return
+        logger.info(f"Aborting req {req_id} unfinished.")
+        self.py_cache_service.az5(self.working_tasks[req_id])
 
-    # def insert(self, key, value=None):
-    #     if value is None:
-    #         value = key
+    # TODO: finish this function to only update new ones
+    def _reinsert_helper(self, node: TreeNode, key, value, ans_value_list: list, update_refs=False):
+        if node.is_leaf():
+            self.evict_tree_set.discard(node)
 
-    #     assert len(key) == len(value)  # and len(key) >= 1
-    #     if len(key) == 0:
-    #         return 0
+        if update_refs:
+            node.ref_counter += 1
+            # from 0 to 1 need update refs token num
+            if node.ref_counter == 1:
+                self.refed_tokens_num.arr[0] += len(node.token_mem_index_value)
 
-    #     # current implement is serial, TODO: make it parallel
-    #     # if no hi_cache_buffer, work with normal radix cache
-    #     if self.hi_cache_kv_buffer is not None:
-    #         do_copy = False
-    #         # and if is moving, ignore this insert request
-    #         with self.moving_lock:
-    #             if (not self.start_store_task) and self.write_task is not None:
-    #                 if self.write_task.ready():
-    #                     logger.info(f"HiCache of [{self.rank_in_node}]: stored len = {self.hi_cache_buffer_len}")
-    #                     self.start_store_task = True # ensure ready => start new only one kvcache stores
-    #                     do_copy = True
-    #             elif self.write_task is None and self.starting:
-    #                 self.starting = False
-    #                 self.start_store_task = True
-    #                 do_copy = True
+        try:
+            if len(key) == 0:
+                return node
 
-    #         if do_copy:
-    #             # copy the key and value to the hi_cache_buffer
-    #             self.hi_cache_key_buffer[:len(key)].copy_(key)
-    #             self.hi_cache_buffer_len = len(key)
-    #             for buffer_index, index in enumerate(value):
-    #                 kv_data = self.mem_manager.get_index_kv_buffer(index)
-    #                 self.mem_manager.load_index_kv_buffer(self.hi_cache_kv_buffer[buffer_index], kv_data)
-    #             # create a new thread to store the buffer
-    #             self._store_buffer()
+            first_key_id = key[0].item()
+            if first_key_id in node.children.keys():
+                child: TreeNode = node.children[first_key_id]
+                prefix_len = match(key, child.token_id_key)
+                if prefix_len == len(key):
+                    if child.is_leaf():
+                        self.evict_tree_set.discard(child)
+                    child.update_time()
+                    ans_value_list.append(child.token_mem_index_value)
+                    if child.is_leaf():
+                        self.evict_tree_set.add(child)
+                    return prefix_len
 
-    #     return self._insert_helper(self.root_node, key, value)
+                elif prefix_len < len(key) and prefix_len < len(child.token_id_key):
+                    if child.is_leaf():
+                        self.evict_tree_set.discard(child)
 
-    # def _store_buffer(self):
-    #     logger.info(f"Storing buffer size = {self.hi_cache_buffer_len}")
-    #     assert self.hi_cache_buffer_len > 0
-    #     assert self.hi_cache_kv_buffer is not None
-    #     key = self.hi_cache_key_buffer[:self.hi_cache_buffer_len].tolist()
-    #     self.write_task = self.py_cache_service.create(
-    #         tokens=key, kv_page_indexer=self.hi_cache_kv_buffer[:self.hi_cache_buffer_len], mode="w")
-    #     with self.moving_lock:
-    #         self.start_store_task = False
+                    key = key[prefix_len:]
+                    value = value[prefix_len:]
+                    split_parent_node = child.split_node(prefix_len)
+                    new_node = split_parent_node.add_and_return_new_child(key, value)
+                    # update total token num
+                    self.tree_total_tokens_num.arr[0] += len(new_node.token_mem_index_value)
+
+                    if split_parent_node.is_leaf():
+                        self.evict_tree_set.add(split_parent_node)
+                    if new_node.is_leaf():
+                        self.evict_tree_set.add(new_node)
+
+                    if child.is_leaf():
+                        self.evict_tree_set.add(child)
+                    return prefix_len
+                elif prefix_len < len(key) and prefix_len == len(child.token_id_key):
+                    return prefix_len + self._insert_helper(child, key[prefix_len:], value[prefix_len:])
+                else:
+                    assert False, "can not run to here"
+
+            else:
+                new_node = node.add_and_return_new_child(key, value)
+                # update total token num
+                self.tree_total_tokens_num.arr[0] += len(new_node.token_mem_index_value)
+                ans_value_list.append(new_node.token_mem_index_value)
+                if update_refs:
+                    new_node.ref_counter += 1
+                    if new_node.ref_counter == 1:
+                        self.refed_tokens_num.arr[0] += len(new_node.token_mem_index_value)
+                if new_node.is_leaf():
+                    self.evict_tree_set.add(new_node)
+                return new_node
+        finally:
+            node.update_time()
+            if node.is_leaf():
+                self.evict_tree_set.add(node)
 
     def match_prefix(self, key, update_refs=False):
         st_time = time.time()
         assert len(key) != 0
         ans_value_list = []
-        tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
+        tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=False)
         # add a parameter if get long enough (>50%)
         first_query_time = time.time()
         logger.info(f"HiCache of [{self.rank_in_node}]: No.1 First GPU query took {first_query_time - st_time}")
         max_len = self._query_hi_cache(key)  # x64
         hi_cache_query_time = time.time()
         logger.info(f"HiCache of [{self.rank_in_node}]: No.2 Disk query took {hi_cache_query_time - first_query_time}")
-        logger.info(f"Matched {len(ans_value_list)} from gpu and {max_len} from disk.")
+        logger.info(f"Matched {sum(len(s) for s in ans_value_list)} from gpu and {max_len} from disk.")
         pull_hi_cache = False
-        if max_len > len(ans_value_list):
+        if max_len > sum(len(s) for s in ans_value_list):
             pull_hi_cache = True
             try:
                 self.free_radix_cache_to_get_enough_token(max_len)
             except:
+                if update_refs:
+                    tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
                 pull_hi_cache = False
         if pull_hi_cache:
             buffers = self.mem_manager.alloc(max_len)
@@ -133,7 +164,10 @@ class HiRadixCache(RadixCache):
             logger.info(f"HiCache of [{self.rank_in_node}]: No.4 Reinsert took {insert_time - hicache_pull_time}")
             ans_value_list = []
             tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
-            logger.info(f"HiCache of [{self.rank_in_node}]: No.5 Re match prefix took {time.time() - insert_time}")
+            logger.info(
+                f"HiCache of [{self.rank_in_node}]: No.5 Re match prefix took {time.time() - insert_time}"
+                + f" matched {sum(len(s) for s in ans_value_list)} tokens"
+            )
         if tree_node != self.root_node:
             if len(ans_value_list) != 0:
                 value = torch.concat(ans_value_list)
