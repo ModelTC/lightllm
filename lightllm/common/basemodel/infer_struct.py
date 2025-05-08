@@ -5,6 +5,7 @@ from lightllm.distributed import CustomProcessGroup
 from typing import Tuple, Any
 from .triton_kernel.gen_prefill_params import gen_prefill_params
 from .triton_kernel.gen_decode_params import gen_decode_params
+from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 
 
 class InferStateInfo:
@@ -53,6 +54,10 @@ class InferStateInfo:
         self.position_ids: torch.Tensor = None
         self.max_q_seq_len: int = None
         self.max_kv_seq_len: int = None
+        
+        # Speculative decoding
+        self.spec_algo = SpeculativeDecodeAlgorithm.NONE
+        self.spec_info = None
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
         if self.is_prefill:

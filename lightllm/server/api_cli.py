@@ -391,4 +391,17 @@ def make_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="""Whether to update the redundant expert for deepseekv3 model by online expert used counter.""",
     )
+    parser.add_argument(
+        "--spec_algo",
+        type=str,
+        choices=["none", "MTP"],
+        default="none",
+        help="""spec algo used for spec model, none means no spec algo,
+        mtp means use mtp spec algo, only support deepseekv3 model""",
+    )
+    parser.add_argument(
+        "--spec_model_dir",
+        type=str,
+        default=None,
+    )
     return parser

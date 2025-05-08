@@ -20,6 +20,8 @@ from lightllm.utils.dist_utils import get_dp_world_size
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch, PrefillMicroBatch
+from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
+
 
 logger = init_logger(__name__)
 
@@ -71,6 +73,10 @@ class TpPartBaseModel:
         self.tp_world_size_ = get_dp_world_size()
         self.enable_tpsp_mix_mode = get_env_start_args().enable_tpsp_mix_mode
 
+        # Speculative decoding
+        self.spec_algo = SpeculativeDecodeAlgorithm.from_string(kvargs.get("spec_algo", "NONE"))
+        self.spec_info = None
+        
         self._init_datatype()
         self._init_config()
         self._verify_must()
@@ -279,6 +285,8 @@ class TpPartBaseModel:
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = True
+        infer_state.spec_algo = self.spec_algo
+        infer_state.spec_info = self.spec_info
         infer_state.is_token_healing = self.is_token_healing
         infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
@@ -330,6 +338,8 @@ class TpPartBaseModel:
     ):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = False
+        infer_state.spec_algo = self.spec_algo
+        infer_state.spec_info = self.spec_info
         infer_state.batch_size = batch_size
         infer_state.total_token_num = total_token_num
         infer_state.max_len_in_batch = max_len_in_batch
@@ -343,12 +353,13 @@ class TpPartBaseModel:
         infer_state.req_manager = self.req_manager
 
         infer_state.mem_index = mem_indexes
+        decode_len = self.spec_algo.decode_len()
         infer_state.kv_buffer_shapedtype = (
-            (batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+            (batch_size  * decode_len, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
             self.data_type,
         )
         infer_state.dist_group = dist_group_manager.get_default_group()
-        copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index)
+        copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index, decode_len)
 
         infer_state.init_some_extra_state(self, input_ids)
         if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
@@ -498,6 +509,9 @@ class TpPartBaseModel:
             layer_method = (layer.context_forward, layer.tpsp_context_forward)[run_mode_index]
             input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
 
+        if self.spec_algo.is_mtp():
+            self.spec_info = input_embs
+            
         post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
         predict_logics = post_method(input_embs, infer_state, self.pre_post_weight)
 
@@ -519,7 +533,10 @@ class TpPartBaseModel:
             layer = self.layers_infer[i]
             layer_method = (layer.token_forward, layer.tpsp_token_forward)[run_mode_index]
             input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
-
+            
+        if self.spec_algo.is_mtp():
+            self.spec_info = input_embs
+            
         post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
         predict_logics = post_method(input_embs, infer_state, self.pre_post_weight)
 
