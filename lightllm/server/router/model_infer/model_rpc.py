@@ -21,6 +21,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPForDecodeNode,
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
+    ContinuesBatchWithMTPBackend
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -155,7 +156,10 @@ class ModelRpcServer:
         elif is_first_token_constraint_mode:
             self.backend = FirstTokenConstraintBackend()
         elif disable_chunked_prefill:
-            self.backend = ContinuesBatchBackend()
+            if kvargs.get("spec_algo", "NONE") == "MTP":
+                self.backend = ContinuesBatchWithMTPBackend()
+            else:
+                self.backend = ContinuesBatchBackend()
         else:
             self.backend = ChunkedPrefillBackend()
 
