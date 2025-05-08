@@ -63,7 +63,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
             "run_mode": "normal",
-            "spec_algo": "NONE",
+            "spec_algo": "MTP_MOUDLE",
         }
 
         mtp_model_cfg, _ = PretrainedConfig.get_config_dict(kvargs["spec_weight_dir"])
