@@ -12,6 +12,7 @@ from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.models import get_model
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
+from lightllm.server.router.dynamic_prompt.hiradix_cache import HiRadixCache
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
@@ -51,6 +52,7 @@ class ModeBackend:
         self.chunked_prefill_size = kvargs.get("chunked_prefill_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
         self.use_dynamic_prompt_cache = not kvargs.get("disable_dynamic_prompt_cache", False)
+        self.use_hi_dynamic_prompt_cache = kvargs.get("use_hi_dynamic_prompt_cache", False)
         self.eos_id: List[int] = kvargs.get("eos_id", [2])
         self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
 
@@ -115,7 +117,15 @@ class ModeBackend:
         self.model, self.is_multimodal = get_model(model_cfg, model_kvargs)
         set_random_seed(2147483647)
         self.radix_cache = (
-            RadixCache(
+            HiRadixCache(
+                get_unique_server_name(),
+                self.model.mem_manager.size,
+                self.rank_in_node,
+                mem_manager=self.model.mem_manager,
+                max_seq_length=kvargs.get("max_seq_length", 1024 * 5),
+            )
+            if self.use_dynamic_prompt_cache and self.use_hi_dynamic_prompt_cache
+            else RadixCache(
                 get_unique_server_name(),
                 self.model.mem_manager.size,
                 self.rank_in_node,
@@ -330,6 +340,23 @@ class ModeBackend:
             if clear_list:
                 uninit_reqs.clear()
                 ok_finished_reqs.clear()
+
+        return
+
+    def _overlap_store_prefill_reqs(self, run_reqs: List[InferReq]):
+        if run_reqs:
+            with torch.cuda.stream(g_infer_context.get_overlap_stream()):
+                if self.use_hi_dynamic_prompt_cache and self.radix_cache is not None:
+                    for req in run_reqs:
+                        if req.cur_output_len > 1:
+                            continue
+                        key = torch.tensor(
+                            req.get_input_token_ids()[0 : req.cur_kv_len], dtype=torch.int64, device="cpu"
+                        )
+                        value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
+                        self.radix_cache.insert_disk(req.req_id, key, value)
+
+            torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
 
         return
 
