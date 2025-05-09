@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from .radix_cache import RadixCache, TreeNode, match
 from typing import Tuple, Dict, Set, List
 from lightllm.common.mem_manager import MemoryManager
@@ -23,12 +24,16 @@ class HiRadixCache(RadixCache):
             self.is_hi_radix_cache = True
             all_buffers = self.mem_manager.kv_buffer
             all_buffers = all_buffers.view(all_buffers.shape[0], all_buffers.shape[1], -1)
-            self.py_cache_service = PyLocalCacheService(
-                file="cache/cache_file",
-                storage_size=128 * (1024 ** 3),
-                num_shard=32,
-                kvcache_tensor=all_buffers,
-                num_worker=32,
+            self.py_cache_service = (
+                PyLocalCacheService(
+                    file="cache/cache_file",
+                    storage_size=128 * (1024 ** 3),
+                    num_shard=32,
+                    kvcache_tensor=all_buffers,
+                    num_worker=32,
+                )
+                if self.do_store
+                else None
             )
             self.working_tasks = {}
         except Exception as e:
@@ -48,7 +53,7 @@ class HiRadixCache(RadixCache):
         logger.info(f"Created store task for req {req_id}.")
 
     def abort_req_store_task(self, req_id):
-        if not self.do_store:
+        if not self.do_store or req_id not in self.working_tasks:
             return
         if self.working_tasks[req_id].ready():
             logger.info(f"Calling abort for req {req_id}, but is finished.")
@@ -126,48 +131,63 @@ class HiRadixCache(RadixCache):
                 self.evict_tree_set.add(node)
 
     def match_prefix(self, key, update_refs=False):
-        st_time = time.time()
         assert len(key) != 0
         ans_value_list = []
-        tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=False)
-        # add a parameter if get long enough (>50%)
-        first_query_time = time.time()
-        logger.info(f"HiCache of [{self.rank_in_node}]: No.1 First GPU query took {first_query_time - st_time}")
-        max_len = self._query_hi_cache(key)  # x64
-        hi_cache_query_time = time.time()
-        logger.info(f"HiCache of [{self.rank_in_node}]: No.2 Disk query took {hi_cache_query_time - first_query_time}")
-        logger.info(f"Matched {sum(len(s) for s in ans_value_list)} from gpu and {max_len} from disk.")
+        pull_hi_cache_tensor = torch.tensor([0], dtype=torch.int64).cuda(self.rank_in_node)
+        if self.do_store:
+            # st_time = time.time()
+            tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=False)
+            # add a parameter if get long enough (>50%)
+            # first_query_time = time.time()
+            # logger.info(f"HiCache of [{self.rank_in_node}]: No.1 First GPU query took {first_query_time - st_time}s")
+            max_len = self._query_hi_cache(key)  # x64
+            # hi_cache_q_time = time.time()
+            # logger.info(f"HiCache of [{self.rank_in_node}]: No.2 Disk query {hi_cache_q_time - first_query_time}s")
+            logger.info(f"Matched {sum(len(s) for s in ans_value_list)} from gpu and {max_len} from disk.")
+            pull_hi_cache_tensor[0] = max_len if (max_len > sum(len(s) for s in ans_value_list)) else 0
+        # hi_cache_q_time = time.time()
+        dist.broadcast(pull_hi_cache_tensor, src=0)
+        # logger.info(f"After broadcast on rank {self.rank_in_node}, tensor={pull_hi_cache_tensor}")
         pull_hi_cache = False
-        if max_len > sum(len(s) for s in ans_value_list):
+        # logger.info(f"Rank {self.rank_in_node}, {pull_hi_cache=} {pull_hi_cache_tensor=}")
+
+        if pull_hi_cache_tensor[0] == 0 and not self.do_store:
+            tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=False)
+        elif pull_hi_cache_tensor[0] > 0:
             pull_hi_cache = True
+            max_len = pull_hi_cache_tensor[0]
             try:
                 self.free_radix_cache_to_get_enough_token(max_len)
             except:
-                if update_refs:
-                    tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
+                logger.info(f"Unable to free on rank {self.rank_in_node}")
+                pull_hi_cache_tensor[0] = 0
                 pull_hi_cache = False
+                ans_value_list = []
+                tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
         if pull_hi_cache:
             buffers = self.mem_manager.alloc(max_len)
-            before_pull_time = time.time()
-            logger.info(
-                f"HiCache of [{self.rank_in_node}]: No.2.5 Before pull took {before_pull_time - hi_cache_query_time}"
-            )
-            read_task = self.py_cache_service.create(tokens=key[:max_len], kv_page_indexer=buffers, mode="r")
-            while not read_task.ready():
-                time.sleep(0.1)
-            hicache_pull_time = time.time()
-            logger.info(f"HiCache of [{self.rank_in_node}]: No.3 Disk pull took {hicache_pull_time - before_pull_time}")
+            # before_pull_time = time.time()
+            # logger.info(
+            #     f"HiCache of [{self.rank_in_node}]: No.2.5 Before pull took {before_pull_time - hi_cache_q_time}"
+            # )
+            if self.do_store:
+                read_task = self.py_cache_service.create(tokens=key[:max_len], kv_page_indexer=buffers, mode="r")
+                while not read_task.ready():
+                    time.sleep(0.05)
+            dist.broadcast(self.mem_manager.get_index_kv_buffer(buffers)["kv_buffer"], src=0)
+            # hicache_pull_time = time.time()
+            # logger.info(f"HiCache of [{self.rank_in_node}]: No.3 Disk pull {hicache_pull_time - before_pull_time}s")
             logger.info(f"HiCache pulled one cache with len = {max_len}")
             # maybe try: add a function to only insert middle part of kv cache
             self._insert_helper(self.root_node, key, buffers)
-            insert_time = time.time()
-            logger.info(f"HiCache of [{self.rank_in_node}]: No.4 Reinsert took {insert_time - hicache_pull_time}")
+            # insert_time = time.time()
+            # logger.info(f"HiCache of [{self.rank_in_node}]: No.4 Reinsert took {insert_time - hicache_pull_time}")
             ans_value_list = []
             tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
-            logger.info(
-                f"HiCache of [{self.rank_in_node}]: No.5 Re match prefix took {time.time() - insert_time}"
-                + f" matched {sum(len(s) for s in ans_value_list)} tokens"
-            )
+            # logger.info(
+            #     f"HiCache of [{self.rank_in_node}]: No.5 Re match prefix took {time.time() - insert_time}"
+            #     + f" matched {sum(len(s) for s in ans_value_list)} tokens"
+            # )
         if tree_node != self.root_node:
             if len(ans_value_list) != 0:
                 value = torch.concat(ans_value_list)
