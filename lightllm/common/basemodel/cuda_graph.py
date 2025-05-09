@@ -5,6 +5,8 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
+from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
+from lightllm.common.basemodel.basemodel import TpPartBaseModel
 
 logger = init_logger(__name__)
 
@@ -126,7 +128,7 @@ class CudaGraph:
             return self._replay(input_ids, infer_state)
 
     @torch.no_grad()
-    def warmup(self, model):
+    def warmup(self, model: TpPartBaseModel):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
         for batch_size in range(self.max_batch_size, 0, -1):
             # dummy prefill
@@ -160,6 +162,9 @@ class CudaGraph:
             torch.cuda.empty_cache()
 
             # dummy decoding, capture the cudagraph
+            decode_len = model.spec_algo.decode_len()
+            predict_ids = predict_ids.repeat(decode_len)
+            b_start_loc = b_start_loc + torch.arange(0, batch_size*decode_len, decode_len, dtype=torch.int32, device="cuda")
             total_token_num += batch_size
             b_seq_len += 1
             mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
