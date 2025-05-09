@@ -16,7 +16,8 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-namespace moe {
+namespace lightllm {
+namespace ops{
 
 template <int TPB>
 __launch_bounds__(TPB) 
@@ -266,8 +267,6 @@ void GroupedTopKKernelLauncher(
         num_experts, num_expert_group, topk_group, topk, renormalize, softmax_or_sigmoid, 0, num_experts);
 }
 
-} // namespace moe
-
 void grouped_topk_cuda(
     torch::Tensor& topk_weights,                // [num_tokens, topk]
     torch::Tensor& correction_bias,             // [num_tokens, num_experts]
@@ -300,7 +299,7 @@ void grouped_topk_cuda(
     const at::cuda::OptionalCUDAGuard device_guard(device_of(gating_output));
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     torch::Tensor softmax_workspace = torch::empty({workspace_size}, gating_output.options());
-    moe::GroupedTopKKernelLauncher(
+    GroupedTopKKernelLauncher(
         gating_output.data_ptr<float>(),
         correction_bias.defined() ? correction_bias.data_ptr<float>() : nullptr,
         topk_weights.data_ptr<float>(),
@@ -317,3 +316,29 @@ void grouped_topk_cuda(
         softmax_or_sigmoid,
         stream);
 }
+
+torch::Tensor grouped_topk(
+        torch::Tensor topk_weights,
+        torch::Tensor correction_bias,
+        torch::Tensor topk_indices,
+        torch::Tensor group_indices,
+        torch::Tensor gating_output,
+        int64_t  num_expert_group,
+        int64_t  topk_group,
+        int64_t  topk,
+        bool     renormalize,
+        std::string scoring_func,
+        torch::Tensor group_scores) {
+
+    grouped_topk_cuda(topk_weights, correction_bias, topk_indices, group_indices,
+                      gating_output,
+                      static_cast<int>(num_expert_group),
+                      static_cast<int>(topk_group),
+                      static_cast<int>(topk),
+                      renormalize, scoring_func, group_scores);
+
+    return topk_weights;
+}
+
+} // namespace ops
+} // namespace lightllm

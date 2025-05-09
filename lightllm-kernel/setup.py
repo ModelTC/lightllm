@@ -1,32 +1,53 @@
+import os
 from pathlib import Path
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-this_dir = Path(__file__).parent
+repo_root = Path(__file__).resolve().parents[0]
+csrc_dir = repo_root / "csrc"
+if not csrc_dir.exists():
+    raise ImportError(
+        "Cannot import compiled extension 'lightllm_kernel.ops' and no source "
+        "directory (csrc/) found; please ensure you have run "
+        "'cmake --install' or placed lightllm_kernel.ops.so on PYTHONPATH."
+    )
 
-sources = [
-    str(this_dir / "csrc" / "moe" / "grouped_topk_interface.cpp"),
-    str(this_dir / "csrc" / "moe" / "grouped_topk.cu"),
-    str(this_dir / "csrc" / "ops_bindings.cpp"),
-]
-print("---- sources for CUDAExtension ----")
-for s in sources:
-    print(s)
-print("-----------------------------------")
+PROGRAM_NAME = "lightllm_kernel._C"
+INCLUDE_DIR = "include"
+CUTLASS_DIR = "cutlass/include"
+
+sources = []
+file_names = []  # Store file names for printing
+for subdir, _, files in os.walk(csrc_dir):
+    for file in files:
+        if file.endswith((".cpp", ".cu")):
+            sources.append(os.path.join(subdir, file))
+            file_names.append(file)
+
+# Print all detected source file names
+print(f"{PROGRAM_NAME}: Detected source files:")
+for file_name in file_names:
+    print(f"  - {file_name}")
+
 ext_modules = [
     CUDAExtension(
-        name="lightllm_kernel._C",
+        name=PROGRAM_NAME,
         sources=sources,
         extra_compile_args={
             "cxx": ["-O3"],
             "nvcc": [
+                "-DNDEBUG", 
                 "-O3",
                 "--use_fast_math",
                 "-gencode=arch=compute_90,code=sm_90",
                 "-gencode=arch=compute_90,code=compute_90",
+                '-gencode=arch=compute_90a, code=sm_90a',
             ],
         },
-        include_dirs=[str(this_dir / "include")],
+        include_dirs=[
+            os.path.join(repo_root, INCLUDE_DIR),
+            os.path.join(repo_root, CUTLASS_DIR),
+        ],
     )
 ]
 

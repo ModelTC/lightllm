@@ -1,43 +1,9 @@
 #include <torch/extension.h>
-#include "../include/ops_common.h"
+#include "ops_common.h"
 #include <pybind11/pybind11.h>
 
-void grouped_topk_cuda(
-        torch::Tensor& topk_weights,
-        torch::Tensor& correction_bias,
-        torch::Tensor& topk_indices,
-        torch::Tensor& group_indices,
-        torch::Tensor& gating_output,
-        int  num_expert_group,
-        int  topk_group,
-        int  topk,
-        bool renormalize,
-        std::string scoring_func,
-        torch::Tensor group_scores);
-
-
-torch::Tensor grouped_topk(
-        torch::Tensor topk_weights,
-        torch::Tensor correction_bias,
-        torch::Tensor topk_indices,
-        torch::Tensor group_indices,
-        torch::Tensor gating_output,
-        int64_t  num_expert_group,
-        int64_t  topk_group,
-        int64_t  topk,
-        bool     renormalize,
-        std::string scoring_func,
-        torch::Tensor group_scores) {
-
-    grouped_topk_cuda(topk_weights, correction_bias, topk_indices, group_indices,
-                      gating_output,
-                      static_cast<int>(num_expert_group),
-                      static_cast<int>(topk_group),
-                      static_cast<int>(topk),
-                      renormalize, scoring_func, group_scores);
-
-    return topk_weights;
-}
+namespace lightllm {
+namespace ops {
 
 PYBIND11_MODULE(_C, m) {
     m.def("grouped_topk", &grouped_topk,
@@ -53,4 +19,14 @@ PYBIND11_MODULE(_C, m) {
           py::arg("renormalize"),
           py::arg("scoring_func"),
           py::arg("group_scores") = torch::Tensor());
+    m.def("rmsnorm_align16_bf16", &rmsnorm_align16_bf16, "RMSNORM (CUDA)");
+    m.def("pre_tp_norm_bf16", &pre_tp_norm_bf16, "PRE TP NORM (CUDA)");
+    m.def("post_tp_norm_bf16", &post_tp_norm_bf16, "POST TP NORM (CUDA)");
+    m.def("per_token_quant_bf16_fp8", &per_token_quant_bf16_fp8, "PER TOKEN QUANT (CUDA)");
+    m.def("add_norm_quant_bf16_fp8", &add_norm_quant_bf16_fp8, "ADD NORM QUANT FUSED (CUDA)");
+    m.def("gelu_per_token_quant_bf16_fp8", &gelu_per_token_quant_bf16_fp8, "GELU QUANT FUSED (CUDA)");
+    m.def("cutlass_scaled_mm", &cutlass_scaled_mm, "CUTLASS SCALED MM (CUDA)");
 }
+
+} // namespace ops
+} // namespace lightllm

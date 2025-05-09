@@ -2,3 +2,67 @@
 #include <torch/extension.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <vector>
+#include <tuple>
+
+#include "utils.h"
+
+
+namespace lightllm {
+namespace ops {
+
+using namespace lightllm;
+
+Tensor pre_tp_norm_bf16(Tensor &input);
+
+Tensor post_tp_norm_bf16(
+    Tensor &input, const Tensor& weight,
+    const Tensor& tp_variance, const int embed_dim,
+    const fp32_t eps
+);
+
+Tensor rmsnorm_align16_bf16(
+    const Tensor &X, const Tensor &W,
+    const fp32_t eps
+);
+
+void per_token_quant_bf16_fp8(
+    Tensor& output,
+    const Tensor& input,
+    Tensor& scales
+);
+
+std::tuple<Tensor, Tensor> add_norm_quant_bf16_fp8(
+    Tensor& X, const Tensor &R, const Tensor &W,
+    const fp32_t eps
+);
+
+void gelu_per_token_quant_bf16_fp8(
+    Tensor& output,
+    const Tensor& input,
+    Tensor& scales
+);
+
+void cutlass_scaled_mm(
+    Tensor& c, Tensor const& a,
+    Tensor const& b, Tensor const& a_scales,
+    Tensor const& b_scales,
+    c10::optional<Tensor> const& bias,
+    c10::optional<Tensor> const& ls
+);
+
+Tensor grouped_topk(
+        Tensor topk_weights,
+        Tensor correction_bias,
+        Tensor topk_indices,
+        Tensor group_indices,
+        Tensor gating_output,
+        int64_t  num_expert_group,
+        int64_t  topk_group,
+        int64_t  topk,
+        bool     renormalize,
+        std::string scoring_func,
+        Tensor group_scores
+);
+
+} // namespace ops
+} // namespace lightllm
