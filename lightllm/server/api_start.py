@@ -115,6 +115,8 @@ def normal_or_p_d_start(args):
 
     # 检查GPU数量是否足够
     total_required_gpus = args.visual_dp * args.visual_tp
+    if args.visual_gpu_ids is None:
+        args.visual_gpu_ids = list(range(total_required_gpus))
     if len(args.visual_gpu_ids) < total_required_gpus:
         raise ValueError(
             f"Not enough GPUs specified. You need at least {total_required_gpus}, but got {len(args.visual_gpu_ids)}."
