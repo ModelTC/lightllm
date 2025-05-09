@@ -15,18 +15,39 @@ except ImportError:
             "directory (csrc/) found; please ensure you have run "
             "'cmake --install' or placed lightllm_kernel.ops.so on PYTHONPATH."
         )
+    
+    PROGRAM_NAME = "lightllm_kernel._C"
+    EXTENSION_BUILD_DIR = "build"
+    INCLUDE_DIR = "include"
+    CUTLASS_DIR = "cutlass/include"
 
-    sources = (
-        [str(p) for p in (csrc_dir / "moe").glob("*.cpp")]
-        + [str(p) for p in (csrc_dir / "moe").glob("*.cu")]
-        + [str(csrc_dir / "ops_bindings.cpp")]
-    )
+    sources = []
+    file_names = []  # Store file names for printing
+    for subdir, _, files in os.walk(csrc_dir):
+        for file in files:
+            if file.endswith((".cpp", ".cu")):
+                sources.append(os.path.join(subdir, file))
+                file_names.append(file)
+
+    # Print all detected source file names
+    print(f"{PROGRAM_NAME}: Detected source files:")
+    for file_name in file_names:
+        print(f"  - {file_name}")
 
     _C = load(
-        name="lightllm_kernel._C",
+        name=PROGRAM_NAME,
         sources=sources,
         verbose=True,
+        extra_include_paths=[
+            os.path.join(repo_root, INCLUDE_DIR),
+            os.path.join(repo_root, CUTLASS_DIR),
+        ],
+        build_directory=os.path.join(repo_root, EXTENSION_BUILD_DIR),
+        with_cuda=True,
         extra_cuda_cflags=[
+            "-DNDEBUG",
+            "-O3",
+            "-use_fast_math",
             # A100
             "-gencode=arch=compute_80,code=sm_80",
             "-gencode=arch=compute_80,code=compute_80",
@@ -36,9 +57,23 @@ except ImportError:
             # Hopper / H100 / H200
             "-gencode=arch=compute_90,code=sm_90",
             "-gencode=arch=compute_90,code=compute_90",
+            "-gencode=arch=compute_90a,code=sm_90a",
         ],
+        extra_cflags=["-O3"],
     )
 
 # 向外暴露 Python 端接口
-grouped_topk = _C.grouped_topk
-__all__ = ["grouped_topk"]
+from .fusion import pre_tp_norm_bf16, post_tp_norm_bf16, add_norm_quant_bf16_fp8, gelu_per_token_quant_bf16_fp8
+from .norm import rmsnorm_bf16
+from .quant import per_token_quant_bf16_fp8
+from .gemm import cutlass_scaled_mm_bias_ls
+
+__all__ = [
+    "rmsnorm_bf16",
+    "per_token_quant_bf16_fp8",
+    "pre_tp_norm_bf16",
+    "post_tp_norm_bf16",
+    "add_norm_quant_bf16_fp8",
+    "gelu_per_token_quant_bf16_fp8",
+    "cutlass_scaled_mm_bias_ls",
+]
