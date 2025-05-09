@@ -91,7 +91,7 @@ class CustomProcessGroup:
             return
 
         args = get_env_start_args()
-        if not args.disable_custom_allgather:
+        if args.disable_custom_allgather:
             return
         ranks = list([get_global_rank() - get_current_rank_in_dp() + i for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
