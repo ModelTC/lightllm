@@ -47,8 +47,6 @@ class VisionTransformer:
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.load_image_func = get_load_image_func(self.weight_dir_)
         self.max_batch_size = kvargs.get("max_batch_size", 1)
-        self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
-        self.graphs = {}
 
         self._init_datatype()
         self._init_config()
@@ -56,23 +54,8 @@ class VisionTransformer:
         self._init_quant()
         self._init_weights()
         self._init_infer_layer()
-        self._init_cudagraph()
         self._check_max_len_infer()
         return
-
-    @torch.no_grad()
-    def _init_cudagraph(self):
-        for batch_size in range(self.max_batch_size, 0, -1):
-            graph_obj = torch.cuda.CUDAGraph()
-            dummy_images = torch.randn(
-                (self.MAX_PATH_NUM * batch_size, 3, self.IMAGE_H, self.IMAGE_W), dtype=self.data_type
-            ).cuda()
-            # warmup
-            all_img_embeds = self.forward(dummy_images)
-            with torch.cuda.graph(graph_obj, pool=self.mempool):
-                all_img_embeds = self.forward(dummy_images)
-            self.graphs[batch_size] = (graph_obj, dummy_images, all_img_embeds)
-        logger.info(f"vit init cudagraph ok, max_batch_size {self.max_batch_size}")
 
     @final
     @torch.no_grad()
@@ -211,14 +194,7 @@ class VisionTransformer:
 
         imgs = torch.cat(img_tensors, dim=0)
         pixel_values = imgs.cuda().to(dtype=self.data_type)
-        batch_size = (pixel_values.shape[0] + self.MAX_PATH_NUM - 1) // self.MAX_PATH_NUM
-        if batch_size in self.graphs:
-            graph_obj, input_images, all_img_embeds = self.graphs[batch_size]
-            input_images[: pixel_values.shape[0]].copy_(pixel_values)
-            graph_obj.replay()
-            return all_img_embeds[: pixel_values.shape[0]], uuids, valid_ids
-        else:
-            all_img_embeds = self.forward(pixel_values)
+        all_img_embeds = self.forward(pixel_values)
         return all_img_embeds, uuids, valid_ids
 
     def cuda(self):
