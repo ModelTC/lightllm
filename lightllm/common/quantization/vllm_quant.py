@@ -74,6 +74,8 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         self.is_moe = False
         # PINGPONG_FP8_GEMM is per tensor quant way.
         self.use_pingpong_fp8_gemm = os.getenv("ENABLE_PINGPONG_FP8_GEMM", "0").upper() in ["ON", "TRUE", "1"]
+        # per token quant with better performance.
+        self.use_lightllm_kernels = os.getenv("ENABLE_LIGHTLLM_KERNELS", "0").upper() in ["ON", "TRUE", "1"]
 
         if self.use_pingpong_fp8_gemm:
             self.quantize = self.quantize_pingpong_fp8
@@ -121,7 +123,14 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def apply_scaled_mm_fp8(
         self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
     ):
-        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+        if self.use_lightllm_kernels:
+
+            from lightllm_kernel.ops import per_token_quant_bf16_fp8
+
+            x_q, x_scale = per_token_quant_bf16_fp8(input_tensor)
+        else:
+            x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+        
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
         if out is None:

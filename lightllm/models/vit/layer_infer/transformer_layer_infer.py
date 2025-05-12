@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.functional as F
 import torch.distributed as dist
@@ -17,6 +18,25 @@ from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_m
 
 class ViTTransformerLayerInfer:
     """ """
+    # 类变量缓存导入的算子
+    _lightllm_kernels = None
+    
+    @classmethod
+    def _init_kernels(cls):
+        if cls._lightllm_kernels is None:
+            cls._lightllm_kernels = {}
+            try:
+                from lightllm_kernel.ops import (
+                    rmsnorm_bf16,
+                    pre_tp_norm_bf16, post_tp_norm_bf16
+                )
+                cls._lightllm_kernels.update({
+                    'rmsnorm_bf16': rmsnorm_bf16,
+                    'pre_tp_norm_bf16': pre_tp_norm_bf16,
+                    'post_tp_norm_bf16': post_tp_norm_bf16,
+                })
+            except ImportError as e:
+                print(f"Warning: Failed to load lightllm_kernel.ops: {e}")
 
     def __init__(self, layer_num, network_config, mode=[]):
         self.tp_rank_ = get_current_rank_in_dp()
@@ -32,6 +52,9 @@ class ViTTransformerLayerInfer:
         self.network_config_ = network_config
         self.mode = mode
         self.layer_num_ = layer_num
+        self.use_lightllm_kernels = os.getenv("ENABLE_LIGHTLLM_KERNELS", "0").upper() in ["ON", "TRUE", "1"]
+        if self.use_lightllm_kernels:
+             self.__class__._init_kernels()  # 确保算子已初始化
         return
 
     def norm(self, input, weight):
@@ -43,6 +66,17 @@ class ViTTransformerLayerInfer:
         input = input * torch.rsqrt(variance + self.eps_)
         out = weight * input.to(input_dtype)
         out = out.reshape(input_shape)
+        return out
+
+    def tp_norm_optim(self, input, weight):
+        if self.tp_world_size_ == 1:
+            out =  self._lightllm_kernels['rmsnorm_bf16'](input, weight, self.eps_)
+        else:
+            tp_variance = self._lightllm_kernels['pre_tp_norm_bf16'](input)
+            dist.all_reduce(tp_variance, op=dist.ReduceOp.SUM, async_op=False)
+            out =  self._lightllm_kernels['post_tp_norm_bf16'](
+                input, weight, tp_variance, self.embed_dim_, self.eps_
+            )
         return out
 
     def tp_norm(self, input, weight):
@@ -89,8 +123,12 @@ class ViTTransformerLayerInfer:
             )
 
     def _qk_norm(self, q, k, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
-        q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
-        k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
+        if self.use_lightllm_kernels:
+            q_norm = self.tp_norm_optim(q, layer_weight.q_norm_weight_.weight)
+            k_norm = self.tp_norm_optim(k, layer_weight.k_norm_weight_.weight)
+        else:
+            q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
+            k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
         return q_norm, k_norm
 
     def _get_qkv(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:

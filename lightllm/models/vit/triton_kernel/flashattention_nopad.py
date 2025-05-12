@@ -175,6 +175,7 @@ try:
             v,
             None,
             None,  # k_new, v_new
+            None,
             o,  # out
             None,
             None,
@@ -188,6 +189,7 @@ try:
             None,  # page_table, kv_batch_idx, leftpad_k,
             None,
             None,  # rotary_cos/sin
+            None,
             None,
             None,
             None,
