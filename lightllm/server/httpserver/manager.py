@@ -161,6 +161,7 @@ class HttpServerManager:
             if multimodal_params is not None:
                 for img in multimodal_params.images:
                     if img.uuid is not None:
+                        logger.info(f"Releasing id {img.uuid}")
                         self.cache_client.root.release(img.uuid)
                         # 将 uuid 等 赋值为 None, 防止因为abort等异常情况造成重复释放异常
                         img.uuid = None
@@ -593,8 +594,8 @@ class HttpServerManager:
             release_req_status: List[ReqStatus] = []
             for req_status in self.req_id_to_out_inf.values():
                 if req_status.can_release():
+                    logger.info(f"req_status {req_status.group_req_objs.group_req_id} can release")
                     release_req_status.append(req_status)
-
             for req_status in release_req_status:
                 self.req_id_to_out_inf.pop(req_status.group_req_objs.group_req_id, None)
                 for req in req_status.group_req_objs.shm_req_objs:
