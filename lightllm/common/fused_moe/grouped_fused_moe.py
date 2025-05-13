@@ -218,6 +218,70 @@ def moe_align1(
 
 
 @triton.jit
+def moe_align2_kernel(
+    experts_token_num_ptr,  # [expert_num,]
+    mblocks_to_expert_id,  # [max_num_m_blocks,]
+    expert_num,
+    max_num_m_blocks,
+    BLOCK_M: tl.constexpr,
+    BLOCK_EXPERT: tl.constexpr,
+):
+
+    expert_id = tl.program_id(axis=0)
+    off_expert = tl.arange(0, BLOCK_EXPERT)
+    expert_to_token_num = tl.load(experts_token_num_ptr + off_expert, mask=off_expert < expert_num, other=0)
+    expert_to_block_num = tl.cdiv(expert_to_token_num, BLOCK_M)
+    block_starts = tl.cumsum(expert_to_block_num) - expert_to_block_num
+    block_start = tl.sum(tl.where(off_expert == expert_id, block_starts, 0))
+
+    cur_expert_token_num = tl.load(experts_token_num_ptr + expert_id)
+    cur_block_num = tl.cdiv(cur_expert_token_num, BLOCK_M)
+
+    block_off = tl.arange(0, 128)
+    for start_loc in range(0, cur_block_num, 128):
+        tl.store(
+            mblocks_to_expert_id + block_start + start_loc + block_off,
+            expert_id,
+            mask=start_loc + block_off < cur_block_num,
+        )
+
+    if expert_id == expert_num - 1:
+        for extra_fill_start in range(block_start + cur_block_num, max_num_m_blocks, 128):
+            tl.store(
+                mblocks_to_expert_id + extra_fill_start + block_off,
+                -1,
+                mask=extra_fill_start + block_off < max_num_m_blocks,
+            )
+    return
+
+
+def moe_align2(topk_ids: torch.Tensor, exports_token_num: torch.Tensor, block_m: int):
+    """
+    topk_ids is
+    exports_token_num is tensor shape [expert_num] , will get expert need handle token num.
+    out tensor is a tensor that contain block schduel infos tensor.
+    """
+    max_num_tokens_padded = topk_ids.numel() + exports_token_num.shape[0] * (block_m - 1)
+    max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_m)
+    mblocks_to_expert_id = torch.empty((max_num_m_blocks,), dtype=torch.int32, device="cuda")
+    expert_num = exports_token_num.shape[0]
+
+    grid = (expert_num,)
+    moe_align2_kernel[grid](
+        exports_token_num,
+        mblocks_to_expert_id,
+        expert_num,
+        max_num_m_blocks,
+        BLOCK_M=block_m,
+        BLOCK_EXPERT=triton.next_power_of_2(expert_num),
+        num_warps=4,
+        num_stages=1,
+    )
+
+    return mblocks_to_expert_id
+
+
+@triton.jit
 def grouped_matmul_kernel(
     expert_token_limit,  # int,
     k,  # int

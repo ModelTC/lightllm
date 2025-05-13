@@ -1,7 +1,8 @@
 import torch
 import time
 import pytest
-from lightllm.common.fused_moe.grouped_fused_moe import moe_align, moe_align1, grouped_matmul
+import triton
+from lightllm.common.fused_moe.grouped_fused_moe import moe_align, moe_align1, moe_align2, grouped_matmul
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -66,6 +67,70 @@ def test_moe_align1():
     assert torch.allclose(true_experts_weights, experts_weights)
     assert torch.equal(experts_token_num, true_experts_token_num)
     assert torch.equal(experts_info, true_experts_info)
+
+
+def test_moe_align2():
+
+    experts_token_num = torch.zeros((4,), dtype=torch.int32, device="cuda")
+    experts_token_num[0] = 8
+    experts_token_num[1] = 0
+    experts_token_num[2] = 60
+    experts_token_num[3] = 16
+
+    topk_ids = torch.zeros((100, 6), dtype=torch.int32, device="cuda")
+    blocks_to_expert_id = moe_align2(topk_ids, experts_token_num, block_m=16)
+    assert blocks_to_expert_id.shape[0] == triton.cdiv(topk_ids.numel() + 4 * (16 - 1), 16)
+    assert torch.allclose(
+        blocks_to_expert_id,
+        torch.tensor(
+            [
+                0,
+                2,
+                2,
+                2,
+                2,
+                3,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+            ],
+            device="cuda",
+            dtype=torch.int32,
+        ),
+    )
 
 
 def test_grouped_matmul():
