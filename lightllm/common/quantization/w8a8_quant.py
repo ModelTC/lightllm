@@ -5,14 +5,13 @@ from .registry import QUANTMETHODS
 import torch.nn.functional as F
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel import w8a8_block_fp8_matmul
-from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops
-from lightllm.utils.sgl_utils import HAS_SGL_KERNEL, sgl_ops
+from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops, cutlass_scaled_mm
 
 
 class BaseQuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()
-        assert HAS_VLLM and HAS_SGL_KERNEL, "vllm and sgl_kernel are not installed, you can't use quant api of them."
+        assert HAS_VLLM, "vllm are not installed, you can't use quant api of them."
         from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
         self.cache_manager = g_cache_manager
@@ -59,7 +58,7 @@ class w8a8QuantizationMethod(BaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        torch.ops._C.cutlass_scaled_mm(out, x_q, qweight, x_scale, weight_scale, bias)
+        cutlass_scaled_mm(out, x_q, qweight, x_scale, weight_scale, bias)
         return out
 
 
@@ -127,7 +126,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        torch.ops._C.cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
+        cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
         return out
 
     def apply_pingpong_fp8(
@@ -195,5 +194,5 @@ class FP8w8a8B128QuantizationMethod(BaseQuantizationMethod):
             )
         else:
             input_scale = input_scale.t().contiguous().t()
-            torch.ops._C.cutlass_scaled_mm(out, qinput_tensor, qweight, input_scale, weight_scale, bias)
+            cutlass_scaled_mm(out, qinput_tensor, qweight, input_scale, weight_scale, bias)
         return out

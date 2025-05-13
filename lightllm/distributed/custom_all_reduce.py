@@ -33,7 +33,7 @@ from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_m
 
 logger = init_logger(__name__)
 
-use_vllm_custom_allreduce = os.getenv("LIGHTLLM_USE_VLLM_CUSTOM_ALLREDUCE", "1").upper() in ["ON", "TRUE", "1"]
+use_vllm_custom_allreduce = os.getenv("LIGHTLLM_USE_VLLM_CUSTOM_ALLREDUCE", "0").upper() in ["ON", "TRUE", "1"]
 if use_vllm_custom_allreduce:
     # Use vllm custom allreduce
     ops = vllm_ops
