@@ -33,9 +33,6 @@ from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_m
 
 if light_ops is not None:
     light_ops.meta_size()
-    custom_ar = True
-else:
-    custom_ar = False
 
 logger = init_logger(__name__)
 
@@ -65,7 +62,7 @@ class CustomAllgather:
         self._IS_CAPTURING = False
         self.disabled = True
 
-        if not custom_ar:
+        if light_ops is None:
             # disable because of missing custom allgather library
             # e.g. in a non-cuda environment
             return

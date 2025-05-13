@@ -41,8 +41,8 @@ else:
     # Use sgl custom allreduce
     ops = sgl_allreduce_ops
 
-ops.meta_size()
-custom_ar = True
+if ops is not None:
+    ops.meta_size()
 
 
 def is_weak_contiguous(inp: torch.Tensor):
@@ -70,7 +70,7 @@ class CustomAllreduce:
         self._IS_CAPTURING = False
         self.disabled = True
 
-        if not custom_ar:
+        if ops is None:
             # disable because of missing custom allreduce library
             # e.g. in a non-cuda environment
             return
