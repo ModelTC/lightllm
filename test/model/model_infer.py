@@ -362,7 +362,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         total_token_num,
                         b_ready_cache_len,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_prefill_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_prefill_{model_kvargs['rank_id']}",
                 )
             else:
                 torch_profile(

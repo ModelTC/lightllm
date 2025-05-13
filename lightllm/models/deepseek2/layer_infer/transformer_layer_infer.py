@@ -29,14 +29,9 @@ from lightllm.distributed.communication_op import all_gather, all_gather_into_te
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.utils.dist_utils import get_global_world_size
 from lightllm.utils.log_utils import init_logger
+from lightllm.utils.sgl_utils import flash_attn_varlen_func, flash_attn_with_kvcache, merge_state_v2
 
 logger = init_logger(__name__)
-
-try:
-    from sgl_kernel.flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
-    from sgl_kernel import merge_state_v2
-except:
-    logger.warning("sgl_kernel is not installed, or the installed version does not support fa3!")
 
 
 class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
@@ -311,6 +306,7 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         layer_weight: Deepseek2TransformerLayerWeight,
         out=None,
     ) -> torch.Tensor:
+        assert flash_attn_varlen_func is not None, "fa3 is not available. It requires sm90 and above."
         k_nope, k_rope, v = self._decompress_kv(
             kv,
             infer_state,

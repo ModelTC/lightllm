@@ -29,10 +29,7 @@ from lightllm.utils.envs_utils import get_env_start_args
 
 logger = init_logger(__name__)
 
-try:
-    from sgl_kernel.flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
-except:
-    logger.warning("sgl_kernel is not installed, or the installed version does not support fa3!")
+from lightllm.utils.sgl_utils import flash_attn_with_kvcache
 
 
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
@@ -252,6 +249,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return o_tensor
 
     def _context_attention_flashattention(self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None):
+        assert flash_attn_with_kvcache is not None, "fa3 is not available. It requires sm90 and above."
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :].reshape(
             -1, 1, self.tp_k_head_num_, self.head_dim_
         )
