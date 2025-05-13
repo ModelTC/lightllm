@@ -36,6 +36,7 @@ from lightllm.utils.dist_utils import (
 )
 from lightllm.utils.device_utils import get_device_sm_count
 from lightllm.utils.sgl_utils import HAS_SGL_KERNEL
+from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL
 from contextlib import nullcontext, contextmanager
 
 logger = init_logger(__name__)
@@ -55,9 +56,6 @@ try:
 except:
     HAS_DEEPEP = False
     logger.info("deep_ep is not installed, you can't use the api of it.")
-
-# TODO: lightllm_kernel release.
-HAS_LIGHTLLM_KERNEL = False
 
 
 class CustomProcessGroup:

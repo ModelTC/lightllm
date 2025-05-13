@@ -377,7 +377,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         b_ready_cache_len=b_ready_cache_len,
                         is_prefill=True,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_prefill_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_prefill_{model_kvargs['rank_id']}",
                 )
         except Exception as e:
             print(str(e))
@@ -417,7 +417,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         b_seq_len,
                         total_token_num,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_decode_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_decode_{model_kvargs['rank_id']}",
                 )
         else:
             logits = decode(
@@ -442,7 +442,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         b_seq_len,
                         total_token_num,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_decode_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_decode_{model_kvargs['rank_id']}",
                 )
 
         prob_out = torch.softmax(logits, dim=-1)
