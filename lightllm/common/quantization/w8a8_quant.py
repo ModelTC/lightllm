@@ -5,18 +5,14 @@ from .registry import QUANTMETHODS
 import torch.nn.functional as F
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel import w8a8_block_fp8_matmul
-
-try:
-    HAS_VLLM = True
-    from lightllm.common.vllm_kernel import _custom_ops as ops
-except:
-    HAS_VLLM = False
+from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops
+from lightllm.utils.sgl_utils import HAS_SGL_KERNEL, sgl_ops
 
 
-class vLLMBaseQuantizationMethod(QuantizationMethod):
+class BaseQuantizationMethod(QuantizationMethod):
     def __init__(self):
         super().__init__()
-        assert HAS_VLLM, "vllm is not installed, you can't use quant api of it"
+        assert HAS_VLLM and HAS_SGL_KERNEL, "vllm and sgl_kernel are not installed, you can't use quant api of them."
         from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
         self.cache_manager = g_cache_manager
@@ -30,8 +26,8 @@ class vLLMBaseQuantizationMethod(QuantizationMethod):
         pass
 
 
-@QUANTMETHODS.register(["vllm-w8a8"])
-class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
+@QUANTMETHODS.register(["vllm-w8a8", "w8a8"])
+class w8a8QuantizationMethod(BaseQuantizationMethod):
     def __init__(self):
         super().__init__()
 
@@ -53,7 +49,7 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         else:
             raise ValueError("vllm-quant Weights must be a tuple of length 2 or 3.")
 
-        x_q, x_scale, x_zp = ops.scaled_int8_quant(input_tensor, scale=input_scale, azp=None, symmetric=True)
+        x_q, x_scale, x_zp = vllm_ops.scaled_int8_quant(input_tensor, scale=input_scale, azp=None, symmetric=True)
         m = input_tensor.shape[0]
         n = qweight.shape[1]
         if out is None:
@@ -67,8 +63,8 @@ class vLLMw8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         return out
 
 
-@QUANTMETHODS.register(["vllm-fp8w8a8"])
-class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
+@QUANTMETHODS.register(["vllm-fp8w8a8", "fp8w8a8"])
+class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.is_moe = False
@@ -88,7 +84,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def quantize_scaled_mm_fp8(self, weight: torch.Tensor):
         if self.is_moe:
             return self.quantize_moe(weight)
-        qweight, weight_scale = ops.scaled_fp8_quant(
+        qweight, weight_scale = vllm_ops.scaled_fp8_quant(
             weight.contiguous().cuda(self.device_id_), scale=None, use_per_token_if_dynamic=True
         )
         return qweight.transpose(0, 1), weight_scale
@@ -96,7 +92,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def quantize_pingpong_fp8(self, weight: torch.Tensor):
         if self.is_moe:
             return self.quantize_moe(weight)
-        qweight, weight_scale = ops.scaled_fp8_quant(
+        qweight, weight_scale = vllm_ops.scaled_fp8_quant(
             weight.contiguous().cuda(), scale=None, use_per_token_if_dynamic=False
         )
         return qweight.transpose(0, 1), weight_scale
@@ -107,7 +103,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         weight_scales = []
         qweights = torch.empty_like(weight, dtype=torch.float8_e4m3fn).cuda(self.device_id_)
         for i in range(num_experts):
-            qweight, weight_scale = ops.scaled_fp8_quant(
+            qweight, weight_scale = vllm_ops.scaled_fp8_quant(
                 weight[i].contiguous().cuda(self.device_id_), scale=None, use_per_token_if_dynamic=False
             )
             qweights[i] = qweight
@@ -121,7 +117,7 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def apply_scaled_mm_fp8(
         self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
     ):
-        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+        x_q, x_scale = vllm_ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
         if out is None:
@@ -137,7 +133,9 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
     def apply_pingpong_fp8(
         self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
     ):
-        x_q, x_scale = ops.scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=False)
+        x_q, x_scale = vllm_ops.scaled_fp8_quant(
+            input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=False
+        )
         assert bias is None
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
@@ -154,8 +152,8 @@ class vLLMFP8w8a8QuantizationMethod(vLLMBaseQuantizationMethod):
         return cutlass_scaled_mm(x_q, weights[0], x_scale, weights[1], out)
 
 
-@QUANTMETHODS.register(["vllm-fp8w8a8-b128"])
-class vLLMFP8w8a8B128QuantizationMethod(vLLMBaseQuantizationMethod):
+@QUANTMETHODS.register(["vllm-fp8w8a8-b128, fp8w8a8-b128"])
+class FP8w8a8B128QuantizationMethod(BaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.block_size = 128

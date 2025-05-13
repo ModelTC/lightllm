@@ -30,6 +30,7 @@ def test_model_inference(args):
             "world_size": args.tp,
             "dp_size": dp_size,
             "weight_dir": args.model_dir,
+            "quant_type": args.quant_type,
             "load_way": "HF",
             "max_total_token_num": args.max_total_token_num,
             "graph_max_len_in_batch": args.max_req_total_len,
