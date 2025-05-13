@@ -249,7 +249,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return o_tensor
 
     def _context_attention_flashattention(self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None):
-        assert flash_attn_with_kvcache is not None, "fa3 is not available. It requires sm90 and above."
         cache_k = infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :].reshape(
             -1, 1, self.tp_k_head_num_, self.head_dim_
         )

@@ -306,7 +306,6 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
         layer_weight: Deepseek2TransformerLayerWeight,
         out=None,
     ) -> torch.Tensor:
-        assert flash_attn_varlen_func is not None, "fa3 is not available. It requires sm90 and above."
         k_nope, k_rope, v = self._decompress_kv(
             kv,
             infer_state,
