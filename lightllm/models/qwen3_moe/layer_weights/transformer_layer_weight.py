@@ -47,14 +47,13 @@ class Qwen3MOETransformerLayerWeight(Qwen3TransformerLayerWeight):
         self._ffn_norm_bias_name = None
 
     def load_hf_weights(self, weights):
-        super().load_hf_weights(weights)
         kv_b_quant_method = self.quant_cfg.get_quant_method(self.layer_num_, "kv_b_proj")
         if self.quant_cfg.quantized_weight:
             _k_scale_weight_name = self._k_weight_name.replace("weight", kv_b_quant_method.weight_scale_suffix)
             self._repeat_weight(_k_scale_weight_name, weights)
             _v_scale_weight_name = self._v_weight_name.replace("weight", kv_b_quant_method.weight_scale_suffix)
             self._repeat_weight(_v_scale_weight_name, weights)
-        return
+        return super().load_hf_weights(weights)
 
     def _init_weight(self):
         self._init_qkv()
