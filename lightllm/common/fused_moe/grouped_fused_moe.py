@@ -462,9 +462,11 @@ def grouped_matmul(
     mul_routed_weight: bool,
     use_fp8_w8a8: bool,
     alloc_tensor_func=torch.empty,
+    reused_mblock_infos=None,
     **run_config,
 ):
     """
+    token_num_mul_topk_num is int equal token_num * topk_num,
     token_inputs is tensor shape [token_num, hidden_dim],
     token_input_scale is tensor shape [1,], when use_fp8_w8a8 is False, it must be None
     expert_to_token_num is tensor shape [expert_num],
@@ -473,7 +475,6 @@ def grouped_matmul(
     expert_to_weights_scale is tensor shape [expert_num] or
     [expert_num, out_dim // block_size_, hidden_dim // block_size_k],
     when use_fp8_w8a8 is False, it must be None
-    expert_token_limit use to limit handles token per expert.
     out is tensor shape [token_num * topk_num, out_dim]
     """
     compute_type = tl.bfloat16 if out.dtype == torch.bfloat16 else tl.float16
@@ -528,7 +529,16 @@ def grouped_matmul(
             per_token_group_quant_fp8(token_inputs, block_size_k, qinput_tensor, input_scale)
             token_inputs, token_input_scale = qinput_tensor, input_scale
 
-    mblocks_to_expert_id, mblocks_to_m_index = moe_align2(token_num_mul_topk_num, expert_to_token_num, BLOCK_SIZE_M)
+    if reused_mblock_infos is None:
+        mblocks_to_expert_id, mblocks_to_m_index = moe_align2(token_num_mul_topk_num, expert_to_token_num, BLOCK_SIZE_M)
+    else:
+        # when up group gemm and down group gemm use same BLOCK_SIZE_M,
+        # can reuse (mblocks_to_expert_id, mblocks_to_m_index) created by moe_align2 kernel.
+        mblocks_to_expert_id, mblocks_to_m_index, reused_block_size_m = reused_mblock_infos
+        if reused_block_size_m != BLOCK_SIZE_M:
+            mblocks_to_expert_id, mblocks_to_m_index = moe_align2(
+                token_num_mul_topk_num, expert_to_token_num, BLOCK_SIZE_M
+            )
 
     block_num = triton.cdiv(n, BLOCK_SIZE_N) * mblocks_to_expert_id.shape[0]
 
@@ -584,7 +594,7 @@ def grouped_matmul(
         num_warps=num_warps,
         num_stages=num_stages,
     )
-    return
+    return (mblocks_to_expert_id, mblocks_to_m_index, BLOCK_SIZE_M)
 
 
 def fused_experts_impl(
@@ -649,7 +659,7 @@ def fused_experts_impl(
         expert_to_token_num = torch.empty((E,), dtype=torch.int32, device="cuda")
         moe_align1(expert_to_tokens, curr_topk_weights, expert_to_weights, expert_to_token_num, topk=topk_num)
 
-        grouped_matmul(
+        reused_mblock_infos = grouped_matmul(
             curr_topk_ids.numel(),
             curr_hidden_states,
             a1_scale,
@@ -682,6 +692,7 @@ def fused_experts_impl(
             mul_routed_weight=True,
             use_fp8_w8a8=use_fp8_w8a8,
             alloc_tensor_func=alloc_tensor_func,
+            reused_mblock_infos=reused_mblock_infos,
             **run_config,
         )
 
