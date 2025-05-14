@@ -1,0 +1,972 @@
+INFO 06-04 15:32:49 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-04 15:33:00 __init__.py:190] Automatically detected platform cuda.
+WARNING 06-04 15:33:01 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+Failed to import _flash_attn_forward from hopper.flash_attn_interface.
+INFO 06-04 15:33:02 [api_start.py:81] zmq mode head: ipc:///tmp/_8111_0_
+INFO 06-04 15:33:02 [api_start.py:83] use tgi api: False
+INFO 06-04 15:33:02 [api_start.py:186] alloced ports: [10109, 10217, 10202, 10136, 10291, 10265, 10245, 10088, 10147, 10268]
+INFO 06-04 15:33:02 [api_start.py:227] all start args:Namespace(run_mode='normal', host='127.0.0.1', port=8019, httpserver_workers=1, zmq_mode='ipc:///tmp/_8111_0_', pd_master_ip='0.0.0.0', pd_master_port=1212, pd_decode_rpyc_port=42000, config_server_host=None, config_server_port=None, model_name='default_model_name', model_dir='/dev/shm/Qwen3-30B-A3B-FP8/', tokenizer_mode='fast', load_way='HF', max_total_token_num=None, mem_fraction=0.9, batch_max_tokens=8448, eos_id=[151645], tool_call_parser=None, running_max_req_size=1000, nnodes=1, node_rank=0, multinode_httpmanager_port=12345, multinode_router_gloo_port=20001, tp=2, dp=1, max_req_total_len=16384, nccl_host='10.120.114.75', nccl_port=8111, use_config_server_to_init_nccl=False, mode=[], trust_remote_code=False, disable_log_stats=False, log_stats_interval=10, router_token_ratio=0.0, router_max_new_token_len=1024, router_max_wait_tokens=6, disable_aggressive_schedule=False, use_dynamic_prompt_cache=False, disable_dynamic_prompt_cache=False, chunked_prefill_size=4096, disable_chunked_prefill=False, diverse_mode=False, token_healing_mode=False, output_constraint_mode='none', first_token_constraint_mode=False, enable_multimodal=False, enable_multimodal_audio=False, enable_mps=False, disable_custom_allreduce=False, enable_custom_allgather=False, enable_tpsp_mix_mode=False, enable_prefill_microbatch_overlap=False, enable_decode_microbatch_overlap=False, enable_flashinfer_prefill=False, enable_flashinfer_decode=False, enable_fa3=False, cache_capacity=200, cache_reserved_ratio=0.5, data_type='bfloat16', return_all_prompt_logprobs=False, use_reward_model=False, long_truncation_mode=None, use_tgi_api=False, health_monitor=False, metric_gateway=None, job_name='lightllm', grouping_key=[], push_interval=10, visual_infer_batch_size=1, visual_gpu_ids=[0], visual_tp=1, visual_dp=1, visual_nccl_ports=[29500], enable_monitor_auth=False, disable_cudagraph=False, graph_max_batch_size=16, graph_max_len_in_batch=16384, quant_type='none', quant_cfg=None, vit_quant_type='none', vit_quant_cfg=None, sampling_backend='triton', ep_redundancy_expert_config_path=None, auto_update_redundancy_expert=False, router_port=10109, detokenization_port=10217, detokenization_pub_port=10202, visual_port=10136, audio_port=10291, cache_port=10265, metric_port=10245, pd_node_infer_rpyc_ports=[10147, 10268], pd_node_id=128841825350490904145884865521760670931, pd_p_allowed_port_min=20000, pd_p_allowed_port_max=30000)
+INFO 06-04 15:33:05 [start_utils.py:37] init func start_metric_manager : init ok
+INFO 06-04 15:33:09 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-04 15:33:16 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-04 15:33:17 __init__.py:190] Automatically detected platform cuda.
+INFO 06-04 15:33:17 __init__.py:190] Automatically detected platform cuda.
+WARNING 06-04 15:33:18 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-04 15:33:18 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+INFO 06-04 15:33:19 [manager.py:41] pub_to_httpserver sendhwm 1000
+INFO 06-04 15:33:19 [shm_req_manager.py:59] create lock shm 8111_0_req_shm_total
+INFO 06-04 15:33:19 [atomic_array_lock.py:29] create lock shm 8111_0_array_reqs_lock
+INFO 06-04 15:33:19 [atomic_lock.py:26] create lock shm 8111_0_shm_reqs_manager_lock
+INFO 06-04 15:33:19 [shared_arr.py:17] create shm 8111_0_mem_manger_can_use_token_num_0
+INFO 06-04 15:33:19 [shared_arr.py:17] create shm 8111_0_shared_token_load
+INFO 06-04 15:33:19 [shared_arr.py:17] create shm 8111_0_shared_token_load_ext_infos
+INFO 06-04 15:33:19 [shm_req_manager.py:62] link lock shm 8111_0_req_shm_total
+INFO 06-04 15:33:19 [atomic_array_lock.py:32] link lock shm 8111_0_array_reqs_lock
+INFO 06-04 15:33:19 [atomic_lock.py:29] link lock shm 8111_0_shm_reqs_manager_lock
+INFO 06-04 15:33:22 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-04 15:33:31 __init__.py:190] Automatically detected platform cuda.
+WARNING 06-04 15:33:32 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+INFO 06-04 15:33:33 [model_rpc.py:64] Initialized RPC server for rank 0.
+INFO 06-04 15:33:37 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-04 15:33:45 __init__.py:190] Automatically detected platform cuda.
+WARNING 06-04 15:33:47 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+INFO 06-04 15:33:47 [model_rpc.py:64] Initialized RPC server for rank 1.
+INFO 06-04 15:33:47 [shm_req_manager.py:62] link lock shm 8111_0_req_shm_total
+INFO 06-04 15:33:47 [shm_req_manager.py:62] link lock shm 8111_0_req_shm_total
+INFO 06-04 15:33:47 [atomic_array_lock.py:32] link lock shm 8111_0_array_reqs_lock
+INFO 06-04 15:33:47 [atomic_array_lock.py:32] link lock shm 8111_0_array_reqs_lock
+INFO 06-04 15:33:47 [atomic_lock.py:29] link lock shm 8111_0_shm_reqs_manager_lock
+INFO 06-04 15:33:47 [model_rpc.py:162] use ChunkedPrefillBackend
+INFO 06-04 15:33:47 [atomic_lock.py:29] link lock shm 8111_0_shm_reqs_manager_lock
+INFO 06-04 15:33:47 [model_rpc.py:162] use ChunkedPrefillBackend
+INFO 06-04 15:33:57 [communication_op.py:79] Enable Custom ALLReduce. You can disable it by settting --disable_custom_allreduce.
+INFO 06-04 15:33:57 [communication_op.py:79] Enable Custom ALLReduce. You can disable it by settting --disable_custom_allreduce.
+INFO 06-04 15:33:57 [shared_arr.py:20] link shm 8111_0_shared_token_load
+INFO 06-04 15:33:57 [shared_arr.py:20] link shm 8111_0_shared_token_load
+INFO 06-04 15:33:57 [shared_arr.py:20] link shm 8111_0_shared_token_load_ext_infos
+INFO 06-04 15:33:57 [shared_arr.py:20] link shm 8111_0_shared_token_load_ext_infos
+INFO 06-04 15:33:57 [__init__.py:45] select fp8w8a8-b128 quant way: deepgemm-fp8w8a8-b128
+INFO 06-04 15:33:57 [basemodel.py:126] Initial quantization. The default quantization method is deepgemm-fp8w8a8-b128
+INFO 06-04 15:33:57 [__init__.py:45] select fp8w8a8-b128 quant way: deepgemm-fp8w8a8-b128
+INFO 06-04 15:33:57 [basemodel.py:126] Initial quantization. The default quantization method is deepgemm-fp8w8a8-b128
+INFO 06-04 15:34:07 [mem_utils.py:11] mode setting params: []
+INFO 06-04 15:34:07 [mem_utils.py:25] Model kv cache using mode normal
+INFO 06-04 15:34:07 [mem_utils.py:11] mode setting params: []
+INFO 06-04 15:34:07 [mem_utils.py:25] Model kv cache using mode normal
+INFO 06-04 15:34:07 [mem_manager.py:68] 109.7164306640625 GB space is available after load the model weight
+INFO 06-04 15:34:07 [mem_manager.py:68] 0.046875 MB is the size of one token kv cache
+INFO 06-04 15:34:07 [mem_manager.py:68] 2396792 is the profiled max_total_token_num with the mem_fraction 0.9
+INFO 06-04 15:34:07 [mem_manager.py:68] 
+INFO 06-04 15:34:07 [mem_manager.py:68] 109.7164306640625 GB space is available after load the model weight
+INFO 06-04 15:34:07 [mem_manager.py:68] 0.046875 MB is the size of one token kv cache
+INFO 06-04 15:34:07 [mem_manager.py:68] 2396792 is the profiled max_total_token_num with the mem_fraction 0.9
+INFO 06-04 15:34:07 [mem_manager.py:68] 
+INFO 06-04 15:34:07 [shared_arr.py:20] link shm 8111_0_mem_manger_can_use_token_num_0
+INFO 06-04 15:34:07 [shared_arr.py:17] create shm 8111_0_mem_manger_can_use_token_num_1
+INFO 06-04 15:34:07 [cuda_graph.py:130] Begin capture cudagraph, use the --disable_cudagraph to disable it.
+INFO 06-04 15:34:07 [cuda_graph.py:130] Begin capture cudagraph, use the --disable_cudagraph to disable it.
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/grouped_moe_gemm_kernel/{K=2048,N=768,expert_num=128,mul_routed_weight=false,out_dtype=torch.bfloat16,topk_num=8,use_fp8_w8a8=true}_NVIDIA_H200.json kernel name grouped_moe_gemm_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/grouped_moe_gemm_kernel/{K=2048,N=768,expert_num=128,mul_routed_weight=false,out_dtype=torch.bfloat16,topk_num=8,use_fp8_w8a8=true}_NVIDIA_H200.json kernel name grouped_moe_gemm_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/moe_silu_and_mul_kernel/{N=384,out_dtype=torch.bfloat16}_NVIDIA_H200.json kernel name moe_silu_and_mul_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/moe_silu_and_mul_kernel/{N=384,out_dtype=torch.bfloat16}_NVIDIA_H200.json kernel name moe_silu_and_mul_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/grouped_moe_gemm_kernel/{K=384,N=2048,expert_num=128,mul_routed_weight=true,out_dtype=torch.bfloat16,topk_num=1,use_fp8_w8a8=true}_NVIDIA_H200.json kernel name grouped_moe_gemm_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/grouped_moe_gemm_kernel/{K=384,N=2048,expert_num=128,mul_routed_weight=true,out_dtype=torch.bfloat16,topk_num=1,use_fp8_w8a8=true}_NVIDIA_H200.json kernel name grouped_moe_gemm_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/moe_sum_reduce_kernel/{hidden_dim=2048,out_dtype=torch.bfloat16,topk_num=8}_NVIDIA_H200.json kernel name moe_sum_reduce_kernel use default kernel setting
+WARNING 06-04 15:34:26 [kernel_config.py:40] can not find config_path /mtc/wzj/lightllm/lightllm/common/all_kernel_configs/moe_sum_reduce_kernel/{hidden_dim=2048,out_dtype=torch.bfloat16,topk_num=8}_NVIDIA_H200.json kernel name moe_sum_reduce_kernel use default kernel setting
+INFO 06-04 15:34:27 [cache_tensor_manager.py:71] pid 1037645 cuda graph alloc graph out mem (16, 151936) torch.float32 2430976 2430976
+INFO 06-04 15:34:27 [cache_tensor_manager.py:73] cuda graph managed_total_tensor_bytes: 9723904
+INFO 06-04 15:34:27 [cache_tensor_manager.py:71] pid 1037920 cuda graph alloc graph out mem (16, 151936) torch.float32 2430976 2430976
+INFO 06-04 15:34:27 [cache_tensor_manager.py:73] cuda graph managed_total_tensor_bytes: 9723904
+INFO 06-04 15:34:36 [cuda_graph.py:184] Capture cudagraph success, batch_size <=16 and max_len_in_batch <= 16384 will infer with cudagraph.
+INFO 06-04 15:34:36 [cuda_graph.py:184] Capture cudagraph success, batch_size <=16 and max_len_in_batch <= 16384 will infer with cudagraph.
+INFO 06-04 15:34:36 [basemodel.py:585] begin check max_len infer
+INFO 06-04 15:34:36 [basemodel.py:585] begin check max_len infer
+INFO 06-04 15:34:53 [basemodel.py:611] check max_len 8448 infer ok
+INFO 06-04 15:34:53 [basemodel.py:611] check max_len 8448 infer ok
+INFO 06-04 15:34:53 [shared_arr.py:17] create shm 8111_0_refed_tokens_num_0
+INFO 06-04 15:34:53 [shared_arr.py:17] create shm 8111_0_refed_tokens_num_1
+INFO 06-04 15:34:53 [shared_arr.py:17] create shm 8111_0_tree_total_tokens_num_0
+INFO 06-04 15:34:53 [shared_arr.py:17] create shm 8111_0_tree_total_tokens_num_1
+INFO 06-04 15:34:53 [base_backend.py:132] loaded model class <class 'lightllm.models.qwen3_moe.model.Qwen3MOEModel'>
+INFO 06-04 15:34:53 [base_backend.py:132] loaded model class <class 'lightllm.models.qwen3_moe.model.Qwen3MOEModel'>
+INFO 06-04 15:34:53 [shared_arr.py:20] link shm 8111_0_refed_tokens_num_0
+INFO 06-04 15:34:53 [shared_arr.py:20] link shm 8111_0_tree_total_tokens_num_0
+INFO 06-04 15:34:53 [manager.py:193] use req queue ChunkedPrefillQueue
+INFO 06-04 15:34:53 [start_utils.py:37] init func start_router_process : init ok
+INFO 06-04 15:34:53 [start_utils.py:37] init func start_detokenization_process : init ok
+INFO 06-04 15:34:53 [api_start.py:59] start process pid 1036278
+INFO 06-04 15:34:53 [api_start.py:60] http server pid 1044556
+INFO 06-04 15:35:06 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-04 15:35:08 __init__.py:190] Automatically detected platform cuda.
+WARNING 06-04 15:35:09 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+INFO 06-04 15:35:09 [api_http.py:326] server start up
+INFO 06-04 15:35:10 [atomic_array_lock.py:32] link lock shm lightllm_resource_lock
+INFO 06-04 15:35:10 [shm_req_manager.py:62] link lock shm 8111_0_req_shm_total
+INFO 06-04 15:35:10 [atomic_array_lock.py:32] link lock shm 8111_0_array_reqs_lock
+INFO 06-04 15:35:10 [atomic_lock.py:29] link lock shm 8111_0_shm_reqs_manager_lock
+INFO 06-04 15:35:10 [atomic_lock.py:29] link lock shm 8111_0_req_id_gen_lock
+INFO 06-04 15:35:10 [shared_arr.py:20] link shm 8111_0_latest_success_infer_time_mark
+INFO 06-04 15:35:10 [shared_arr.py:20] link shm 8111_0_shared_token_load
+INFO 06-04 15:35:10 [shared_arr.py:20] link shm 8111_0_shared_token_load_ext_infos
+INFO 06-04 15:35:10 [api_http.py:330] server start up ok, loop use is <uvloop.Loop running=True closed=False debug=False>
+INFO 06-04 15:35:32 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:32 lightllm_req_id:8 
+INFO 06-04 15:35:32 [manager.py:221] router recive req id 8 cost time 0.043379783630371094 s
+INFO 06-04 15:35:32 [manager.py:68] detokenization recv req id 8 cost time 0.06064295768737793 s
+DEBUG 06-04 15:35:32 [manager.py:389] Prefill Batch: batch_id=259198585525171006198498830835703009784, time:1749022532.8004029s req_ids:[8] 
+DEBUG 06-04 15:35:32 [manager.py:389] 
+DEBUG 06-04 15:35:32 [stats.py:37] Avg tokens(prompt+generate) throughput:    0.030 tokens/s
+DEBUG 06-04 15:35:32 [stats.py:37] Avg prompt tokens throughput:              0.030 tokens/s
+DEBUG 06-04 15:35:32 [stats.py:37] Avg generate tokens throughput:            0.000 tokens/s
+DEBUG 06-04 15:35:33 [manager.py:245] dp_i 0 current batch size: 1 
+DEBUG 06-04 15:35:33 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:33 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:33 [manager.py:245] dp_i 0 estimated_peak_token_count: 33 
+DEBUG 06-04 15:35:33 [manager.py:245] dp_i 0 token used ratio: 5.006692278679168e-06 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:33 [manager.py:245] dp_i 0 token used ratio: 5.006692278679168e-06 contain prompt cache tree unrefed token
+INFO 06-04 15:35:33 [manager.py:162] detoken release req id 8
+INFO 06-04 15:35:33 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:32 lightllm_req_id:8 first_token_cost:361.8018627166748ms total_cost_time:485.13126373291016ms,out_token_counter:16 mean_per_token_cost_time: 7.7080875635147095ms prompt_token_num:4 prompt_cache_len:0 prompt_cache_ratio:0.0 
+127.0.0.1:36138 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:35:33 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:35:33 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:35:33 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:35:33 [infer_batch.py:155] radix hold token num 19
+DEBUG 06-04 15:35:33 [infer_batch.py:155] mem manager can alloc token num 2396773
+DEBUG 06-04 15:35:33 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:35:33 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:35:33 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:35:33 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:35:33 [infer_batch.py:155] radix hold token num 19
+DEBUG 06-04 15:35:33 [infer_batch.py:155] mem manager can alloc token num 2396773
+DEBUG 06-04 15:35:33 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:35:33 [batch.py:51] router release req id 8
+INFO 06-04 15:35:33 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-04 15:35:34 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:16 
+WARNING 06-04 15:35:34 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_0 and create again
+INFO 06-04 15:35:34 [shm_array.py:30] create shm 8111_0_shm_logprobs_0
+WARNING 06-04 15:35:34 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_0 and create again
+INFO 06-04 15:35:34 [shm_array.py:30] create shm 8111_0_shm_prompts_0
+INFO 06-04 15:35:34 [manager.py:221] router recive req id 16 cost time 0.0025730133056640625 s
+INFO 06-04 15:35:34 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:24 
+INFO 06-04 15:35:34 [manager.py:68] detokenization recv req id 16 cost time 0.003202199935913086 s
+INFO 06-04 15:35:34 [manager.py:221] router recive req id 24 cost time 0.0016355514526367188 s
+INFO 06-04 15:35:34 [manager.py:68] detokenization recv req id 24 cost time 0.0020868778228759766 s
+INFO 06-04 15:35:34 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:32 
+INFO 06-04 15:35:34 [manager.py:221] router recive req id 32 cost time 0.001653909683227539 s
+INFO 06-04 15:35:34 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:40 
+INFO 06-04 15:35:34 [manager.py:68] detokenization recv req id 32 cost time 0.002141237258911133 s
+INFO 06-04 15:35:34 [manager.py:221] router recive req id 40 cost time 0.001603841781616211 s
+INFO 06-04 15:35:34 [manager.py:68] detokenization recv req id 40 cost time 0.002062082290649414 s
+DEBUG 06-04 15:35:34 [manager.py:389] Prefill Batch: batch_id=40675789135920248047094182153180594206, time:1749022534.7330048s req_ids:[16, 24, 32, 40] 
+DEBUG 06-04 15:35:34 [manager.py:389] 
+DEBUG 06-04 15:35:34 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:34 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:34 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:34 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:34 [manager.py:245] dp_i 0 token used ratio: 0.0 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:34 [manager.py:245] dp_i 0 token used ratio: 7.927262774575349e-06 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:42 [stats.py:37] Avg tokens(prompt+generate) throughput:   12.034 tokens/s
+DEBUG 06-04 15:35:42 [stats.py:37] Avg prompt tokens throughput:              9.469 tokens/s
+DEBUG 06-04 15:35:42 [stats.py:37] Avg generate tokens throughput:            2.565 tokens/s
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 token used ratio: 0.00012016061468830003 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 token used ratio: 0.00012808787746287537 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 token used ratio: 0.0002036054859996195 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:43 [manager.py:245] dp_i 0 token used ratio: 0.00021153274877419484 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 token used ratio: 0.00028705035731093893 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 token used ratio: 0.0002949776200855143 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 token used ratio: 0.0003704952286222584 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:44 [manager.py:245] dp_i 0 token used ratio: 0.00037842249139683376 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 token used ratio: 0.00045394009993357786 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 token used ratio: 0.00046186736270815325 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 token used ratio: 0.0005373849712448974 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:45 [manager.py:245] dp_i 0 token used ratio: 0.0005453122340194727 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 token used ratio: 0.0006208298425562168 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 token used ratio: 0.0006287571053307921 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 token used ratio: 0.0007042747138675362 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:46 [manager.py:245] dp_i 0 token used ratio: 0.0007122019766421117 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 token used ratio: 0.0007877195851788558 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 token used ratio: 0.0007956468479534311 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 token used ratio: 0.0008711644564901752 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:47 [manager.py:245] dp_i 0 token used ratio: 0.0008790917192647505 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 token used ratio: 0.0009546093278014946 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 token used ratio: 0.00096253659057607 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 token used ratio: 0.0010380541991128142 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:48 [manager.py:245] dp_i 0 token used ratio: 0.0010459814618873895 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 token used ratio: 0.0011214990704241335 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 token used ratio: 0.0011294263331987089 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 token used ratio: 0.001204943941735453 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:49 [manager.py:245] dp_i 0 token used ratio: 0.0012128712045100284 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 token used ratio: 0.0012883888130467726 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 token used ratio: 0.001296316075821348 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 token used ratio: 0.001371833684358092 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:50 [manager.py:245] dp_i 0 token used ratio: 0.0013797609471326673 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 token used ratio: 0.0014552785556694115 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 token used ratio: 0.0014632058184439868 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 token used ratio: 0.0015387234269807308 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:51 [manager.py:245] dp_i 0 token used ratio: 0.0015466506897553064 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 token used ratio: 0.0016221682982920504 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 token used ratio: 0.0016300955610666257 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 token used ratio: 0.00170561316960337 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:52 [manager.py:245] dp_i 0 token used ratio: 0.0017135404323779452 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:52 [stats.py:37] Avg tokens(prompt+generate) throughput:  403.355 tokens/s
+DEBUG 06-04 15:35:52 [stats.py:37] Avg prompt tokens throughput:              0.000 tokens/s
+DEBUG 06-04 15:35:52 [stats.py:37] Avg generate tokens throughput:          403.355 tokens/s
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 token used ratio: 0.0017890580409146892 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 token used ratio: 0.0017969853036892646 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 token used ratio: 0.0018725029122260088 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:53 [manager.py:245] dp_i 0 token used ratio: 0.0018804301750005841 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 token used ratio: 0.0019559477835373283 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 token used ratio: 0.0019638750463119034 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 token used ratio: 0.0020393926548486476 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:54 [manager.py:245] dp_i 0 token used ratio: 0.002047319917623223 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:55 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:55 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:55 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:55 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:55 [manager.py:245] dp_i 0 token used ratio: 0.002122837526159967 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:55 [manager.py:245] dp_i 0 token used ratio: 0.0021307647889345425 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 token used ratio: 0.0022062823974712867 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 token used ratio: 0.002214209660245862 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 token used ratio: 0.002289727268782606 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:56 [manager.py:245] dp_i 0 token used ratio: 0.0022976545315571816 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 token used ratio: 0.0023731721400939254 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 token used ratio: 0.002381099402868501 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 token used ratio: 0.002456617011405245 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:57 [manager.py:245] dp_i 0 token used ratio: 0.0024645442741798203 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 token used ratio: 0.0025400618827165645 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 token used ratio: 0.00254798914549114 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 token used ratio: 0.002623506754027884 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:58 [manager.py:245] dp_i 0 token used ratio: 0.0026314340168024594 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 token used ratio: 0.0027069516253392036 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 token used ratio: 0.0027148788881137787 contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 token used ratio: 0.002790396496650523 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:35:59 [manager.py:245] dp_i 0 token used ratio: 0.002798323759425098 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:00 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:00 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:00 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:00 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:00 [manager.py:245] dp_i 0 token used ratio: 0.0028738413679618422 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:00 [manager.py:245] dp_i 0 token used ratio: 0.002881768630736418 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 token used ratio: 0.002957286239273162 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 token used ratio: 0.002965213502047737 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 token used ratio: 0.0030407311105844813 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:01 [manager.py:245] dp_i 0 token used ratio: 0.0030486583733590564 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 token used ratio: 0.0031241759818958006 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 token used ratio: 0.003132103244670376 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 token used ratio: 0.00320762085320712 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:02 [manager.py:245] dp_i 0 token used ratio: 0.0032155481159816955 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:02 [stats.py:37] Avg tokens(prompt+generate) throughput:  360.742 tokens/s
+DEBUG 06-04 15:36:02 [stats.py:37] Avg prompt tokens throughput:              0.000 tokens/s
+DEBUG 06-04 15:36:02 [stats.py:37] Avg generate tokens throughput:          360.742 tokens/s
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 token used ratio: 0.0032910657245184397 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 token used ratio: 0.003298992987293015 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 token used ratio: 0.003374510595829759 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:03 [manager.py:245] dp_i 0 token used ratio: 0.0033824378586043346 contain prompt cache tree unrefed token
+INFO 06-04 15:36:03 [manager.py:162] detoken release req id 16
+INFO 06-04 15:36:03 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:16 first_token_cost:8221.115112304688ms total_cost_time:29253.94296646118ms,out_token_counter:2000 mean_per_token_cost_time: 10.516413927078247ms prompt_token_num:24 prompt_cache_len:0 prompt_cache_ratio:0.0 
+INFO 06-04 15:36:03 [manager.py:162] detoken release req id 24
+INFO 06-04 15:36:03 [manager.py:162] detoken release req id 32
+127.0.0.1:36146 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:03 [manager.py:162] detoken release req id 40
+INFO 06-04 15:36:03 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:24 first_token_cost:8218.500852584839ms total_cost_time:29251.973152160645ms,out_token_counter:2000 mean_per_token_cost_time: 10.516736149787903ms prompt_token_num:24 prompt_cache_len:0 prompt_cache_ratio:0.0 
+127.0.0.1:36156 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:03 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:32 first_token_cost:8216.557502746582ms total_cost_time:29250.45156478882ms,out_token_counter:2000 mean_per_token_cost_time: 10.516947031021118ms prompt_token_num:24 prompt_cache_len:0 prompt_cache_ratio:0.0 
+127.0.0.1:36172 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:03 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:35:34 lightllm_req_id:40 first_token_cost:8214.858293533325ms total_cost_time:29248.980045318604ms,out_token_counter:2000 mean_per_token_cost_time: 10.51706087589264ms prompt_token_num:24 prompt_cache_len:0 prompt_cache_ratio:0.0 
+127.0.0.1:36174 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:03 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:03 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:03 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:03 [infer_batch.py:155] radix hold token num 2042
+DEBUG 06-04 15:36:03 [infer_batch.py:155] mem manager can alloc token num 2394750
+DEBUG 06-04 15:36:03 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:04 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:04 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:04 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:04 [infer_batch.py:155] radix hold token num 2042
+DEBUG 06-04 15:36:04 [infer_batch.py:155] mem manager can alloc token num 2394750
+DEBUG 06-04 15:36:04 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:04 [batch.py:51] router release req id 16
+INFO 06-04 15:36:04 [batch.py:51] router release req id 24
+INFO 06-04 15:36:04 [batch.py:51] router release req id 32
+INFO 06-04 15:36:04 [batch.py:51] router release req id 40
+INFO 06-04 15:36:04 [shm_req_manager.py:119] all shm req has been release ok
+DEBUG 06-04 15:36:04 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:04 [manager.py:280] 
+DEBUG 06-04 15:36:04 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:36:04 [manager.py:281] 
+INFO 06-04 15:36:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:16 lightllm_req_id:48 
+WARNING 06-04 15:36:16 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_3 and create again
+INFO 06-04 15:36:16 [shm_array.py:30] create shm 8111_0_shm_logprobs_3
+WARNING 06-04 15:36:16 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_3 and create again
+INFO 06-04 15:36:16 [shm_array.py:30] create shm 8111_0_shm_prompts_3
+INFO 06-04 15:36:16 [manager.py:221] router recive req id 48 cost time 0.002418041229248047 s
+INFO 06-04 15:36:16 [manager.py:68] detokenization recv req id 48 cost time 0.0031180381774902344 s
+DEBUG 06-04 15:36:16 [manager.py:389] Prefill Batch: batch_id=177395262627250478811778386629189816191, time:1749022576.0903313s req_ids:[48] 
+DEBUG 06-04 15:36:16 [manager.py:389] 
+DEBUG 06-04 15:36:16 [stats.py:37] Avg tokens(prompt+generate) throughput:   27.388 tokens/s
+DEBUG 06-04 15:36:16 [stats.py:37] Avg prompt tokens throughput:              0.304 tokens/s
+DEBUG 06-04 15:36:16 [stats.py:37] Avg generate tokens throughput:           27.084 tokens/s
+INFO 06-04 15:36:16 [manager.py:162] detoken release req id 48
+INFO 06-04 15:36:16 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:16 lightllm_req_id:48 first_token_cost:43.984174728393555ms total_cost_time:164.74294662475586ms,out_token_counter:16 mean_per_token_cost_time: 7.547423243522644ms prompt_token_num:4 prompt_cache_len:3 prompt_cache_ratio:0.75 
+127.0.0.1:60628 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:16 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:16 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:16 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:16 [infer_batch.py:155] radix hold token num 2042
+DEBUG 06-04 15:36:16 [infer_batch.py:155] mem manager can alloc token num 2394750
+DEBUG 06-04 15:36:16 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:16 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:16 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:16 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:16 [infer_batch.py:155] radix hold token num 2042
+DEBUG 06-04 15:36:16 [infer_batch.py:155] mem manager can alloc token num 2394750
+DEBUG 06-04 15:36:16 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:16 [batch.py:51] router release req id 48
+INFO 06-04 15:36:16 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-04 15:36:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:56 
+WARNING 06-04 15:36:18 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_3 and create again
+INFO 06-04 15:36:18 [shm_array.py:30] create shm 8111_0_shm_logprobs_3
+WARNING 06-04 15:36:18 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_3 and create again
+INFO 06-04 15:36:18 [shm_array.py:30] create shm 8111_0_shm_prompts_3
+INFO 06-04 15:36:18 [manager.py:221] router recive req id 56 cost time 0.0020911693572998047 s
+INFO 06-04 15:36:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:64 
+INFO 06-04 15:36:18 [manager.py:68] detokenization recv req id 56 cost time 0.002560853958129883 s
+INFO 06-04 15:36:18 [manager.py:221] router recive req id 64 cost time 0.0015559196472167969 s
+INFO 06-04 15:36:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:72 
+INFO 06-04 15:36:18 [manager.py:68] detokenization recv req id 64 cost time 0.001934051513671875 s
+INFO 06-04 15:36:18 [manager.py:221] router recive req id 72 cost time 0.0015795230865478516 s
+INFO 06-04 15:36:18 [manager.py:68] detokenization recv req id 72 cost time 0.0019459724426269531 s
+INFO 06-04 15:36:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:80 
+INFO 06-04 15:36:18 [manager.py:221] router recive req id 80 cost time 0.001739501953125 s
+INFO 06-04 15:36:18 [manager.py:68] detokenization recv req id 80 cost time 0.0023272037506103516 s
+DEBUG 06-04 15:36:18 [manager.py:389] Prefill Batch: batch_id=3546141870390195999357349810496439569, time:1749022578.0728753s req_ids:[56, 64, 72, 80] 
+DEBUG 06-04 15:36:18 [manager.py:389] 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 token used ratio: 7.468315982363092e-05 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 token used ratio: 0.0009170591357114009 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 token used ratio: 0.00015812803113495039 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:18 [manager.py:245] dp_i 0 token used ratio: 0.0010005040070227204 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:19 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:19 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:19 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:19 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:19 [manager.py:245] dp_i 0 token used ratio: 0.00024157290244626985 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:19 [manager.py:245] dp_i 0 token used ratio: 0.0010839488783340398 contain prompt cache tree unrefed token
+INFO 06-04 15:36:19 [manager.py:162] detoken release req id 56
+INFO 06-04 15:36:19 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:56 first_token_cost:27.311086654663086ms total_cost_time:1367.0237064361572ms,out_token_counter:144 mean_per_token_cost_time: 9.30355985959371ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+INFO 06-04 15:36:19 [manager.py:162] detoken release req id 64
+127.0.0.1:60634 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:19 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:64 first_token_cost:25.040388107299805ms total_cost_time:1365.0009632110596ms,out_token_counter:144 mean_per_token_cost_time: 9.305281771553886ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+INFO 06-04 15:36:19 [manager.py:162] detoken release req id 72
+127.0.0.1:60640 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:19 [manager.py:162] detoken release req id 80
+INFO 06-04 15:36:19 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:72 first_token_cost:23.452043533325195ms total_cost_time:1363.7268543243408ms,out_token_counter:144 mean_per_token_cost_time: 9.307463963826498ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:60644 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:19 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:18 lightllm_req_id:80 first_token_cost:21.7893123626709ms total_cost_time:1362.2069358825684ms,out_token_counter:144 mean_per_token_cost_time: 9.308455718888176ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:60646 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:19 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:19 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:19 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:19 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:19 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:19 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:19 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:19 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:19 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:19 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:19 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:19 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:19 [batch.py:51] router release req id 56
+INFO 06-04 15:36:19 [batch.py:51] router release req id 64
+INFO 06-04 15:36:19 [batch.py:51] router release req id 72
+INFO 06-04 15:36:19 [batch.py:51] router release req id 80
+INFO 06-04 15:36:19 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-04 15:36:31 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:31 lightllm_req_id:88 
+WARNING 06-04 15:36:31 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_0 and create again
+INFO 06-04 15:36:31 [shm_array.py:30] create shm 8111_0_shm_logprobs_0
+WARNING 06-04 15:36:31 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_0 and create again
+INFO 06-04 15:36:31 [shm_array.py:30] create shm 8111_0_shm_prompts_0
+INFO 06-04 15:36:31 [manager.py:221] router recive req id 88 cost time 0.002190828323364258 s
+INFO 06-04 15:36:31 [manager.py:68] detokenization recv req id 88 cost time 0.002825498580932617 s
+DEBUG 06-04 15:36:31 [manager.py:389] Prefill Batch: batch_id=204981319976597741157043796199396272681, time:1749022591.3208902s req_ids:[88] 
+DEBUG 06-04 15:36:31 [manager.py:389] 
+DEBUG 06-04 15:36:31 [stats.py:37] Avg tokens(prompt+generate) throughput:   46.091 tokens/s
+DEBUG 06-04 15:36:31 [stats.py:37] Avg prompt tokens throughput:              6.566 tokens/s
+DEBUG 06-04 15:36:31 [stats.py:37] Avg generate tokens throughput:           39.526 tokens/s
+INFO 06-04 15:36:31 [manager.py:162] detoken release req id 88
+INFO 06-04 15:36:31 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:31 lightllm_req_id:88 first_token_cost:42.54317283630371ms total_cost_time:163.33866119384766ms,out_token_counter:16 mean_per_token_cost_time: 7.549718022346497ms prompt_token_num:4 prompt_cache_len:3 prompt_cache_ratio:0.75 
+127.0.0.1:37636 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:31 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:31 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:31 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:31 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:31 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:31 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:31 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:31 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:31 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:31 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:31 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:31 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:31 [batch.py:51] router release req id 88
+INFO 06-04 15:36:31 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-04 15:36:33 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:96 
+WARNING 06-04 15:36:33 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_0 and create again
+INFO 06-04 15:36:33 [shm_array.py:30] create shm 8111_0_shm_logprobs_0
+WARNING 06-04 15:36:33 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_0 and create again
+INFO 06-04 15:36:33 [shm_array.py:30] create shm 8111_0_shm_prompts_0
+INFO 06-04 15:36:33 [manager.py:221] router recive req id 96 cost time 0.0020139217376708984 s
+INFO 06-04 15:36:33 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:104 
+INFO 06-04 15:36:33 [manager.py:68] detokenization recv req id 96 cost time 0.002540111541748047 s
+INFO 06-04 15:36:33 [manager.py:221] router recive req id 104 cost time 0.0014469623565673828 s
+INFO 06-04 15:36:33 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:112 
+INFO 06-04 15:36:33 [manager.py:68] detokenization recv req id 104 cost time 0.0018203258514404297 s
+INFO 06-04 15:36:33 [manager.py:221] router recive req id 112 cost time 0.0015218257904052734 s
+INFO 06-04 15:36:33 [manager.py:68] detokenization recv req id 112 cost time 0.0018527507781982422 s
+INFO 06-04 15:36:33 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:120 
+INFO 06-04 15:36:33 [manager.py:221] router recive req id 120 cost time 0.0017163753509521484 s
+INFO 06-04 15:36:33 [manager.py:68] detokenization recv req id 120 cost time 0.002039194107055664 s
+DEBUG 06-04 15:36:33 [manager.py:389] Prefill Batch: batch_id=297543967578336109183344636623079826193, time:1749022593.3034115s req_ids:[96, 104, 112, 120] 
+DEBUG 06-04 15:36:33 [manager.py:389] 
+DEBUG 06-04 15:36:33 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:33 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:33 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:33 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:33 [manager.py:245] dp_i 0 token used ratio: 8.803433923344203e-05 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:33 [manager.py:245] dp_i 0 token used ratio: 0.0009892389493956922 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:34 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:34 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:34 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:34 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:34 [manager.py:245] dp_i 0 token used ratio: 0.0001714792105447615 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:34 [manager.py:245] dp_i 0 token used ratio: 0.0010726838207070117 contain prompt cache tree unrefed token
+INFO 06-04 15:36:34 [manager.py:162] detoken release req id 96
+INFO 06-04 15:36:34 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:96 first_token_cost:25.03347396850586ms total_cost_time:1366.365671157837ms,out_token_counter:144 mean_per_token_cost_time: 9.314806924925911ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+INFO 06-04 15:36:34 [manager.py:162] detoken release req id 104
+127.0.0.1:37646 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:34 [manager.py:162] detoken release req id 112
+INFO 06-04 15:36:34 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:104 first_token_cost:22.885799407958984ms total_cost_time:1364.4702434539795ms,out_token_counter:144 mean_per_token_cost_time: 9.316558639208475ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:37658 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:34 [manager.py:162] detoken release req id 120
+INFO 06-04 15:36:34 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:112 first_token_cost:21.38519287109375ms total_cost_time:1363.1656169891357ms,out_token_counter:144 mean_per_token_cost_time: 9.317919611930847ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:37670 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:34 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:33 lightllm_req_id:120 first_token_cost:19.798755645751953ms total_cost_time:1361.7124557495117ms,out_token_counter:144 mean_per_token_cost_time: 9.318845139609444ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:37672 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:34 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:34 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:34 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:34 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:34 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:34 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:34 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:34 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:34 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:34 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:34 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:34 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:34 [batch.py:51] router release req id 96
+INFO 06-04 15:36:34 [batch.py:51] router release req id 104
+INFO 06-04 15:36:34 [batch.py:51] router release req id 112
+INFO 06-04 15:36:34 [batch.py:51] router release req id 120
+INFO 06-04 15:36:34 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-04 15:36:47 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:47 lightllm_req_id:128 
+WARNING 06-04 15:36:47 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_3 and create again
+INFO 06-04 15:36:47 [shm_array.py:30] create shm 8111_0_shm_logprobs_3
+WARNING 06-04 15:36:47 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_3 and create again
+INFO 06-04 15:36:47 [shm_array.py:30] create shm 8111_0_shm_prompts_3
+INFO 06-04 15:36:47 [manager.py:221] router recive req id 128 cost time 0.0022127628326416016 s
+INFO 06-04 15:36:47 [manager.py:68] detokenization recv req id 128 cost time 0.0028252601623535156 s
+DEBUG 06-04 15:36:47 [manager.py:389] Prefill Batch: batch_id=9378383733303393371631808237854477063, time:1749022607.7808313s req_ids:[128] 
+DEBUG 06-04 15:36:47 [manager.py:389] 
+DEBUG 06-04 15:36:47 [stats.py:37] Avg tokens(prompt+generate) throughput:   42.649 tokens/s
+DEBUG 06-04 15:36:47 [stats.py:37] Avg prompt tokens throughput:              6.075 tokens/s
+DEBUG 06-04 15:36:47 [stats.py:37] Avg generate tokens throughput:           36.574 tokens/s
+DEBUG 06-04 15:36:47 [manager.py:245] dp_i 0 current batch size: 1 
+DEBUG 06-04 15:36:47 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:47 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:47 [manager.py:245] dp_i 0 estimated_peak_token_count: 33 
+DEBUG 06-04 15:36:47 [manager.py:245] dp_i 0 token used ratio: 5.841140991792362e-06 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:47 [manager.py:245] dp_i 0 token used ratio: 0.0009153902382851746 contain prompt cache tree unrefed token
+INFO 06-04 15:36:47 [manager.py:162] detoken release req id 128
+INFO 06-04 15:36:47 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:47 lightllm_req_id:128 first_token_cost:37.584543228149414ms total_cost_time:158.2491397857666ms,out_token_counter:16 mean_per_token_cost_time: 7.541537284851074ms prompt_token_num:4 prompt_cache_len:3 prompt_cache_ratio:0.75 
+127.0.0.1:56614 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:47 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:47 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:47 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:47 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:47 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:47 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:47 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:47 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:47 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:47 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:47 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:47 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:47 [batch.py:51] router release req id 128
+INFO 06-04 15:36:47 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-04 15:36:49 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:136 
+WARNING 06-04 15:36:49 [shm_array.py:25] size not same, unlink shm 8111_0_shm_logprobs_3 and create again
+INFO 06-04 15:36:49 [shm_array.py:30] create shm 8111_0_shm_logprobs_3
+WARNING 06-04 15:36:49 [shm_array.py:25] size not same, unlink shm 8111_0_shm_prompts_3 and create again
+INFO 06-04 15:36:49 [shm_array.py:30] create shm 8111_0_shm_prompts_3
+INFO 06-04 15:36:49 [manager.py:221] router recive req id 136 cost time 0.0020461082458496094 s
+INFO 06-04 15:36:49 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:144 
+INFO 06-04 15:36:49 [manager.py:68] detokenization recv req id 136 cost time 0.0025594234466552734 s
+INFO 06-04 15:36:49 [manager.py:221] router recive req id 144 cost time 0.0014727115631103516 s
+INFO 06-04 15:36:49 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:152 
+INFO 06-04 15:36:49 [manager.py:68] detokenization recv req id 144 cost time 0.001840829849243164 s
+INFO 06-04 15:36:49 [manager.py:221] router recive req id 152 cost time 0.001458883285522461 s
+INFO 06-04 15:36:49 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:160 
+INFO 06-04 15:36:49 [manager.py:68] detokenization recv req id 152 cost time 0.0018124580383300781 s
+DEBUG 06-04 15:36:49 [manager.py:389] Prefill Batch: batch_id=211861929981934574623224216107310546814, time:1749022609.7630713s req_ids:[136, 144, 152] 
+DEBUG 06-04 15:36:49 [manager.py:389] 
+INFO 06-04 15:36:49 [manager.py:221] router recive req id 160 cost time 0.0020558834075927734 s
+INFO 06-04 15:36:49 [manager.py:68] detokenization recv req id 160 cost time 0.002419710159301758 s
+DEBUG 06-04 15:36:49 [manager.py:389] Prefill Batch: batch_id=197799715868678479894474139289048939575, time:1749022609.7666361s req_ids:[160] 
+DEBUG 06-04 15:36:49 [manager.py:389] 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 token used ratio: 5.924585863103682e-05 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 token used ratio: 0.000960450468793287 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 token used ratio: 0.0001426907299423563 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:50 [manager.py:245] dp_i 0 token used ratio: 0.0010438953401046066 contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:51 [manager.py:245] dp_i 0 current batch size: 4 
+DEBUG 06-04 15:36:51 [manager.py:245] dp_i 0 paused req num: 0 
+DEBUG 06-04 15:36:51 [manager.py:245] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:36:51 [manager.py:245] dp_i 0 estimated_peak_token_count: 8148 
+DEBUG 06-04 15:36:51 [manager.py:245] dp_i 0 token used ratio: 0.00022613560125367576 not contain prompt cache tree unrefed token
+DEBUG 06-04 15:36:51 [manager.py:245] dp_i 0 token used ratio: 0.001127340211415926 contain prompt cache tree unrefed token
+INFO 06-04 15:36:51 [manager.py:162] detoken release req id 136
+INFO 06-04 15:36:51 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:136 first_token_cost:19.976377487182617ms total_cost_time:1419.2314147949219ms,out_token_counter:144 mean_per_token_cost_time: 9.717048870192635ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+INFO 06-04 15:36:51 [manager.py:162] detoken release req id 144
+127.0.0.1:56624 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:51 [manager.py:162] detoken release req id 152
+INFO 06-04 15:36:51 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:144 first_token_cost:17.793655395507812ms total_cost_time:1417.3145294189453ms,out_token_counter:144 mean_per_token_cost_time: 9.718894958496094ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:56636 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:51 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:152 first_token_cost:16.305923461914062ms total_cost_time:1415.9750938415527ms,out_token_counter:144 mean_per_token_cost_time: 9.719924794303047ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+127.0.0.1:56652 - "POST /generate HTTP/1.1" 200
+INFO 06-04 15:36:51 [batch.py:51] router release req id 136
+INFO 06-04 15:36:51 [batch.py:51] router release req id 144
+INFO 06-04 15:36:51 [batch.py:51] router release req id 152
+INFO 06-04 15:36:51 [manager.py:162] detoken release req id 160
+INFO 06-04 15:36:51 [manager.py:546] X-Request-Id: X-Session-Id: start_time:2025-06-04 15:36:49 lightllm_req_id:160 first_token_cost:25.273799896240234ms total_cost_time:1423.8090515136719ms,out_token_counter:144 mean_per_token_cost_time: 9.712050358454386ms prompt_token_num:24 prompt_cache_len:23 prompt_cache_ratio:0.9583333333333334 
+DEBUG 06-04 15:36:51 [req_manager.py:78] freed all request size 1008
+DEBUG 06-04 15:36:51 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:51 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:51 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:51 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:51 [infer_batch.py:155] mem manager total size 2396792
+DEBUG 06-04 15:36:51 [req_manager.py:78] freed all request size 1008
+127.0.0.1:56666 - "POST /generate HTTP/1.1" 200
+DEBUG 06-04 15:36:51 [infer_batch.py:155] free a batch state:
+DEBUG 06-04 15:36:51 [infer_batch.py:155] radix refed token num 0
+DEBUG 06-04 15:36:51 [infer_batch.py:155] radix hold token num 2183
+DEBUG 06-04 15:36:51 [infer_batch.py:155] mem manager can alloc token num 2394609
+DEBUG 06-04 15:36:51 [infer_batch.py:155] mem manager total size 2396792
+INFO 06-04 15:36:51 [batch.py:51] router release req id 160
+INFO 06-04 15:36:51 [shm_req_manager.py:119] all shm req has been release ok
+DEBUG 06-04 15:37:05 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:37:05 [manager.py:280] 
+DEBUG 06-04 15:37:05 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:37:05 [manager.py:281] 
+DEBUG 06-04 15:38:10 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:38:10 [manager.py:280] 
+DEBUG 06-04 15:38:10 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:38:10 [manager.py:281] 
+DEBUG 06-04 15:39:15 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:39:15 [manager.py:280] 
+DEBUG 06-04 15:39:15 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:39:15 [manager.py:281] 
+DEBUG 06-04 15:40:20 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:40:20 [manager.py:280] 
+DEBUG 06-04 15:40:20 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:40:20 [manager.py:281] 
+DEBUG 06-04 15:41:25 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:41:25 [manager.py:280] 
+DEBUG 06-04 15:41:25 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:41:25 [manager.py:281] 
+DEBUG 06-04 15:42:29 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:42:29 [manager.py:280] 
+DEBUG 06-04 15:42:29 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:42:29 [manager.py:281] 
+DEBUG 06-04 15:43:34 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:43:34 [manager.py:280] 
+DEBUG 06-04 15:43:34 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:43:34 [manager.py:281] 
+DEBUG 06-04 15:44:39 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:44:39 [manager.py:280] 
+DEBUG 06-04 15:44:39 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:44:39 [manager.py:281] 
+DEBUG 06-04 15:45:44 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:45:44 [manager.py:280] 
+DEBUG 06-04 15:45:44 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:45:44 [manager.py:281] 
+DEBUG 06-04 15:46:49 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:46:49 [manager.py:280] 
+DEBUG 06-04 15:46:49 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:46:49 [manager.py:281] 
+DEBUG 06-04 15:47:53 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:47:53 [manager.py:280] 
+DEBUG 06-04 15:47:53 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:47:53 [manager.py:281] 
+DEBUG 06-04 15:48:58 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:48:58 [manager.py:280] 
+DEBUG 06-04 15:48:58 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:48:58 [manager.py:281] 
+DEBUG 06-04 15:50:03 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:50:03 [manager.py:280] 
+DEBUG 06-04 15:50:03 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:50:03 [manager.py:281] 
+DEBUG 06-04 15:51:08 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:51:08 [manager.py:280] 
+DEBUG 06-04 15:51:08 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:51:08 [manager.py:281] 
+DEBUG 06-04 15:52:12 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:52:12 [manager.py:280] 
+DEBUG 06-04 15:52:12 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:52:12 [manager.py:281] 
+DEBUG 06-04 15:53:17 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:53:17 [manager.py:280] 
+DEBUG 06-04 15:53:17 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:53:17 [manager.py:281] 
+DEBUG 06-04 15:54:22 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:54:22 [manager.py:280] 
+DEBUG 06-04 15:54:22 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:54:22 [manager.py:281] 
+DEBUG 06-04 15:55:27 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:55:27 [manager.py:280] 
+DEBUG 06-04 15:55:27 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:55:27 [manager.py:281] 
+DEBUG 06-04 15:56:32 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:56:32 [manager.py:280] 
+DEBUG 06-04 15:56:32 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:56:32 [manager.py:281] 
+DEBUG 06-04 15:57:36 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:57:36 [manager.py:280] 
+DEBUG 06-04 15:57:36 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:57:36 [manager.py:281] 
+DEBUG 06-04 15:58:41 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:58:41 [manager.py:280] 
+DEBUG 06-04 15:58:41 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:58:41 [manager.py:281] 
+DEBUG 06-04 15:59:46 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 15:59:46 [manager.py:280] 
+DEBUG 06-04 15:59:46 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 15:59:46 [manager.py:281] 
+DEBUG 06-04 16:00:51 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:00:51 [manager.py:280] 
+DEBUG 06-04 16:00:51 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:00:51 [manager.py:281] 
+DEBUG 06-04 16:01:56 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:01:56 [manager.py:280] 
+DEBUG 06-04 16:01:56 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:01:56 [manager.py:281] 
+DEBUG 06-04 16:03:01 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:03:01 [manager.py:280] 
+DEBUG 06-04 16:03:01 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:03:01 [manager.py:281] 
+DEBUG 06-04 16:04:05 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:04:05 [manager.py:280] 
+DEBUG 06-04 16:04:05 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:04:05 [manager.py:281] 
+DEBUG 06-04 16:05:10 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:05:10 [manager.py:280] 
+DEBUG 06-04 16:05:10 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:05:10 [manager.py:281] 
+DEBUG 06-04 16:06:15 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:06:15 [manager.py:280] 
+DEBUG 06-04 16:06:15 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:06:15 [manager.py:281] 
+DEBUG 06-04 16:07:20 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:07:20 [manager.py:280] 
+DEBUG 06-04 16:07:20 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:07:20 [manager.py:281] 
+DEBUG 06-04 16:08:25 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:08:25 [manager.py:280] 
+DEBUG 06-04 16:08:25 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:08:25 [manager.py:281] 
+DEBUG 06-04 16:09:29 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:09:29 [manager.py:280] 
+DEBUG 06-04 16:09:29 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:09:29 [manager.py:281] 
+DEBUG 06-04 16:10:34 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:10:34 [manager.py:280] 
+DEBUG 06-04 16:10:34 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:10:34 [manager.py:281] 
+DEBUG 06-04 16:11:39 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:11:39 [manager.py:280] 
+DEBUG 06-04 16:11:39 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:11:39 [manager.py:281] 
+DEBUG 06-04 16:12:44 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:12:44 [manager.py:280] 
+DEBUG 06-04 16:12:44 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:12:44 [manager.py:281] 
+DEBUG 06-04 16:13:49 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:13:49 [manager.py:280] 
+DEBUG 06-04 16:13:49 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:13:49 [manager.py:281] 
+DEBUG 06-04 16:14:53 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:14:53 [manager.py:280] 
+DEBUG 06-04 16:14:53 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:14:53 [manager.py:281] 
+DEBUG 06-04 16:15:58 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:15:58 [manager.py:280] 
+DEBUG 06-04 16:15:58 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:15:58 [manager.py:281] 
+DEBUG 06-04 16:17:03 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:17:03 [manager.py:280] 
+DEBUG 06-04 16:17:03 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:17:03 [manager.py:281] 
+DEBUG 06-04 16:18:08 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:18:08 [manager.py:280] 
+DEBUG 06-04 16:18:08 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:18:08 [manager.py:281] 
+DEBUG 06-04 16:19:13 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:19:13 [manager.py:280] 
+DEBUG 06-04 16:19:13 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:19:13 [manager.py:281] 
+DEBUG 06-04 16:20:17 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:20:17 [manager.py:280] 
+DEBUG 06-04 16:20:17 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:20:17 [manager.py:281] 
+DEBUG 06-04 16:21:22 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:21:22 [manager.py:280] 
+DEBUG 06-04 16:21:22 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:21:22 [manager.py:281] 
+DEBUG 06-04 16:22:27 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:22:27 [manager.py:280] 
+DEBUG 06-04 16:22:27 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:22:27 [manager.py:281] 
+DEBUG 06-04 16:23:32 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:23:32 [manager.py:280] 
+DEBUG 06-04 16:23:32 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:23:32 [manager.py:281] 
+DEBUG 06-04 16:24:36 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:24:36 [manager.py:280] 
+DEBUG 06-04 16:24:36 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:24:36 [manager.py:281] 
+DEBUG 06-04 16:25:41 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:25:41 [manager.py:280] 
+DEBUG 06-04 16:25:41 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:25:41 [manager.py:281] 
+DEBUG 06-04 16:26:46 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:26:46 [manager.py:280] 
+DEBUG 06-04 16:26:46 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:26:46 [manager.py:281] 
+DEBUG 06-04 16:27:51 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:27:51 [manager.py:280] 
+DEBUG 06-04 16:27:51 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:27:51 [manager.py:281] 
+DEBUG 06-04 16:28:56 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:28:56 [manager.py:280] 
+DEBUG 06-04 16:28:56 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:28:56 [manager.py:281] 
+DEBUG 06-04 16:30:00 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:30:00 [manager.py:280] 
+DEBUG 06-04 16:30:00 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:30:00 [manager.py:281] 
+DEBUG 06-04 16:31:05 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:31:05 [manager.py:280] 
+DEBUG 06-04 16:31:05 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:31:05 [manager.py:281] 
+DEBUG 06-04 16:32:10 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:32:10 [manager.py:280] 
+DEBUG 06-04 16:32:10 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:32:10 [manager.py:281] 
+DEBUG 06-04 16:33:15 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:33:15 [manager.py:280] 
+DEBUG 06-04 16:33:15 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:33:15 [manager.py:281] 
+DEBUG 06-04 16:34:20 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:34:20 [manager.py:280] 
+DEBUG 06-04 16:34:20 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:34:20 [manager.py:281] 
+DEBUG 06-04 16:35:24 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:35:24 [manager.py:280] 
+DEBUG 06-04 16:35:24 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:35:24 [manager.py:281] 
+DEBUG 06-04 16:36:29 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:36:29 [manager.py:280] 
+DEBUG 06-04 16:36:29 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:36:29 [manager.py:281] 
+DEBUG 06-04 16:37:34 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:37:34 [manager.py:280] 
+DEBUG 06-04 16:37:34 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:37:34 [manager.py:281] 
+DEBUG 06-04 16:38:39 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:38:39 [manager.py:280] 
+DEBUG 06-04 16:38:39 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:38:39 [manager.py:281] 
+DEBUG 06-04 16:39:44 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:39:44 [manager.py:280] 
+DEBUG 06-04 16:39:44 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:39:44 [manager.py:281] 
+DEBUG 06-04 16:40:48 [manager.py:280] dp_i 0 frozen token num: 0 
+DEBUG 06-04 16:40:48 [manager.py:280] 
+DEBUG 06-04 16:40:48 [manager.py:281] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-04 16:40:48 [manager.py:281] 
