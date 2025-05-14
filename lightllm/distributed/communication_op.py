@@ -35,23 +35,14 @@ from lightllm.utils.dist_utils import (
     get_current_rank_in_dp,
 )
 from lightllm.utils.device_utils import get_device_sm_count
+from lightllm.utils.sgl_utils import HAS_SGL_KERNEL
+from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL
 from contextlib import nullcontext, contextmanager
 
 logger = init_logger(__name__)
 
-try:
-    HAS_VLLM = True
-    from .custom_all_reduce import CustomAllreduce
-except:
-    HAS_VLLM = False
-    logger.info("vllm or lightllm_kernel is not installed, you can't use custom allreduce")
-
-try:
-    HAS_LIGHTLLM_KERNEL = True
-    from .custom_all_gather import CustomAllgather
-except:
-    HAS_LIGHTLLM_KERNEL = False
-    logger.info("lightllm_kernel is not installed, you can't use custom allgather")
+from .custom_all_reduce import CustomAllreduce
+from .custom_all_gather import CustomAllgather
 
 try:
     import deep_ep
@@ -76,27 +67,27 @@ class CustomProcessGroup:
         self.device_group = dist.new_group(ranks, backend="nccl")
 
     def init_custom_reduce(self) -> None:
-        if not HAS_VLLM or not has_nvlink() or self.dp_world_size not in [2, 4, 6, 8]:
+        if not HAS_SGL_KERNEL or not has_nvlink() or self.dp_world_size not in [2, 4, 6, 8]:
             return
         args = get_env_start_args()
-        if not args.enable_custom_allreduce:
+        if args.disable_custom_allreduce:
             return
         ranks = list([get_global_rank() - get_current_rank_in_dp() + i for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
         self.custom_reduce = CustomAllreduce(cpu_group, torch.cuda.current_device())
-        logger.info("Enable VLLM ALLReduce.")
+        logger.info("Enable Custom ALLReduce. You can disable it by settting --disable_custom_allreduce.")
 
     def init_custom_gather(self) -> None:
         if not HAS_LIGHTLLM_KERNEL or not has_nvlink() or self.dp_world_size not in [2, 4, 6, 8]:
             return
 
         args = get_env_start_args()
-        if not args.enable_custom_allgather:
+        if args.disable_custom_allgather:
             return
         ranks = list([get_global_rank() - get_current_rank_in_dp() + i for i in range(self.dp_world_size)])
         cpu_group = dist.new_group(ranks, backend="gloo")
         self.custom_gather = CustomAllgather(cpu_group, torch.cuda.current_device())
-        logger.info("Enable Custom ALLGather.")
+        logger.info("Enable Custom ALLGather.  You can disable it by settting --disable_custom_allgather")
 
     def all_reduce(self, input_: torch.Tensor) -> None:
         if self.custom_reduce is not None and self.custom_reduce.should_custom_ar(input_):

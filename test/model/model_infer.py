@@ -4,7 +4,7 @@ import numpy as np
 from multiprocessing import Queue
 import multiprocessing
 from transformers import PretrainedConfig
-from lightllm.utils.dist_utils import init_distributed_env
+from lightllm.utils.dist_utils import init_distributed_env, get_current_rank_in_dp
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.models import get_model
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch, PrefillMicroBatch
@@ -30,6 +30,7 @@ def test_model_inference(args):
             "world_size": args.tp,
             "dp_size": dp_size,
             "weight_dir": args.model_dir,
+            "quant_type": args.quant_type,
             "load_way": "HF",
             "max_total_token_num": args.max_total_token_num,
             "graph_max_len_in_batch": args.max_req_total_len,
@@ -39,7 +40,7 @@ def test_model_inference(args):
             "batch_max_tokens": args.batch_size * args.input_len,
             "run_mode": "normal",
             "max_seq_length": args.max_req_total_len,
-            "disable_cudagraph": True if args.profile else False,
+            "disable_cudagraph": args.disable_cudagraph,
         }
         proc = multiprocessing.Process(
             target=tppart_model_infer,
@@ -173,15 +174,13 @@ def torch_profile(fn, log_dir=None):
     torch.cuda.synchronize()
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        schedule=torch.profiler.schedule(wait=1, warmup=1, active=1),
         record_shapes=False,
         profile_memory=False,
         on_trace_ready=torch.profiler.tensorboard_trace_handler(log_dir),
     ) as prof:
-        for _ in range(3):
-            fn()
-            prof.step()
-    print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        fn()
+    if get_current_rank_in_dp() == 0:
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
 
 def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, ans_queue):
@@ -363,7 +362,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         total_token_num,
                         b_ready_cache_len,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_prefill_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_prefill_{model_kvargs['rank_id']}",
                 )
             else:
                 torch_profile(
@@ -378,7 +377,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         b_ready_cache_len=b_ready_cache_len,
                         is_prefill=True,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_prefill_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_prefill_{model_kvargs['rank_id']}",
                 )
         except Exception as e:
             print(str(e))
@@ -418,7 +417,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         b_seq_len,
                         total_token_num,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_decode_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_decode_{model_kvargs['rank_id']}",
                 )
         else:
             logits = decode(
@@ -443,7 +442,7 @@ def tppart_model_infer(args, model_kvargs, batch_size, input_len, output_len, an
                         b_seq_len,
                         total_token_num,
                     ),
-                    log_dir=f"./logs_sglang_4k/forward_decode_{model_kvargs['rank_id']}",
+                    log_dir=f"./logs/forward_decode_{model_kvargs['rank_id']}",
                 )
 
         prob_out = torch.softmax(logits, dim=-1)

@@ -65,10 +65,8 @@ def normal_or_p_d_start(args):
     set_unique_server_name(args)
 
     if args.enable_mps:
-        from lightllm.utils.device_utils import enable_mps, set_gpu_exclusive_mode
+        from lightllm.utils.device_utils import enable_mps
 
-        for i in range(args.tp):
-            set_gpu_exclusive_mode(gpu_index=i)
         enable_mps()
 
     if args.run_mode not in ["normal", "prefill", "decode"]:
@@ -116,6 +114,8 @@ def normal_or_p_d_start(args):
         assert args.router_token_ratio == 0.0
 
     # 检查GPU数量是否足够
+    if args.visual_gpu_ids is None:
+        args.visual_gpu_ids = list(range(args.visual_dp * args.visual_tp))
     total_required_gpus = args.visual_dp * args.visual_tp
     if len(args.visual_gpu_ids) < total_required_gpus:
         raise ValueError(
