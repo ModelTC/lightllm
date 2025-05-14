@@ -21,7 +21,7 @@ class Qwen2TransformerLayerWeight(LlamaTransformerLayerWeight):
         self.tp_o_head_num_ = self.tp_q_head_num_
         head_dim = self.network_config_["hidden_size"] // self.network_config_["num_attention_heads"]
         self.head_dim = self.network_config_.get("head_dim", head_dim)
-        assert self.tp_k_head_num_ * self.tp_world_size_ % self.network_config_["num_key_value_heads"] == 0
+        assert (self.tp_k_head_num_ * self.tp_world_size_) % self.network_config_["num_key_value_heads"] == 0
 
     def _repeat_weight(self, name, weights):
         # for tp_world_size_ > num_key_value_heads
@@ -30,7 +30,7 @@ class Qwen2TransformerLayerWeight(LlamaTransformerLayerWeight):
 
         tensor = weights[name]
         num_kv_heads = self.network_config_["num_key_value_heads"]
-        repeat_size = self.tp_k_head_num_ * self.tp_world_size_ // num_kv_heads
+        repeat_size = (self.tp_k_head_num_ * self.tp_world_size_) // num_kv_heads
 
         if tensor.ndim == 1:
             # Bias (1D tensor)
