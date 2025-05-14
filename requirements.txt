@@ -88,4 +88,3 @@ flashinfer-python==0.2.4
 sgl-kernel
 httpx==0.28.1
 librosa==0.11.0
-Cython
