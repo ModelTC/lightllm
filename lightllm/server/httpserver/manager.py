@@ -52,6 +52,7 @@ class HttpServerManager:
 
         self.multinode_req_manager = None
         self.nnodes = args.nnodes
+        self.lock = asyncio.Lock()
         self.node_rank = args.node_rank
         self.transfer_lock = asyncio.Lock()  # the lock for transfer to next module in multi node mode.
         self.disable_abort = args.nnodes > 1 and args.dp == 1  # mulitnode dp=1 mode, disable abort
@@ -141,19 +142,20 @@ class HttpServerManager:
     async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams, sampling_params: SamplingParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
-            for img in multimodal_params.images:
-                self.tokenizer.init_imageitem_extral_params(img, multimodal_params, sampling_params)
-                record = await self._alloc_resource(img)
-                img.uuid = record["id"]
-                img.token_id = record["token_id"]
-                img.token_num = record["token_num"]
-            for audio in multimodal_params.audios:
-                self.tokenizer.init_audioitem_extral_params(audio, multimodal_params, sampling_params)
-                record = await self._alloc_resource(audio)
-                audio.uuid = record["id"]
-                audio.token_id = record["token_id"]
-                audio.token_num = record["token_num"]
-        return
+            async with self.lock:
+                for img in multimodal_params.images:
+                    self.tokenizer.init_imageitem_extral_params(img, multimodal_params, sampling_params)
+                    record = await self._alloc_resource(img)
+                    img.uuid = record["id"]
+                    img.token_id = record["token_id"]
+                    img.token_num = record["token_num"]
+                for audio in multimodal_params.audios:
+                    self.tokenizer.init_audioitem_extral_params(audio, multimodal_params, sampling_params)
+                    record = await self._alloc_resource(audio)
+                    audio.uuid = record["id"]
+                    audio.token_id = record["token_id"]
+                    audio.token_num = record["token_num"]
+            return
 
     async def _release_multimodal_resources(self, multimodal_params: MultimodalParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
