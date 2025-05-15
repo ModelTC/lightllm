@@ -41,7 +41,7 @@ from lightllm.server.core.objs.sampling_params import SamplingParams
 from .multimodal_params import MultimodalParams
 from .httpserver.manager import HttpServerManager
 from .httpserver_for_pd_master.manager import HttpServerManagerForPDMaster
-from .api_lightllm import lightllm_get_score, lightllm_pd_generate_stream
+from .api_lightllm import lightllm_get_score
 from lightllm.utils.envs_utils import get_env_start_args, get_lightllm_websocket_max_message_size
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.error_utils import ServerBusyError
@@ -191,18 +191,6 @@ async def generate(request: Request) -> Response:
 async def generate_stream(request: Request) -> Response:
     try:
         return await g_objs.g_generate_stream_func(request, g_objs.httpserver_manager)
-    except ServerBusyError as e:
-        logger.error("%s", str(e), exc_info=True)
-        return create_error_response(HTTPStatus.SERVICE_UNAVAILABLE, str(e))
-    except Exception as e:
-        logger.error("An error occurred: %s", str(e), exc_info=True)
-        return create_error_response(HTTPStatus.EXPECTATION_FAILED, str(e))
-
-
-@app.post("/pd_generate_stream")
-async def pd_generate_stream(request: Request) -> Response:
-    try:
-        return await lightllm_pd_generate_stream(request, g_objs.httpserver_manager)
     except ServerBusyError as e:
         logger.error("%s", str(e), exc_info=True)
         return create_error_response(HTTPStatus.SERVICE_UNAVAILABLE, str(e))
