@@ -338,8 +338,8 @@ class InferReq:
             self.finish_status.set_status(FinishStatus.FINISHED_STOP)
         elif (
             self.cur_output_len > 0
-            and self.get_last_gen_token() in eos_ids
             and self.sampling_param.shm_param.ignore_eos is False
+            and self.get_last_gen_token() in eos_ids
         ):
             self.finish_status.set_status(FinishStatus.FINISHED_STOP)
         elif self.cur_output_len >= self.sampling_param.shm_param.max_new_tokens:
