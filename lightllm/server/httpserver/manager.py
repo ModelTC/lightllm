@@ -52,7 +52,7 @@ class HttpServerManager:
 
         self.multinode_req_manager = None
         self.nnodes = args.nnodes
-        self.lock = asyncio.Lock()
+        self._resource_lock = asyncio.Lock()
         self.node_rank = args.node_rank
         self.transfer_lock = asyncio.Lock()  # the lock for transfer to next module in multi node mode.
         self.disable_abort = args.nnodes > 1 and args.dp == 1  # mulitnode dp=1 mode, disable abort
@@ -142,7 +142,13 @@ class HttpServerManager:
     async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams, sampling_params: SamplingParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
-            async with self.lock:
+            # Acquire the lock so that two concurrent requests cannot both
+            # allocate more records than the cache_capacity.
+            # For example, if cache_capacity is 10 and each request has 6 images,
+            # without the lock one request might allocate 5 images,
+            # then another request allocates 5 more images, filling cache_capacity,
+            # and both wait for space to free, causing a deadlock.
+            async with self._resource_lock:
                 for img in multimodal_params.images:
                     self.tokenizer.init_imageitem_extral_params(img, multimodal_params, sampling_params)
                     record = await self._alloc_resource(img)
