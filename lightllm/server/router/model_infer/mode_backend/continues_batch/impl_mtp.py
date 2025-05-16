@@ -42,6 +42,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         super().init_model(kvargs)
         max_total_token_num = self.model.mem_manager.size
         kvargs["max_total_token_num"] = max_total_token_num
+        self.spec_step = kvargs.get("spec_step", 1)
 
         os.environ["DISABLE_CHECK_MAX_LEN_INFER"] = "1"
         mtp_model_kvargs = {
@@ -126,21 +127,25 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             kwargs, run_reqs = prepare_mtp_main_model_decode_inputs(decode_reqs, self.draft_token_id_map)
             update_draft_token_mem_indexes(self.main_draft_token_memindex_map, run_reqs, kwargs["mem_indexes"][1::2])
             logits = self.model.forward(**kwargs)
+            print(logits.shape)
             assert logits.shape[0] % 2 == 0
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
 
-            twist_run_reqs = [item for item in run_reqs for _ in range(2)]
-            next_token_ids, next_token_probs = sample(logits, twist_run_reqs, self.eos_id)
+            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
             next_token_ids0 = next_token_ids[::2]
             next_token_logprobs0 = next_token_logprobs[::2]
             self._post_handle(
-                run_reqs, next_token_ids0, next_token_logprobs0, is_chuncked_mode=False, do_filter_finished_reqs=False
+                run_reqs[::2],
+                next_token_ids0,
+                next_token_logprobs0,
+                is_chuncked_mode=False,
+                do_filter_finished_reqs=False,
             )
 
             next_token_ids1 = next_token_ids[1::2]
@@ -164,7 +169,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             update_draft_token_mem_indexes(self.mtp_draft_token_memindex_map, run_reqs, mtp_mem_indexes[1::2])
 
             draft_logits = self.mtp_model.forward(**mtp_kwargs)
-            draft_next_token_ids, _ = sample(draft_logits, twist_run_reqs, self.eos_id)
+            draft_next_token_ids, _ = sample(draft_logits, run_reqs, self.eos_id)
 
             accepted_req_idxs = [req.req_idx for req in accepted_reqs]
             self._save_draft_token_ids(draft_next_token_ids, run_reqs, accepted_req_idxs)
@@ -194,7 +199,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         need_free_mem_indexes = []
         for i, req in enumerate(run_reqs):
             if accepted_reqs is None:
-                self.mtp_draft_token_memindex_map[req.req_idx] = draft_next_token_ids[i]
+                self.draft_token_map[req.req_idx] = draft_next_token_ids[i]
             else:
                 if req.req_idx in accepted_reqs:
                     self.draft_token_map[req.req_idx] = draft_next_token_ids[2 * i + 1]

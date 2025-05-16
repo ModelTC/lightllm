@@ -4,13 +4,16 @@ from enum import IntEnum, auto
 class SpeculativeDecodeAlgorithm(IntEnum):
     NONE = auto()
     MTP = auto()
-    MTP_MOUDLE  = auto()
+    MTP_MOUDLE = auto()
 
     def is_none(self):
         return self == SpeculativeDecodeAlgorithm.NONE
 
     def is_mtp(self):
         return self == SpeculativeDecodeAlgorithm.MTP
+
+    def is_mtp_module(self):
+        return self == SpeculativeDecodeAlgorithm.MTP_MOUDLE
 
     @staticmethod
     def from_string(name: str):
