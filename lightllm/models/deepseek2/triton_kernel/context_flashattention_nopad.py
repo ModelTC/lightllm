@@ -4,9 +4,10 @@ import triton
 import triton.language as tl
 import math
 import torch.nn.functional as F
+from lightllm.utils.device_utils import get_cuda_device_name, get_device_capability
 
-TESLA = "Tesla" in torch.cuda.get_device_name(0)
-CUDA_CAPABILITY = torch.cuda.get_device_capability()
+TESLA = "Tesla" in get_cuda_device_name()
+CUDA_CAPABILITY = get_device_capability()
 
 
 @triton.jit

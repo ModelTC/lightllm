@@ -5,12 +5,13 @@ import triton.language as tl
 import math
 import torch.nn.functional as F
 
-TESLA = "Tesla" in torch.cuda.get_device_name(0)
+from lightllm.utils.device_utils import get_cuda_device_name, get_device_capability
+
 HOPPER = (
-    "H100" in torch.cuda.get_device_name(0)
-    or "H200" in torch.cuda.get_device_name(0)
-    or "H800" in torch.cuda.get_device_name(0)
-    or "Hopper" in torch.cuda.get_device_name(0)
+    "H100" in get_cuda_device_name()
+    or "H200" in get_cuda_device_name()
+    or "H800" in get_cuda_device_name()
+    or "Hopper" in get_cuda_device_name()
 )
 
 

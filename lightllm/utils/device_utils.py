@@ -1,11 +1,26 @@
 import os
 import time
+import torch
 import shutil
 import subprocess
 from functools import lru_cache
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
+
+
+@lru_cache(maxsize=None)
+def get_cuda_device_name():
+    if not torch.cuda.is_available():
+        return ""
+    return torch.cuda.get_device_name(0)
+
+
+@lru_cache(maxsize=None)
+def get_device_capability():
+    if not torch.cuda.is_available():
+        return (-1, -1)
+    return torch.cuda.get_device_capability()
 
 
 @lru_cache(maxsize=None)

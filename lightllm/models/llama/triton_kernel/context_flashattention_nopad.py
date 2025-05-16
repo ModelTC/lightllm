@@ -7,7 +7,9 @@ import triton.language as tl
 import math
 import torch.nn.functional as F
 
-TESLA = "Tesla" in torch.cuda.get_device_name(0)
+from lightllm.utils.device_utils import get_cuda_device_name
+
+TESLA = "Tesla" in get_cuda_device_name()
 
 
 @triton.jit
