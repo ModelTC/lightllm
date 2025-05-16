@@ -3,10 +3,7 @@ import torch
 import triton
 import triton.language as tl
 
-from lightllm.utils.device_utils import get_cuda_device_name, get_device_capability
-
-TESLA = "Tesla" in get_cuda_device_name()
-CUDA_CAPABILITY = get_device_capability()
+from lightllm.utils.device_utils import is_tesla
 
 
 @triton.jit
@@ -79,14 +76,14 @@ def sample_kv(
     kv_scale=None,
     k_scale=None,
 ):
-    BLOCK = 128 if not TESLA else 64
+    BLOCK = 128 if not is_tesla() else 64
 
     nope_dim = kv_nope.shape[-1]
     rope_dim = kv_rope.shape[-1]
     if nope_dim >= 512:
-        BLOCK = 64 if not TESLA else 32
+        BLOCK = 64 if not is_tesla() else 32
     else:
-        BLOCK = 128 if not TESLA else 64
+        BLOCK = 128 if not is_tesla() else 64
 
     batch = b_seq_len.shape[0]
 

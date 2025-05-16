@@ -24,6 +24,21 @@ def get_device_capability():
 
 
 @lru_cache(maxsize=None)
+def is_tesla():
+    return "Tesla" in get_cuda_device_name()
+
+
+@lru_cache(maxsize=None)
+def is_hopper():
+    return (
+        "H100" in get_cuda_device_name()
+        or "H200" in get_cuda_device_name()
+        or "H800" in get_cuda_device_name()
+        or "Hopper" in get_cuda_device_name()
+    )
+
+
+@lru_cache(maxsize=None)
 def get_device_sm_count():
     import triton
     from triton.runtime import driver
