@@ -39,9 +39,9 @@ Learn more in the release blogs: [v1.0.0 blog](https://www.light-ai.top/lightllm
 
 Please refer to the [FAQ](https://lightllm-en.readthedocs.io/en/latest/faq.html) for more information.
 
-## Projects using lightllm
+## Projects using LightLLM
 
-We welcome any coopoeration and contribution. If there is a project requires lightllm's support, please contact us via email or create a pull request.
+We welcome any coopoeration and contribution. If there is a project requires LightLLM's support, please contact us via email or create a pull request.
 
 
 1. <details><summary> <b><a href=https://github.com/LazyAGI/LazyLLM>LazyLLM</a></b>: Easyest and lazyest way for building multi-agent LLMs applications.</summary>
@@ -58,6 +58,18 @@ We welcome any coopoeration and contribution. If there is a project requires lig
     Documents: https://lazyllm.readthedocs.io/
 
     </details>
+
+Also, LightLLM's pure-python design and token-level KC Cache management make it easy to use as the basis for research projects.
+
+Academia works based on or use part of LightLLM:
+- ParrotServe (OSDI’24)
+- SLoRA (MLSys’24)
+- LoongServe (SOSP’24)
+- ByteDance’s CXL (Eurosys’24)
+- VTC (OSDI’24)
+- OmniKV (ICLR’25)
+- CaraServe, LoRATEE, FastSwitch ...
+
 
 ## Community
 
@@ -77,3 +89,17 @@ We learned a lot from the following projects when developing LightLLM.
 - [flashinfer](https://github.com/flashinfer-ai/flashinfer/tree/main)
 - [Flash Attention 1&2](https://github.com/Dao-AILab/flash-attention)
 - [OpenAI Triton](https://github.com/openai/triton)
+
+
+## Citation
+
+If you use LightLLM for your work, please cite our [paper](https://dl.acm.org/doi/10.1145/3676641.3716011):
+```bibtex
+@inproceedings{gong2025past,
+  title={Past-Future Scheduler for LLM Serving under SLA Guarantees},
+  author={Gong, Ruihao and Bai, Shihao and Wu, Siyu and Fan, Yunqian and Wang, Zaijun and Li, Xiuhong and Yang, Hailong and Liu, Xianglong},
+  booktitle={Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2},
+  pages={798--813},
+  year={2025}
+}
+```
