@@ -29,10 +29,7 @@ from lightllm.utils.envs_utils import get_env_start_args
 
 logger = init_logger(__name__)
 
-try:
-    from sgl_kernel.flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
-except:
-    logger.warning("sgl_kernel is not installed, or the installed version does not support fa3!")
+from lightllm.utils.sgl_utils import flash_attn_with_kvcache
 
 
 class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
@@ -42,8 +39,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         super().__init__(layer_num, network_config, mode)
         self.eps_ = network_config["rms_norm_eps"]
         self.tp_q_head_num_ = network_config["num_attention_heads"] // self.tp_world_size_
-        self.tp_k_head_num_ = network_config["num_key_value_heads"] // self.tp_world_size_
-        self.tp_v_head_num_ = network_config["num_key_value_heads"] // self.tp_world_size_
+        self.tp_k_head_num_ = max(network_config["num_key_value_heads"] // self.tp_world_size_, 1)
+        self.tp_v_head_num_ = max(network_config["num_key_value_heads"] // self.tp_world_size_, 1)
         self.tp_o_head_num_ = self.tp_q_head_num_
         self.head_dim_ = network_config["hidden_size"] // network_config["num_attention_heads"]
         self.embed_dim_ = network_config["hidden_size"]
