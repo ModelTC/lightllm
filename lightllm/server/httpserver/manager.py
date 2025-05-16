@@ -142,12 +142,9 @@ class HttpServerManager:
     async def _alloc_multimodal_resources(self, multimodal_params: MultimodalParams, sampling_params: SamplingParams):
         # 只有 P 和 NORMAL 节点需要真的管理多模态资源
         if self.pd_mode.is_P_or_NORMAL():
-            # Acquire the lock so that two concurrent requests cannot both
-            # allocate more records than the cache_capacity.
-            # For example, if cache_capacity is 10 and each request has 6 images,
-            # without the lock one request might allocate 5 images,
-            # then another request allocates 5 more images, filling cache_capacity,
-            # and both wait for space to free, causing a deadlock.
+            # 这里的锁是为了 防止多个含有多张图片的请求 同时申请的record数量 大于cache_capacity，从而造成死锁的问题。
+            # 如果不加任何锁，假如请求1和请求2都有6张图片，而cache_capacity为10，
+            # 那么如果某一时刻shm中存在请求1的5张图和请求2的5张图，将会资源竞争产生死锁。
             async with self._resource_lock:
                 for img in multimodal_params.images:
                     self.tokenizer.init_imageitem_extral_params(img, multimodal_params, sampling_params)
@@ -169,7 +166,6 @@ class HttpServerManager:
             if multimodal_params is not None:
                 for img in multimodal_params.images:
                     if img.uuid is not None:
-                        logger.info(f"Releasing id {img.uuid}")
                         self.cache_client.root.release(img.uuid)
                         # 将 uuid 等 赋值为 None, 防止因为abort等异常情况造成重复释放异常
                         img.uuid = None
@@ -602,7 +598,6 @@ class HttpServerManager:
             release_req_status: List[ReqStatus] = []
             for req_status in self.req_id_to_out_inf.values():
                 if req_status.can_release():
-                    logger.info(f"req_status {req_status.group_req_objs.group_req_id} can release")
                     release_req_status.append(req_status)
             for req_status in release_req_status:
                 self.req_id_to_out_inf.pop(req_status.group_req_objs.group_req_id, None)

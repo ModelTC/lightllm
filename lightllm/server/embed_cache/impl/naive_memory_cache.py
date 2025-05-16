@@ -78,10 +78,6 @@ class InMemoryCache(CacheManager):
         t = time.time()
         for id, record in items:
             if record.ref <= 0 or t - record.visittime >= self.expired_secs:
-                if record.ref <= 0:
-                    logger.info(f"id {id}'s record ref is 0")
-                if t - record.visittime >= self.expired_secs:
-                    logger.info(f"id {id}'s record expired, because of time_expired")
                 if record.data:
                     free_shm(get_shm_name_data(id))
                 if record.embed:
@@ -133,7 +129,6 @@ class InMemoryCache(CacheManager):
             return {"id": record.id, "token_id": record.token_id, "token_num": record.token_num}
 
     def release(self, id: int) -> None:
-        logger.info(f"Releasing id {id}")
         with self.lock:
             self._records[id].ref -= 1
 

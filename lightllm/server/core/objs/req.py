@@ -200,11 +200,9 @@ class Req(ctypes.Structure):
         can_released_mark = self.can_released_mark
 
         if self.is_aborted and can_released_mark and ref_count_ok:
-            print("because of aborted, can release")
             return True
 
         if self.finish_status.is_finished() and can_released_mark and ref_count_ok and self.out_tokens_queue.is_empty():
-            print("because of finished, can release")
             return True
 
         return False
