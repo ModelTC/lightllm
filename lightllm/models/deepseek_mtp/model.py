@@ -8,18 +8,20 @@ import torch
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
 from lightllm.common.basemodel.triton_kernel.copy_kv_index_to_req import copy_kv_index_to_req
 from lightllm.common.infer_utils import init_req_to_token_indexes
-from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward  
+from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.common.basemodel.cuda_graph import CudaGraph
 from .deepseek3_mtp_mem_manager import Deepseek3MTPMemoryManager
 
+
 class Deepseek3MTPModel(Deepseek2TpPartModel):
-    
+
     pre_and_post_weight_class = Deepseek3MTPPreAndPostLayerWeight
     pre_layer_infer_class = Deepseek3MTPPreLayerInfer
-    
+
     def __init__(self, kvargs):
+        self.main_model = kvargs["main_model"]
         super().__init__(kvargs)
-    
+
     def _init_mem_manager(self):
         self.mem_manager = Deepseek3MTPMemoryManager(
             self.max_total_token_num,
@@ -30,6 +32,9 @@ class Deepseek3MTPModel(Deepseek2TpPartModel):
             mem_fraction=self.mem_fraction,
         )
         return
-        
-        
-                
+
+    def _init_weights(self):
+        super()._init_weights()
+        self.pre_post_weight.wte_weight_ = self.main_model.pre_post_weight.wte_weight_
+        self.pre_post_weight.lm_head_weight_ = self.main_model.pre_post_weight.lm_head_weight_
+        self.pre_post_weight.final_norm_weight_ = self.main_model.pre_post_weight.final_norm_weight_
