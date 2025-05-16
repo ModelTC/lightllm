@@ -385,4 +385,10 @@ def make_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
     )
+    parser.add_argument(
+        "--spec_step",
+        type=int,
+        default=1,
+        help="spec step for spec algo, only support deepseekv3 model.",
+    )
     return parser

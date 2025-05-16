@@ -76,7 +76,7 @@ class TpPartBaseModel:
         # Speculative decoding
         self.spec_algo = SpeculativeDecodeAlgorithm.from_string(kvargs.get("spec_algo", "NONE"))
         self.spec_info = None
-        
+
         self._init_datatype()
         self._init_config()
         self._verify_must()
@@ -355,15 +355,22 @@ class TpPartBaseModel:
         infer_state.mem_index = mem_indexes
         decode_len = self.spec_algo.decode_len()
         infer_state.kv_buffer_shapedtype = (
-            (batch_size  * decode_len, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
+            (batch_size * decode_len, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
             self.data_type,
         )
         infer_state.dist_group = dist_group_manager.get_default_group()
-        copy_kv_index_to_req(self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index, decode_len)
+        copy_kv_index_to_req(
+            self.req_manager.req_to_token_indexs, b_req_idx, b_seq_len, infer_state.mem_index, decode_len
+        )
 
         infer_state.init_some_extra_state(self, input_ids)
         if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
             if self.graph.need_capture(batch_size):
+                # for mtp draft module graph capture
+                if infer_state.spec_algo.is_mtp() and infer_state.spec_info is None:
+                    infer_state.spec_info = torch.randn(
+                        (batch_size, self.config["n_embed"]), dtype=self.data_type, device=input_ids.device
+                    )
                 infer_state.is_cuda_graph = True
                 predict_logics = self.graph.capture_decode(self._token_forward, input_ids, infer_state)
             else:
@@ -511,7 +518,7 @@ class TpPartBaseModel:
 
         if self.spec_algo.is_mtp():
             self.spec_info = input_embs
-            
+
         post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
         predict_logics = post_method(input_embs, infer_state, self.pre_post_weight)
 
@@ -533,10 +540,10 @@ class TpPartBaseModel:
             layer = self.layers_infer[i]
             layer_method = (layer.token_forward, layer.tpsp_token_forward)[run_mode_index]
             input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
-            
+
         if self.spec_algo.is_mtp():
             self.spec_info = input_embs
-            
+
         post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
         predict_logics = post_method(input_embs, infer_state, self.pre_post_weight)
 

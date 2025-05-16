@@ -177,6 +177,7 @@ class RouterManager:
             "pd_rpyc_ports": self.args.pd_node_infer_rpyc_ports,  # 非 pd 模式可以不设置
             "spec_algo": self.args.spec_algo,
             "spec_weight_dir": self.args.spec_model_dir,
+            "spec_step": self.args.spec_step,
         }
 
         await self.model_rpc_client.init_model(kvargs=kvargs)
