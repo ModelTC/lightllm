@@ -249,7 +249,17 @@ async def run_continuous_benchmark(
     end_time = [0.0]
     pending_tasks = []
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=10 * reqs_num)) as session:
+    timeout = aiohttp.ClientTimeout(
+        total=3600,  # 总超时时间1小时
+        connect=300,  # 连接超时5分钟
+        sock_connect=300,
+        sock_read=3600,
+    )
+
+    async with aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=10 * reqs_num),
+        timeout=timeout,
+    ) as session:
         sender_task = asyncio.create_task(
             continuous_sender(
                 session,

@@ -21,6 +21,52 @@ from lightllm.utils.custom_kernel_utis import custom_cat
 logger = init_logger(__name__)
 
 
+class ReqSampleParmsManager:
+    def __init__(self, max_request_num, vocab_size):
+        self.presence_penalties = torch.empty(max_request_num, dtype=torch.float, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.frequency_penalties = torch.empty(max_request_num, dtype=torch.float, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.repetition_penalties = torch.empty(max_request_num, dtype=torch.float, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.exponential_decay_length_penalties = torch.empty(
+            max_request_num, dtype=torch.float, device="cpu", pin_memory=True
+        ).cuda(non_blocking=True)
+        self.temperatures = torch.empty(max_request_num, dtype=torch.float, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.top_ps = torch.empty(max_request_num, dtype=torch.float, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.top_ks = torch.empty(max_request_num, dtype=torch.int32, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.length_penalty_idx = torch.empty(max_request_num, dtype=torch.int32, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.mask_eos_reqs = torch.empty(max_request_num, dtype=torch.int32, device="cpu", pin_memory=True).cuda(
+            non_blocking=True
+        )
+        self.p_token_vocabs = torch.zeros(
+            (max_request_num, vocab_size), dtype=torch.int16, device="cpu", pin_memory=True
+        ).cuda(non_blocking=True)
+
+    def set_sample_params(self, req_idx, sampling_param):
+        self.presence_penalties[req_idx] = sampling_param.shm_param.presence_penalty
+        self.frequency_penalties[req_idx] = sampling_param.shm_param.frequency_penalty
+        self.repetition_penalties[req_idx] = sampling_param.shm_param.repetition_penalty
+        tpl = sampling_param.shm_param.exponential_decay_length_penalty.to_tuple()
+        self.exponential_decay_length_penalties[req_idx] = tpl[1]
+        self.temperatures[req_idx] = sampling_param.shm_param.temperature
+        self.top_ps[req_idx] = sampling_param.shm_param.top_p
+        self.top_ks[req_idx] = sampling_param.shm_param.top_k
+        self.length_penalty_idx[req_idx] = tpl[0]
+        self.mask_eos_reqs[req_idx] = sampling_param.shm_param.min_new_tokens - 1
+
+
 @dataclass
 class InferenceContext:
     req_manager: ReqManager = None  # gpu 请求管理
@@ -36,6 +82,8 @@ class InferenceContext:
     def register(
         self, req_manager: ReqManager, radix_cache: RadixCache, shm_req_manager: ShmReqManager, vocab_size: int
     ):
+        if os.getenv("ENABLE_REQ_PARAM_CACHE", False):
+            req_manager.req_sample_parms_manager = ReqSampleParmsManager(req_manager.max_request_num, vocab_size)
         self.req_manager = req_manager
         self.radix_cache = radix_cache
         self.shm_req_manager = shm_req_manager
@@ -55,7 +103,6 @@ class InferenceContext:
     def add_reqs(self, requests: List[Tuple[int, int, Any, int]], init_req_obj=True):
         request_ids = []
         for r in requests:
-
             r_id, r_index, multimodal_params, _ = r
             if r_id not in self.requests_mapping.keys():
                 r_obj = InferReq(
@@ -264,6 +311,16 @@ class InferReq:
             self.shm_req.link_prompt_ids_shm_array()
             self.shm_req.link_logprobs_shm_array()
             self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)
+
+            if os.getenv("ENABLE_REQ_PARAM_CACHE", False):
+                g_infer_context.req_manager.req_sample_parms_manager.set_sample_params(
+                    self.req_idx, self.sampling_param
+                )
+                if self.sampling_param.shm_param.input_penalty:
+                    dct = collections.Counter(self.shm_req.get_prompt_ids())
+                    for idx, count in dct.items():
+                        g_infer_context.req_manager.req_sample_parms_manager.p_token_vocabs[self.req_idx][idx] = count
+
             if self.sampling_param.shm_param.input_penalty:
                 self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
             else:

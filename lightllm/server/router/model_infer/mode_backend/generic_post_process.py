@@ -1,9 +1,11 @@
 import torch
 from typing import List
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
+from lightllm.common.basemodel.triton_kernel.apply_penalty_cache import apply_penalty_cache
 from dataclasses import dataclass
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 
 
 def sample(logits, reqs, eos_id: List[int] = [2]):
@@ -146,3 +148,65 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
         length_penalty_idx_cpu.cuda(non_blocking=True),
         mask_eos_reqs_cpu.cuda(non_blocking=True),
     )
+
+
+def sample_in_cache(logits, reqs, eos_id: List[int] = [2]):
+    req_idxs = _get_req_idxs(reqs)
+    eos_ids = torch.tensor(eos_id, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
+    logits = logits.contiguous()
+    params = g_infer_context.req_manager.req_sample_parms_manager
+    apply_penalty_cache(
+        logits,
+        req_idxs,
+        params.presence_penalties,
+        params.frequency_penalties,
+        params.repetition_penalties,
+        params.p_token_vocabs,
+        None,
+        params.exponential_decay_length_penalties,
+        params.length_penalty_idx,
+        eos_ids,
+        params.mask_eos_reqs,
+    )
+
+    logits.div_(params.temperatures[req_idxs].view((-1, 1)))
+    probs = torch.softmax(logits, dim=-1)
+
+    if get_env_start_args().sampling_backend == "triton":
+        probs_sort, probs_idx = _top_p_top_k(probs, params.top_ps[req_idxs], params.top_ks[req_idxs])
+        sampled_index = torch.multinomial(probs_sort, num_samples=1, replacement=True)
+
+        batch_next_token_ids = torch.gather(probs_idx, dim=1, index=sampled_index)
+        batch_next_token_probs = torch.gather(probs_sort, dim=1, index=sampled_index)
+
+        _update_repeatition_tokens(req_idxs, batch_next_token_ids)
+        return batch_next_token_ids.view(-1), batch_next_token_probs.view(-1)
+
+    elif get_env_start_args().sampling_backend == "sglang_kernel":
+        from sgl_kernel import top_k_top_p_sampling_from_probs
+
+        batch_next_token_ids = top_k_top_p_sampling_from_probs(
+            probs,
+            params.top_ks[req_idxs],
+            params.top_ps[req_idxs],
+            filter_apply_order="joint",
+            check_nan=True,
+        )
+        int64_batch_next_token_ids = torch.empty_like(batch_next_token_ids, dtype=torch.int64)
+        int64_batch_next_token_ids[:] = batch_next_token_ids
+        batch_next_token_probs = torch.gather(probs, dim=1, index=int64_batch_next_token_ids.view(-1, 1))
+        _update_repeatition_tokens(req_idxs, batch_next_token_ids)
+        return batch_next_token_ids.view(-1), batch_next_token_probs.view(-1)
+    else:
+        assert False, "dead path"
+
+
+def _get_req_idxs(reqs: List[InferReq]):
+    req_idxs: List[int] = []
+    for _, req_obj in enumerate(reqs):
+        req_idxs.append(req_obj.req_idx)
+    return torch.tensor(req_idxs, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
+
+
+def _update_repeatition_tokens(req_idxs, token_ids):
+    g_infer_context.req_manager.req_sample_parms_manager.p_token_vocabs[req_idxs, token_ids] += 1

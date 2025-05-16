@@ -226,7 +226,7 @@ class ModeBackend:
                 prefill_reqs.append(req_obj)
                 continue
 
-            is_decode = req_obj.cur_kv_len + 1 == req_obj.get_cur_total_len()
+            is_decode = req_obj.get_output_len() > 0
 
             if not is_decode:
                 prefill_reqs.append(req_obj)
