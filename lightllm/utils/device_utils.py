@@ -10,31 +10,17 @@ logger = init_logger(__name__)
 
 
 @lru_cache(maxsize=None)
-def get_cuda_device_name():
-    if not torch.cuda.is_available():
-        return ""
-    return torch.cuda.get_device_name(0)
-
-
-@lru_cache(maxsize=None)
-def get_device_capability():
-    if not torch.cuda.is_available():
-        return (-1, -1)
-    return torch.cuda.get_device_capability()
-
-
-@lru_cache(maxsize=None)
 def is_tesla():
-    return "Tesla" in get_cuda_device_name()
+    return "Tesla" in torch.cuda.get_device_name(0)
 
 
 @lru_cache(maxsize=None)
 def is_hopper():
     return (
-        "H100" in get_cuda_device_name()
-        or "H200" in get_cuda_device_name()
-        or "H800" in get_cuda_device_name()
-        or "Hopper" in get_cuda_device_name()
+        "H100" in torch.cuda.get_device_name(0)
+        or "H200" in torch.cuda.get_device_name(0)
+        or "H800" in torch.cuda.get_device_name(0)
+        or "Hopper" in torch.cuda.get_device_name(0)
     )
 
 
