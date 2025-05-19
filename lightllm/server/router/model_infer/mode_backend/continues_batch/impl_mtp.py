@@ -21,6 +21,7 @@ from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.router.model_infer.infer_batch import InferReq
 import copy
 from lightllm.utils.custom_kernel_utis import custom_cat
+from lightllm.utils.dist_utils import device0_print
 
 
 logger = init_logger(__name__)
@@ -28,7 +29,7 @@ logger = init_logger(__name__)
 # TODO: optim
 def update_draft_token_mem_indexes(draft_token_memindex_map, run_reqs, mem_indexes):
     for i, req in enumerate(run_reqs):
-        draft_token_memindex_map[req.idx] = mem_indexes[i]
+        draft_token_memindex_map[req.req_idx] = mem_indexes[i]
 
 
 class ContinuesBatchWithMTPBackend(ModeBackend):
@@ -59,7 +60,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             "data_type": kvargs.get("data_type", "float16"),
             "graph_max_batch_size": kvargs.get("graph_max_batch_size", 16),
             "graph_max_len_in_batch": kvargs.get("graph_max_len_in_batch", 8196),
-            "disable_cudagraph": kvargs.get("disable_cudagraph", False),
+            "disable_cudagraph": True,  # kvargs.get("disable_cudagraph", False),
             "mem_fraction": kvargs["mem_fraction"],
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
             "quant_type": kvargs.get("quant_type", None),
@@ -77,12 +78,12 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         self.logger.info(f"loaded mtp model class {self.mtp_model.__class__}")
 
         max_req_num = kvargs.get("max_req_num", 1000)
-        self.draft_token_id_map = torch.full((max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cuda")
+        self.draft_token_id_map = torch.full((max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cpu")
         self.main_draft_token_memindex_map = torch.full(
-            (max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cuda"
+            (max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cpu"
         )
         self.mtp_draft_token_memindex_map = torch.full(
-            (max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cuda"
+            (max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cpu"
         )
 
     def prefill(self, reqs: List[Tuple]):
@@ -110,13 +111,14 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-
+            device0_print(f"next_token_ids: {next_token_ids}")
             # spec decode: MTP
             self.mtp_model.spec_info = self.model.spec_info
             mtp_kwargs = prepare_mtp_prefill_inputs(prefill_reqs, next_token_ids, self.mtp_model.mem_manager)
             draft_logits = self.mtp_model.forward(**mtp_kwargs)
             draft_next_token_ids, _ = sample(draft_logits, run_reqs, self.eos_id)
             draft_next_token_ids = draft_next_token_ids.detach().cpu().numpy()
+            device0_print(f"draft_next_token_ids: {draft_next_token_ids}")
             self._save_draft_token_ids(draft_next_token_ids, run_reqs)
 
             self._post_handle(
@@ -125,9 +127,11 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
 
         if decode_reqs:
             kwargs, run_reqs = prepare_mtp_main_model_decode_inputs(decode_reqs, self.draft_token_id_map)
-            update_draft_token_mem_indexes(self.main_draft_token_memindex_map, run_reqs, kwargs["mem_indexes"][1::2])
+            device0_print(kwargs)
+            update_draft_token_mem_indexes(
+                self.main_draft_token_memindex_map, run_reqs[1::2], kwargs["mem_indexes"][1::2]
+            )
             logits = self.model.forward(**kwargs)
-            print(logits.shape)
             assert logits.shape[0] % 2 == 0
 
             self._overlap_req_init_and_filter(
@@ -140,6 +144,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
 
             next_token_ids0 = next_token_ids[::2]
             next_token_logprobs0 = next_token_logprobs[::2]
+            device0_print(f"next_token_ids0: {next_token_ids0}")
             self._post_handle(
                 run_reqs[::2],
                 next_token_ids0,
@@ -147,15 +152,15 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 is_chuncked_mode=False,
                 do_filter_finished_reqs=False,
             )
-
             next_token_ids1 = next_token_ids[1::2]
             next_token_logprobs1 = next_token_logprobs[1::2]
+            device0_print(f"next_token_ids1: {next_token_ids1}")
 
-            accepted_reqs = self.verify(next_token_ids1, run_reqs)
+            accepted_reqs, accepted_index = self.verify(next_token_ids0, run_reqs[::2])
             self._post_handle(
                 accepted_reqs,
-                next_token_ids1,
-                next_token_logprobs1,
+                next_token_ids1[accepted_index],
+                next_token_logprobs1[accepted_index],
                 is_chuncked_mode=False,
                 do_filter_finished_reqs=False,
             )
@@ -166,46 +171,49 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             mtp_kwargs["input_ids"] = torch.tensor(next_token_ids, dtype=torch.int64, device="cuda")
             mtp_mem_indexes = self.mtp_model.mem_manager.alloc(next_token_ids.shape[0]).cuda()
             kwargs["mem_indexes"] = mtp_mem_indexes
-            update_draft_token_mem_indexes(self.mtp_draft_token_memindex_map, run_reqs, mtp_mem_indexes[1::2])
+            update_draft_token_mem_indexes(self.mtp_draft_token_memindex_map, run_reqs[1::2], mtp_mem_indexes[1::2])
 
             draft_logits = self.mtp_model.forward(**mtp_kwargs)
             draft_next_token_ids, _ = sample(draft_logits, run_reqs, self.eos_id)
 
             accepted_req_idxs = [req.req_idx for req in accepted_reqs]
-            self._save_draft_token_ids(draft_next_token_ids, run_reqs, accepted_req_idxs)
+            self._save_draft_token_ids(draft_next_token_ids, run_reqs[::2], accepted_req_idxs)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
 
-    def verify(self, next_token_ids1, run_reqs):
+    def verify(self, next_token_ids0, run_reqs):
         accepted_reqs = []
+        accepted_index = []
         need_free_mem_indexes = []
+
         for i, req in enumerate(run_reqs):
-            if self.main_draft_token_memindex_map[req.req_idx] == next_token_ids1[i]:
-                self.accepted_map[req.req_idx] = True
+            device0_print(self.draft_token_id_map[req.req_idx])
+            if self.draft_token_id_map[req.req_idx] == next_token_ids0[i]:
                 accepted_reqs.append(req)
+                accepted_index.append(i)
                 self.main_draft_token_memindex_map[req.req_idx] = IS_NONE
             else:
-                self.accepted_map[req.req_idx] = False
                 need_free_mem_indexes.append(self.main_draft_token_memindex_map[req.req_idx])
         if need_free_mem_indexes:
             g_infer_state_lock.acquire()
             g_infer_context.req_manager.mem_manager.free(need_free_mem_indexes)
             g_infer_state_lock.release()
-        return accepted_reqs
+        device0_print(f"accpeted_reqs {accepted_index}")
+        return accepted_reqs, accepted_index
 
     def _save_draft_token_ids(self, draft_next_token_ids, run_reqs, accepted_reqs=None):
         assert accepted_reqs is None or draft_next_token_ids.shape[0] == 2 * len(run_reqs)
         need_free_mem_indexes = []
         for i, req in enumerate(run_reqs):
             if accepted_reqs is None:
-                self.draft_token_map[req.req_idx] = draft_next_token_ids[i]
+                self.draft_token_id_map[req.req_idx] = draft_next_token_ids[i]
             else:
                 if req.req_idx in accepted_reqs:
-                    self.draft_token_map[req.req_idx] = draft_next_token_ids[2 * i + 1]
+                    self.draft_token_id_map[req.req_idx] = draft_next_token_ids[2 * i + 1]
                     self.mtp_draft_token_memindex_map[req.req_idx] = IS_NONE
                 else:
-                    self.draft_token_map[req.req_idx] = draft_next_token_ids[2 * i]
+                    self.draft_token_id_map[req.req_idx] = draft_next_token_ids[2 * i]
                     need_free_mem_indexes.append(self.mtp_draft_token_memindex_map[req.req_idx])
         if need_free_mem_indexes:
             g_infer_state_lock.acquire()

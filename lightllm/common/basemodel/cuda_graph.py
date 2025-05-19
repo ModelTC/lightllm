@@ -129,6 +129,7 @@ class CudaGraph:
     @torch.no_grad()
     def warmup(self, model):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
+        decode_len = model.spec_algo.decode_len()
         for batch_size in range(self.max_batch_size, 0, -1):
             # dummy prefill
             prefill_input_len = 1
@@ -160,9 +161,6 @@ class CudaGraph:
             predict_ids = predict_ids.detach().cpu().numpy()
             torch.cuda.empty_cache()
 
-            # dummy decoding, capture the cudagraph
-            decode_len = model.spec_algo.decode_len()
-            predict_ids = predict_ids.repeat(decode_len)
             total_token_num += batch_size
             b_seq_len += 1
             mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
