@@ -189,3 +189,8 @@ def set_node_world_size(node_world_size: int):
 
 def get_node_world_size():
     return int(get_environ("LIGHTLLM_NODE_WORLD_SIZE"))
+
+
+def device0_print(str):
+    if get_current_device_id() == 0:
+        print(str)
