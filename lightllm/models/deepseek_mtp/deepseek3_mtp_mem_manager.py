@@ -27,12 +27,10 @@ class Deepseek3MTPMemoryManager(Deepseek2MemoryManager):
         self.can_use_mem_size = self.size
 
         rank_in_node = get_current_rank_in_node()
-        self.shared_can_use_token_num = SharedInt(
-            f"MTP_mem_manger_can_use_token_num_{rank_in_node}"
-        )
+        self.shared_can_use_token_num = SharedInt(f"MTP_mem_manger_can_use_token_num_{rank_in_node}")
 
         self.shared_can_use_token_num.set_value(self.can_use_mem_size)
-        
+
         self._init_buffers(
             self.size,
             dtype,
@@ -41,4 +39,3 @@ class Deepseek3MTPMemoryManager(Deepseek2MemoryManager):
             layer_num,
         )
         self.HOLD_TOKEN_MEMINDEX = self.size
-

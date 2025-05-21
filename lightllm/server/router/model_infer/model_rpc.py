@@ -21,7 +21,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPForDecodeNode,
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
-    ContinuesBatchWithMTPBackend
+    ContinuesBatchWithMTPBackend,
 )
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
 from lightllm.utils.log_utils import init_logger
