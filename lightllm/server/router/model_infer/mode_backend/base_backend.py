@@ -110,6 +110,7 @@ class ModeBackend:
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
+            "spec_algo": kvargs.get("spec_algo", "NONE"),
             "run_mode": self.run_mode,
         }
         self.model, self.is_multimodal = get_model(model_cfg, model_kvargs)

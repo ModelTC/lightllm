@@ -5,6 +5,7 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
+from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 
 logger = init_logger(__name__)
@@ -47,10 +48,10 @@ class CudaGraph:
 
         with lightllm_capture_graph(dist_group):
             with torch.cuda.graph(graph_obj, pool=self.mempool):
-                predict_logics = decode_func(input_ids, infer_state)
-        self.graph[batch_size] = (graph_obj, input_ids, infer_state, predict_logics)
+                model_output = decode_func(input_ids, infer_state)
+        self.graph[batch_size] = (graph_obj, input_ids, infer_state, model_output)
         graph_obj.replay()
-        return predict_logics
+        return model_output
 
     def _capture_decode_overlap(self, decode_func, input_ids, infer_state, input_ids1, infer_state1):
         dist_group: CustomProcessGroup = infer_state.dist_group
@@ -95,11 +96,11 @@ class CudaGraph:
 
     def _replay(self, input_ids, infer_state):
         batch_size = input_ids.shape[0]
-        graph_obj, graph_input_ids, graph_infer_state, graph_predict_logics = self.graph[batch_size]
+        graph_obj, graph_input_ids, graph_infer_state, graph_output = self.graph[batch_size]
         graph_input_ids.copy_(input_ids)
         graph_infer_state.copy_for_cuda_graph(infer_state)
         graph_obj.replay()
-        return graph_predict_logics
+        return graph_output
 
     def _replay_overlap(self, input_ids, infer_state, input_ids1, infer_state1):
         batch_size = input_ids.shape[0]
@@ -141,21 +142,28 @@ class CudaGraph:
             b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
             b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
             total_token_num = prefill_input_len * batch_size
-            logics = model.forward(
-                batch_size,
-                total_token_num,
-                prefill_input_len,
-                dummy_input_ids,
-                mem_indexes,
-                b_req_idx,
-                b_seq_len,
+            model_input = ModelInput(
+                batch_size=batch_size,
+                total_token_num=total_token_num,
+                max_len_in_batch=prefill_input_len,
+                input_ids=dummy_input_ids,
+                mem_indexes=mem_indexes,
+                b_req_idx=b_req_idx,
+                b_seq_len=b_seq_len,
                 b_ready_cache_len=b_ready_cache_len,
                 is_prefill=True,
                 multimodal_params=[],
             )
+            if model.spec_algo.is_mtp_module():
+                dummy_hidden_states = torch.zeros(
+                    (batch_size, model.config["hidden_size"]), dtype=model.data_type, device="cuda"
+                )
+                model_input.hidden_states = dummy_hidden_states
+
+            model_output: ModelOutput = model.forward(model_input)
             mem_indexes = None
-            prob_out = torch.softmax(logics, dim=-1)
-            logics = None
+            prob_out = torch.softmax(model_output.logits, dim=-1)
+            del model_output
             predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
             prob_out = None
             predict_ids = predict_ids.detach().cpu().numpy()
@@ -164,16 +172,23 @@ class CudaGraph:
             total_token_num += batch_size
             b_seq_len += 1
             mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
-            logics = model.forward(
-                batch_size,
-                total_token_num,
-                prefill_input_len + 1,
-                torch.from_numpy(predict_ids).cuda().reshape(-1),
-                mem_indexes,
-                b_req_idx,
-                b_seq_len,
+            model_input = ModelInput(
+                batch_size=batch_size,
+                total_token_num=total_token_num,
+                max_len_in_batch=prefill_input_len + 1,
+                input_ids=torch.from_numpy(predict_ids).cuda().reshape(-1),
+                mem_indexes=mem_indexes,
+                b_req_idx=b_req_idx,
+                b_seq_len=b_seq_len,
                 is_prefill=False,
             )
+            if model.spec_algo.is_mtp_module():
+                dummy_hidden_states = torch.zeros(
+                    (batch_size, model.config["hidden_size"]), dtype=model.data_type, device="cuda"
+                )
+                model_input.hidden_states = dummy_hidden_states
+            model_output: ModelOutput = model.forward(model_input)
+            del model_output
             mem_indexes = None
             model.mem_manager.free_all()
             model.req_manager.free_all()

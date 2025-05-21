@@ -3,6 +3,7 @@ import numpy as np
 from typing import List, Tuple
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
+from lightllm.common.basemodel.batch_objs import ModelInput
 
 IS_NONE = -1
 
@@ -20,7 +21,7 @@ def prepare_mtp_prefill_inputs(req_objs: List[InferReq], tgt_input_ids, mem_mana
 
         input_token_ids = req.get_input_token_ids()
 
-        input_token_ids[:-1] = input_token_ids[1:]
+        input_token_ids = np.roll(input_token_ids, -1)
         input_token_ids[-1] = tgt_input_ids[i]
 
         seq_len = len(input_token_ids)
@@ -43,24 +44,22 @@ def prepare_mtp_prefill_inputs(req_objs: List[InferReq], tgt_input_ids, mem_mana
     g_infer_state_lock.acquire()
     mem_indexes = mem_manager.alloc(input_ids.shape[0]).cuda()
     g_infer_state_lock.release()
-
-    kwargs = {
-        "batch_size": len(req_objs),
-        "total_token_num": nopad_total_token_num,
-        "max_len_in_batch": nopad_max_len_in_batch,
-        "input_ids": input_ids,
-        "mem_indexes": mem_indexes,
-        "b_req_idx": nopad_b_req_idx,
-        "b_seq_len": nopad_b_seq_len,
-        "b_ready_cache_len": b_ready_cache_len,
-        "is_prefill": True,
-    }
-
-    return kwargs
+    model_input = ModelInput(
+        batch_size=len(req_objs),
+        total_token_num=nopad_total_token_num,
+        max_len_in_batch=nopad_max_len_in_batch,
+        input_ids=input_ids,
+        mem_indexes=mem_indexes,
+        b_req_idx=nopad_b_req_idx,
+        b_seq_len=nopad_b_seq_len,
+        b_ready_cache_len=b_ready_cache_len,
+        is_prefill=True,
+    )
+    return model_input
 
 
 # 双token
-def prepare_mtp_main_model_decode_inputs(req_objs: List[Tuple], draft_token_id_map):
+def prepare_draft_main_model_decode_inputs(req_objs: List[Tuple], draft_token_id_map):
     run_reqs = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
@@ -98,15 +97,14 @@ def prepare_mtp_main_model_decode_inputs(req_objs: List[Tuple], draft_token_id_m
         g_infer_context.radix_cache.free_radix_cache_to_get_enough_token(input_ids.shape[0])
     mem_indexes = g_infer_context.req_manager.mem_manager.alloc(input_ids.shape[0]).cuda()
     g_infer_state_lock.release()
-
-    kwargs = {
-        "batch_size": len(run_reqs),
-        "total_token_num": nopad_total_token_num,
-        "max_len_in_batch": nopad_max_len_in_batch,
-        "input_ids": input_ids,
-        "mem_indexes": mem_indexes,
-        "b_req_idx": nopad_b_req_idx,
-        "b_seq_len": nopad_b_seq_len,
-        "is_prefill": False,
-    }
-    return kwargs, run_reqs
+    model_input = ModelInput(
+        batch_size=len(run_reqs),
+        total_token_num=nopad_total_token_num,
+        max_len_in_batch=nopad_max_len_in_batch,
+        input_ids=input_ids,
+        mem_indexes=mem_indexes,
+        b_req_idx=nopad_b_req_idx,
+        b_seq_len=nopad_b_seq_len,
+        is_prefill=False,
+    )
+    return model_input, run_reqs
