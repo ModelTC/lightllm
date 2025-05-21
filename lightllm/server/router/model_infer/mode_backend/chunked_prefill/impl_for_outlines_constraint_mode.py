@@ -95,7 +95,7 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
     def init_custom(self):
         # remove outlines cache
         if self.rank_in_node == 0:
-            cache_path = os.path.join(os.path.expanduser("~"), ".ca  che/outlines")
+            cache_path = os.path.join(os.path.expanduser("~"), ".cache/outlines")
             if os.path.exists(cache_path) and os.path.isdir(cache_path):
                 shutil.rmtree(cache_path)
                 logger.info("outlines cache dir is removed")
