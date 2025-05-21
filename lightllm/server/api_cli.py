@@ -151,6 +151,14 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
     )
     parser.add_argument(
+        "--use_config_server_to_init_nccl",
+        action="store_true",
+        help="""use tcp store server started by config_server to init nccl, default is False, when set to True,
+        the --nccl_host must equal to the config_server_host, and the --nccl_port must be unique for a config_server,
+        dont use same nccl_port for different inference node, it will be critical error""",
+    )
+
+    parser.add_argument(
         "--mode",
         type=str,
         default=[],
@@ -226,7 +234,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_mps", action="store_true", help="Whether to enable nvidia mps for multimodal service."
     )
     parser.add_argument("--disable_custom_allreduce", action="store_true", help="Whether to disable cutom allreduce.")
-    parser.add_argument("--disable_custom_allgather", action="store_true", help="Whether to enable cutom allgather.")
+    parser.add_argument("--enable_custom_allgather", action="store_true", help="Whether to enable cutom allgather.")
     parser.add_argument(
         "--enable_tpsp_mix_mode",
         action="store_true",
