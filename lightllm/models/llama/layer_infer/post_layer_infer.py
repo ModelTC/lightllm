@@ -65,8 +65,8 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         assert False, "Error State"
 
     def token_forward(self, input_embdings, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
-        last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)
         input_embdings_dtype = input_embdings.dtype
+        last_input, token_num = self._slice_get_last_input(input_embdings, infer_state)
         input_embdings = None
         last_input = self._norm(last_input, infer_state, layer_weight)
         last_input = last_input.permute(1, 0).view(-1, token_num)

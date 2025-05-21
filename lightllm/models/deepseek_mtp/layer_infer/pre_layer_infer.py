@@ -50,7 +50,6 @@ class Deepseek3MTPPreLayerInfer(LlamaPreLayerInfer):
         rmsnorm_forward(tgt_embdings, weight=layer_weight.hnorm_weight_, eps=self.eps_, out=tgt_embdings)
 
         cat_embdings = torch.cat((input_embdings, tgt_embdings), dim=-1)
-        infer_state.spec_info = None
 
         ans_logics = self.alloc_tensor(
             (cat_embdings.shape[0], layer_weight.eh_proj_weight_.shape[1]), dtype=input_embdings.dtype

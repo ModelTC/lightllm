@@ -30,10 +30,10 @@ class ContinuesBatchBackend(ModeBackend):
             g_infer_context.filter_reqs(aborted_reqs)
 
         if prefill_reqs:
-            kwargs, run_reqs = prepare_prefill_inputs(
+            model_input, run_reqs = prepare_prefill_inputs(
                 prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
             )
-            logits = self.model.forward(**kwargs)
+            logits = self.model.forward(model_input)
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
@@ -48,8 +48,8 @@ class ContinuesBatchBackend(ModeBackend):
             )
 
         if decode_reqs:
-            kwargs, run_reqs = prepare_decode_inputs(decode_reqs)
-            logits = self.model.forward(**kwargs)
+            model_input, run_reqs = prepare_decode_inputs(decode_reqs)
+            logits = self.model.forward(model_input)
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
