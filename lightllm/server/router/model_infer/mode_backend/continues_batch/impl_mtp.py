@@ -9,18 +9,16 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
 )
 from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
     prepare_mtp_prefill_inputs,
-    prepare_mtp_main_model_decode_inputs,
+    prepare_draft_main_model_decode_inputs,
     IS_NONE,
 )
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 import os
 from transformers.configuration_utils import PretrainedConfig
 from lightllm.models.deepseek_mtp.model import Deepseek3MTPModel
-import numpy as np
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.router.model_infer.infer_batch import InferReq
 import copy
-from lightllm.utils.custom_kernel_utis import custom_cat
 from lightllm.utils.dist_utils import device0_print
 
 
@@ -60,7 +58,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             "data_type": kvargs.get("data_type", "float16"),
             "graph_max_batch_size": kvargs.get("graph_max_batch_size", 16),
             "graph_max_len_in_batch": kvargs.get("graph_max_len_in_batch", 8196),
-            "disable_cudagraph": True,  # kvargs.get("disable_cudagraph", False),
+            "disable_cudagraph": kvargs.get("disable_cudagraph", False),
             "mem_fraction": kvargs["mem_fraction"],
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
             "quant_type": kvargs.get("quant_type", None),
@@ -73,9 +71,9 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         mtp_model_cfg, _ = PretrainedConfig.get_config_dict(kvargs["spec_weight_dir"])
         assert mtp_model_cfg["model_type"] == "deepseek_v3"
         assert mtp_model_cfg["architectures"][0] == "DeepseekV3ForCausalLMNextN"
-        self.mtp_model = Deepseek3MTPModel(mtp_model_kvargs)
+        self.draft_model = Deepseek3MTPModel(mtp_model_kvargs)
 
-        self.logger.info(f"loaded mtp model class {self.mtp_model.__class__}")
+        self.logger.info(f"loaded mtp model class {self.draft_model.__class__}")
 
         max_req_num = kvargs.get("max_req_num", 1000)
         self.draft_token_id_map = torch.full((max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cpu")
@@ -85,6 +83,8 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         self.mtp_draft_token_memindex_map = torch.full(
             (max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cpu"
         )
+        self.draft_accept_count = torch.zeros((max_req_num,), dtype=torch.int32, device="cpu")
+        self.main_step = 0
 
     def prefill(self, reqs: List[Tuple]):
         self._init_reqs(reqs, init_req_obj=False)
@@ -99,26 +99,27 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             g_infer_context.filter_reqs(aborted_reqs)
 
         if prefill_reqs:
-            kwargs, run_reqs = prepare_prefill_inputs(
+            model_input, run_reqs = prepare_prefill_inputs(
                 prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
             )
-            logits = self.model.forward(**kwargs)
+            model_output = self.model.forward(model_input)
+            self.main_step += 1
+            device0_print(f"main_step: {self.main_step}")
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
 
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids, next_token_probs = sample(model_output.logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            device0_print(f"next_token_ids: {next_token_ids}")
             # spec decode: MTP
-            self.mtp_model.spec_info = self.model.spec_info
-            mtp_kwargs = prepare_mtp_prefill_inputs(prefill_reqs, next_token_ids, self.mtp_model.mem_manager)
-            draft_logits = self.mtp_model.forward(**mtp_kwargs)
-            draft_next_token_ids, _ = sample(draft_logits, run_reqs, self.eos_id)
+            draft_model_input = prepare_mtp_prefill_inputs(prefill_reqs, next_token_ids, self.draft_model.mem_manager)
+            # mtp embedding
+            draft_model_input.hidden_states = model_output.hidden_states
+            draft_model_output = self.draft_model.forward(draft_model_input)
+            draft_next_token_ids, _ = sample(draft_model_output.logits, run_reqs, self.eos_id)
             draft_next_token_ids = draft_next_token_ids.detach().cpu().numpy()
-            device0_print(f"draft_next_token_ids: {draft_next_token_ids}")
             self._save_draft_token_ids(draft_next_token_ids, run_reqs)
 
             self._post_handle(
@@ -126,25 +127,26 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             )
 
         if decode_reqs:
-            kwargs, run_reqs = prepare_mtp_main_model_decode_inputs(decode_reqs, self.draft_token_id_map)
-            device0_print(kwargs)
+            model_input, run_reqs = prepare_draft_main_model_decode_inputs(decode_reqs, self.draft_token_id_map)
             update_draft_token_mem_indexes(
-                self.main_draft_token_memindex_map, run_reqs[1::2], kwargs["mem_indexes"][1::2]
+                self.main_draft_token_memindex_map, run_reqs[1::2], model_input.mem_indexes[1::2]
             )
-            logits = self.model.forward(**kwargs)
-            assert logits.shape[0] % 2 == 0
+            model_output = self.model.forward(model_input)
+            assert model_output.logits.shape[0] % 2 == 0
+
+            self.main_step += 1
+            device0_print(f"main_step: {self.main_step}")
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
 
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
+            next_token_ids, next_token_probs = sample(model_output.logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
             next_token_ids0 = next_token_ids[::2]
             next_token_logprobs0 = next_token_logprobs[::2]
-            device0_print(f"next_token_ids0: {next_token_ids0}")
             self._post_handle(
                 run_reqs[::2],
                 next_token_ids0,
@@ -154,7 +156,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             )
             next_token_ids1 = next_token_ids[1::2]
             next_token_logprobs1 = next_token_logprobs[1::2]
-            device0_print(f"next_token_ids1: {next_token_ids1}")
 
             accepted_reqs, accepted_index = self.verify(next_token_ids0, run_reqs[::2])
             self._post_handle(
@@ -166,15 +167,14 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             )
 
             # spec decode: MTP
-            self.mtp_model.spec_info = self.model.spec_info
-            mtp_kwargs = copy.deepcopy(kwargs)
-            mtp_kwargs["input_ids"] = torch.tensor(next_token_ids, dtype=torch.int64, device="cuda")
-            mtp_mem_indexes = self.mtp_model.mem_manager.alloc(next_token_ids.shape[0]).cuda()
-            kwargs["mem_indexes"] = mtp_mem_indexes
+            draft_model_input = copy.deepcopy(model_input)
+            draft_model_input.input_ids = torch.tensor(next_token_ids, dtype=torch.int64, device="cuda")
+            mtp_mem_indexes = self.draft_model.mem_manager.alloc(next_token_ids.shape[0]).cuda()
+            draft_model_input.mem_indexes = mtp_mem_indexes
+            draft_model_input.hidden_states = model_output.hidden_states
             update_draft_token_mem_indexes(self.mtp_draft_token_memindex_map, run_reqs[1::2], mtp_mem_indexes[1::2])
-
-            draft_logits = self.mtp_model.forward(**mtp_kwargs)
-            draft_next_token_ids, _ = sample(draft_logits, run_reqs, self.eos_id)
+            draft_model_output = self.draft_model.forward(draft_model_input)
+            draft_next_token_ids, _ = sample(draft_model_output.logits, run_reqs, self.eos_id)
 
             accepted_req_idxs = [req.req_idx for req in accepted_reqs]
             self._save_draft_token_ids(draft_next_token_ids, run_reqs[::2], accepted_req_idxs)
@@ -188,10 +188,11 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         need_free_mem_indexes = []
 
         for i, req in enumerate(run_reqs):
-            device0_print(self.draft_token_id_map[req.req_idx])
             if self.draft_token_id_map[req.req_idx] == next_token_ids0[i]:
                 accepted_reqs.append(req)
                 accepted_index.append(i)
+                self.draft_accept_count[req.req_idx] += 1
+                device0_print(f"draft_accept_count: {self.draft_accept_count[req.req_idx]}")
                 self.main_draft_token_memindex_map[req.req_idx] = IS_NONE
             else:
                 need_free_mem_indexes.append(self.main_draft_token_memindex_map[req.req_idx])
@@ -199,7 +200,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             g_infer_state_lock.acquire()
             g_infer_context.req_manager.mem_manager.free(need_free_mem_indexes)
             g_infer_state_lock.release()
-        device0_print(f"accpeted_reqs {accepted_index}")
         return accepted_reqs, accepted_index
 
     def _save_draft_token_ids(self, draft_next_token_ids, run_reqs, accepted_reqs=None):
@@ -215,9 +215,11 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 else:
                     self.draft_token_id_map[req.req_idx] = draft_next_token_ids[2 * i]
                     need_free_mem_indexes.append(self.mtp_draft_token_memindex_map[req.req_idx])
+
+        req = run_reqs[0]
         if need_free_mem_indexes:
             g_infer_state_lock.acquire()
-            self.mtp_model.req_manager.free([], need_free_mem_indexes)
+            self.draft_model.mem_manager.free(need_free_mem_indexes)
             g_infer_state_lock.release()
         return
 
@@ -248,9 +250,9 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         mtp_free_mem_indexes = []
         for req in ok_finished_reqs:
             mtp_free_mem_indexes.append(
-                self.mtp_model.req_manager.req_to_token_indexs[req.req_idx][req.shm_req.input_len : req.cur_kv_len]
+                self.draft_model.req_manager.req_to_token_indexs[req.req_idx][0 : req.cur_kv_len]
             )
-        free_memindexes = custom_cat(mtp_free_mem_indexes)
+        free_memindexes = torch.cat(mtp_free_mem_indexes, dim=0)
         g_infer_state_lock.acquire()
-        g_infer_context.req_manager.mem_manager.free(free_memindexes)
+        self.draft_model.req_manager.mem_manager.free(free_memindexes)
         g_infer_state_lock.release()

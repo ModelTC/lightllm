@@ -60,12 +60,6 @@ class InferStateInfo:
         self.spec_info = None
 
     def init_some_extra_state(self, model, input_ids: torch.Tensor):
-        # for mtp draft module graph capture
-        if self.spec_algo.is_mtp_module() and self.spec_info is None:
-            self.spec_info = torch.randn(
-                (input_ids.shape[0], model.config["n_embed"]), dtype=model.data_type, device=input_ids.device
-            )
-
         if self.is_prefill:
             (
                 self.b_q_seq_len,
