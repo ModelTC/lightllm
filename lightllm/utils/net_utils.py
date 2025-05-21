@@ -71,16 +71,14 @@ class PortLocker:
             _socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     def lock_port(self):
-        # for _socket, _port in zip(self.sockets, self.ports):
-        #     try:
-        #         _socket.bind(("", _port))
-        #         _socket.listen(1)
-        #     except Exception as e:
-        #         logger.error(f"port {_port} has been used")
-        #         raise e
-        pass
+        for _socket, _port in zip(self.sockets, self.ports):
+            try:
+                _socket.bind(("", _port))
+                _socket.listen(1)
+            except Exception as e:
+                logger.error(f"port {_port} has been used")
+                raise e
 
     def release_port(self):
-        # for _socket in self.sockets:
-        #     _socket.close()
-        pass
+        for _socket in self.sockets:
+            _socket.close()
