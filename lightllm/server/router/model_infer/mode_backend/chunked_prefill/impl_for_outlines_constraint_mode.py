@@ -13,28 +13,30 @@ from lightllm.server.tokenizer import get_tokenizer
 from typing import List, Tuple
 from lightllm.utils.log_utils import init_logger
 import outlines.caching
-  
+
 logger = init_logger(__name__)
 
+
 class LRUCacheNode:
-    __slots__ = ['key', 'value', 'prev', 'next']
-    
+    __slots__ = ["key", "value", "prev", "next"]
+
     def __init__(self, key=None, value=None):
         self.key = key
         self.value = value
         self.prev = None
         self.next = None
 
+
 class LRUCache:
     def __init__(self, capacity: int):
-        self.capacity = capacity   
+        self.capacity = capacity
         self.cache = {}
         self.head = LRUCacheNode()
         self.tail = LRUCacheNode()
         self.head.next = self.tail
         self.tail.prev = self.head
         self.size = 0
-    
+
     def clear(self) -> None:
         self.cache.clear()
         self.head.next = self.tail
@@ -44,7 +46,7 @@ class LRUCache:
     def get(self, key: int) -> int:
         if key not in self.cache:
             return None
-        
+
         node = self.cache[key]
         self._move_to_head(node)
         return node.value
@@ -59,30 +61,31 @@ class LRUCache:
                 removed = self._remove_tail()  # 删除尾部节点（最近最少使用）
                 del self.cache[removed.key]
                 self.size -= 1
-            
+
             node = LRUCacheNode(key, value)
             self.cache[key] = node
             self._add_to_head(node)
             self.size += 1
-    
+
     def _add_to_head(self, node: LRUCacheNode) -> None:
         node.prev = self.head
         node.next = self.head.next
         self.head.next.prev = node
         self.head.next = node
-    
+
     def _remove_node(self, node: LRUCacheNode) -> None:
         node.prev.next = node.next
         node.next.prev = node.prev
-    
+
     def _move_to_head(self, node: LRUCacheNode) -> None:
         self._remove_node(node)
         self._add_to_head(node)
-    
+
     def _remove_tail(self) -> LRUCacheNode:
         node = self.tail.prev
         self._remove_node(node)
         return node
+
 
 class OutlinesConstraintBackend(ChunkedPrefillBackend):
     def __init__(self) -> None:
@@ -227,8 +230,6 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
                     # using LRU cache
                     if self.regex_guide_cache.get(sample_params.regular_constraint) is None:
                         logger.info(f"regex_guide cache miss {sample_params.regular_constraint}, parse new regex")
-                        regex_guide = RegexGuide.from_regex(
-                            sample_params.regular_constraint, self.tokenizer
-                        )
+                        regex_guide = RegexGuide.from_regex(sample_params.regular_constraint, self.tokenizer)
                         self.regex_guide_cache.put(sample_params.regular_constraint, regex_guide)
                     sample_params.regex_guide = self.regex_guide_cache.get(sample_params.regular_constraint).copy()
