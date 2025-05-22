@@ -62,6 +62,8 @@ class RouterManager:
         # 初始化 radix_cache_client 用于读取 prompt cache 的管理信息
         self.radix_cache_client = None
 
+        self.spec_step = args.spec_step
+
         # 共享变量，用于存储router端调度分析得到的机器负载信息
         self.shared_token_load = TokenLoad(f"{get_unique_server_name()}_shared_token_load", self.dp_size_in_node)
         for dp_index in range(self.dp_size_in_node):
@@ -386,8 +388,9 @@ class RouterManager:
         self.overlap_event.set()
         await self.model_rpc_client.prefill(reqs)
         batch.filter_out_finished_req(self.shm_req_manager)
-        # 发个None包触发一下detokenization
-        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+        # 发spec_step + 1 个 None包触发一下detokenization
+        for _ in range(self.spec_step + 1):
+            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
 
         logger.debug(f"Prefill Batch: {batch.simple_log()} \n")
         self.metric_client.histogram_observe(
@@ -403,8 +406,9 @@ class RouterManager:
         # 在 self.is_multinode_and_multidp 为 True 时，传入的 batch 对象可能为 None。
         if batch is not None:
             batch.filter_out_finished_req(self.shm_req_manager)
-        # 发个None包触发一下detokenization
-        self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
+        # 发spec_step + 1 个 None包触发一下detokenization
+        for _ in range(self.spec_step + 1):
+            self.send_to_detokenization.send_pyobj(None, protocol=pickle.HIGHEST_PROTOCOL)
         self.metric_client.histogram_observe(
             "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
         )
