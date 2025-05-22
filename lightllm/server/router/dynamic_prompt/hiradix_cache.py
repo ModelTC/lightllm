@@ -70,8 +70,9 @@ class HiRadixCache(RadixCache):
         dist.broadcast(pull_hi_cache_tensor, src=0)
         pull_hi_cache = False
 
-        if pull_hi_cache_tensor[0] == 0 and not self.do_store:
-            tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=False)
+        if pull_hi_cache_tensor[0] == 0:
+            ans_value_list = []
+            tree_node = self._match_prefix_helper(self.root_node, key, ans_value_list, update_refs=update_refs)
         elif pull_hi_cache_tensor[0] > 0:
             pull_hi_cache = True
             max_len = pull_hi_cache_tensor[0]
