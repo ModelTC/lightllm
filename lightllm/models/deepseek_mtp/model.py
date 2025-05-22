@@ -7,6 +7,7 @@ from lightllm.utils.dist_utils import get_dp_world_size
 import torch
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
 from lightllm.common.basemodel.triton_kernel.copy_kv_index_to_req import copy_kv_index_to_req
+from lightllm.common.req_manager import ReqManager
 from lightllm.common.infer_utils import init_req_to_token_indexes
 from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.common.basemodel.cuda_graph import CudaGraph
@@ -19,8 +20,24 @@ class Deepseek3MTPModel(Deepseek2TpPartModel):
     pre_layer_infer_class = Deepseek3MTPPreLayerInfer
 
     def __init__(self, kvargs):
-        self.main_model = kvargs["main_model"]
+        self.main_model = kvargs.pop("main_model")
+        self.req_manager = self.main_model.req_manager
         super().__init__(kvargs)
+
+    def _init_req_manager(self):
+        # draft model shares the same req_manager with the main model
+        if hasattr(self, "req_manager"):
+            print("SKIP INIT REQ!!!!!!!!")
+            return
+        create_max_seq_len = 0
+
+        if self.batch_max_tokens is not None:
+            create_max_seq_len = max(create_max_seq_len, self.batch_max_tokens)
+        if self.max_seq_length is not None:
+            create_max_seq_len = max(create_max_seq_len, self.max_seq_length)
+
+        self.req_manager = ReqManager(self.max_req_num, create_max_seq_len, self.mem_manager)
+        return
 
     def _init_mem_manager(self):
         self.mem_manager = Deepseek3MTPMemoryManager(
