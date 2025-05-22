@@ -33,8 +33,6 @@ def update_draft_token_mem_indexes(draft_token_memindex_map, run_reqs, mem_index
 class ContinuesBatchWithMTPBackend(ModeBackend):
     def __init__(self) -> None:
         super().__init__()
-        self.accepted_cnt = 0
-        self.all_cnt = 0
 
     # 支持双模型
     def init_model(self, kvargs):
@@ -83,8 +81,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         self.mtp_draft_token_memindex_map = torch.full(
             (max_req_num,), fill_value=IS_NONE, dtype=torch.int32, device="cpu"
         )
-        self.draft_accept_count = torch.zeros((max_req_num,), dtype=torch.int32, device="cpu")
-        self.main_step = 0
 
     def prefill(self, reqs: List[Tuple]):
         self._init_reqs(reqs, init_req_obj=False)
@@ -103,8 +99,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
             )
             model_output = self.model.forward(model_input)
-            self.main_step += 1
-            device0_print(f"main_step: {self.main_step}")
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
@@ -134,9 +128,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             model_output = self.model.forward(model_input)
             assert model_output.logits.shape[0] % 2 == 0
 
-            self.main_step += 1
-            device0_print(f"main_step: {self.main_step}")
-
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
             )
@@ -165,7 +156,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 is_chuncked_mode=False,
                 do_filter_finished_reqs=False,
             )
-
             # spec decode: MTP
             draft_model_input = copy.deepcopy(model_input)
             draft_model_input.input_ids = torch.tensor(next_token_ids, dtype=torch.int64, device="cuda")
@@ -191,8 +181,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             if self.draft_token_id_map[req.req_idx] == next_token_ids0[i]:
                 accepted_reqs.append(req)
                 accepted_index.append(i)
-                self.draft_accept_count[req.req_idx] += 1
-                device0_print(f"draft_accept_count: {self.draft_accept_count[req.req_idx]}")
                 self.main_draft_token_memindex_map[req.req_idx] = IS_NONE
             else:
                 need_free_mem_indexes.append(self.main_draft_token_memindex_map[req.req_idx])
