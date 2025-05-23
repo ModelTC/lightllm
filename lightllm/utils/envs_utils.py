@@ -75,3 +75,49 @@ def get_lightllm_websocket_max_message_size():
     :return: Maximum size in bytes.
     """
     return int(os.getenv("LIGHTLLM_WEBSOCKET_MAX_SIZE", 16 * 1024 * 1024))
+
+
+# get_redundancy_expert_ids 和 get_redundancy_expert_num 主要是用于推理时的冗余专家的id和数量的获取
+# 其依赖的配置文件是 ep_redundancy_expert_config_path 是一个json格式的文本文件，其内容格式如下:
+# {
+#   "redundancy_expert_num": 1,
+#   "0": [0],
+#   "1": [0],
+#   "default": [0,]
+# }
+
+
+@lru_cache(maxsize=None)
+def get_redundancy_expert_ids(layer_index: int):
+    """
+    Get the redundancy expert ids from the environment variable.
+    :return: List of redundancy expert ids.
+    """
+    args = get_env_start_args()
+    if args.ep_redundancy_expert_config_path is None:
+        return []
+
+    with open(args.ep_redundancy_expert_config_path, "r") as f:
+        config = json.load(f)
+    if str(layer_index) in config:
+        return config[str(layer_index)]
+    else:
+        return config.get("default", [])
+
+
+@lru_cache(maxsize=None)
+def get_redundancy_expert_num():
+    """
+    Get the number of redundancy experts from the environment variable.
+    :return: Number of redundancy experts.
+    """
+    args = get_env_start_args()
+    if args.ep_redundancy_expert_config_path is None:
+        return 0
+
+    with open(args.ep_redundancy_expert_config_path, "r") as f:
+        config = json.load(f)
+    if "redundancy_expert_num" in config:
+        return config["redundancy_expert_num"]
+    else:
+        return 0

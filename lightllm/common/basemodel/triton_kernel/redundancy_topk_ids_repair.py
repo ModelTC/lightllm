@@ -1,0 +1,60 @@
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def _redundancy_topk_ids_repair_kernel(
+    topk_ids_ptr,
+    topk_total_num,
+    ep_expert_num,
+    redundancy_expert_num,
+    global_rank,
+    redundancy_expert_ids_ptr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    block_index = tl.program_id(0)
+    offs_d = block_index * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs_d < topk_total_num
+    current_topk_ids = tl.load(topk_ids_ptr + offs_d, mask=mask, other=0)
+    new_current_topk_ids = (current_topk_ids // ep_expert_num) * redundancy_expert_num + current_topk_ids
+
+    for i in tl.range(0, redundancy_expert_num, step=1, num_stages=3):
+        cur_redundancy_expert_id = tl.load(redundancy_expert_ids_ptr + i)
+        cur_redundancy_expert_id = (
+            cur_redundancy_expert_id // ep_expert_num
+        ) * redundancy_expert_num + cur_redundancy_expert_id
+        new_current_topk_ids = tl.where(
+            new_current_topk_ids == cur_redundancy_expert_id,
+            (ep_expert_num + redundancy_expert_num) * (global_rank) + ep_expert_num + i,
+            new_current_topk_ids,
+        )
+
+    tl.store(topk_ids_ptr + offs_d, new_current_topk_ids, mask=mask)
+    return
+
+
+@torch.no_grad()
+def redundancy_topk_ids_repair(
+    topk_ids: torch.Tensor, redundancy_expert_ids: torch.Tensor, ep_expert_num: int, global_rank: int
+):
+    assert topk_ids.is_contiguous()
+    assert len(topk_ids.shape) == 2
+    assert redundancy_expert_ids is not None
+    redundancy_expert_num = redundancy_expert_ids.shape[0]
+    BLOCK_SIZE = 512
+    grid = (triton.cdiv(topk_ids.numel(), BLOCK_SIZE),)
+    num_warps = 4
+
+    _redundancy_topk_ids_repair_kernel[grid](
+        topk_ids_ptr=topk_ids,
+        topk_total_num=topk_ids.numel(),
+        ep_expert_num=ep_expert_num,
+        redundancy_expert_num=redundancy_expert_num,
+        global_rank=global_rank,
+        redundancy_expert_ids_ptr=redundancy_expert_ids,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=num_warps,
+        num_stages=3,
+    )
+    return

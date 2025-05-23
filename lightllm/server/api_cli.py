@@ -380,4 +380,10 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""sampling used impl. 'triton' is use torch and triton kernel,
         sglang_kernel use sglang_kernel impl""",
     )
+    parser.add_argument(
+        "--ep_redundancy_expert_config_path",
+        type=str,
+        default=None,
+        help="""Path of the redundant expert config. It can be used for deepseekv3 model.""",
+    )
     return parser
