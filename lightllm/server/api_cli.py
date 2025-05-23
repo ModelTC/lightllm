@@ -380,4 +380,23 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""sampling used impl. 'triton' is use torch and triton kernel,
         sglang_kernel use sglang_kernel impl""",
     )
+    parser.add_argument(
+        "--spec_algo",
+        type=str,
+        choices=["none", "MTP"],
+        default="none",
+        help="""spec algo used for spec model, none means no spec algo,
+        mtp means use mtp spec algo, only support deepseekv3 model""",
+    )
+    parser.add_argument(
+        "--spec_model_dir",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--spec_step",
+        type=int,
+        default=1,
+        help="spec step for spec algo, only support deepseekv3 model.",
+    )
     return parser

@@ -3,6 +3,7 @@ import numpy as np
 from typing import List
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
+from lightllm.common.basemodel.batch_objs import ModelInput
 
 
 def prepare_prefill_inputs(req_objs: List[InferReq], is_chuncked_mode: bool, is_multimodal=False):
@@ -50,21 +51,21 @@ def prepare_prefill_inputs(req_objs: List[InferReq], is_chuncked_mode: bool, is_
     mem_indexes = g_infer_context.req_manager.mem_manager.alloc(input_ids.shape[0]).cuda()
     g_infer_state_lock.release()
 
-    kwargs = {
-        "batch_size": len(run_reqs),
-        "total_token_num": nopad_total_token_num,
-        "max_len_in_batch": nopad_max_len_in_batch,
-        "input_ids": input_ids,
-        "mem_indexes": mem_indexes,
-        "b_req_idx": nopad_b_req_idx,
-        "b_seq_len": nopad_b_seq_len,
-        "b_ready_cache_len": b_ready_cache_len,
-        "is_prefill": True,
-    }
+    model_input = ModelInput(
+        batch_size=len(run_reqs),
+        total_token_num=nopad_total_token_num,
+        max_len_in_batch=nopad_max_len_in_batch,
+        input_ids=input_ids,
+        mem_indexes=mem_indexes,
+        b_req_idx=nopad_b_req_idx,
+        b_seq_len=nopad_b_seq_len,
+        b_ready_cache_len=b_ready_cache_len,
+        is_prefill=True,
+    )
     if is_multimodal:
-        kwargs["multimodal_params"] = batch_multimodal_params
+        model_input.multimodal_params = batch_multimodal_params
 
-    return kwargs, run_reqs
+    return model_input, run_reqs
 
 
 def prepare_decode_inputs(req_objs: List[InferReq]):
@@ -96,14 +97,14 @@ def prepare_decode_inputs(req_objs: List[InferReq]):
     mem_indexes = g_infer_context.req_manager.mem_manager.alloc(input_ids.shape[0]).cuda()
     g_infer_state_lock.release()
 
-    kwargs = {
-        "batch_size": len(run_reqs),
-        "total_token_num": nopad_total_token_num,
-        "max_len_in_batch": nopad_max_len_in_batch,
-        "input_ids": input_ids,
-        "mem_indexes": mem_indexes,
-        "b_req_idx": nopad_b_req_idx,
-        "b_seq_len": nopad_b_seq_len,
-        "is_prefill": False,
-    }
-    return kwargs, run_reqs
+    model_input = ModelInput(
+        batch_size=len(run_reqs),
+        total_token_num=nopad_total_token_num,
+        max_len_in_batch=nopad_max_len_in_batch,
+        input_ids=input_ids,
+        mem_indexes=mem_indexes,
+        b_req_idx=nopad_b_req_idx,
+        b_seq_len=nopad_b_seq_len,
+        is_prefill=False,
+    )
+    return model_input, run_reqs
