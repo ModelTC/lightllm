@@ -9,6 +9,7 @@ endif()
 # 找 PyTorch & Python
 find_package(Torch REQUIRED)
 find_package(Python REQUIRED COMPONENTS Development)
+find_package(CUDAToolkit REQUIRED)
 
 # 收集 csrc 下的 .cpp/.cu
 file(GLOB_RECURSE SRC_CPP   CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/csrc/*.cpp")
@@ -23,7 +24,9 @@ target_include_directories(_C PRIVATE ${TORCH_INCLUDE_DIRS})
 target_link_libraries(_C
     PRIVATE
       ${TORCH_LIBRARIES}
-      Python::Python)
+      Python::Python
+      CUDA::cudart
+      CUDA::cuda_driver)
 
       
 # 输出文件名 _C.so，无前缀

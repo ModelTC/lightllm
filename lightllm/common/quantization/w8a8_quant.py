@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel import w8a8_block_fp8_matmul
 from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops, cutlass_scaled_mm
+from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL
 
 
 class BaseQuantizationMethod(QuantizationMethod):
@@ -67,17 +68,6 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
     def __init__(self):
         super().__init__()
         self.is_moe = False
-        # PINGPONG_FP8_GEMM is per tensor quant way.
-        self.use_pingpong_fp8_gemm = os.getenv("ENABLE_PINGPONG_FP8_GEMM", "0").upper() in ["ON", "TRUE", "1"]
-        # per token quant with better performance.
-        self.use_lightllm_kernels = os.getenv("ENABLE_LIGHTLLM_KERNELS", "0").upper() in ["ON", "TRUE", "1"]
-
-        if self.use_pingpong_fp8_gemm:
-            self.quantize = self.quantize_pingpong_fp8
-            self.apply = self.apply_pingpong_fp8
-        else:
-            self.quantize = self.quantize_scaled_mm_fp8
-            self.apply = self.apply_scaled_mm_fp8
 
     def quantize(self, weight: torch.Tensor):
         if self.is_moe:
@@ -102,13 +92,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         return qweights, weight_scale
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
-        raise Exception("This function needs to be bound.")
-
-    def apply_scaled_mm_fp8(
-        self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True
-    ):
-        if self.use_lightllm_kernels:
-
+        if HAS_LIGHTLLM_KERNEL:
             from lightllm_kernel.ops import per_token_quant_bf16_fp8
 
             x_q, x_scale = per_token_quant_bf16_fp8(input_tensor)

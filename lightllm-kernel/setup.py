@@ -33,15 +33,18 @@ ext_modules = [
     CUDAExtension(
         name=PROGRAM_NAME,
         sources=sources,
+        libraries=["cuda"],
+        library_dirs=["/lib/x86_64-linux-gnu"],
+        extra_link_args=["-lcuda"],  # <-- 备选/补充方法
         extra_compile_args={
             "cxx": ["-O3"],
             "nvcc": [
-                "-DNDEBUG", 
+                "-DNDEBUG",
                 "-O3",
                 "--use_fast_math",
                 "-gencode=arch=compute_90,code=sm_90",
                 "-gencode=arch=compute_90,code=compute_90",
-                '-gencode=arch=compute_90a, code=sm_90a',
+                "-gencode=arch=compute_90a, code=sm_90a",
             ],
         },
         include_dirs=[

@@ -7,6 +7,7 @@ PKG = "lightllm_kernel"
 try:
     _C = importlib.import_module(f"{PKG}._C")
 except ImportError:
+    raise ImportError("Cannot import compiled extension 'lightllm_kernel.ops'")
     repo_root = Path(__file__).resolve().parents[2]
     csrc_dir = repo_root / "csrc"
     if not csrc_dir.exists():
@@ -15,7 +16,7 @@ except ImportError:
             "directory (csrc/) found; please ensure you have run "
             "'cmake --install' or placed lightllm_kernel.ops.so on PYTHONPATH."
         )
-    
+
     PROGRAM_NAME = "lightllm_kernel._C"
     EXTENSION_BUILD_DIR = "build"
     INCLUDE_DIR = "include"
@@ -62,11 +63,13 @@ except ImportError:
         extra_cflags=["-O3"],
     )
 
+meta_size = _C.meta_size
 # 向外暴露 Python 端接口
 from .fusion import pre_tp_norm_bf16, post_tp_norm_bf16, add_norm_quant_bf16_fp8, gelu_per_token_quant_bf16_fp8
 from .norm import rmsnorm_bf16
 from .quant import per_token_quant_bf16_fp8
 from .gemm import cutlass_scaled_mm_bias_ls
+from .moe import all_gather, grouped_topk
 
 __all__ = [
     "rmsnorm_bf16",
@@ -76,4 +79,6 @@ __all__ = [
     "add_norm_quant_bf16_fp8",
     "gelu_per_token_quant_bf16_fp8",
     "cutlass_scaled_mm_bias_ls",
+    "grouped_topk",
+    "meta_size",
 ]

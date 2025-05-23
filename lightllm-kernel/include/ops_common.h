@@ -12,6 +12,7 @@ namespace ops {
 
 using namespace lightllm;
 
+int64_t meta_size();
 Tensor pre_tp_norm_bf16(Tensor &input);
 
 Tensor post_tp_norm_bf16(
@@ -62,6 +63,14 @@ Tensor grouped_topk(
         bool     renormalize,
         std::string scoring_func,
         Tensor group_scores
+);
+
+void all_gather(
+    int64_t _fa,
+    Tensor& inp,
+    Tensor& out,
+    int64_t _reg_buffer,
+    int64_t reg_buffer_sz_bytes
 );
 
 } // namespace ops
