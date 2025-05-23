@@ -22,12 +22,12 @@ class Deepseek3MTPModel(Deepseek2TpPartModel):
     def __init__(self, kvargs):
         self.main_model = kvargs.pop("main_model")
         self.req_manager = self.main_model.req_manager
+        self.last_mtp_module = kvargs.pop("last_mtp_module", False)
         super().__init__(kvargs)
 
     def _init_req_manager(self):
         # draft model shares the same req_manager with the main model
         if hasattr(self, "req_manager"):
-            print("SKIP INIT REQ!!!!!!!!")
             return
         create_max_seq_len = 0
 
