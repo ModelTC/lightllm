@@ -450,9 +450,12 @@ class TpPartBaseModel:
         predict_logits = post_method(input_embs, infer_state, self.pre_post_weight)
 
         g_cache_manager.cache_env_out()
+        is_return_hidden_states = self.spec_algo.is_mtp() or (
+            self.spec_algo.is_mtp_module() and not self.last_mtp_module
+        )
         return ModelOutput(
             logits=predict_logits,
-            hidden_states=input_embs if self.spec_algo.is_mtp() else None,
+            hidden_states=input_embs if is_return_hidden_states else None,
         )
 
     @final
@@ -475,9 +478,12 @@ class TpPartBaseModel:
         predict_logits = post_method(input_embs, infer_state, self.pre_post_weight)
 
         g_cache_manager.cache_env_out()
+        is_return_hidden_states = self.spec_algo.is_mtp() or (
+            self.spec_algo.is_mtp_module() and not self.last_mtp_module
+        )
         return ModelOutput(
             logits=predict_logits,
-            hidden_states=input_embs if self.spec_algo.is_mtp() else None,
+            hidden_states=input_embs if is_return_hidden_states else None,
         )
 
     @final

@@ -9,26 +9,27 @@ IS_NONE = -1
 
 
 def prepare_mtp_prefill_inputs(
-    req_objs: List[Tuple], model_input: ModelInput, model_output: ModelOutput, tgt_input_ids
+    req_objs: List[InferReq], model_input: ModelInput, last_hidden_states, tgt_input_ids, last_input_ids_cpu=None
 ):
     input_ids = []
     for i, req in enumerate(req_objs):
-        input_token_ids = req.get_input_token_ids()
-
-        input_token_ids = np.roll(input_token_ids, -1)
-        input_token_ids[-1] = tgt_input_ids[i]
-        input_ids.append(input_token_ids)
-
+        if last_input_ids_cpu is None:
+            input_token_ids = req.get_input_token_ids()
+        else:
+            input_token_ids = last_input_ids_cpu[i]
+            input_token_ids = np.roll(input_token_ids, -1)
+            input_token_ids[-1] = tgt_input_ids[i]
+        input_ids.append(input_token_ids[req.cur_kv_len :])
+    input_ids_cpu = input_ids
     input_ids = np.concatenate(input_ids, dtype=np.int64)
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
     model_input.input_ids = input_ids
     # mtp embedding
-    model_input.hidden_states = model_output.hidden_states
-    return model_input
+    model_input.hidden_states = last_hidden_states
+    return model_input, input_ids_cpu
 
 
-# 双token
-def prepare_draft_main_model_decode_inputs(req_objs: List[Tuple], draft_token_id_map):
+def prepare_draft_main_model_decode_inputs(req_objs: List[InferReq], draft_token_id_map):
     run_reqs = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
@@ -46,14 +47,14 @@ def prepare_draft_main_model_decode_inputs(req_objs: List[Tuple], draft_token_id
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
 
-        # TODO: mtp_step > 1
-        for step in range(1):
+        # mtp step
+        for step in range(draft_token_id_map.shape[1]):
             run_reqs.append(req)
             nopad_b_req_idx.append(req.req_idx)
             seq_len = req.get_cur_total_len() + step + 1
             assert req.cur_kv_len == seq_len - step - 2
             nopad_b_seq_len.append(seq_len)
-            input_ids.append(draft_token_id_map[req.req_idx])
+            input_ids.append(draft_token_id_map[req.req_idx][step])
             nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
 
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
