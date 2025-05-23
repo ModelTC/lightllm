@@ -259,6 +259,7 @@ class InferReq:
         self.paused = False
         self.need_out_token_id_statistics = True
         self.out_token_id_count: Dict[int, int] = None
+        self.cur_accepted_len = 0  # for mtp forward
 
     def init_all(self):
         if self.initialized is False:
@@ -319,6 +320,13 @@ class InferReq:
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 
+    def get_chunked_input_token_ids_shift(self, shift=-1):
+        input_ids = self.get_input_token_ids()
+        shift_input_ids = np.roll(input_ids, shift)
+        chunked_start = self.cur_kv_len
+        chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
+        return shift_input_ids[shift:chunked_end]
+
     def get_chuncked_input_token_len(self):
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
@@ -329,6 +337,9 @@ class InferReq:
         self.shm_req.shm_prompt_ids.arr[index] = next_token_id
         self.shm_req.shm_logprobs.arr[index] = logprob
         return
+
+    def set_total_accepted_len(self):
+        self.shm_req.mtp_accepted_len += self.cur_accepted_len
 
     def get_last_gen_token(self):
         return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.cur_output_len - 1]

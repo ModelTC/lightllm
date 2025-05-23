@@ -542,6 +542,8 @@ class HttpServerManager:
                         x_request_id = request.headers.get("X-Request-Id", "") if request is not None else ""
                         x_session_id = request.headers.get("X-Session-Id", "") if request is not None else ""
                         prompt_cache_ratio = prompt_cache_len / prompt_tokens
+
+                        avg_token_per_step = out_token_counter / (out_token_counter - metadata["mtp_accepted_len"])
                         format_start_time = datetime.datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
                         logger.info(
                             f"X-Request-Id:{x_request_id} "
@@ -552,6 +554,7 @@ class HttpServerManager:
                             f"prompt_token_num:{prompt_tokens} "
                             f"prompt_cache_len:{prompt_cache_len} "
                             f"prompt_cache_ratio:{prompt_cache_ratio} "
+                            f"avg_token_per_step:{avg_token_per_step} "
                         )
                         if group_request_id < 0:
                             # health 探测请求，不记录日志和监控
@@ -654,6 +657,7 @@ class HttpServerManager:
                             "special": special,
                             "count_output_tokens": count_output_tokens,
                             "prompt_cache_len": req.prompt_cache_len,
+                            "mtp_accepted_len": req.mtp_accepted_len,
                         }
                         if self.args.return_all_prompt_logprobs:
                             metadata.update(req.get_all_prompt_metadata())
