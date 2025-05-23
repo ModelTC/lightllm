@@ -19,9 +19,9 @@ def _fwd_kernel_apply_penalty(
     eos_ids,
     mask_eos_reqs,
     stride_logit_b,
-    stride_logit_s,
     BLOCK_P: tl.constexpr,
     EOS_ID_NUM: tl.constexpr,
+    IS_EOS_PENALTY: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_freqency = tl.load(freqency_penalty + cur_batch)
@@ -46,18 +46,19 @@ def _fwd_kernel_apply_penalty(
         output_ptr = Logits + cur_batch * stride_logit_b + batch_ids
         tl.store(output_ptr, pre_logits, mask=cur_batch_id_offset < cur_batch_end_index)
 
-    mask_eos = tl.load(mask_eos_reqs + cur_batch)
-    exponential_decay_length_penalty = tl.load(exponential_decay_length_penalties + cur_batch)
-    length_penalty = tl.load(length_penalty_idx + cur_batch)
-    penalty_scale = tl.exp2(tl.log2(exponential_decay_length_penalty) * length_penalty) - 1
+    if IS_EOS_PENALTY:
+        mask_eos = tl.load(mask_eos_reqs + cur_batch)
+        exponential_decay_length_penalty = tl.load(exponential_decay_length_penalties + cur_batch)
+        length_penalty = tl.load(length_penalty_idx + cur_batch)
+        penalty_scale = tl.exp2(tl.log2(exponential_decay_length_penalty) * length_penalty) - 1
 
-    for eos_index in range(EOS_ID_NUM):
-        eos_id = tl.load(eos_ids + eos_index)
-        cur_eos_logit_ptr = Logits + cur_batch * stride_logit_b + eos_id
-        cur_eos_logit = tl.load(cur_eos_logit_ptr)
-        cur_eos_logit = cur_eos_logit + tl.abs(cur_eos_logit) * penalty_scale
-        cur_eos_logit = tl.where(mask_eos, -10000000.0, cur_eos_logit)
-        tl.store(cur_eos_logit_ptr, cur_eos_logit)
+        for eos_index in range(EOS_ID_NUM):
+            eos_id = tl.load(eos_ids + eos_index)
+            cur_eos_logit_ptr = Logits + cur_batch * stride_logit_b + eos_id
+            cur_eos_logit = tl.load(cur_eos_logit_ptr)
+            cur_eos_logit = cur_eos_logit + tl.abs(cur_eos_logit) * penalty_scale
+            cur_eos_logit = tl.where(mask_eos, -10000000.0, cur_eos_logit)
+            tl.store(cur_eos_logit_ptr, cur_eos_logit)
     return
 
 
@@ -74,6 +75,7 @@ def apply_penalty(
     length_penalty_idx,
     eos_ids,
     mask_eos_reqs,
+    is_eos_penalty=False,
 ):
     assert Logits.is_contiguous()
     BLOCK_P = 1024
@@ -91,9 +93,9 @@ def apply_penalty(
         eos_ids,
         mask_eos_reqs,
         Logits.stride(0),
-        Logits.stride(1),
         num_warps=num_warps,
         BLOCK_P=BLOCK_P,
         EOS_ID_NUM=eos_ids.shape[0],
+        IS_EOS_PENALTY=is_eos_penalty,
     )
     return
