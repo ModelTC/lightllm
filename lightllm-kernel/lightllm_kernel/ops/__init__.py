@@ -7,9 +7,10 @@ PKG = "lightllm_kernel"
 try:
     _C = importlib.import_module(f"{PKG}._C")
 except ImportError:
-    raise ImportError("Cannot import compiled extension 'lightllm_kernel.ops'")
-    repo_root = Path(__file__).resolve().parents[2]
-    csrc_dir = repo_root / "csrc"
+    # raise ImportError("Cannot import compiled extension 'lightllm_kernel.ops'")
+    repo_root = Path(__file__).resolve().parents[3]
+    kernels_root = Path(__file__).resolve().parents[2]
+    csrc_dir = kernels_root / "csrc"
     if not csrc_dir.exists():
         raise ImportError(
             "Cannot import compiled extension 'lightllm_kernel.ops' and no source "
@@ -20,7 +21,7 @@ except ImportError:
     PROGRAM_NAME = "lightllm_kernel._C"
     EXTENSION_BUILD_DIR = "build"
     INCLUDE_DIR = "include"
-    CUTLASS_DIR = "cutlass/include"
+    CUTLASS_DIR = "third-party/cutlass/include"
 
     sources = []
     file_names = []  # Store file names for printing
@@ -40,11 +41,12 @@ except ImportError:
         sources=sources,
         verbose=True,
         extra_include_paths=[
-            os.path.join(repo_root, INCLUDE_DIR),
+            os.path.join(kernels_root, INCLUDE_DIR),
             os.path.join(repo_root, CUTLASS_DIR),
         ],
-        build_directory=os.path.join(repo_root, EXTENSION_BUILD_DIR),
+        build_directory=os.path.join(kernels_root, EXTENSION_BUILD_DIR),
         with_cuda=True,
+        extra_ldflags=["-lcuda", "-L/usr/local/cuda/lib64"],
         extra_cuda_cflags=[
             "-DNDEBUG",
             "-O3",

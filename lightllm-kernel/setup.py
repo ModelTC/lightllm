@@ -3,8 +3,9 @@ from pathlib import Path
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-repo_root = Path(__file__).resolve().parents[0]
-csrc_dir = repo_root / "csrc"
+repo_root = Path(__file__).resolve().parents[1]
+kernels_root = Path(__file__).resolve().parents[0]
+csrc_dir = kernels_root / "csrc"
 if not csrc_dir.exists():
     raise ImportError(
         "Cannot import compiled extension 'lightllm_kernel.ops' and no source "
@@ -14,7 +15,7 @@ if not csrc_dir.exists():
 
 PROGRAM_NAME = "lightllm_kernel._C"
 INCLUDE_DIR = "include"
-CUTLASS_DIR = "cutlass/include"
+CUTLASS_DIR = "third-party/cutlass/include"
 
 sources = []
 file_names = []  # Store file names for printing
@@ -48,7 +49,7 @@ ext_modules = [
             ],
         },
         include_dirs=[
-            os.path.join(repo_root, INCLUDE_DIR),
+            os.path.join(kernels_root, INCLUDE_DIR),
             os.path.join(repo_root, CUTLASS_DIR),
         ],
     )
