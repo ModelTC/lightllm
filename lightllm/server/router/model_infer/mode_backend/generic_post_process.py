@@ -1,9 +1,12 @@
 import torch
 from typing import List
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
+from lightllm.common.basemodel.triton_kernel.apply_penalty_cache import apply_penalty_cache
 from dataclasses import dataclass
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
+from lightllm.utils.envs_utils import enable_env_vars
 
 
 def sample(logits, reqs, eos_id: List[int] = [2]):
@@ -20,25 +23,41 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
         p_cumsum_seq_len,
         length_penalty_idx,
         mask_eos_reqs,
+        req_idxs,
     ) = _get_post_sample_tensors(reqs)
 
     eos_ids = torch.tensor(eos_id, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
 
     logits = logits.contiguous()
 
-    apply_penalty(
-        logits,
-        presence_penalties,
-        frequency_penalties,
-        repetition_penalties,
-        p_token_ids,
-        p_token_counts,
-        p_cumsum_seq_len,
-        exponential_decay_length_penalties,
-        length_penalty_idx,
-        eos_ids,
-        mask_eos_reqs,
-    )
+    if enable_env_vars("ENABLE_REQ_PARAM_CACHE"):
+        apply_penalty_cache(
+            logits,
+            req_idxs,
+            presence_penalties,
+            frequency_penalties,
+            repetition_penalties,
+            g_infer_context.req_manager.req_sample_parms_manager.p_token_vocabs,
+            None,
+            exponential_decay_length_penalties,
+            length_penalty_idx,
+            eos_ids,
+            mask_eos_reqs,
+        )
+    else:
+        apply_penalty(
+            logits,
+            presence_penalties,
+            frequency_penalties,
+            repetition_penalties,
+            p_token_ids,
+            p_token_counts,
+            p_cumsum_seq_len,
+            exponential_decay_length_penalties,
+            length_penalty_idx,
+            eos_ids,
+            mask_eos_reqs,
+        )
 
     logits.div_(temperatures.view((-1, 1)))
     probs = torch.softmax(logits, dim=-1)
@@ -50,6 +69,8 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
         batch_next_token_ids = torch.gather(probs_idx, dim=1, index=sampled_index)
         batch_next_token_probs = torch.gather(probs_sort, dim=1, index=sampled_index)
 
+        if enable_env_vars("ENABLE_REQ_PARAM_CACHE"):
+            _update_repeatition_tokens(req_idxs, batch_next_token_ids)
         return batch_next_token_ids.view(-1), batch_next_token_probs.view(-1)
 
     elif get_env_start_args().sampling_backend == "sglang_kernel":
@@ -65,6 +86,9 @@ def sample(logits, reqs, eos_id: List[int] = [2]):
         int64_batch_next_token_ids = torch.empty_like(batch_next_token_ids, dtype=torch.int64)
         int64_batch_next_token_ids[:] = batch_next_token_ids
         batch_next_token_probs = torch.gather(probs, dim=1, index=int64_batch_next_token_ids.view(-1, 1))
+
+        if enable_env_vars("ENABLE_REQ_PARAM_CACHE"):
+            _update_repeatition_tokens(req_idxs, batch_next_token_ids)
         return batch_next_token_ids.view(-1), batch_next_token_probs.view(-1)
     else:
         assert False, "dead path"
@@ -96,7 +120,9 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
     ]
     length_penalty_idx: List[int] = []
     mask_eos_reqs: List[bool] = []
-    for i, req_obj in enumerate(reqs):
+    req_idxs = []
+    for req_obj in reqs:
+        req_idxs.append(req_obj.req_idx)
         id_to_count = req_obj.out_token_id_count
         sample_param = req_obj.sampling_param
         presence_penalties.append(sample_param.shm_param.presence_penalty)
@@ -112,9 +138,10 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
         top_ps.append(sample_param.shm_param.top_p)
         top_ks.append(sample_param.shm_param.top_k)
 
-        p_token_ids.extend(list(id_to_count.keys()))
-        p_token_counts.extend(list(id_to_count.values()))
-        p_seq_len.append(len(id_to_count))
+        if id_to_count is not None:
+            p_token_ids.extend(list(id_to_count.keys()))
+            p_token_counts.extend(list(id_to_count.values()))
+            p_seq_len.append(len(id_to_count))
 
     presence_penalties_cpu = torch.tensor(presence_penalties, dtype=torch.float, device="cpu", pin_memory=True)
     frequency_penalties_cpu = torch.tensor(frequency_penalties, dtype=torch.float, device="cpu", pin_memory=True)
@@ -131,6 +158,7 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
     length_penalty_idx_cpu = torch.tensor(length_penalty_idx, dtype=torch.int32, device="cpu", pin_memory=True)
     mask_eos_reqs_cpu = torch.tensor(mask_eos_reqs, dtype=torch.bool, device="cpu", pin_memory=True)
     p_cumsum_seq_len_cpu = torch.cumsum(p_seq_len_cpu, dim=0, dtype=torch.int32).pin_memory()
+    req_idxs_cpu = torch.tensor(req_idxs, dtype=torch.int32, device="cpu", pin_memory=True)
 
     return (
         presence_penalties_cpu.cuda(non_blocking=True),
@@ -145,4 +173,9 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
         p_cumsum_seq_len_cpu.cuda(non_blocking=True),
         length_penalty_idx_cpu.cuda(non_blocking=True),
         mask_eos_reqs_cpu.cuda(non_blocking=True),
+        req_idxs_cpu.cuda(non_blocking=True),
     )
+
+
+def _update_repeatition_tokens(req_idxs, token_ids):
+    g_infer_context.req_manager.req_sample_parms_manager.p_token_vocabs[req_idxs, token_ids] += 1

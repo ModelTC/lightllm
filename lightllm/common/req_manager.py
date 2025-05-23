@@ -58,6 +58,7 @@ class ReqManager:
             (max_request_num + 1, max_sequence_length), dtype=torch.int32, device="cuda"
         )
         self.mem_manager = mem_manager
+        self.req_sample_parms_manager = None
         self.max_request_num = max_request_num
         self.HOLD_REQUEST_ID = max_request_num
 
@@ -67,6 +68,8 @@ class ReqManager:
     def free(self, free_req_indexes: List[int], free_token_index):
         for req_index in free_req_indexes:
             self.req_list.free(req_index)
+        if self.req_sample_parms_manager is not None:
+            self.req_sample_parms_manager.p_token_vocabs[free_req_indexes] = 0
 
         if self.req_list.is_all_free():
             logger.debug(f"freed all request size {self.req_list.can_alloc_size}")
