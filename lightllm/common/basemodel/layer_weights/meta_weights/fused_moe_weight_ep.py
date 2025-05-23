@@ -9,11 +9,13 @@ from lightllm.common.fused_moe.moe_silu_and_mul import silu_and_mul_fwd
 from lightllm.distributed import dist_group_manager
 from lightllm.common.fused_moe.topk_select import select_experts
 from lightllm.utils.envs_utils import get_deepep_num_max_dispatch_tokens_per_rank
+from lightllm.utils.envs_utils import get_redundancy_expert_ids, get_redundancy_expert_num
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import (
     per_token_group_quant_fp8,
     tma_align_input_scale,
 )
 from lightllm.common.fused_moe.deepep_scatter_gather import ep_scatter, ep_gather
+from lightllm.common.basemodel.triton_kernel.redundancy_topk_ids_repair import redundancy_topk_ids_repair
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -60,15 +62,25 @@ class FusedMoeWeightEP(BaseWeight):
 
         global_world_size = get_global_world_size()
         self.global_rank_ = get_global_rank()
+        self.redundancy_expert_num = get_redundancy_expert_num()
+        self.redundancy_expert_ids = get_redundancy_expert_ids(layer_num)
+        logger.info(
+            f"global_rank {self.global_rank_} layerindex {layer_num} redundancy_expertids: {self.redundancy_expert_ids}"
+        )
+        self.redundancy_expert_ids_tensor = torch.tensor(self.redundancy_expert_ids, dtype=torch.int64).cuda()
+        self.total_expert_num_contain_redundancy = (
+            self.n_routed_experts + self.redundancy_expert_num * global_world_size
+        )
         assert self.n_routed_experts % global_world_size == 0
         self.ep_n_routed_experts = self.n_routed_experts // global_world_size
-        self.experts_up_projs = [None] * self.ep_n_routed_experts
-        self.experts_gate_projs = [None] * self.ep_n_routed_experts
-        self.experts_up_proj_scales = [None] * self.ep_n_routed_experts
-        self.experts_gate_proj_scales = [None] * self.ep_n_routed_experts
+        ep_load_expert_num = self.ep_n_routed_experts + self.redundancy_expert_num
+        self.experts_up_projs = [None] * ep_load_expert_num
+        self.experts_gate_projs = [None] * ep_load_expert_num
+        self.experts_up_proj_scales = [None] * ep_load_expert_num
+        self.experts_gate_proj_scales = [None] * ep_load_expert_num
         self.e_score_correction_bias = None
-        self.w2_list = [None] * self.ep_n_routed_experts
-        self.w2_scale_list = [None] * self.ep_n_routed_experts
+        self.w2_list = [None] * ep_load_expert_num
+        self.w2_scale_list = [None] * ep_load_expert_num
         self.scoring_func = network_config["scoring_func"]
         self.w1 = [None, None]  # weight, weight_scale
         self.w2 = [None, None]  # weight, weight_scale
@@ -106,6 +118,15 @@ class FusedMoeWeightEP(BaseWeight):
             num_expert_group=num_expert_group,
             scoring_func=self.scoring_func,
         )
+
+        if self.redundancy_expert_num > 0:
+            redundancy_topk_ids_repair(
+                topk_ids=topk_ids,
+                redundancy_expert_ids=self.redundancy_expert_ids_tensor,
+                ep_expert_num=self.ep_n_routed_experts,
+                global_rank=self.global_rank_,
+            )
+
         w1, w1_scale = self.w1
         w2, w2_scale = self.w2
         return fused_experts_impl(
@@ -114,7 +135,7 @@ class FusedMoeWeightEP(BaseWeight):
             w2=w2,
             topk_weights=topk_weights,
             topk_idx=topk_ids.to(torch.long),
-            num_experts=self.n_routed_experts,  # number of all experts
+            num_experts=self.total_expert_num_contain_redundancy,  # number of all experts contain redundancy
             buffer=dist_group_manager.ep_buffer,
             is_prefill=is_prefill,
             use_fp8_w8a8=self.use_fp8_w8a8,
@@ -142,13 +163,22 @@ class FusedMoeWeightEP(BaseWeight):
             num_expert_group=self.n_group,
             scoring_func=self.scoring_func,
         )
+
+        if self.redundancy_expert_num > 0:
+            redundancy_topk_ids_repair(
+                topk_ids=topk_idx,
+                redundancy_expert_ids=self.redundancy_expert_ids_tensor,
+                ep_expert_num=self.ep_n_routed_experts,
+                global_rank=self.global_rank_,
+            )
+
         topk_idx = topk_idx.to(torch.long)
         num_max_dispatch_tokens_per_rank = get_deepep_num_max_dispatch_tokens_per_rank()
         recv_x, masked_m, handle, event, hook = dist_group_manager.ep_buffer.low_latency_dispatch(
             hidden_states,
             topk_idx,
             num_max_dispatch_tokens_per_rank,
-            self.n_routed_experts,
+            self.total_expert_num_contain_redundancy,
             use_fp8=self.use_fp8_w8a8,
             async_finish=False,
             return_recv_hook=True,
@@ -171,6 +201,13 @@ class FusedMoeWeightEP(BaseWeight):
             num_expert_group=self.n_group,
             scoring_func=self.scoring_func,
         )
+        if self.redundancy_expert_num > 0:
+            redundancy_topk_ids_repair(
+                topk_ids=topk_idx,
+                redundancy_expert_ids=self.redundancy_expert_ids_tensor,
+                ep_expert_num=self.ep_n_routed_experts,
+                global_rank=self.global_rank_,
+            )
         M, K = hidden_states.shape
         w1, w1_scale = self.w1
         block_size_k = 0
@@ -190,7 +227,6 @@ class FusedMoeWeightEP(BaseWeight):
         overlap_event: Optional[Any] = None,
     ):
         buffer = dist_group_manager.ep_buffer
-        num_experts = self.n_routed_experts
         # get_dispatch_layout
         (
             num_tokens_per_rank,
@@ -199,7 +235,11 @@ class FusedMoeWeightEP(BaseWeight):
             is_token_in_rank,
             previous_event,
         ) = buffer.get_dispatch_layout(
-            topk_idx, num_experts, previous_event=overlap_event, async_finish=True, allocate_on_comm_stream=True
+            topk_idx,
+            self.total_expert_num_contain_redundancy,
+            previous_event=overlap_event,
+            async_finish=True,
+            allocate_on_comm_stream=True,
         )
         recv_x, recv_topk_idx, recv_topk_weights, num_recv_tokens_per_expert_list, handle, event = buffer.dispatch(
             qinput_tensor,
@@ -343,7 +383,7 @@ class FusedMoeWeightEP(BaseWeight):
                 and None not in self.w2_list
             ):
                 w1_list = []
-                for i_experts in range(self.ep_n_routed_experts):
+                for i_experts in range(self.ep_n_routed_experts + self.redundancy_expert_num):
                     expert_gate_up_proj = torch.cat(
                         [self.experts_gate_projs[i_experts], self.experts_up_projs[i_experts]], dim=0
                     )
@@ -373,7 +413,7 @@ class FusedMoeWeightEP(BaseWeight):
                 and None not in self.w2_scale_list
             ):
                 w1_scale_list = []
-                for i_experts in range(self.ep_n_routed_experts):
+                for i_experts in range(self.ep_n_routed_experts + self.redundancy_expert_num):
                     expert_gate_up_proj_scale = torch.cat(
                         [self.experts_gate_proj_scales[i_experts], self.experts_up_proj_scales[i_experts]], dim=0
                     )
@@ -411,7 +451,20 @@ class FusedMoeWeightEP(BaseWeight):
             if w2_weight in weights:
                 self.w2_list[i_experts_ep] = weights[w2_weight]
 
-        if self.quant_method is not None:
+        # 加载冗余专家的权重参数
+        for i, redundant_expert_id in enumerate(self.redundancy_expert_ids):
+            i_experts = redundant_expert_id
+            w1_weight = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.weight"
+            w2_weight = f"{self.weight_prefix}.{i_experts}.{self.w2_weight_name}.weight"
+            w3_weight = f"{self.weight_prefix}.{i_experts}.{self.w3_weight_name}.weight"
+            if w1_weight in weights:
+                self.experts_gate_projs[n_expert_ep + i] = weights[w1_weight]
+            if w3_weight in weights:
+                self.experts_up_projs[n_expert_ep + i] = weights[w3_weight]
+            if w2_weight in weights:
+                self.w2_list[n_expert_ep + i] = weights[w2_weight]
+
+        if self.quantized_weight:
             self._load_weight_scale(weights)
         self._fuse()
 
@@ -429,6 +482,19 @@ class FusedMoeWeightEP(BaseWeight):
 
             if w2_scale in weights:
                 self.w2_scale_list[i_experts_ep] = weights[w2_scale]
+
+        # 加载冗余专家的scale参数
+        for i, redundant_expert_id in enumerate(self.redundancy_expert_ids):
+            i_experts = redundant_expert_id
+            w1_scale = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.{self.weight_scale_suffix}"
+            w2_scale = f"{self.weight_prefix}.{i_experts}.{self.w2_weight_name}.{self.weight_scale_suffix}"
+            w3_scale = f"{self.weight_prefix}.{i_experts}.{self.w3_weight_name}.{self.weight_scale_suffix}"
+            if w1_scale in weights:
+                self.experts_gate_proj_scales[n_expert_ep + i] = weights[w1_scale]
+            if w3_scale in weights:
+                self.experts_up_proj_scales[n_expert_ep + i] = weights[w3_scale]
+            if w2_scale in weights:
+                self.w2_scale_list[n_expert_ep + i] = weights[w2_scale]
 
     def _cuda(self, cpu_tensor):
         device_id = get_current_device_id()
