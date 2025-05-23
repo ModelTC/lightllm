@@ -154,7 +154,7 @@ def normal_or_p_d_start(args):
 
     # if use_hi_dynamic_prompt_cache, then use_dynamic_prompt_cache must be True
     if args.use_hi_dynamic_prompt_cache:
-        assert args.use_dynamic_prompt_cache, "use_hi_dynamic_prompt_cache must be used with use_dynamic_prompt_cache"
+        assert not args.disable_dynamic_prompt_cache, "use_hi_dynamic_prompt_cache must be used with use_dynamic_prompt_cache"
 
     # help to manage data stored on Ceph
     if "s3://" in args.model_dir:
