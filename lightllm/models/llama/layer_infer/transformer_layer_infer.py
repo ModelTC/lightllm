@@ -101,6 +101,24 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         elif "triton_int8kv" in self.mode:
             self._token_attention_kernel = partial(LlamaTransformerLayerInfer._token_decode_attention_int8kv, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_int8kv, self)
+        elif "triton_fp8kv" in self.mode:
+            self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_fp8kv, self)
+            if get_env_start_args().enable_fa3:
+                self._context_attention_kernel = partial(
+                    LlamaTransformerLayerInfer._context_attention_flashattention_fp8, self
+                )
+                self._token_attention_kernel = partial(
+                    LlamaTransformerLayerInfer._token_decode_attention_flashattention_fp8, self
+                )
+            elif get_env_start_args().enable_flashinfer_prefill and get_env_start_args().enable_flashinfer_decode:
+                self._context_attention_kernel = partial(
+                    LlamaTransformerLayerInfer._context_attention_flashinfer_kernel_fp8, self
+                )
+                self._token_attention_kernel = partial(
+                    LlamaTransformerLayerInfer._token_decode_attention_flashinfer_fp8, self
+                )
+            else:
+                raise Exception("fp8 kvcache only support fa3 and flashinfer backend")
         elif "triton_flashdecoding" in self.mode:
             self._token_attention_kernel = partial(
                 LlamaTransformerLayerInfer._token_decode_attention_flashdecoding, self
@@ -258,7 +276,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         q = q.reshape(-1, self.tp_q_head_num_, self.head_dim_)
         k_descale, v_descale = None, None  # disable quantization
         Lq = q.shape[-1]
-        sm_scale = 1.0 / (Lq ** 0.5)
+        sm_scale = 1.0 / (Lq**0.5)
         o = flash_attn_with_kvcache(
             q=q,
             k_cache=cache_k,
@@ -365,6 +383,12 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         return
 
     def _copy_kv_to_mem_cache_int8kv(self, buffer, mem_index, mem_manager):
+        destindex_copy_quantize_kv(
+            buffer, mem_index, mem_manager.kv_buffer[self.layer_num_], mem_manager.scale_buffer[self.layer_num_]
+        )
+        return
+
+    def _copy_kv_to_mem_cache_fp8kv(self, buffer, mem_index, mem_manager):
         destindex_copy_quantize_kv(
             buffer, mem_index, mem_manager.kv_buffer[self.layer_num_], mem_manager.scale_buffer[self.layer_num_]
         )
@@ -572,7 +596,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         # at::Tensor v,  at::Tensor v_s, at::Tensor b_loc, at::Tensor b_seq_len, int max_len_in_batch)
         fp16_decode_attention(
             o_tensor.view(calcu_shape1),
-            1.0 / (self.head_dim_ ** 0.5),
+            1.0 / (self.head_dim_**0.5),
             q.view(calcu_shape1),
             infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :],
             infer_state.mem_manager.kv_buffer[self.layer_num_][
@@ -689,7 +713,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         q = q.reshape(-1, self.tp_q_head_num_, self.head_dim_)
         k_descale, v_descale = None, None  # disable quantization
         Lq = q.shape[-1]
-        sm_scale = 1.0 / (Lq ** 0.5)
+        sm_scale = 1.0 / (Lq**0.5)
         o = flash_attn_with_kvcache(
             q=q,
             k_cache=cache_k,
