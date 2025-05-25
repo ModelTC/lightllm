@@ -43,6 +43,7 @@ class FusedMoeWeightEP(BaseWeight):
     ) -> None:
         super().__init__()
 
+        self.layer_num = layer_num
         self.quant_method = quant_cfg.get_quant_method(layer_num, "fused_moe")
         self.quantized_weight = quant_cfg.quantized_weight
         if self.quant_method is not None:
