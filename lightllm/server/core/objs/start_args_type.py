@@ -84,3 +84,4 @@ class StartArgs:
     enable_flashinfer_decode: bool = field(default=False)
     sampling_backend: str = field(default="triton", metadata={"choices": ["triton", "sglang_kernel"]})
     ep_redundancy_expert_config_path: Optional[str] = field(default=None)
+    auto_update_redundancy_expert: bool = field(default=False)

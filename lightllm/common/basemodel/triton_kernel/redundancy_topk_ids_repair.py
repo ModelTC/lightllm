@@ -11,12 +11,18 @@ def _redundancy_topk_ids_repair_kernel(
     redundancy_expert_num,
     global_rank,
     redundancy_expert_ids_ptr,
+    expert_counter_ptr,
     BLOCK_SIZE: tl.constexpr,
+    ENABLE_COUNTER: tl.constexpr,
 ):
     block_index = tl.program_id(0)
     offs_d = block_index * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs_d < topk_total_num
     current_topk_ids = tl.load(topk_ids_ptr + offs_d, mask=mask, other=0)
+
+    if ENABLE_COUNTER:
+        tl.atomic_add(expert_counter_ptr + current_topk_ids, 1, mask=mask)
+
     new_current_topk_ids = (current_topk_ids // ep_expert_num) * redundancy_expert_num + current_topk_ids
 
     for i in tl.range(0, redundancy_expert_num, step=1, num_stages=3):
@@ -36,7 +42,12 @@ def _redundancy_topk_ids_repair_kernel(
 
 @torch.no_grad()
 def redundancy_topk_ids_repair(
-    topk_ids: torch.Tensor, redundancy_expert_ids: torch.Tensor, ep_expert_num: int, global_rank: int
+    topk_ids: torch.Tensor,
+    redundancy_expert_ids: torch.Tensor,
+    ep_expert_num: int,
+    global_rank: int,
+    expert_counter: torch.Tensor = None,
+    enable_counter: bool = False,
 ):
     assert topk_ids.is_contiguous()
     assert len(topk_ids.shape) == 2
@@ -53,7 +64,9 @@ def redundancy_topk_ids_repair(
         redundancy_expert_num=redundancy_expert_num,
         global_rank=global_rank,
         redundancy_expert_ids_ptr=redundancy_expert_ids,
+        expert_counter_ptr=expert_counter,
         BLOCK_SIZE=BLOCK_SIZE,
+        ENABLE_COUNTER=enable_counter,
         num_warps=num_warps,
         num_stages=3,
     )

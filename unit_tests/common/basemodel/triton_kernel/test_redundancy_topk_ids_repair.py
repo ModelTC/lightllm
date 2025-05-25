@@ -28,11 +28,16 @@ def test_redundancy_topk_ids_repair():
         dtype=torch.int64,
         device="cuda",
     )
+
+    expert_id_counter = torch.zeros(12, dtype=torch.int64, device="cuda")
+
     redundancy_topk_ids_repair(
         topk_ids=topk_ids,
         redundancy_expert_ids=redundancy_expert_ids,
         ep_expert_num=ep_expert_num,
         global_rank=global_rank,
+        expert_counter=expert_id_counter,
+        enable_counter=True,
     )
 
     ans_topk_ids = torch.tensor(
@@ -51,6 +56,9 @@ def test_redundancy_topk_ids_repair():
     )
 
     assert torch.equal(topk_ids, ans_topk_ids)
+    assert torch.equal(
+        expert_id_counter, torch.tensor([1, 2, 1, 2, 0, 1, 0, 2, 0, 1, 1, 1], dtype=torch.int64, device="cuda")
+    )
 
     ep_expert_num = 4
     global_rank = 1

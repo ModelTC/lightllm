@@ -10,6 +10,7 @@ from lightllm.distributed import dist_group_manager
 from lightllm.common.fused_moe.topk_select import select_experts
 from lightllm.utils.envs_utils import get_deepep_num_max_dispatch_tokens_per_rank
 from lightllm.utils.envs_utils import get_redundancy_expert_ids, get_redundancy_expert_num
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import (
     per_token_group_quant_fp8,
     tma_align_input_scale,
@@ -67,7 +68,8 @@ class FusedMoeWeightEP(BaseWeight):
         logger.info(
             f"global_rank {self.global_rank_} layerindex {layer_num} redundancy_expertids: {self.redundancy_expert_ids}"
         )
-        self.redundancy_expert_ids_tensor = torch.tensor(self.redundancy_expert_ids, dtype=torch.int64).cuda()
+        self.redundancy_expert_ids_tensor = torch.tensor(self.redundancy_expert_ids, dtype=torch.int64, device="cuda")
+        self.routed_expert_counter_tensor = torch.zeros((self.n_routed_experts,), dtype=torch.int64, device="cuda")
         self.total_expert_num_contain_redundancy = (
             self.n_routed_experts + self.redundancy_expert_num * global_world_size
         )
@@ -95,6 +97,9 @@ class FusedMoeWeightEP(BaseWeight):
 
         self.lock = threading.Lock()
         # init buffer
+
+        # auto update redundancy expert vars
+        self.auto_update_redundancy_expert: bool = get_env_start_args().auto_update_redundancy_expert
 
     def experts(
         self,
@@ -125,6 +130,8 @@ class FusedMoeWeightEP(BaseWeight):
                 redundancy_expert_ids=self.redundancy_expert_ids_tensor,
                 ep_expert_num=self.ep_n_routed_experts,
                 global_rank=self.global_rank_,
+                expert_counter=self.routed_expert_counter_tensor,
+                enable_counter=self.auto_update_redundancy_expert,
             )
 
         w1, w1_scale = self.w1
@@ -170,6 +177,8 @@ class FusedMoeWeightEP(BaseWeight):
                 redundancy_expert_ids=self.redundancy_expert_ids_tensor,
                 ep_expert_num=self.ep_n_routed_experts,
                 global_rank=self.global_rank_,
+                expert_counter=self.routed_expert_counter_tensor,
+                enable_counter=self.auto_update_redundancy_expert,
             )
 
         topk_idx = topk_idx.to(torch.long)
@@ -207,6 +216,8 @@ class FusedMoeWeightEP(BaseWeight):
                 redundancy_expert_ids=self.redundancy_expert_ids_tensor,
                 ep_expert_num=self.ep_n_routed_experts,
                 global_rank=self.global_rank_,
+                expert_counter=self.routed_expert_counter_tensor,
+                enable_counter=self.auto_update_redundancy_expert,
             )
         M, K = hidden_states.shape
         w1, w1_scale = self.w1

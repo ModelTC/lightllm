@@ -386,4 +386,9 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="""Path of the redundant expert config. It can be used for deepseekv3 model.""",
     )
+    parser.add_argument(
+        "--auto_update_redundancy_expert",
+        action="store_true",
+        help="""Whether to update the redundant expert for deepseekv3 model by online expert used counter.""",
+    )
     return parser
