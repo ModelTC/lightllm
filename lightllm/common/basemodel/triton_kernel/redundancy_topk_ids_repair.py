@@ -58,3 +58,40 @@ def redundancy_topk_ids_repair(
         num_stages=3,
     )
     return
+
+
+@triton.jit
+def _expert_id_counter_kernel(
+    topk_ids_ptr,
+    topk_total_num,
+    expert_counter_ptr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    block_index = tl.program_id(0)
+    offs_d = block_index * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs_d < topk_total_num
+    current_topk_ids = tl.load(topk_ids_ptr + offs_d, mask=mask, other=0)
+    tl.atomic_add(expert_counter_ptr + current_topk_ids, 1, mask=mask)
+    return
+
+
+@torch.no_grad()
+def expert_id_counter(
+    topk_ids: torch.Tensor,
+    expert_counter: torch.Tensor,
+):
+    assert topk_ids.is_contiguous()
+    assert len(topk_ids.shape) == 2
+    BLOCK_SIZE = 512
+    grid = (triton.cdiv(topk_ids.numel(), BLOCK_SIZE),)
+    num_warps = 4
+
+    _expert_id_counter_kernel[grid](
+        topk_ids_ptr=topk_ids,
+        topk_total_num=topk_ids.numel(),
+        expert_counter_ptr=expert_counter,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    return
