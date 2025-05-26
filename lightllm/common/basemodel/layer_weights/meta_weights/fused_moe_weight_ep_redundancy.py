@@ -16,6 +16,10 @@ class FusedMoeWeightEPAutoRedundancy:
         self._ep_w = ep_fused_moe_weight
         self.redundancy_expert_num = self._ep_w.redundancy_expert_num
 
+    def clear_counter(self):
+        self._ep_w.routed_expert_counter_tensor.fill_(0)
+        return
+
     def prepare_redundancy_experts(
         self,
     ):
@@ -75,16 +79,18 @@ class FusedMoeWeightEPAutoRedundancy:
                 and None not in self.experts_gate_projs
                 and None not in self.w2_list
             ):
-                w1_list = []
-                for i_experts in range(self.redundancy_expert_num):
-                    expert_gate_up_proj = torch.cat(
-                        [self.experts_gate_projs[i_experts], self.experts_up_projs[i_experts]], dim=0
-                    )
-                    expert_gate_up_proj = expert_gate_up_proj
-                    w1_list.append(expert_gate_up_proj)
+                gate_out_dim, gate_in_dim = self.experts_gate_projs[0].shape
+                up_out_dim, up_in_dim = self.experts_up_projs[0].shape
+                assert gate_in_dim == up_in_dim
+                dtype = self.experts_gate_projs[0].dtype
+                total_expert_num = self.redundancy_expert_num
 
-                inter_shape, hidden_size = w1_list[0].shape[0], w1_list[0].shape[1]
-                w1 = torch._utils._flatten_dense_tensors(w1_list).view(len(w1_list), inter_shape, hidden_size)
+                w1 = torch.empty((total_expert_num, gate_out_dim + up_out_dim, gate_in_dim), dtype=dtype, device="cpu")
+
+                for i_experts in range(self.redundancy_expert_num):
+                    w1[i_experts, 0:gate_out_dim:, :] = self.experts_gate_projs[i_experts]
+                    w1[i_experts, gate_out_dim:, :] = self.experts_up_projs[i_experts]
+
                 inter_shape, hidden_size = self.w2_list[0].shape[0], self.w2_list[0].shape[1]
                 w2 = torch._utils._flatten_dense_tensors(self.w2_list).view(len(self.w2_list), inter_shape, hidden_size)
                 if not self._ep_w.quantized_weight and self._ep_w.quant_method is not None:
@@ -106,17 +112,18 @@ class FusedMoeWeightEPAutoRedundancy:
                 and None not in self.experts_gate_proj_scales
                 and None not in self.w2_scale_list
             ):
-                w1_scale_list = []
-                for i_experts in range(self.redundancy_expert_num):
-                    expert_gate_up_proj_scale = torch.cat(
-                        [self.experts_gate_proj_scales[i_experts], self.experts_up_proj_scales[i_experts]], dim=0
-                    )
-                    w1_scale_list.append(expert_gate_up_proj_scale)
-
-                inter_shape, hidden_size = w1_scale_list[0].shape[0], w1_scale_list[0].shape[1]
-                w1_scale = torch._utils._flatten_dense_tensors(w1_scale_list).view(
-                    len(w1_scale_list), inter_shape, hidden_size
+                gate_out_dim, gate_in_dim = self.experts_gate_proj_scales[0].shape
+                up_out_dim, up_in_dim = self.experts_up_proj_scales[0].shape
+                assert gate_in_dim == up_in_dim
+                dtype = self.experts_gate_proj_scales[0].dtype
+                total_expert_num = self.redundancy_expert_num
+                w1_scale = torch.empty(
+                    (total_expert_num, gate_out_dim + up_out_dim, gate_in_dim), dtype=dtype, device="cpu"
                 )
+                for i_experts in range(self.redundancy_expert_num):
+                    w1_scale[i_experts, 0:gate_out_dim:, :] = self.experts_gate_proj_scales[i_experts]
+                    w1_scale[i_experts, gate_out_dim:, :] = self.experts_up_proj_scales[i_experts]
+
                 inter_shape, hidden_size = self.w2_scale_list[0].shape[0], self.w2_scale_list[0].shape[1]
                 w2_scale = torch._utils._flatten_dense_tensors(self.w2_scale_list).view(
                     len(self.w2_scale_list), inter_shape, hidden_size

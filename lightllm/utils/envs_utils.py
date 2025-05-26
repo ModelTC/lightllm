@@ -121,3 +121,13 @@ def get_redundancy_expert_num():
         return config["redundancy_expert_num"]
     else:
         return 0
+
+
+@lru_cache(maxsize=None)
+def get_redundancy_expert_update_interval():
+    return int(os.getenv("LIGHTLLM_REDUNDANCY_EXPERT_UPDATE_INTERVAL", 30 * 60))
+
+
+@lru_cache(maxsize=None)
+def get_redundancy_expert_update_max_load_count():
+    return int(os.getenv("LIGHTLLM_REDUNDANCY_EXPERT_UPDATE_MAX_LOAD_COUNT", 1))

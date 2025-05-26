@@ -577,6 +577,11 @@ class TpPartBaseModel:
             logger.info("disable_check_max_len_infer is true")
             return
 
+        # 做一次 同步
+        import torch.distributed as dist
+
+        dist.barrier()
+
         # 模拟最大长度进行 prefill，观察是否出现 OOM
         try:
             logger.info("begin check max_len infer")
