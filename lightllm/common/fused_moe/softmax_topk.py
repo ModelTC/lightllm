@@ -38,11 +38,11 @@ def softmax_topk_kernel(
 
         prob = tl.exp(logit) / denom
 
-        lane0 = offsets == 0
-        ptr_w = row_weights_ptr + i + offsets * 0
-        ptr_i = row_indices_ptr + i + offsets * 0
-        tl.store(ptr_w, tl.where(lane0, prob, 0.0), mask=lane0)
-        tl.store(ptr_i, tl.where(lane0, idx, 0), mask=lane0)
+        ptr_w = row_weights_ptr + i
+        ptr_i = row_indices_ptr + i
+
+        tl.store(ptr_w, prob)
+        tl.store(ptr_i, idx)
 
         values = tl.where(offsets == idx, -float("inf"), values)
 
@@ -84,7 +84,7 @@ import sgl_kernel as sgl_ops
 
 
 #
-def benchmark(M, N, K, renorm):
+def benchmark(M, N, K, renorm, runs):
     gating = torch.randn(M, N, device="cuda", dtype=torch.float32)
     torch.cuda.synchronize()
 
@@ -97,7 +97,8 @@ def benchmark(M, N, K, renorm):
     start = torch.cuda.Event(True)
     end = torch.cuda.Event(True)
     start.record()
-    sgl_ops.topk_softmax(sgl_vals, sgl_ids, torch.empty_like(sgl_ids), gating)
+    for _ in range(runs):
+        sgl_ops.topk_softmax(sgl_vals, sgl_ids, torch.empty_like(sgl_ids), gating)
     end.record()
     torch.cuda.synchronize()
     t_sgl = start.elapsed_time(end) / 1000.0
@@ -108,7 +109,8 @@ def benchmark(M, N, K, renorm):
     # Warm-up
     softmax_topk(gating, K)
     t0.record()
-    triton_vals, triton_ids = softmax_topk(gating, K, renorm)
+    for _ in range(runs):
+        triton_vals, triton_ids = softmax_topk(gating, K, renorm)
     t1.record()
     torch.cuda.synchronize()
     t_triton = t0.elapsed_time(t1) / 1000.0
@@ -116,8 +118,9 @@ def benchmark(M, N, K, renorm):
     # 3. Native PyTorch
     start, end = torch.cuda.Event(True), torch.cuda.Event(True)
     start.record()
-    probs = torch.softmax(gating, dim=-1)
-    torch_vals, torch_ids = torch.topk(probs, K, dim=-1)
+    for _ in range(runs):
+        probs = torch.softmax(gating, dim=-1)
+        torch_vals, torch_ids = torch.topk(probs, K, dim=-1)
     end.record()
     torch.cuda.synchronize()
     t_torch = start.elapsed_time(end) / 1000.0
@@ -152,11 +155,11 @@ def benchmark(M, N, K, renorm):
 
 if __name__ == "__main__":
     # Example: 8192 tokens, 1024 experts, Top-4
-    M, N, K = 8192, 1024, 4
-    res = benchmark(M, N, K, False)
-    print(f"SGL     time: {res['time_sgl']:.6f}s")
-    print(f"Triton  time: {res['time_triton']:.6f}s")
-    print(f"PyTorch time: {res['time_torch']:.6f}s")
+    M, N, K = 8192, 1024, 8
+    res = benchmark(M, N, K, False, 1000)
+    print(f"SGL     time: {res['time_sgl']:.6f}ms")
+    print(f"Triton  time: {res['time_triton']:.6f}ms")
+    print(f"PyTorch time: {res['time_torch']:.6f}ms")
     print("Mismatch SGL vs Triton ids:", res["mismatch_sgl_triton_ids"])
     print("Mismatch Torch vs Triton ids:", res["mismatch_torch_triton_ids"])
     print("Max err Triton vs Torch  :", res["max_err_triton_torch"])
