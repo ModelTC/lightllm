@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import unittest
 from model_infer import test_model_inference
+from model_infer_mtp import test_model_inference_mtp
 from lightllm.server.api_cli import make_argument_parser
 from lightllm.utils.envs_utils import set_env_start_args, get_env_start_args
 from lightllm.utils.config_utils import get_config_json, get_dtype
@@ -15,7 +16,10 @@ class TestModelInfer(unittest.TestCase):
         args = get_env_start_args()
         if args.data_type is None:
             args.data_type = get_dtype(args.model_dir)
-        test_model_inference(args)
+        if args.spec_algo == "MTP":
+            test_model_inference_mtp(args)
+        else:
+            test_model_inference(args)
         return
 
 
@@ -23,9 +27,9 @@ if __name__ == "__main__":
     import torch
 
     parser = make_argument_parser()
-    parser.add_argument("--batch_size", type=int, default=2, help="batch size")
-    parser.add_argument("--input_len", type=int, default=4096, help="input sequence length")
-    parser.add_argument("--output_len", type=int, default=128, help="output sequence length")
+    parser.add_argument("--batch_size", nargs="+", type=int, default=1, help="batch size")
+    parser.add_argument("--input_len", type=int, default=64, help="input sequence length")
+    parser.add_argument("--output_len", type=int, default=4096 + 1024, help="output sequence length")
     parser.add_argument(
         "--profile",
         action="store_true",
