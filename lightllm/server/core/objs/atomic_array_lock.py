@@ -1,4 +1,3 @@
-import random
 import asyncio
 import atomics
 from multiprocessing import shared_memory
