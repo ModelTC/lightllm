@@ -19,13 +19,15 @@ from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
 
+
 class OutlinesConstraintBackend(ChunkedPrefillBackend):
     def __init__(self) -> None:
         super().__init__()
-    
+
     @functools.lru_cache(maxsize=1000)
     def get_cached_regex_guide(self, regex: str, tokenizer):
         from outlines.fsm.guide import RegexGuide
+
         logger.info(f"regex_guide cache miss for '{regex}'")
         return RegexGuide.from_regex(regex, tokenizer)
 
