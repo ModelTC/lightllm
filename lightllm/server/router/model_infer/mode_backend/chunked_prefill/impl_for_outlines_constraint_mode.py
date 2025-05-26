@@ -24,13 +24,6 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
     def __init__(self) -> None:
         super().__init__()
 
-    @functools.lru_cache(maxsize=1000)
-    def get_cached_regex_guide(self, regex: str, tokenizer):
-        from outlines.fsm.guide import RegexGuide
-
-        logger.info(f"regex_guide cache miss for '{regex}'")
-        return RegexGuide.from_regex(regex, tokenizer)
-
     def init_custom(self):
         # remove outlines cache
         if self.rank_in_node == 0:
@@ -53,6 +46,15 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
         # 添加多eos_id 的逻辑
         self.tokenizer.eos_token_ids = eos_token_ids
         logger.info(f"eos_ids {self.tokenizer.eos_token_ids}")
+
+        @functools.lru_cache(maxsize=200)
+        def get_cached_regex_guide(regex: str):
+            from outlines.fsm.guide import RegexGuide
+
+            logger.info(f"regex_guide cache miss for '{regex}'")
+            return RegexGuide.from_regex(regex, self.tokenizer)
+
+        self.get_cached_regex_guide = get_cached_regex_guide
         return
 
     def decode(self):
@@ -163,6 +165,4 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
             sample_params = run_obj.sampling_param
             if sample_params.regular_constraint is not None:
                 if not hasattr(sample_params, "regex_guide"):
-                    sample_params.regex_guide = self.get_cached_regex_guide(
-                        sample_params.regular_constraint, self.tokenizer
-                    )
+                    sample_params.regex_guide = self.get_cached_regex_guide(sample_params.regular_constraint)
