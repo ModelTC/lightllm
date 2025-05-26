@@ -47,7 +47,7 @@ def softmax_topk_kernel(
         values = tl.where(offsets == idx, -float("inf"), values)
 
 
-def softmax_topk(gating_output: torch.Tensor, topk: int):
+def softmax_topk(gating_output: torch.Tensor, topk: int, renorm: bool = False):
     assert gating_output.dim() == 2, "The dim of gating_output must be 2."
     num_tokens, num_experts = gating_output.shape
     device = gating_output.device
@@ -74,6 +74,9 @@ def softmax_topk(gating_output: torch.Tensor, topk: int):
         top_k=topk,
         num_warps=8,
     )
+    if renorm:
+        row_sum = topk_vals.sum(-1, keepdim=True).clamp_min(1e-8)
+        topk_vals.div_(row_sum)
     return topk_vals, topk_idxs
 
 
@@ -81,7 +84,7 @@ import sgl_kernel as sgl_ops
 
 
 #
-def benchmark(M, N, K):
+def benchmark(M, N, K, renorm):
     gating = torch.randn(M, N, device="cuda", dtype=torch.float32)
     torch.cuda.synchronize()
 
@@ -105,7 +108,7 @@ def benchmark(M, N, K):
     # Warm-up
     softmax_topk(gating, K)
     t0.record()
-    triton_vals, triton_ids = softmax_topk(gating, K)
+    triton_vals, triton_ids = softmax_topk(gating, K, renorm)
     t1.record()
     torch.cuda.synchronize()
     t_triton = t0.elapsed_time(t1) / 1000.0
@@ -150,7 +153,7 @@ def benchmark(M, N, K):
 if __name__ == "__main__":
     # Example: 8192 tokens, 1024 experts, Top-4
     M, N, K = 8192, 1024, 4
-    res = benchmark(M, N, K)
+    res = benchmark(M, N, K, False)
     print(f"SGL     time: {res['time_sgl']:.6f}s")
     print(f"Triton  time: {res['time_triton']:.6f}s")
     print(f"PyTorch time: {res['time_torch']:.6f}s")

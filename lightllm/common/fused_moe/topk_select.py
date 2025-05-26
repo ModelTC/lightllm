@@ -35,7 +35,21 @@ def fused_topk(
 ):
     assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
 
-    topk_weights, topk_ids = softmax_topk(gating_output, topk)
+    if sgl_ops is None:
+        return softmax_topk(gating_output, topk, renorm=renormalize)
+    M, _ = hidden_states.shape
+
+    topk_weights = torch.empty(M, topk, dtype=torch.float32, device=hidden_states.device)
+    topk_ids = torch.empty(M, topk, dtype=torch.int32, device=hidden_states.device)
+    token_expert_indicies = torch.empty(M, topk, dtype=torch.int32, device=hidden_states.device)
+
+    sgl_ops.topk_softmax(
+        topk_weights,
+        topk_ids,
+        token_expert_indicies,
+        gating_output.float(),  # TODO(woosuk): Optimize this.
+    )
+    del token_expert_indicies  # Not used. Will be used in the future.
 
     if renormalize:
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
