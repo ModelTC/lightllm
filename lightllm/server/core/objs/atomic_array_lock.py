@@ -66,11 +66,9 @@ class AtomicLockItem:
 
 
 class AsyncLock:
-    def __init__(self, lock_item, *, base_delay=0.0005, backoff=1.5, max_delay=0.03):
+    def __init__(self, lock_item, base_delay=0.01):
         self._item = lock_item
         self._base = base_delay
-        self._back = backoff
-        self._max = max_delay
 
     async def __aenter__(self):
         delay = self._base
@@ -78,7 +76,7 @@ class AsyncLock:
             if self._item.try_acquire():  # 尝试拿锁；成功立即返回
                 return
             await asyncio.sleep(delay)
-            delay = min(delay * self._back, self._max) * (0.7 + 0.6 * random.random())
+            delay = random.random() * self._base
 
     async def __aexit__(self, exc_t, exc, tb):
         self._item.release()
