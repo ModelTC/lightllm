@@ -2,7 +2,6 @@ import os
 import shutil
 import torch
 import functools
-import outlines.caching
 
 from .impl import ChunkedPrefillBackend
 from lightllm.server.core.objs import FinishStatus
