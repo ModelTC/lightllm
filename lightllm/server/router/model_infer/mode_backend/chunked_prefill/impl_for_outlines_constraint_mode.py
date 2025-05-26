@@ -1,6 +1,9 @@
 import os
 import shutil
 import torch
+import functools
+import outlines.caching
+
 from .impl import ChunkedPrefillBackend
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
@@ -12,85 +15,19 @@ from lightllm.server.router.model_infer.mode_backend.generic_post_process import
 from lightllm.server.tokenizer import get_tokenizer
 from typing import List, Tuple
 from lightllm.utils.log_utils import init_logger
-import outlines.caching
+
 
 logger = init_logger(__name__)
-
-
-class LRUCacheNode:
-    __slots__ = ["key", "value", "prev", "next"]
-
-    def __init__(self, key=None, value=None):
-        self.key = key
-        self.value = value
-        self.prev = None
-        self.next = None
-
-
-class LRUCache:
-    def __init__(self, capacity: int):
-        self.capacity = capacity
-        self.cache = {}
-        self.head = LRUCacheNode()
-        self.tail = LRUCacheNode()
-        self.head.next = self.tail
-        self.tail.prev = self.head
-        self.size = 0
-
-    def clear(self) -> None:
-        self.cache.clear()
-        self.head.next = self.tail
-        self.tail.prev = self.head
-        self.size = 0
-
-    def get(self, key: int) -> int:
-        if key not in self.cache:
-            return None
-
-        node = self.cache[key]
-        self._move_to_head(node)
-        return node.value
-
-    def put(self, key: int, value: int) -> None:
-        if key in self.cache:
-            node = self.cache[key]
-            node.value = value
-            self._move_to_head(node)
-        else:
-            if self.size >= self.capacity:
-                removed = self._remove_tail()  # 删除尾部节点（最近最少使用）
-                del self.cache[removed.key]
-                self.size -= 1
-
-            node = LRUCacheNode(key, value)
-            self.cache[key] = node
-            self._add_to_head(node)
-            self.size += 1
-
-    def _add_to_head(self, node: LRUCacheNode) -> None:
-        node.prev = self.head
-        node.next = self.head.next
-        self.head.next.prev = node
-        self.head.next = node
-
-    def _remove_node(self, node: LRUCacheNode) -> None:
-        node.prev.next = node.next
-        node.next.prev = node.prev
-
-    def _move_to_head(self, node: LRUCacheNode) -> None:
-        self._remove_node(node)
-        self._add_to_head(node)
-
-    def _remove_tail(self) -> LRUCacheNode:
-        node = self.tail.prev
-        self._remove_node(node)
-        return node
-
 
 class OutlinesConstraintBackend(ChunkedPrefillBackend):
     def __init__(self) -> None:
         super().__init__()
-        self.regex_guide_cache = LRUCache(capacity=1000)
+    
+    @functools.lru_cache(maxsize=1000)
+    def get_cached_regex_guide(self, regex: str, tokenizer):
+        from outlines.fsm.guide import RegexGuide
+        logger.info(f"regex_guide cache miss for '{regex}'")
+        return RegexGuide.from_regex(regex, tokenizer)
 
     def init_custom(self):
         # remove outlines cache
@@ -104,7 +41,6 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
 
         from outlines.models.transformers import TransformerTokenizer
 
-        self.regex_guide_cache.clear()
         self.tokenizer = TransformerTokenizer(
             get_tokenizer(self.args.model_dir, self.args.tokenizer_mode, trust_remote_code=self.args.trust_remote_code)
         )
@@ -220,16 +156,11 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
         return
 
     def _init_guide_infos(self, run_reqs: List[InferReq]):
-        from outlines.fsm.guide import RegexGuide
-
         for i, run_obj in enumerate(run_reqs):
             run_obj: InferReq = run_obj
             sample_params = run_obj.sampling_param
             if sample_params.regular_constraint is not None:
                 if not hasattr(sample_params, "regex_guide"):
-                    # using LRU cache
-                    if self.regex_guide_cache.get(sample_params.regular_constraint) is None:
-                        logger.info(f"regex_guide cache miss {sample_params.regular_constraint}, parse new regex")
-                        regex_guide = RegexGuide.from_regex(sample_params.regular_constraint, self.tokenizer)
-                        self.regex_guide_cache.put(sample_params.regular_constraint, regex_guide)
-                    sample_params.regex_guide = self.regex_guide_cache.get(sample_params.regular_constraint).copy()
+                    sample_params.regex_guide = self.get_cached_regex_guide(
+                        sample_params.regular_constraint, self.tokenizer
+                    )
