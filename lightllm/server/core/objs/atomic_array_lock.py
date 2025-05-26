@@ -76,7 +76,6 @@ class AsyncLock:
             if self._item.try_acquire():  # 尝试拿锁；成功立即返回
                 return
             await asyncio.sleep(delay)
-            delay = random.random() * self._base
 
     async def __aexit__(self, exc_t, exc, tb):
         self._item.release()
