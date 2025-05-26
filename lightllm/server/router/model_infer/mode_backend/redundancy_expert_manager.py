@@ -83,6 +83,7 @@ class RedundancyExpertManager:
         elif self.state == _STATE.COMMIT:
             self._commit()
             self.state = _STATE.CHECK_TO_UPDATE
+            self.load_count += 1
             logger.info(f"global_rank {self.global_rank} state to check to update")
         return
 
