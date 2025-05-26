@@ -101,21 +101,26 @@ def benchmark(M, N, K, renorm, runs):
         sgl_ops.topk_softmax(sgl_vals, sgl_ids, torch.empty_like(sgl_ids), gating)
     end.record()
     torch.cuda.synchronize()
-    t_sgl = start.elapsed_time(end) / 1000.0
+    t_sgl = start.elapsed_time(end) / runs
 
     # 2. Triton kernel
     t0 = torch.cuda.Event(True)
     t1 = torch.cuda.Event(True)
     # Warm-up
     softmax_topk(gating, K)
+    torch.cuda.synchronize()
     t0.record()
     for _ in range(runs):
         triton_vals, triton_ids = softmax_topk(gating, K, renorm)
     t1.record()
     torch.cuda.synchronize()
-    t_triton = t0.elapsed_time(t1) / 1000.0
+    t_triton = t0.elapsed_time(t1) / runs
 
     # 3. Native PyTorch
+    _ = torch.softmax(gating, dim=-1)
+    _, _ = torch.topk(_, K, dim=-1)
+    torch.cuda.synchronize()
+
     start, end = torch.cuda.Event(True), torch.cuda.Event(True)
     start.record()
     for _ in range(runs):
@@ -123,7 +128,7 @@ def benchmark(M, N, K, renorm, runs):
         torch_vals, torch_ids = torch.topk(probs, K, dim=-1)
     end.record()
     torch.cuda.synchronize()
-    t_torch = start.elapsed_time(end) / 1000.0
+    t_torch = start.elapsed_time(end) / runs
 
     # Compare indices and weights
     # Count mismatches of ordered indices
@@ -155,7 +160,7 @@ def benchmark(M, N, K, renorm, runs):
 
 if __name__ == "__main__":
     # Example: 8192 tokens, 1024 experts, Top-4
-    M, N, K = 8192, 1024, 8
+    M, N, K = 8192, 1024, 4
     res = benchmark(M, N, K, False, 1000)
     print(f"SGL     time: {res['time_sgl']:.6f}ms")
     print(f"Triton  time: {res['time_triton']:.6f}ms")
