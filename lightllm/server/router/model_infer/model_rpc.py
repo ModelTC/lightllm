@@ -162,6 +162,7 @@ class ModelRpcServer:
         logger.info(f"use {self.backend.__class__.__name__}")
         self.backend.init_model(kvargs)
 
+        # only deepseekv3 can support auto_update_redundancy_expert
         if self.args.auto_update_redundancy_expert:
             self.redundancy_expert_manager = RedundancyExpertManager(self.backend.model)
             logger.info("init redundancy_expert_manager")
@@ -172,6 +173,7 @@ class ModelRpcServer:
 
     def prefill(self, reqs):
         try:
+            # only deepseekv3 can support auto_update_redundancy_expert
             if self.redundancy_expert_manager is not None:
                 self.redundancy_expert_manager.step()
 
@@ -183,6 +185,7 @@ class ModelRpcServer:
 
     def decode(self):
         try:
+            # only deepseekv3 can support auto_update_redundancy_expert
             if self.redundancy_expert_manager is not None:
                 self.redundancy_expert_manager.step()
 
