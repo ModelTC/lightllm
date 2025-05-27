@@ -17,12 +17,14 @@ class ReturnPromptLogProbBackend(ContinuesBatchBackend):
         req_ids = self._init_reqs(run_reqs, init_req_obj=True)
 
         req_objs = self._trans_req_ids_to_req_objs(req_ids)
-        kwargs, run_reqs = prepare_prefill_inputs(req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal)
+        model_input, run_reqs = prepare_prefill_inputs(
+            req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
+        )
 
-        prompt_all_logits = self.model.forward(**kwargs)
-        input_ids = kwargs["input_ids"]
-        b_ready_cache_len = kwargs["b_ready_cache_len"]
-        b_seq_len = kwargs["b_seq_len"]
+        prompt_all_logits = self.model.forward(model_input)
+        input_ids = model_input.input_ids
+        b_ready_cache_len = model_input.b_ready_cache_len
+        b_seq_len = model_input.b_seq_len
         last_index = torch.cumsum(b_seq_len, dim=0, dtype=torch.long) - 1
         logits = prompt_all_logits[last_index, :]
 

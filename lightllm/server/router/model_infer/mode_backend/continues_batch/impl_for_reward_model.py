@@ -14,9 +14,11 @@ class RewardModelBackend(ContinuesBatchBackend):
         req_ids = self._init_reqs(reqs, init_req_obj=True)
 
         req_objs = self._trans_req_ids_to_req_objs(req_ids)
-        kwargs, run_reqs = prepare_prefill_inputs(req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal)
+        model_input, run_reqs = prepare_prefill_inputs(
+            req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
+        )
 
-        scores: torch.Tensor = self.model.forward(**kwargs)
+        scores: torch.Tensor = self.model.forward(model_input)
         scores = scores.unsqueeze(1).detach().cpu().float().numpy()
 
         next_token_id = 1

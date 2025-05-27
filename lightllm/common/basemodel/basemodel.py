@@ -76,6 +76,7 @@ class TpPartBaseModel:
 
         # Speculative decoding
         self.spec_algo = SpeculativeDecodeAlgorithm.from_string(kvargs.get("spec_algo", "NONE"))
+        self.spec_step = kvargs.get("spec_step", 1)
 
         self._init_datatype()
         self._init_config()
