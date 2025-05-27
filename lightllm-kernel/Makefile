@@ -1,4 +1,9 @@
-.PHONY: build clean
+.PHONY: build clean submodule
+
+SUBMODULE_DIR = third-party/cutlass
+
+$(SUBMODULE_DIR)/.git:
+	git submodule update --init --recursive
 
 build:
 	# 8.0-> A100, 8.6-> A10, 8.9-> L40s/4090, 9.0+PTX-> Hopper

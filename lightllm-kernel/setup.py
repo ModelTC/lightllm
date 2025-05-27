@@ -43,6 +43,16 @@ ext_modules = [
                 "-DNDEBUG",
                 "-O3",
                 "--use_fast_math",
+                # A100 (compute_80)
+                "-gencode=arch=compute_80,code=sm_80",
+                "-gencode=arch=compute_80,code=compute_80",
+                # A10 / other Ampere (compute_86)
+                "-gencode=arch=compute_86,code=sm_86",
+                "-gencode=arch=compute_86,code=compute_86",
+                # L40s / 4090 (compute_89)
+                "-gencode=arch=compute_89,code=sm_89",
+                "-gencode=arch=compute_89,code=compute_89",
+                # H100 (compute_90)
                 "-gencode=arch=compute_90,code=sm_90",
                 "-gencode=arch=compute_90,code=compute_90",
                 "-gencode=arch=compute_90a, code=sm_90a",

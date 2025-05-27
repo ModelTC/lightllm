@@ -3,7 +3,7 @@ project(lightllm_kernel LANGUAGES CXX CUDA)
 
 # GPU 架构：缺省支持 A100(80)、Ampere(86)、Ada/L40s/4090(89)、Hopper(90)，
 if(NOT CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 80;86;89;90-virtual)
+  set(CMAKE_CUDA_ARCHITECTURES 80;86;89;90)
 endif()
 
 # 找 PyTorch & Python

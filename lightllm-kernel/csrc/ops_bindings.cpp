@@ -16,6 +16,7 @@ PYBIND11_MODULE(_C, m) {
     m.def("cutlass_scaled_mm", &cutlass_scaled_mm, "CUTLASS SCALED MM (CUDA)");
     m.def("all_gather", &all_gather, "ALL GATHER (CUDA)");
     m.def("meta_size", &lightllm::ops::meta_size, "Size (in bytes) of vllm::Signal metadata");
+    m.def("group8_int8kv_flashdecoding_stage1", &group_int8kv_flashdecoding_attention, "decode attention");
 }
 
 } // namespace ops
