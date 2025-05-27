@@ -578,9 +578,7 @@ class TpPartBaseModel:
             return
 
         # 做一次 同步
-        import torch.distributed as dist
-
-        dist.barrier()
+        torch.distributed.barrier()
 
         # 模拟最大长度进行 prefill，观察是否出现 OOM
         try:

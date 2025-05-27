@@ -468,7 +468,7 @@ class FusedMoeWeightEP(BaseWeight):
             if w2_weight in weights:
                 self.w2_list[i_experts_ep] = weights[w2_weight]
 
-        # 加载冗余专家的权重参数
+        # Load weight parameters for redundant experts
         for i, redundant_expert_id in enumerate(self.redundancy_expert_ids):
             i_experts = redundant_expert_id
             w1_weight = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.weight"
@@ -500,7 +500,7 @@ class FusedMoeWeightEP(BaseWeight):
             if w2_scale in weights:
                 self.w2_scale_list[i_experts_ep] = weights[w2_scale]
 
-        # 加载冗余专家的scale参数
+        # Load scale parameters for redundant experts
         for i, redundant_expert_id in enumerate(self.redundancy_expert_ids):
             i_experts = redundant_expert_id
             w1_scale = f"{self.weight_prefix}.{i_experts}.{self.w1_weight_name}.{self.weight_scale_suffix}"

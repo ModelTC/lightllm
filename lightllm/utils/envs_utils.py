@@ -77,14 +77,15 @@ def get_lightllm_websocket_max_message_size():
     return int(os.getenv("LIGHTLLM_WEBSOCKET_MAX_SIZE", 16 * 1024 * 1024))
 
 
-# get_redundancy_expert_ids 和 get_redundancy_expert_num 主要是用于推理时的冗余专家的id和数量的获取
-# 其依赖的配置文件是 ep_redundancy_expert_config_path 是一个json格式的文本文件，其内容格式如下:
-# {
-#   "redundancy_expert_num": 1,
-#   "0": [0],
-#   "1": [0],
-#   "default": [0,]
-# }
+# get_redundancy_expert_ids and get_redundancy_expert_num are primarily used to obtain the IDs and number of redundant experts during inference.  
+# They depend on a configuration file specified by ep_redundancy_expert_config_path, which is a JSON formatted text file.  
+# The content format is as follows:  
+# {  
+#   "redundancy_expert_num": 1,  # Number of redundant experts per rank  
+#   "0": [0],                    # Key: layer_index (string), Value: list of original expert IDs that are redundant for this layer  
+#   "1": [0],  
+#   "default": [0]               # Default list of redundant expert IDs if layer-specific entry is not found  
+# }  
 
 
 @lru_cache(maxsize=None)
