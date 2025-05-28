@@ -58,7 +58,7 @@ class ReqManager:
             (max_request_num + 1, max_sequence_length), dtype=torch.int32, device="cuda"
         )
         self.mem_manager = mem_manager
-        self.req_sample_parms_manager = None
+        self.req_sampling_params_manager = ReqSamplingParamsManager(max_request_num)
         self.max_request_num = max_request_num
         self.HOLD_REQUEST_ID = max_request_num
 
@@ -68,8 +68,6 @@ class ReqManager:
     def free(self, free_req_indexes: List[int], free_token_index):
         for req_index in free_req_indexes:
             self.req_list.free(req_index)
-        if self.req_sample_parms_manager is not None:
-            self.req_sample_parms_manager.p_token_vocabs[free_req_indexes] = 0
 
         if self.req_list.is_all_free():
             logger.debug(f"freed all request size {self.req_list.can_alloc_size}")
@@ -88,3 +86,38 @@ class ReqManager:
     def free_all(self):
         self.req_list = _ReqLinkedList(self.max_request_num)
         return
+
+
+class ReqSamplingParamsManager:
+    """
+    ReqSamplingParamsManager 将输出采样参数中，确定比较固定的部分，纳入到 gpu buffer中进行管理，这样可以更快捷的
+    利用cuda kernel 将采样参数提取为以batch 为单位的采样参数，对于哪些比较动态，或者存在特殊处理的后处理参数，
+    则保留从 InferSamplingParams 中进行动态读取和动态组batch， 具体使用可以参考
+    lightllm/server/router/model_infer/mode_backend/generic_post_process.py 文件中的使用方式。
+    """
+
+    def __init__(self, max_request_num):
+        self.req_to_presence_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
+        self.req_to_frequency_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
+        self.req_to_repetition_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
+        self.req_to_temperature = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
+        self.req_to_exponential_decay_length_penalty = torch.zeros(
+            max_request_num + 1, dtype=torch.float32, device="cuda"
+        )
+
+    def init_req_sampling_params(self, req):
+        # fix cycle loop import
+        from lightllm.server.router.model_infer.infer_batch import InferReq
+
+        req: InferReq = req
+
+        shm_param = req.sampling_param.shm_param
+        self.req_to_presence_penalty[req.req_idx].fill_(shm_param.presence_penalty)
+        self.req_to_frequency_penalty[req.req_idx].fill_(shm_param.frequency_penalty)
+        self.req_to_repetition_penalty[req.req_idx].fill_(shm_param.repetition_penalty)
+        self.req_to_temperature[req.req_idx].fill_(shm_param.temperature)
+        exponential_decay_length_penalty = shm_param.exponential_decay_length_penalty.to_tuple()
+        self.req_to_exponential_decay_length_penalty[req.req_id].fill_(exponential_decay_length_penalty[1])
+
+    def get_sampling_batch_params(self, req_idx_list: List[int]):
+        pass
