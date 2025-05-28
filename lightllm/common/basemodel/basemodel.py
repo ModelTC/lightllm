@@ -169,7 +169,7 @@ class TpPartBaseModel:
 
     def _check_mem_size(self):
         self.max_total_token_num = self.mem_manager.size
-        assert self.max_seq_length < self.max_total_token_num
+        assert self.max_seq_length <= self.max_total_token_num
         return
 
     def _init_req_manager(self):
@@ -576,6 +576,9 @@ class TpPartBaseModel:
         if disable_check_max_len_infer:
             logger.info("disable_check_max_len_infer is true")
             return
+
+        # 做一次 同步
+        torch.distributed.barrier()
 
         # 模拟最大长度进行 prefill，观察是否出现 OOM
         try:

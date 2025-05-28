@@ -151,6 +151,14 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--nccl_port", type=int, default=28765, help="the nccl_port to build a distributed environment for PyTorch"
     )
     parser.add_argument(
+        "--use_config_server_to_init_nccl",
+        action="store_true",
+        help="""use tcp store server started by config_server to init nccl, default is False, when set to True,
+        the --nccl_host must equal to the config_server_host, and the --nccl_port must be unique for a config_server,
+        dont use same nccl_port for different inference node, it will be critical error""",
+    )
+
+    parser.add_argument(
         "--mode",
         type=str,
         default=[],
@@ -196,7 +204,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--disable_dynamic_prompt_cache", action="store_true", help="disable dynamic prompt cache")
 
-    parser.add_argument("--chunked_prefill_size", type=int, default=8192, help="chunked prefill size")
+    parser.add_argument("--chunked_prefill_size", type=int, default=4096, help="chunked prefill size")
     parser.add_argument("--disable_chunked_prefill", action="store_true", help="whether to disable chunked prefill")
     parser.add_argument("--diverse_mode", action="store_true", help="diversity generation mode")
     parser.add_argument("--token_healing_mode", action="store_true", help="code model infer mode")
@@ -226,7 +234,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--enable_mps", action="store_true", help="Whether to enable nvidia mps for multimodal service."
     )
     parser.add_argument("--disable_custom_allreduce", action="store_true", help="Whether to disable cutom allreduce.")
-    parser.add_argument("--disable_custom_allgather", action="store_true", help="Whether to enable cutom allgather.")
+    parser.add_argument("--enable_custom_allgather", action="store_true", help="Whether to enable cutom allgather.")
     parser.add_argument(
         "--enable_tpsp_mix_mode",
         action="store_true",
@@ -371,5 +379,16 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default="triton",
         help="""sampling used impl. 'triton' is use torch and triton kernel,
         sglang_kernel use sglang_kernel impl""",
+    )
+    parser.add_argument(
+        "--ep_redundancy_expert_config_path",
+        type=str,
+        default=None,
+        help="""Path of the redundant expert config. It can be used for deepseekv3 model.""",
+    )
+    parser.add_argument(
+        "--auto_update_redundancy_expert",
+        action="store_true",
+        help="""Whether to update the redundant expert for deepseekv3 model by online expert used counter.""",
     )
     return parser
