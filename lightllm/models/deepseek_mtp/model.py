@@ -25,6 +25,10 @@ class Deepseek3MTPModel(Deepseek2TpPartModel):
         self.last_mtp_module = kvargs.pop("last_mtp_module", False)
         super().__init__(kvargs)
 
+    def _init_custom(self):
+        self._cos_cached = self.main_model._cos_cached
+        self._sin_cached = self.main_model._sin_cached
+
     def _init_req_manager(self):
         # draft model shares the same req_manager with the main model
         if hasattr(self, "req_manager"):
