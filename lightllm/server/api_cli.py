@@ -212,7 +212,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output_constraint_mode",
         type=str,
-        choices=["outlines", "xgrammar", "none"],
+        choices=["outlines", "xgrammar", "pre3", "none"],
         default="none",
         help="set the output constraint backend, none means no output constraint",
     )

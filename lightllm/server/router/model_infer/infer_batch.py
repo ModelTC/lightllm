@@ -215,6 +215,8 @@ class InferSamplingParams:
             self.guided_json = None
 
         self.fsm_current_state: int = 0
+        self.lr1_stack = [0]
+        self.lr1_current_node_id = 0
         self.allowed_token_ids = self.shm_param.allowed_token_ids.to_list()
         if len(self.allowed_token_ids) == 0:
             self.allowed_token_ids = None

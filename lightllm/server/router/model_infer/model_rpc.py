@@ -21,6 +21,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPForDecodeNode,
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
+    Pre3JsonModeBackend,
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -117,14 +118,16 @@ class ModelRpcServer:
         if kvargs.get("args", None) is not None:
             is_outlines_constraint_mode = kvargs.get("args", None).output_constraint_mode == "outlines"
             is_xgrammar_constraint_mode = kvargs.get("args", None).output_constraint_mode == "xgrammar"
+            is_pre3_constraint_mode = kvargs.get("args", None).output_constraint_mode == "pre3"
             assert not (
-                is_outlines_constraint_mode and is_xgrammar_constraint_mode
+                is_outlines_constraint_mode and is_xgrammar_constraint_mode and is_pre3_constraint_mode
             ), "only one constraint mode can be true"
             is_prefill_node = kvargs.get("args", None).run_mode == "prefill"
             is_decode_node = kvargs.get("args", None).run_mode == "decode"
         else:
             is_outlines_constraint_mode = False
             is_xgrammar_constraint_mode = False
+            is_pre3_constraint_mode = False
             is_prefill_node = False
             is_decode_node = False
 
@@ -154,6 +157,8 @@ class ModelRpcServer:
             self.backend = XgrammarBackend()
         elif is_first_token_constraint_mode:
             self.backend = FirstTokenConstraintBackend()
+        elif is_pre3_constraint_mode:
+            self.backend = Pre3JsonModeBackend()
         elif disable_chunked_prefill:
             self.backend = ContinuesBatchBackend()
         else:
