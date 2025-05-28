@@ -17,7 +17,6 @@ from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.multimodal_params import MultimodalParams
 from lightllm.utils.custom_kernel_utis import custom_cat
-from lightllm.utils.envs_utils import enable_env_vars
 
 logger = init_logger(__name__)
 
@@ -56,6 +55,7 @@ class InferenceContext:
     def add_reqs(self, requests: List[Tuple[int, int, Any, int]], init_req_obj=True):
         request_ids = []
         for r in requests:
+
             r_id, r_index, multimodal_params, _ = r
             if r_id not in self.requests_mapping.keys():
                 r_obj = InferReq(
