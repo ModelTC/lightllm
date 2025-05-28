@@ -8,7 +8,6 @@ class Deepseek3MTPPreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
         # 与DeepseekV3模型共享
         self.wte_weight_ = None
         self.lm_head_weight_ = None
-        self.final_norm_weight_ = None
         return
 
     def load_hf_weights(self, weights):
@@ -18,11 +17,13 @@ class Deepseek3MTPPreAndPostLayerWeight(LlamaPreAndPostLayerWeight):
             self.enorm_weight_ = self._cuda(weights["model.layers.0.enorm.weight"])
         if "model.layers.0.hnorm.weight" in weights:
             self.hnorm_weight_ = self._cuda(weights["model.layers.0.hnorm.weight"])
+        if "model.layers.0.shared_head.norm.weight" in weights:
+            self.final_norm_weight_ = self._cuda(weights["model.layers.0.shared_head.norm.weight"])
         return
 
     def verify_load(self):
         errors = "weights load not ok"
-        weights = [self.eh_proj_weight_, self.enorm_weight_, self.hnorm_weight_]
+        weights = [self.eh_proj_weight_, self.enorm_weight_, self.hnorm_weight_, self.final_norm_weight_]
         for i in range(len(weights)):
             assert weights[i] is not None, "index:" + str(i) + " " + errors
         return
