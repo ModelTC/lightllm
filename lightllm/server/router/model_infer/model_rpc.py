@@ -22,6 +22,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
     ContinuesBatchWithMTPBackend,
+    ChunkedPrefillWithMTPBackend,
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -161,7 +162,10 @@ class ModelRpcServer:
             else:
                 self.backend = ContinuesBatchBackend()
         else:
-            self.backend = ChunkedPrefillBackend()
+            if kvargs.get("spec_algo", "NONE") == "MTP":
+                self.backend = ChunkedPrefillWithMTPBackend()
+            else:
+                self.backend = ChunkedPrefillBackend()
 
         logger.info(f"use {self.backend.__class__.__name__}")
         self.backend.init_model(kvargs)
