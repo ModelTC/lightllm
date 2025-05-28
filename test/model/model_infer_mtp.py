@@ -75,7 +75,7 @@ def test_model_inference_mtp(args):
             "graph_max_batch_size": args.graph_max_batch_size,
             "mem_faction": args.mem_fraction,
             "max_req_num": 2000,
-            "batch_max_tokens": 16384,
+            "batch_max_tokens": 2048,
             "run_mode": "normal",
             "max_seq_length": args.max_req_total_len,
             "spec_algo": args.spec_algo,
@@ -110,7 +110,7 @@ def torch_profile(fn, log_dir=None):
         print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
 
-def run_forward_once(input_len, output_len, batch_size, main_model, draft_models, warmup=False):
+def run_forward_once(args, input_len, output_len, batch_size, main_model, draft_models, warmup=False):
     import time
 
     torch.cuda.synchronize()
@@ -166,7 +166,9 @@ def run_forward_once(input_len, output_len, batch_size, main_model, draft_models
     prefill_end_time = time.time()
     if get_current_rank_in_dp() == 0 and not warmup:
         print("prefill time cost:", (prefill_end_time - prefill_start_time) * 1000)
-        print(f"Prefill throughput: {batch_size * input_len / (prefill_end_time - prefill_start_time)} tokens/s")
+        print(
+            f"Prefill throughput: {batch_size * input_len * args.dp / (prefill_end_time - prefill_start_time)} tokens/s"
+        )
 
     torch.cuda.synchronize()
 
@@ -240,7 +242,7 @@ def run_forward_once(input_len, output_len, batch_size, main_model, draft_models
             if get_current_rank_in_dp() == 0 and not warmup:
                 step_time = step_end_time - step_start_time
                 print(i, " step cost time:", step_time * 1000)
-                print(f"Decode throughput: {batch_size * (len(draft_models) + 1) / step_time} tokens/s")
+                print(f"Decode throughput: {batch_size * (len(draft_models) + 1) * args.dp / step_time} tokens/s")
 
     main_model.mem_manager.free_all()
     main_model.req_manager.free_all()
@@ -273,9 +275,9 @@ def tppart_model_infer(args, model_kvargs, batch_sizes, input_len, output_len, a
 
     for batch_size in batch_sizes:
         # warm up
-        run_forward_once(input_len, output_len, batch_size, main_model, draft_models, warmup=True)
+        run_forward_once(args, input_len, output_len, batch_size, main_model, draft_models, warmup=True)
         torch.cuda.synchronize()
-        run_forward_once(input_len, output_len, batch_size, main_model, draft_models, warmup=False)
+        run_forward_once(args, input_len, output_len, batch_size, main_model, draft_models, warmup=False)
         dist.barrier()
 
     ans_queue.put(True)
