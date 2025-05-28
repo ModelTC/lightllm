@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Union, Any
 from lightllm.common.req_manager import ReqManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.core.objs import Req, SamplingParams, FinishStatus, ShmReqManager, PDChunkedPrefillReq
+from lightllm.server.core.objs import Req, SamplingParams, FinishStatus, ShmReqManager, PDNIXLChunkedPrefillReq
 from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache, TreeNode
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
@@ -273,8 +273,7 @@ class InferReq:
             self.shm_req = g_infer_context.shm_req_manager.get_req_obj_by_index(self.shm_index)
             self.shm_req.link_prompt_ids_shm_array()
             self.shm_req.link_logprobs_shm_array()
-            if isinstance(self.shm_req, PDChunkedPrefillReq):
-                self.shm_req.link_pd_req_state_shm_array()
+            if isinstance(self.shm_req, PDNIXLChunkedPrefillReq):
                 self.in_prefill_or_transfer = False
 
             self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)

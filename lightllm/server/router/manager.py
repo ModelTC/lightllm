@@ -16,7 +16,7 @@ from .batch import Batch, Req
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import build_req_queue
 from lightllm.server.core.objs.io_objs import GroupReqIndexes
-from lightllm.server.core.objs import ShmReqManager, StartArgs, PDChunkedPrefillReq
+from lightllm.server.core.objs import ShmReqManager, StartArgs, PDNIXLChunkedPrefillReq
 from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
 from .stats import Stats
 from .pause_strategy import Fcfs, select_paused_reqs
@@ -210,8 +210,8 @@ class RouterManager:
             start_pd_remote_prefill_server_process(
                 self.args.pd_node_id,
                 dist_info = dist_info,
-                http_server_port=self.args.pd_remote_prefill_http_port,
-                server_port=self.args.pd_remote_prefill_port,
+                http_server_port=self.args.pd_nixl_remote_prefill_http_port,
+                server_port=self.args.pd_nixl_remote_prefill_port,
                 from_backend_queue=self.info_queue,
                 to_backend_queues=self.result_queues,
                 agent_meta_queues=self.mem_queues,
@@ -248,8 +248,8 @@ class RouterManager:
             req = self.shm_req_manager.get_req_obj_by_index(req_index)
             req.multimodal_params = group_req_indexes.multimodal_params
             req.start_time = group_req_indexes.time_mark
-            if isinstance(req, PDChunkedPrefillReq):
-                req.dp_world_size = self.dp_world_size
+            if isinstance(req, PDNIXLChunkedPrefillReq):
+                req.set_dp_world_size(self.dp_world_size)
             req_group.append(req)
 
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
