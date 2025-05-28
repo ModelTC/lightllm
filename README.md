@@ -1,118 +1,90 @@
-<div align="center">
-  <picture>
-    <img alt="LightLLM" src="assets/lightllm.drawio.png" width=90%>
-  </picture>
-</div>
+# Pre$^3$: Enabling Deterministic Pushdown Automata for Faster Structured LLM Generation
 
----
-<div align="center">
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[Paper](https://openreview.net/pdf?id=g1aBeiyZEi)
+<!--
+[![arXiv](https://img.shields.io/badge/HarmoniCa-2410.01723-b31b1b)](https://arxiv.org/pdf/2410.01723)
+[![GitHub Stars](https://img.shields.io/github/stars/ModelTC/HarmoniCa.svg?style=social&label=Star&maxAge=60)](https://github.com/ModelTC/HarmoniCa)
+-->
 
-[![docs](https://img.shields.io/badge/docs-latest-blue)](https://lightllm-en.readthedocs.io/en/latest/)
-[![Docker](https://github.com/ModelTC/lightllm/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/ModelTC/lightllm/actions/workflows/docker-publish.yml)
-[![stars](https://img.shields.io/github/stars/ModelTC/lightllm?style=social)](https://github.com/ModelTC/lightllm)
-![visitors](https://komarev.com/ghpvc/?username=lightllm&label=visitors)
-[![Discord Banner](https://img.shields.io/discord/1139835312592392214?logo=discord&logoColor=white)](https://discord.gg/WzzfwVSguU)
-[![license](https://img.shields.io/github/license/ModelTC/lightllm)](https://github.com/ModelTC/lightllm/blob/main/LICENSE)
-</div>
+[Junyi Chen](https://github.com/flyinglandlord), [Shihao Bai](https://github.com/shihaobai), [Zaijun Wang](https://github.com/hiworldwzj), [Siyu Wu](https://wusiyu.me/), Chuheng Du, [Hailong Yang](https://thomas-yang.github.io/), [Ruihao Gong📧](https://xhplus.github.io/), [Shengzhong Liu📧](https://liushengzhong1023.github.io/), Fan Wu, Guihai Chen
 
-LightLLM is a Python-based LLM (Large Language Model) inference and serving framework, notable for its lightweight design, easy scalability, and high-speed performance. LightLLM harnesses the strengths of numerous well-regarded open-source implementations, including but not limited to FasterTransformer, TGI, vLLM, and FlashAttention.
+(📧 denotes corresponding author.)
 
-
-[English Docs](https://lightllm-en.readthedocs.io/en/latest/) | [中文文档](https://lightllm-cn.readthedocs.io/en/latest/) | [Blogs](https://modeltc.github.io/lightllm-blog/)
+This is the official implementation of our paper introducing Pre$^3$, an efficient structured generation method for LLMs that optimizes LR(1) grammar processing. Existing approaches parse LR(1) grammars into pushdown automata (PDA), incurring runtime overhead for context-dependent token processing—particularly inefficient under large inference batches. In contrast, $\text{Pre}^3$ leverages precomputed prefix-conditioned edges during preprocessing to enable lightweight transitions and parallel processing. Additionally, we introduce a novel algorithm that transforms LR(1) transition graphs into deterministic pushdown automata (DPDA), eliminating runtime path exploration while maintaining minimal overhead. Seamlessly integrable with standard LLM inference frameworks, $\text{Pre}^3$ achieves up to 40% faster time per output token (TPOT) and 36% higher throughput in large batch size simulation experiments.
 
 ## News
-- [2025/05] LightLLM paper on constrained decoding accepted by [ACL25](https://openreview.net/pdf?id=g1aBeiyZEi) (Pre $^3$: Enabling Deterministic Pushdown Automata for Faster Structured LLM Generation)
-- [2025/04] LightLLM paper on request scheduler published in [ASPLOS’25](https://dl.acm.org/doi/10.1145/3676641.3716011) (Past-Future Scheduler for LLM Serving under SLA Guarantees)
-- [2025/02] 🔥 LightLLM v1.0.0 release, achieving the **fastest DeepSeek-R1** serving performance on single H200 machine.
-
-## Get started
-
-- [Install LightLLM](https://lightllm-en.readthedocs.io/en/latest/getting_started/installation.html)
-- [Quick Start](https://lightllm-en.readthedocs.io/en/latest/getting_started/quickstart.html)
-- [LLM Service](https://lightllm-en.readthedocs.io/en/latest/models/test.html#llama)
-- [VLM Service](https://lightllm-en.readthedocs.io/en/latest/models/test.html#llava)
+<!--
+* **May 28, 2025**: 🔥 We release our Python code presented in our paper. Have a try!
+-->
+* **May 15, 2025**: 🌟 Our paper has been accepted by ACL 2025 Main Conference! 🎉 Cheers!
 
 
-## Performance
+## Overview
 
-Learn more in the release blogs: [v1.0.0 blog](https://www.light-ai.top/lightllm-blog//by%20mtc%20team/2025/02/16/lightllm/).
+<p>
+<img src= ./img/overview.png width="700"/>
+</p>
 
-## FAQ
+Structured generation is crucial for LLM applications requiring formatted outputs like JSON or function calls, where constrained decoding ensures syntactic validity. Existing approaches based on LR(1) grammars or pushdown automata (PDA) face inherent inefficiencies: LR(1) methods incur computational overhead from context-dependent token processing, while PDA-based solutions suffer from non-deterministic transitions requiring runtime stack management. To address these limitations, we propose Pre³, a deterministic pushdown automaton (DPDA) framework that transforms LR(1) grammars through prefix-conditioned edges and cyclic-aware conversion. By precomputing all transitions and enabling parallel verification, Pre³ eliminates runtime exploration while maintaining grammatical constraints, providing an efficient solution for structured generation tasks. The framework integrates seamlessly with standard LLM inference pipelines.
 
-Please refer to the [FAQ](https://lightllm-en.readthedocs.io/en/latest/faq.html) for more information.
+## Quick Start
 
-## Projects using LightLLM
+After cloning the repository, you can follow these steps to try our JSON structured generation.
 
-We welcome any coopoeration and contribution. If there is a project requires LightLLM's support, please contact us via email or create a pull request.
+### Requirements
 
+With Python (=3.9) and PyTorch (>2.0) installed, execute the following command to install the  necessary packages and pre-trained models.
 
-1. <details><summary> <b><a href=https://github.com/LazyAGI/LazyLLM>LazyLLM</a></b>: Easyest and lazyest way for building multi-agent LLMs applications.</summary>
+```bash
+git checkout pre3-integrated
+pip install -r requirements.txt
+```
 
-    Once you have installed `lightllm` and `lazyllm`, and then you can use the following code to build your own chatbot:
+### Training
 
-    ~~~python
-    from lazyllm import TrainableModule, deploy, WebModule
-    # Model will be download automatically if you have an internet connection
-    m = TrainableModule('internlm2-chat-7b').deploy_method(deploy.lightllm)
-    WebModule(m).start().wait()
-    ~~~
+We'd like to provide the following script to launch the inference framework. More details about our method can be found in our paper and blog.
 
-    Documents: https://lazyllm.readthedocs.io/
+```bash
+bash ./launch_lightllm.sh
+```
 
-    </details>
+### Inference
 
-Projects based on LightLLM or referenced LightLLM components:
-- [LoongServe, Peking University](https://github.com/LoongServe/LoongServe)
-- [OmniKV, Ant Group](https://github.com/antgroup/OmniKV)
-- [vLLM](https://github.com/vllm-project/vllm) (some LightLLM's kernel used)
-- [SGLang](https://github.com/sgl-project/sglang) (some LightLLM's kernel used)
-- [ParrotServe](https://github.com/microsoft/ParrotServe), Microsoft
-- [Aphrodite](https://github.com/aphrodite-engine/aphrodite-engine) (some LightLLM's kernel used)
-- [S-LoRA](https://github.com/S-LoRA/S-LoRA)
+Here is the corresponding command for inference.
 
-Also, LightLLM's pure-python design and token-level KC Cache management make it easy to use as the basis for research projects.
+```bash
+python test/format_out/test_pre3_constraint.py
+```
 
-Academia works based on or use part of LightLLM:
-- [ParrotServe (OSDI’24)](https://www.usenix.org/conference/osdi24/presentation/lin-chaofan)
-- [SLoRA (MLSys’24)](https://proceedings.mlsys.org/paper_files/paper/2024/hash/906419cd502575b617cc489a1a696a67-Abstract-Conference.html)
-- [LoongServe (SOSP’24)](https://dl.acm.org/doi/abs/10.1145/3694715.3695948)
-- [ByteDance’s CXL (Eurosys’24)](https://dl.acm.org/doi/10.1145/3627703.3650061)
-- [VTC (OSDI’24)](https://www.usenix.org/conference/osdi24/presentation/sheng)
-- [OmniKV (ICLR’25)](https://openreview.net/forum?id=ulCAPXYXfa)
-- [CaraServe](https://arxiv.org/abs/2401.11240), [LoRATEE](https://ieeexplore.ieee.org/abstract/document/10890445), [FastSwitch](https://arxiv.org/abs/2411.18424) ...
+## TODO
 
+* A more robust and efficient implementation.
 
-## Community
+* Adapt to a wider variety of grammars.
 
-For further information and discussion, [join our discord server](https://discord.gg/WzzfwVSguU). Welcome to be a member and look forward to your contribution!
+## Acknowledgments
 
-## License
+Our code was developed based on LightLLM, an efficient Python-based LLM inference framework. We thank the following projects for their pioneering work in structured generation that inspired our research:
 
-This repository is released under the [Apache-2.0](LICENSE) license.
+- [SynCode](https://github.com/structuredllm/syncode) for its innovative approaches to LR(1)-grammar-constrained decoding.
 
-## Acknowledgement
+- [Outlines](https://github.com/dottxt-ai/outlines) for its finite state machine-based structured generation techniques.
 
-We learned a lot from the following projects when developing LightLLM.
-- [Faster Transformer](https://github.com/NVIDIA/FasterTransformer)
-- [Text Generation Inference](https://github.com/huggingface/text-generation-inference)
-- [vLLM](https://github.com/vllm-project/vllm)
-- [SGLang](https://github.com/sgl-project/sglang)
-- [flashinfer](https://github.com/flashinfer-ai/flashinfer/tree/main)
-- [Flash Attention 1&2](https://github.com/Dao-AILab/flash-attention)
-- [OpenAI Triton](https://github.com/openai/triton)
+- [XGrammar](https://github.com/mlc-ai/xgrammar) for its breakthrough in context-free grammar processing and pushdown automata optimization.
 
-
+<!--
 ## Citation
 
-We have published a number of papers around components or features of LightLLM, if you use LightLLM in your work, please consider citing the relevant paper.
+If you find our HarmoniCa useful or relevant to your research, please kindly cite our paper:
 
-**Request scheduler**: accepted by [ASPLOS’25](https://dl.acm.org/doi/10.1145/3676641.3716011):
-```bibtex
-@inproceedings{gong2025past,
-  title={Past-Future Scheduler for LLM Serving under SLA Guarantees},
-  author={Gong, Ruihao and Bai, Shihao and Wu, Siyu and Fan, Yunqian and Wang, Zaijun and Li, Xiuhong and Yang, Hailong and Liu, Xianglong},
-  booktitle={Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2},
-  pages={798--813},
-  year={2025}
+```
+@inproceedings{
+    anonymous2025harmonica,
+    title={HarmoniCa: Harmonizing Training and Inference for Better Feature Caching in Diffusion Transformer Acceleration},
+    author={Yushi Huang and Zining Wang and Ruihao Gong and Jing Liu and Xinjie Zhang and Jinyang Guo and Xianglong Liu and Jun Zhang},
+    booktitle={Forty-second International Conference on Machine Learning},
+    year={2025},
 }
 ```
+-->
