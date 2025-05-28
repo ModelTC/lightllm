@@ -1,4 +1,4 @@
-# Pre$^3$: Enabling Deterministic Pushdown Automata for Faster Structured LLM Generation
+# Pre<span>$^3$</span>: Enabling Deterministic Pushdown Automata for Faster Structured LLM Generation
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Paper](https://img.shields.io/badge/Pre3-OpenReview-red.svg)](https://openreview.net/pdf?id=g1aBeiyZEi)
