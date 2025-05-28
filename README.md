@@ -41,7 +41,7 @@ git checkout pre3-integrated
 pip install -r requirements.txt
 ```
 
-### Training
+### Launching Server
 
 We'd like to provide the following script to launch the inference framework. More details about our method can be found in our paper and blog.
 
