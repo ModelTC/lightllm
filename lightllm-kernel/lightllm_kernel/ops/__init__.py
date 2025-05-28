@@ -72,7 +72,7 @@ from .norm import rmsnorm_bf16
 from .quant import per_token_quant_bf16_fp8
 from .gemm import cutlass_scaled_mm_bias_ls
 from .moe import all_gather, grouped_topk
-from .attention import group8_int8kv_flashdecoding_stage1
+from .attention import group8_int8kv_flashdecoding_stage1, group_int8kv_decode_attention
 
 __all__ = [
     "rmsnorm_bf16",
@@ -85,4 +85,5 @@ __all__ = [
     "grouped_topk",
     "meta_size",
     "group8_int8kv_flashdecoding_stage1",
+    "group_int8kv_decode_attention",
 ]

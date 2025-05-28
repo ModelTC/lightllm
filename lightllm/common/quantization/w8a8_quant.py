@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from lightllm.common.quantization.triton_quant.fp8.fp8act_quant_kernel import per_token_group_quant_fp8
 from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel import w8a8_block_fp8_matmul
 from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops, cutlass_scaled_mm
-from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL
+from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL, light_ops
 
 
 class BaseQuantizationMethod(QuantizationMethod):
@@ -93,9 +93,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
         if HAS_LIGHTLLM_KERNEL:
-            from lightllm_kernel.ops import per_token_quant_bf16_fp8
-
-            x_q, x_scale = per_token_quant_bf16_fp8(input_tensor)
+            x_q, x_scale = light_ops.per_token_quant_bf16_fp8(input_tensor)
         else:
             x_q, x_scale = vllm_ops.scaled_fp8_quant(
                 input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True
