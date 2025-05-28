@@ -1,13 +1,13 @@
 # Pre$^3$: Enabling Deterministic Pushdown Automata for Faster Structured LLM Generation
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[Paper](https://openreview.net/pdf?id=g1aBeiyZEi)
+[![Paper](https://img.shields.io/badge/Pre3-OpenReview-red.svg)](https://openreview.net/pdf?id=g1aBeiyZEi)
 <!--
 [![arXiv](https://img.shields.io/badge/HarmoniCa-2410.01723-b31b1b)](https://arxiv.org/pdf/2410.01723)
 [![GitHub Stars](https://img.shields.io/github/stars/ModelTC/HarmoniCa.svg?style=social&label=Star&maxAge=60)](https://github.com/ModelTC/HarmoniCa)
 -->
 
-[Junyi Chen](https://github.com/flyinglandlord), [Shihao Bai](https://github.com/shihaobai), [Zaijun Wang](https://github.com/hiworldwzj), [Siyu Wu](https://wusiyu.me/), Chuheng Du, [Hailong Yang](https://thomas-yang.github.io/), [Ruihao Gong📧](https://xhplus.github.io/), [Shengzhong Liu📧](https://liushengzhong1023.github.io/), Fan Wu, Guihai Chen
+[Junyi Chen](https://github.com/flyinglandlord), [Shihao Bai](https://github.com/shihaobai), [Zaijun Wang](https://github.com/hiworldwzj), [Siyu Wu](https://wusiyu.me/), Chuheng Du, [Hailong Yang](https://thomas-yang.github.io/), [Ruihao Gong📧](https://xhplus.github.io/), [Shengzhong Liu📧](https://liushengzhong1023.github.io/), [Fan Wu](https://cs.sjtu.edu.cn/~fwu/), [Guihai Chen](https://www.cs.sjtu.edu.cn/PeopleDetail.aspx?id=111)
 
 (📧 denotes corresponding author.)
 
