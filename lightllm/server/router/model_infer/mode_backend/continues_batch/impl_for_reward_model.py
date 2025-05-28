@@ -32,7 +32,7 @@ class RewardModelBackend(ContinuesBatchBackend):
             req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
             req_obj.cur_output_len += 1
 
-            if req_obj.out_token_id_count is not None:
+            if req_obj.need_out_token_id_statistics:
                 req_obj.out_token_id_count[next_token_id] += 1
             req_obj.update_finish_status(self.eos_id)
 
