@@ -320,12 +320,13 @@ class InferReq:
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 
-    def get_chunked_input_token_ids_shift(self, shift=-1):
+    def get_chunked_input_token_ids_shift(self, shift=1):
         input_ids = self.get_input_token_ids()
-        shift_input_ids = np.roll(input_ids, shift)
+        shift_input_ids = np.roll(input_ids, -1 * shift)
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
-        return shift_input_ids[shift:chunked_end]
+        is_last_chunked = chunked_end == self.get_cur_total_len() + shift
+        return shift_input_ids[0:chunked_end], is_last_chunked
 
     def get_chuncked_input_token_len(self):
         chunked_start = self.cur_kv_len

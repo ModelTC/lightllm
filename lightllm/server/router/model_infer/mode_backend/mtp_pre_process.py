@@ -17,8 +17,8 @@ def prepare_mtp_prefill_inputs(
             input_token_ids = req.get_input_token_ids()
         else:
             input_token_ids = last_input_ids_cpu[i]
-            input_token_ids = np.roll(input_token_ids, -1)
-            input_token_ids[-1] = tgt_input_ids[i]
+        input_token_ids = np.roll(input_token_ids, -1)
+        input_token_ids[-1] = tgt_input_ids[i]
         input_ids.append(input_token_ids[req.cur_kv_len :])
     input_ids_cpu = input_ids
     input_ids = np.concatenate(input_ids, dtype=np.int64)
@@ -27,6 +27,37 @@ def prepare_mtp_prefill_inputs(
     # mtp embedding
     model_input.hidden_states = last_hidden_states
     return model_input, input_ids_cpu
+
+
+def prepare_mtp_chunked_prefill_inputs(
+    req_objs: List[InferReq],
+    model_input: ModelInput,
+    last_hidden_states,
+    tgt_input_ids,
+    shift,
+    prev_step_has_output,
+    last_input_ids_cpu=None,
+):
+    input_ids = []
+    for i, req in enumerate(req_objs):
+        if last_input_ids_cpu is None or not prev_step_has_output[i]:
+            input_token_ids, is_last_chunked = req.get_chunked_input_token_ids_shift(shift)
+            if prev_step_has_output[i]:
+                input_token_ids[-1] = tgt_input_ids[i]
+            prev_step_has_output[i] = is_last_chunked
+        else:
+            input_token_ids = last_input_ids_cpu[i]
+            input_token_ids = np.roll(input_token_ids, -1)
+            input_token_ids[-1] = tgt_input_ids[i]
+            prev_step_has_output[i] = True
+        input_ids.append(input_token_ids[req.cur_kv_len :])
+    input_ids_cpu = input_ids
+    input_ids = np.concatenate(input_ids, dtype=np.int64)
+    input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
+    model_input.input_ids = input_ids
+    # mtp embedding
+    model_input.hidden_states = last_hidden_states
+    return model_input, input_ids_cpu, prev_step_has_output
 
 
 def prepare_draft_main_model_decode_inputs(req_objs: List[InferReq], draft_token_id_map):
