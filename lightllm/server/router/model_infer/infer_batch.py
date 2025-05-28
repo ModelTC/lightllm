@@ -22,11 +22,6 @@ from lightllm.utils.envs_utils import enable_env_vars
 logger = init_logger(__name__)
 
 
-class ReqSampleParmsManager:
-    def __init__(self, max_request_num, vocab_size):
-        self.p_token_vocabs = torch.zeros((max_request_num, vocab_size), dtype=torch.int16, device="cuda")
-
-
 @dataclass
 class InferenceContext:
     req_manager: ReqManager = None  # gpu 请求管理
@@ -42,8 +37,6 @@ class InferenceContext:
     def register(
         self, req_manager: ReqManager, radix_cache: RadixCache, shm_req_manager: ShmReqManager, vocab_size: int
     ):
-        if enable_env_vars("ENABLE_REQ_PARAM_CACHE"):
-            req_manager.req_sample_parms_manager = ReqSampleParmsManager(req_manager.max_request_num, vocab_size)
         self.req_manager = req_manager
         self.radix_cache = radix_cache
         self.shm_req_manager = shm_req_manager
@@ -272,18 +265,11 @@ class InferReq:
             self.shm_req.link_logprobs_shm_array()
             self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)
 
-            if enable_env_vars("ENABLE_REQ_PARAM_CACHE"):
-                if self.sampling_param.shm_param.input_penalty:
-                    idxs = torch.bincount(self.shm_req.get_prompt_ids())
-                    g_infer_context.req_manager.req_sample_parms_manager.p_token_vocabs[self.req_idx][
-                        : len(idxs)
-                    ] = idxs
-                self.out_token_id_count = None
+            g_infer_context.req_manager.req_sampling_params_manager.init_req_sampling_params(self)
+            if self.sampling_param.shm_param.input_penalty:
+                self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
             else:
-                if self.sampling_param.shm_param.input_penalty:
-                    self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
-                else:
-                    self.out_token_id_count = collections.defaultdict(int)
+                self.out_token_id_count = collections.defaultdict(int)
 
             self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
             # token healing mode 才被使用的管理对象
