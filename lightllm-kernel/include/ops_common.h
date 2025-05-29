@@ -100,5 +100,32 @@ void group_int8kv_decode_attention(
     Tensor b_seq_len, 
     int64_t max_len_in_batch);
 
+int64_t init_custom_gather_ar(
+    const std::vector<int64_t>& fake_ipc_ptrs,
+    torch::Tensor& rank_data,
+    int64_t rank,
+    bool full_nvlink
+);
+
+void allgather_dispose(
+    int64_t _fa
+);
+
+void allgather_register_buffer(
+    int64_t _fa,
+    const std::vector<int64_t>& fake_ipc_ptrs
+);
+
+std::tuple<std::vector<int64_t>, std::vector<int64_t>>
+allgather_get_graph_buffer_ipc_meta(
+    int64_t _fa
+);
+
+void allgather_register_graph_buffers(
+    int64_t _fa,
+    const std::vector<std::vector<int64_t>>& handles,
+    const std::vector<std::vector<int64_t>>& offsets
+);
+
 } // namespace ops
 } // namespace lightllm

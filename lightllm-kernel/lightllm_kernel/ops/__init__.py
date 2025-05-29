@@ -69,9 +69,17 @@ meta_size = _C.meta_size
 # 向外暴露 Python 端接口
 from .fusion import pre_tp_norm_bf16, post_tp_norm_bf16, add_norm_quant_bf16_fp8, gelu_per_token_quant_bf16_fp8
 from .norm import rmsnorm_bf16
+from .allgather import (
+    all_gather,
+    allgather_dispose,
+    init_custom_gather_ar,
+    allgather_register_buffer,
+    allgather_register_graph_buffers,
+    allgather_get_graph_buffer_ipc_meta,
+)
 from .quant import per_token_quant_bf16_fp8
 from .gemm import cutlass_scaled_mm_bias_ls
-from .moe import all_gather, grouped_topk
+from .moe import grouped_topk
 from .attention import group8_int8kv_flashdecoding_stage1, group_int8kv_decode_attention
 
 __all__ = [
@@ -85,6 +93,11 @@ __all__ = [
     "grouped_topk",
     "meta_size",
     "all_gather",
+    "allgather_dispose",
+    "init_custom_gather_ar",
+    "allgather_register_buffer",
+    "allgather_get_graph_buffer_ipc_meta",
+    "allgather_register_graph_buffers",
     "group8_int8kv_flashdecoding_stage1",
     "group_int8kv_decode_attention",
 ]

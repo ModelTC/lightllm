@@ -146,16 +146,5 @@ void allgather_register_graph_buffers(fptr_t _fa,
   fa->register_graph_buffers(bytes, offsets);
 }
 
-
-// torch::Tensor all_gather(
-//     int64_t _fa,
-//     torch::Tensor inp,
-//     torch::Tensor out,
-//     int64_t _reg_buffer,
-//     int64_t reg_buffer_sz_bytes) {
-
-//   all_gather_cuda(_fa, inp, out, _reg_buffer, reg_buffer_sz_bytes);
-//   return out;
-// }
   } // namespace ops
 } // namespace lightllm
