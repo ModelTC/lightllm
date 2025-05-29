@@ -84,6 +84,7 @@ __all__ = [
     "cutlass_scaled_mm_bias_ls",
     "grouped_topk",
     "meta_size",
+    "all_gather",
     "group8_int8kv_flashdecoding_stage1",
     "group_int8kv_decode_attention",
 ]

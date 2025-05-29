@@ -5,7 +5,7 @@ import torch.distributed as dist
 import numpy as np
 from typing import Tuple
 from functools import partial
-
+from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL, light_ops
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
     context_attention_fwd,
@@ -539,11 +539,9 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         calcu_shape1 = (batch_size, self.tp_q_head_num_, self.head_dim_)
         o_tensor = self.alloc_tensor(q.shape, q.dtype) if out is None else out
 
-        from lightllm_ppl_kernel import group8_int8kv_decode_attention
-
         # group_int8kv_decode_attention(at::Tensor o, at::Tensor q, at::Tensor k, at::Tensor k_s,  at::Tensor v,
         # at::Tensor v_s, at::Tensor b_loc, at::Tensor b_seq_len, int max_len_in_batch)
-        group8_int8kv_decode_attention(
+        light_ops.group_int8kv_decode_attention(
             o_tensor.view(calcu_shape1),
             q.view(calcu_shape1),
             infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :],
