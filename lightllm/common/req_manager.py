@@ -2,6 +2,7 @@ import torch
 from lightllm.utils.log_utils import init_logger
 from .mem_manager import MemoryManager
 from typing import List
+from lightllm.common.basemodel.triton_kernel.gen_sampling_params import gen_sampling_params
 
 logger = init_logger(__name__)
 
@@ -120,4 +121,18 @@ class ReqSamplingParamsManager:
         self.req_to_exponential_decay_length_penalty[req.req_id].fill_(exponential_decay_length_penalty[1])
 
     def get_sampling_batch_params(self, req_idx_list: List[int]):
-        pass
+        b_req_idx = torch.tensor(req_idx_list, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
+        (
+            b_presence_penalty,
+            b_frequency_penalty,
+            b_repetition_penalty,
+            b_temperature,
+            b_exponential_decay_length_penalty,
+        ) = gen_sampling_params(b_req_idx=b_req_idx, req_sampling_params_manager=self)
+        return (
+            b_presence_penalty,
+            b_frequency_penalty,
+            b_repetition_penalty,
+            b_temperature,
+            b_exponential_decay_length_penalty,
+        )
