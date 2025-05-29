@@ -8,7 +8,7 @@ from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel imp
 from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops, cutlass_scaled_mm
 from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL, light_ops
 
-if not HAS_LIGHTLLM_KERNEL:
+if HAS_LIGHTLLM_KERNEL:
 
     def scaled_fp8_quant(tensor, *args, **kwargs):
         return light_ops.per_token_quant_bf16_fp8(tensor)
