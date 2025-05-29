@@ -3,15 +3,12 @@ import time
 import pytest
 import numpy as np
 import torch.nn.functional as F
-import flashinfer
 from lightllm.utils.log_utils import init_logger
-from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
-    context_attention_fwd,
-    context_attention_fwd_no_prompt_cache,
-)
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.req_manager import ReqManager
 from lightllm.models.llama.triton_kernel.gqa_decode_flashattention_nopad import gqa_decode_attention_fwd
+from lightllm.utils.sgl_utils import flash_attn_with_kvcache
+from sglang.srt.layers.quantization.fp8_kernel import scaled_fp8_quant
 
 logger = init_logger(__name__)
 
@@ -21,6 +18,22 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def kv_quantize_per_head_fp8(kv_buffer: torch.Tensor, seq_lens):
+    device = kv_buffer.device
+    B = seq_lens.size(0)
+    min_fp8 = torch.finfo(torch.float8_e4m3fn).min
+    max_fp8 = torch.finfo(torch.float8_e4m3fn).max
+    _, S_max, H, D = kv_buffer.shape
+    seq_range = torch.arange(S_max, device=device)[None, :]
+    valid_mask = (seq_range < seq_lens[:, None]).view(B, S_max, 1, 1)
+    masked = kv_buffer * valid_mask
+    max_per_bh = masked.abs().amax(dim=(1, 3))  # [B, H]
+    scales = torch.where(max_per_bh > 0, max_per_bh / max_fp8, torch.ones_like(max_per_bh)).to(torch.float32)
+    scales_exp = scales.view(B, 1, H, 1)
+    q = (kv_buffer / scales_exp).round().clamp(min_fp8, max_fp8).to(torch.float8_e4m3fn)
+    return q, scales
 
 
 def ref_token_attention_nopad(q, k, v, o, q_h, h_dim, infer_state):
@@ -70,7 +83,7 @@ def ref_token_attention_nopad(q, k, v, o, q_h, h_dim, infer_state):
         for e in [128]
     ],
 )
-def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
+def test_token_attention_nopad_fa3_fp8(batch, seqlen, q_heads, kv_heads, head_dim):
     Z, N_CTX, Q_HEADS, KV_HEADS, HEAD_DIM = batch, seqlen, q_heads, kv_heads, head_dim
     dtype = torch.bfloat16
     q = torch.randn((Z, Q_HEADS, HEAD_DIM), dtype=dtype, device="cuda")
@@ -78,8 +91,10 @@ def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
 
     max_input_len = Z * N_CTX
     req_to_token_indexs = torch.randperm(max_input_len, dtype=torch.int32).cuda().view(Z, N_CTX)
-    b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda") * N_CTX
-    b_start_loc = torch.arange(Z).cuda().int() * N_CTX
+    b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda") * (N_CTX // 2)
+    rand_num = torch.randint_like(b_seq_len, high=(N_CTX // 2), dtype=torch.int32, device="cuda")
+    b_seq_len += rand_num
+    b_start_loc = b_seq_len.cumsum(0) - b_seq_len
     b_req_idx = torch.randperm(Z, dtype=torch.int32).cuda()
 
     o = torch.zeros((Z, Q_HEADS, HEAD_DIM), dtype=dtype, device="cuda")
@@ -118,38 +133,55 @@ def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
     head_dim = HEAD_DIM
     q_heads = Q_HEADS
     kv_heads = KV_HEADS
-    page_size = 1
-    workspace_buffer = torch.empty(256 * 1024 * 1024, dtype=torch.int8).to(0)
     kv_starts = torch.zeros((Z + 1,)).int().cuda()
     kv_starts[1:] = torch.cumsum(b_seq_len, dim=0)
-    kv_indptr = kv_starts
-    kv_indices = torch.arange(Z * N_CTX).cuda().int()
-    for b, sl, start in zip(b_req_idx, b_seq_len, b_start_loc):
-        kv_indices[start : start + sl] = req_to_token_indexs[b][:sl]
-    kv_last_page_len_buffer = torch.empty(batch_size, device="cuda:0", dtype=torch.int32)
-    wrapper = flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper(
-        workspace_buffer,
-        "NHD",
-        use_cuda_graph=True,
-        use_tensor_cores=True,
-        paged_kv_indptr_buffer=kv_indptr,
-        paged_kv_indices_buffer=kv_indices,
-        paged_kv_last_page_len_buffer=kv_last_page_len_buffer,
-    )
-    kv_last_page_len_buffer = torch.full((batch_size,), page_size, dtype=torch.int32)
-    wrapper.plan(
-        kv_indptr,
-        kv_indices,
-        kv_last_page_len_buffer,
-        q_heads,
-        kv_heads,
-        head_dim,
-        page_size,
-        q_data_type=dtype,
-        non_blocking=True,
-    )
-    kv = kv.unsqueeze(1)
-    wrapper.run(q, (kv[:, :, :KV_HEADS, :], kv[:, :, KV_HEADS:, :]), out=o1, return_lse=False)
+    q_starts = torch.arange(0, Z + 1).int().cuda()
+    page_table = torch.empty((batch_size, N_CTX), dtype=torch.int32).to(0)
+    page_table.copy_(req_to_token_indexs[b_req_idx, :N_CTX])
 
+    k_cache = kv[:, :KV_HEADS, :].contiguous()
+    v_cache = kv[:, KV_HEADS:, :].contiguous()
+    # o1 = flash_attn_with_kvcache(
+    #     q=q,
+    #     k_cache=k_cache[page_table].view(-1, N_CTX, kv_heads, head_dim),
+    #     v_cache=v_cache[page_table].view(-1, N_CTX, kv_heads, head_dim),
+    #     # page_table=page_table,
+    #     cache_seqlens=infer_state.b_seq_len,
+    #     cu_seqlens_q=q_starts,
+    #     cu_seqlens_k_new=kv_starts,
+    #     max_seqlen_q=1,
+    #     causal=False,
+    #     window_size=(-1, -1),
+    #     softcap=0.0,
+    #     return_softmax_lse=False,
+    # )
+
+    q, q_scale = scaled_fp8_quant(q.view(batch_size * kv_heads, -1), use_per_token_if_dynamic=True)
+    k, k_scale = kv_quantize_per_head_fp8(k_cache[page_table], b_seq_len)
+    v, v_scale = kv_quantize_per_head_fp8(v_cache[page_table], b_seq_len)
+    o1 = flash_attn_with_kvcache(
+        q=q.view(-1, q_heads, head_dim),
+        k_cache=k.view(-1, N_CTX, kv_heads, head_dim),
+        v_cache=v.view(-1, N_CTX, kv_heads, head_dim),
+        # page_table=page_table,
+        cache_seqlens=infer_state.b_seq_len,
+        cu_seqlens_q=q_starts,
+        cu_seqlens_k_new=kv_starts,
+        max_seqlen_q=1,
+        causal=False,
+        window_size=(-1, -1),
+        softcap=0.0,
+        q_descale=q_scale.view(batch_size, kv_heads),
+        k_descale=k_scale.view(batch_size, kv_heads),
+        v_descale=v_scale.view(batch_size, kv_heads),
+        return_softmax_lse=False,
+    )
+
+    # assert torch.allclose(o, o1, atol=1e-1, rtol=1e-1)
     cos_sim1 = F.cosine_similarity(o, o1).mean()
+    print(cos_sim1)
     assert cos_sim1 == 1.0
+
+
+if __name__ == "__main__":
+    test_token_attention_nopad_fa3_fp8(16, 16384, 28, 4, 128)

@@ -12,6 +12,7 @@ from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.common.req_manager import ReqManager
 from lightllm.models.llama.triton_kernel.gqa_decode_flashattention_nopad import gqa_decode_attention_fwd
+from sglang.srt.layers.quantization.fp8_kernel import scaled_fp8_quant
 
 logger = init_logger(__name__)
 
@@ -70,7 +71,7 @@ def ref_token_attention_nopad(q, k, v, o, q_h, h_dim, infer_state):
         for e in [128]
     ],
 )
-def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
+def test_token_attention_nopad_flashinfer_fp8(batch, seqlen, q_heads, kv_heads, head_dim):
     Z, N_CTX, Q_HEADS, KV_HEADS, HEAD_DIM = batch, seqlen, q_heads, kv_heads, head_dim
     dtype = torch.bfloat16
     q = torch.randn((Z, Q_HEADS, HEAD_DIM), dtype=dtype, device="cuda")
@@ -78,8 +79,10 @@ def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
 
     max_input_len = Z * N_CTX
     req_to_token_indexs = torch.randperm(max_input_len, dtype=torch.int32).cuda().view(Z, N_CTX)
-    b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda") * N_CTX
-    b_start_loc = torch.arange(Z).cuda().int() * N_CTX
+    b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda") * (N_CTX // 2)
+    rand_num = torch.randint_like(b_seq_len, high=(N_CTX // 2), dtype=torch.int32, device="cuda")
+    b_seq_len += rand_num
+    b_start_loc = b_seq_len.cumsum(0) - b_seq_len
     b_req_idx = torch.randperm(Z, dtype=torch.int32).cuda()
 
     o = torch.zeros((Z, Q_HEADS, HEAD_DIM), dtype=dtype, device="cuda")
@@ -137,6 +140,10 @@ def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
         paged_kv_last_page_len_buffer=kv_last_page_len_buffer,
     )
     kv_last_page_len_buffer = torch.full((batch_size,), page_size, dtype=torch.int32)
+    k_cache = kv[:, :KV_HEADS, :].contiguous()
+    v_cache = kv[:, KV_HEADS:, :].contiguous()
+    k, k_scale = scaled_fp8_quant(k_cache.view(1, -1))
+    v, v_scale = scaled_fp8_quant(v_cache.view(1, -1))
     wrapper.plan(
         kv_indptr,
         kv_indices,
@@ -146,10 +153,22 @@ def test_token_attention_nopad(batch, seqlen, q_heads, kv_heads, head_dim):
         head_dim,
         page_size,
         q_data_type=dtype,
+        kv_data_type=torch.float8_e4m3fn,
         non_blocking=True,
     )
-    kv = kv.unsqueeze(1)
-    wrapper.run(q, (kv[:, :, :KV_HEADS, :], kv[:, :, KV_HEADS:, :]), out=o1, return_lse=False)
+    wrapper.run(
+        q,
+        (k.view(-1, 1, kv_heads, head_dim), v.view(-1, 1, kv_heads, head_dim)),
+        k_scale=k_scale,
+        v_scale=v_scale,
+        out=o1,
+        return_lse=False,
+    )
 
     cos_sim1 = F.cosine_similarity(o, o1).mean()
+    print(cos_sim1)
     assert cos_sim1 == 1.0
+
+
+if __name__ == "__main__":
+    test_token_attention_nopad_flashinfer_fp8(16, 16384, 28, 4, 128)
