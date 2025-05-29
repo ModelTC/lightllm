@@ -8,6 +8,14 @@ from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_gemm_kernel imp
 from lightllm.utils.vllm_utils import HAS_VLLM, vllm_ops, cutlass_scaled_mm
 from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL, light_ops
 
+if HAS_LIGHTLLM_KERNEL:
+
+    def scaled_fp8_quant(tensor, *args, **kwargs):
+        return light_ops.per_token_quant_bf16_fp8(tensor)
+
+else:
+    scaled_fp8_quant = vllm_ops.scaled_fp8_quant
+
 
 class BaseQuantizationMethod(QuantizationMethod):
     def __init__(self):
@@ -72,7 +80,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
     def quantize(self, weight: torch.Tensor):
         if self.is_moe:
             return self.quantize_moe(weight)
-        qweight, weight_scale = vllm_ops.scaled_fp8_quant(
+        qweight, weight_scale = scaled_fp8_quant(
             weight.contiguous().cuda(self.device_id_), scale=None, use_per_token_if_dynamic=True
         )
         return qweight.transpose(0, 1), weight_scale
@@ -83,7 +91,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         weight_scales = []
         qweights = torch.empty_like(weight, dtype=torch.float8_e4m3fn).cuda(self.device_id_)
         for i in range(num_experts):
-            qweight, weight_scale = vllm_ops.scaled_fp8_quant(
+            qweight, weight_scale = scaled_fp8_quant(
                 weight[i].contiguous().cuda(self.device_id_), scale=None, use_per_token_if_dynamic=False
             )
             qweights[i] = qweight
@@ -91,13 +99,20 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         weight_scale = torch.cat(weight_scales, dim=0).reshape(-1)
         return qweights, weight_scale
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
+    def apply(
+        self,
+        input_tensor,
+        weights,
+        bias=None,
+        out=None,
+        ls_weight=None,
+        workspace=None,
+        use_custom_tensor_mananger=True,
+    ):
         if HAS_LIGHTLLM_KERNEL:
             x_q, x_scale = light_ops.per_token_quant_bf16_fp8(input_tensor)
         else:
-            x_q, x_scale = vllm_ops.scaled_fp8_quant(
-                input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True
-            )
+            x_q, x_scale = scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
 
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
@@ -108,7 +123,10 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
+        if ls_weight is not None:
+            light_ops.cutlass_scaled_mm_bias_ls(out, x_q, weights[0], x_scale, weights[1], bias, ls_weight)
+        else:
+            cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
         return out
 
 
