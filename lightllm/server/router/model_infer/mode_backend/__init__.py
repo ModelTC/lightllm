@@ -12,3 +12,7 @@ from .continues_batch.pd_mode.decode_node_impl.decode_impl import ContinuesBatch
 from .chunked_prefill.impl_for_xgrammar_mode import XgrammarBackend
 from .continues_batch.pd_mode.prefill_node_impl.prefill_impl_for_dp_chuncked import DPChunkedForPrefillNode
 from .continues_batch.pd_mode.decode_node_impl.decode_impl_for_dp import DPForDecodeNode
+from .pd_nixl.impl_for_pd_prefill import PDNIXLBackendForPrefillNode
+from .pd_nixl.impl_for_pd_decode import PDNIXLBackendForDecodeNode
+from .pd_nixl.impl_for_pd_decode_dp import PDNIXLDPBackendForDecodeNode
+from .pd_nixl.impl_for_pd_prefill_dp import PDNIXLDPBackendForPrefillNode

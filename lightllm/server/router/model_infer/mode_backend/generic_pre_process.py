@@ -79,7 +79,7 @@ def prepare_decode_inputs(req_objs: List[InferReq]):
         nopad_b_req_idx.append(req.req_idx)
         input_id = req.get_last_gen_token()
         seq_len = req.get_cur_total_len()
-        assert req.cur_kv_len == seq_len - 1
+        assert req.cur_kv_len == seq_len - 1, f"{req.cur_kv_len} {seq_len}"
         nopad_b_seq_len.append(seq_len)
         input_ids.append(input_id)
         nopad_total_token_num += seq_len
