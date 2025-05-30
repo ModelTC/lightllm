@@ -27,5 +27,39 @@ def test_token_id_counter():
     logger.info(f"test_token_id_count cost time: {start_event.elapsed_time(end_event)} ms")
 
 
+def test_gen_sampling_params():
+
+    # Mocking ReqSamplingParamsManager for testing
+    class MockReqSamplingParamsManager:
+        def __init__(self, batch_size, vocab_size):
+            self.req_to_presence_penalty = torch.rand((batch_size,), dtype=torch.float32, device="cuda")
+            self.req_to_frequency_penalty = torch.rand((batch_size,), dtype=torch.float32, device="cuda")
+            self.req_to_repetition_penalty = torch.rand((batch_size,), dtype=torch.float32, device="cuda")
+            self.req_to_temperature = torch.rand((batch_size,), dtype=torch.float32, device="cuda")
+            self.req_to_exponential_decay_length_penalty = torch.rand((batch_size,), dtype=torch.float32, device="cuda")
+
+    batch_size = 1083
+    vocab_size = 100
+    req_sampling_params_manager = MockReqSamplingParamsManager(batch_size, vocab_size)
+    b_req_idx = torch.arange(batch_size, device="cuda").flip(dims=[0])
+
+    (
+        b_presence_penalty,
+        b_frequency_penalty,
+        b_repetition_penalty,
+        b_temperature,
+        b_exponential_decay_length_penalty,
+    ) = gen_sampling_params(b_req_idx, req_sampling_params_manager)
+
+    assert torch.equal(b_presence_penalty, req_sampling_params_manager.req_to_presence_penalty[b_req_idx])
+    assert torch.equal(b_frequency_penalty, req_sampling_params_manager.req_to_frequency_penalty[b_req_idx])
+    assert torch.equal(b_repetition_penalty, req_sampling_params_manager.req_to_repetition_penalty[b_req_idx])
+    assert torch.equal(b_temperature, req_sampling_params_manager.req_to_temperature[b_req_idx])
+    assert torch.equal(
+        b_exponential_decay_length_penalty,
+        req_sampling_params_manager.req_to_exponential_decay_length_penalty[b_req_idx],
+    )
+
+
 if __name__ == "__main__":
     pytest.main()

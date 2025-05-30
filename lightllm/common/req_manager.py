@@ -132,21 +132,6 @@ class ReqSamplingParamsManager:
         self.req_to_temperature[req.req_idx].fill_(shm_param.temperature)
         exponential_decay_length_penalty = shm_param.exponential_decay_length_penalty.to_tuple()
         self.req_to_exponential_decay_length_penalty[req.req_id].fill_(exponential_decay_length_penalty[1])
-
-        if not self.enable_gpu_buffer_for_out_token_id_counter:
-            if req.sampling_param.shm_param.input_penalty:
-                self.out_token_id_count = collections.Counter(req.shm_req.get_prompt_ids())
-            else:
-                self.out_token_id_count = collections.defaultdict(int)
-        else:
-            self.req_to_out_token_id_counter[req.req_idx].fill_(0)
-            if req.sampling_param.shm_param.input_penalty:
-                prompt_ids = torch.from_numpy(req.shm_req.get_prompt_ids()).pin_memory().cuda(non_blocking=True)
-                token_id_counter(
-                    prompt_ids=prompt_ids, out_token_id_counter=self.req_to_out_token_id_counter[req.req_idx]
-                )
-
-        shm_param = req.sampling_param.shm_param
         # 提前标记当前请求是否需要统计输出token的计数，因为这个统计可能会导致一些特定场景下后处理效率的下降
         # 所以提前标记不需要进行后处理统计的场景。
         req.need_out_token_id_statistics = not (
@@ -154,6 +139,21 @@ class ReqSamplingParamsManager:
             and shm_param.frequency_penalty == 0.0
             and shm_param.repetition_penalty == 1.0
         )
+
+        if not self.enable_gpu_buffer_for_out_token_id_counter:
+            if req.sampling_param.shm_param.input_penalty and req.need_out_token_id_statistics:
+                self.out_token_id_count = collections.Counter(req.shm_req.get_prompt_ids())
+            else:
+                self.out_token_id_count = collections.defaultdict(int)
+        else:
+            self.req_to_out_token_id_counter[req.req_idx].fill_(0)
+            if req.sampling_param.shm_param.input_penalty and req.need_out_token_id_statistics:
+                prompt_ids = torch.from_numpy(req.shm_req.get_prompt_ids()).pin_memory().cuda(non_blocking=True)
+                token_id_counter(
+                    prompt_ids=prompt_ids, out_token_id_counter=self.req_to_out_token_id_counter[req.req_idx]
+                )
+
+        shm_param = req.sampling_param.shm_param
 
     def get_sampling_batch_params(self, req_idx_list: List[int]):
         b_req_idx = torch.tensor(req_idx_list, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
