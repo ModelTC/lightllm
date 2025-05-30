@@ -65,6 +65,7 @@ def gen_sampling_params(b_req_idx: torch.Tensor, req_sampling_params_manager):
         b_temperature=b_temperature,
         req_to_exponential_decay_length_penalty=req_sampling_params_manager.req_to_exponential_decay_length_penalty,
         b_exponential_decay_length_penalty=b_exponential_decay_length_penalty,
+        req_to_req_idx=b_req_idx,
         batch_size=batch_size,
         BLOCK=BLOCK,
         num_warps=1,
