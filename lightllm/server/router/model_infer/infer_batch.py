@@ -257,6 +257,7 @@ class InferReq:
         self.vocab_size = vocab_size
         self.initialized = False
         self.paused = False
+        self.need_out_token_id_statistics = True
 
     def init_all(self):
         if self.initialized is False:
