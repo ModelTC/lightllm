@@ -2,6 +2,7 @@ import torch
 import time
 import pytest
 from lightllm.common.basemodel.triton_kernel.gen_sampling_params import token_id_counter, gen_sampling_params
+from lightllm.common.basemodel.triton_kernel.gen_sampling_params import update_req_to_token_id_counter
 from lightllm.utils.log_utils import init_logger
 
 logger = init_logger(__name__)
@@ -59,6 +60,25 @@ def test_gen_sampling_params():
         b_exponential_decay_length_penalty,
         req_sampling_params_manager.req_to_exponential_decay_length_penalty[b_req_idx],
     )
+
+
+def test_update_req_to_token_id_counter():
+    req_to_req_idx = torch.tensor([0, 1, 3, 2], dtype=torch.int32, device="cuda")
+    next_token_ids = torch.tensor([0, 1, 1, 0], dtype=torch.int32, device="cuda")
+    req_to_out_token_id_counter = torch.zeros((4, 4), dtype=torch.int32, device="cuda")
+    update_req_to_token_id_counter(req_to_req_idx, next_token_ids, req_to_out_token_id_counter)
+    expected_output = torch.tensor(
+        [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+        ],
+        dtype=torch.int32,
+        device="cuda",
+    )
+
+    assert torch.equal(req_to_out_token_id_counter, expected_output)
 
 
 if __name__ == "__main__":
