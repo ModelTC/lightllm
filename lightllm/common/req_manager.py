@@ -2,8 +2,9 @@ import torch
 import collections
 from lightllm.utils.log_utils import init_logger
 from .mem_manager import MemoryManager
-from typing import List
+from typing import List, Optional
 from lightllm.common.basemodel.triton_kernel.gen_sampling_params import gen_sampling_params, token_id_counter
+from lightllm.common.basemodel.triton_kernel.gen_sampling_params import update_req_to_token_id_counter
 from lightllm.utils.envs_utils import enable_env_vars, get_env_start_args
 from lightllm.utils.config_utils import get_vocab_size
 
@@ -171,3 +172,28 @@ class ReqSamplingParamsManager:
             b_temperature,
             b_exponential_decay_length_penalty,
         )
+
+    def update_req_idxs_token_counter(
+        self, req_objs: List, next_token_ids: List[int], accept_mark: Optional[List[List[bool]]] = None
+    ):
+        from lightllm.server.router.model_infer.infer_batch import InferReq
+
+        req_objs: List[InferReq] = req_objs
+
+        if not self.enable_gpu_buffer_for_out_token_id_counter:
+            for req_obj, next_token_id in zip(req_objs, next_token_ids):
+                if req_obj.need_out_token_id_statistics:
+                    req_obj.out_token_id_count[next_token_id] += 1
+        else:
+            req_to_req_idx = torch.tensor(
+                [req.req_idx for req in req_objs], dtype=torch.int32, device="cpu", pin_memory=True
+            ).cuda(non_blocking=True)
+            next_token_ids = (
+                torch.tensor(next_token_ids, dtype=torch.int32, device="cpu").pin_memory().cuda(non_blocking=True)
+            )
+            update_req_to_token_id_counter(
+                req_to_req_idx=req_to_req_idx,
+                next_token_ids=next_token_ids,
+                req_to_out_token_id_counter=self.req_to_out_token_id_counter,
+            )
+        return
