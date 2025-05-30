@@ -120,6 +120,18 @@ class ReqSamplingParamsManager:
                 (max_request_num + 1, self.vocab_size), dtype=torch.int32, device="cuda"
             )
 
+        # 用于缓存用的 pin_memory tensor，减少频繁初始化可以提升性能，因为microbatch overlap折叠的原因
+        # 需要两套 buffer 来生成缓存
+        self._p_token_ids_buffer: List[torch.Tensor] = [
+            torch.zeros((0,), dtype=torch.int32, device="cpu", pin_memory=True) for _ in range(2)
+        ]
+        self._p_token_counts_buffer: List[torch.Tensor] = [
+            torch.zeros((0,), dtype=torch.int32, device="cpu", pin_memory=True) for _ in range(2)
+        ]
+        self._p_seq_len_buffer: List[torch.Tensor] = [
+            torch.zeros((0,), dtype=torch.int32, device="cpu", pin_memory=True) for _ in range(2)
+        ]
+
     def init_req_sampling_params(self, req):
         # fix cycle loop import
         from lightllm.server.router.model_infer.infer_batch import InferReq
@@ -197,3 +209,44 @@ class ReqSamplingParamsManager:
                 req_to_out_token_id_counter=self.req_to_out_token_id_counter,
             )
         return
+
+    def gen_cpu_out_token_counter_sampling_params(self, req_objs: List, batch_index: int = 0):
+        from lightllm.server.router.model_infer.infer_batch import InferReq
+
+        req_objs: List[InferReq] = req_objs
+        assert not self.enable_gpu_buffer_for_out_token_id_counter
+
+        p_token_ids: List[int] = []
+        p_token_counts: List[int] = []
+        p_seq_len: List[int] = [
+            0,
+        ]
+        cum_sum_len = 0
+        for i, req_obj in enumerate(req_objs):
+            id_to_count = req_obj.out_token_id_count
+            p_token_ids.extend(list(id_to_count.keys()))
+            p_token_counts.extend(list(id_to_count.values()))
+            cum_sum_len += len(id_to_count)
+            p_seq_len.append(cum_sum_len)
+
+        p_token_ids = self._alloc_gpu_buffer_tensor_and_init(
+            p_token_ids, self._p_token_ids_buffer, batch_index=batch_index
+        )
+        p_token_counts = self._alloc_gpu_buffer_tensor_and_init(
+            p_token_counts, self._p_token_counts_buffer, batch_index=batch_index
+        )
+        p_seq_len = self._alloc_gpu_buffer_tensor_and_init(p_seq_len, self._p_seq_len_buffer, batch_index=batch_index)
+        return p_token_ids, p_token_counts, p_seq_len
+
+    def _alloc_gpu_buffer_tensor_and_init(self, in_data, buffer_list: List[torch.Tensor], batch_index: int = 0):
+        size = len(in_data)
+
+        if size > buffer_list[batch_index].shape[0]:
+            buffer_list[batch_index] = torch.empty((size,), dtype=torch.int32, device="cpu", pin_memory=True)
+
+        current_buffer = buffer_list[batch_index]
+        current_buffer.numpy()[0:size] = in_data
+        return current_buffer[0:size].cuda(non_blocking=True)
+
+    def get_gpu_out_token_counter_sampling_params(self, req_objs: List, batch_idnex: int = 0):
+        return self.req_to_out_token_id_counter
