@@ -116,7 +116,7 @@ class ReqSamplingParamsManager:
 
         if self.enable_gpu_buffer_for_out_token_id_counter:
             self.req_to_out_token_id_counter = torch.zeros(
-                (max_request_num + 1, self.vocab_size), dtype=torch.int16, device="cuda"
+                (max_request_num + 1, self.vocab_size), dtype=torch.int32, device="cuda"
             )
 
     def init_req_sampling_params(self, req):
@@ -143,9 +143,7 @@ class ReqSamplingParamsManager:
             if req.sampling_param.shm_param.input_penalty:
                 prompt_ids = torch.from_numpy(req.shm_req.get_prompt_ids()).pin_memory().cuda(non_blocking=True)
                 token_id_counter(
-                    prompt_ids=prompt_ids,
-                    out_token_id_counter=self.req_to_out_token_id_counter[req.req_idx],
-                    vocab_size=self.vocab_size,
+                    prompt_ids=prompt_ids, out_token_id_counter=self.req_to_out_token_id_counter[req.req_idx]
                 )
 
         shm_param = req.sampling_param.shm_param

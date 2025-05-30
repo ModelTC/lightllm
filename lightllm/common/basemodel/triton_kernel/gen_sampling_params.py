@@ -1,7 +1,6 @@
 import torch
 import triton
 import triton.language as tl
-from lightllm.common.req_manager import ReqSamplingParamsManager
 
 
 @triton.jit
@@ -40,7 +39,12 @@ def _gen_sampling_params_kernel(
 
 
 @torch.no_grad()
-def gen_sampling_params(b_req_idx: torch.Tensor, req_sampling_params_manager: ReqSamplingParamsManager):
+def gen_sampling_params(b_req_idx: torch.Tensor, req_sampling_params_manager):
+    # fix circle import
+    from lightllm.common.req_manager import ReqSamplingParamsManager
+
+    req_sampling_params_manager: ReqSamplingParamsManager = req_sampling_params_manager
+
     batch_size = b_req_idx.shape[0]
     b_presence_penalty = torch.empty((batch_size,), dtype=torch.float32, device="cuda")
     b_frequency_penalty = torch.empty((batch_size,), dtype=torch.float32, device="cuda")
@@ -77,7 +81,7 @@ def gen_sampling_params(b_req_idx: torch.Tensor, req_sampling_params_manager: Re
 @triton.jit
 def _token_id_counter_kernel(
     prompt_ids_ptr,
-    token_id_to_couter_ptr,
+    token_id_to_counter_ptr,
     input_size,
     vocab_size,
     BLOCK: tl.constexpr,
@@ -88,18 +92,19 @@ def _token_id_counter_kernel(
     mask = offs < input_size
 
     token_ids = tl.load(prompt_ids_ptr + offs, mask=mask, other=0)
-    tl.atomic_add(token_id_to_couter_ptr + token_ids, 1, mask=(token_ids < vocab_size) & mask)
+    tl.atomic_add(token_id_to_counter_ptr + token_ids, 1, mask=(token_ids < vocab_size) & mask)
     return
 
 
 @torch.no_grad()
-def token_id_counter(prompt_ids: torch.Tensor, out_token_id_counter: torch.Tensor, vocab_size: int):
+def token_id_counter(prompt_ids: torch.Tensor, out_token_id_counter: torch.Tensor):
+    vocab_size = out_token_id_counter.shape[0]
     input_size = prompt_ids.shape[0]
     BLOCK = 256
 
-    _gen_sampling_params_kernel[(triton.cdiv(input_size, BLOCK),)](
+    _token_id_counter_kernel[(triton.cdiv(input_size, BLOCK),)](
         prompt_ids_ptr=prompt_ids,
-        token_id_counter_ptr=out_token_id_counter,
+        token_id_to_counter_ptr=out_token_id_counter,
         input_size=input_size,
         vocab_size=vocab_size,
         BLOCK=BLOCK,
