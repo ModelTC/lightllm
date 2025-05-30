@@ -3,8 +3,9 @@ import collections
 from lightllm.utils.log_utils import init_logger
 from .mem_manager import MemoryManager
 from typing import List
-from lightllm.common.basemodel.triton_kernel.gen_sampling_params import gen_sampling_params
-from lightllm.utils.envs_utils import enable_env_vars
+from lightllm.common.basemodel.triton_kernel.gen_sampling_params import gen_sampling_params, token_id_counter
+from lightllm.utils.envs_utils import enable_env_vars, get_env_start_args
+from lightllm.utils.config_utils import get_vocab_size
 
 logger = init_logger(__name__)
 
@@ -103,6 +104,7 @@ class ReqSamplingParamsManager:
         self.enable_gpu_buffer_for_out_token_id_counter: bool = enable_env_vars(
             "LIGHTLLM_ENABLE_GPU_BUFFER_FOR_OUT_TOKEN_ID_COUNTER"
         )
+        self.vocab_size = get_vocab_size(get_env_start_args().model_dir)
 
         self.req_to_presence_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
         self.req_to_frequency_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
@@ -111,10 +113,10 @@ class ReqSamplingParamsManager:
         self.req_to_exponential_decay_length_penalty = torch.zeros(
             max_request_num + 1, dtype=torch.float32, device="cuda"
         )
+
         if self.enable_gpu_buffer_for_out_token_id_counter:
-            vocab_size = 1000
             self.req_to_out_token_id_counter = torch.zeros(
-                (max_request_num + 1, vocab_size), dtype=torch.int16, device="cuda"
+                (max_request_num + 1, self.vocab_size), dtype=torch.int16, device="cuda"
             )
 
     def init_req_sampling_params(self, req):
@@ -139,8 +141,12 @@ class ReqSamplingParamsManager:
         else:
             self.req_to_out_token_id_counter[req.req_idx].fill_(0)
             if req.sampling_param.shm_param.input_penalty:
-                # xxx
-                pass
+                prompt_ids = torch.from_numpy(req.shm_req.get_prompt_ids()).pin_memory().cuda(non_blocking=True)
+                token_id_counter(
+                    prompt_ids=prompt_ids,
+                    out_token_id_counter=self.req_to_out_token_id_counter[req.req_idx],
+                    vocab_size=self.vocab_size,
+                )
 
         shm_param = req.sampling_param.shm_param
         # 提前标记当前请求是否需要统计输出token的计数，因为这个统计可能会导致一些特定场景下后处理效率的下降

@@ -72,3 +72,37 @@ def gen_sampling_params(b_req_idx: torch.Tensor, req_sampling_params_manager: Re
         b_temperature,
         b_exponential_decay_length_penalty,
     )
+
+
+@triton.jit
+def _token_id_counter_kernel(
+    prompt_ids_ptr,
+    token_id_to_couter_ptr,
+    input_size,
+    vocab_size,
+    BLOCK: tl.constexpr,
+):
+
+    block_start_index = tl.program_id(0) * BLOCK
+    offs = block_start_index + tl.arange(0, BLOCK)
+    mask = offs < input_size
+
+    token_ids = tl.load(prompt_ids_ptr + offs, mask=mask, other=0)
+    tl.atomic_add(token_id_to_couter_ptr + token_ids, 1, mask=(token_ids < vocab_size) & mask)
+    return
+
+
+@torch.no_grad()
+def token_id_counter(prompt_ids: torch.Tensor, out_token_id_counter: torch.Tensor, vocab_size: int):
+    input_size = prompt_ids.shape[0]
+    BLOCK = 256
+
+    _gen_sampling_params_kernel[(triton.cdiv(input_size, BLOCK),)](
+        prompt_ids_ptr=prompt_ids,
+        token_id_counter_ptr=out_token_id_counter,
+        input_size=input_size,
+        vocab_size=vocab_size,
+        BLOCK=BLOCK,
+        num_warps=1,
+    )
+    return
