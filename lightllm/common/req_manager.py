@@ -167,7 +167,7 @@ class ReqSamplingParamsManager:
         shm_param = req.sampling_param.shm_param
         return
 
-    def update_req_idxs_token_counter(
+    def update_reqs_token_counter(
         self, req_objs: List, next_token_ids: List[int], accept_mark: Optional[List[List[bool]]] = None
     ):
         from lightllm.server.router.model_infer.infer_batch import InferReq
