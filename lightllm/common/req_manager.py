@@ -220,9 +220,6 @@ class ReqSamplingParamsManager:
         p_seq_len = self._alloc_gpu_buffer_tensor_and_init(p_seq_len, self._p_seq_len_buffer, batch_index=batch_index)
         return p_token_ids, p_token_counts, p_seq_len
 
-    def get_gpu_out_token_counter_sampling_params(self, req_objs: List, batch_idnex: int = 0):
-        return self.req_to_out_token_id_counter
-
     def _alloc_gpu_buffer_tensor_and_init(self, in_data, buffer_list: List[torch.Tensor], batch_index: int = 0):
         size = len(in_data)
 

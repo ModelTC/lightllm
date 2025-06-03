@@ -1,6 +1,7 @@
 import torch
 from typing import List
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
+from lightllm.common.basemodel.triton_kernel.apply_penalty_gpu_cache import apply_penalty_gpu_cache
 from dataclasses import dataclass
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.utils.envs_utils import get_env_start_args
@@ -51,7 +52,13 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
             eos_ids=eos_ids,
         )
     else:
-        pass
+        apply_penalty_gpu_cache(
+            Logits=logits,
+            b_req_idx=b_req_idx,
+            b_length_penalty_param=b_length_penalty_param,
+            b_mask_eos_reqs=b_mask_eos_reqs,
+            eos_ids=eos_ids,
+        )
 
     logits.div_(b_temperatures.view((-1, 1)))
     probs = torch.softmax(logits, dim=-1)
