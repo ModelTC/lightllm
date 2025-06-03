@@ -2,6 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import numpy as np
+from lightllm.common.req_manager import ReqSamplingParamsManager
 
 
 @triton.jit
@@ -75,6 +76,7 @@ def apply_penalty(
     p_token_counts: torch.Tensor,
     p_cumsum_seq_len: torch.Tensor,
     eos_ids: torch.Tensor,
+    sampling_params_manager: ReqSamplingParamsManager,
 ):
     from lightllm.server.router.model_infer.infer_batch import g_infer_context
 

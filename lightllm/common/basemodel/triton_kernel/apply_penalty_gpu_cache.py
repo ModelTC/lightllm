@@ -1,9 +1,9 @@
 import torch
-
 import triton
 import triton.language as tl
 import torch.nn.functional as F
 import numpy as np
+from lightllm.common.req_manager import ReqSamplingParamsManager
 
 
 @triton.jit
@@ -88,11 +88,8 @@ def apply_penalty_gpu_cache(
     b_length_penalty_param: torch.Tensor,
     b_mask_eos_reqs: torch.Tensor,
     eos_ids: torch.Tensor,
+    sampling_params_manager: ReqSamplingParamsManager,
 ):
-    from lightllm.server.router.model_infer.infer_batch import g_infer_context
-
-    sampling_params_manager = g_infer_context.req_manager.req_sampling_params_manager
-
     assert Logits.is_contiguous()
     BLOCK_P = 2048
     num_warps = 8

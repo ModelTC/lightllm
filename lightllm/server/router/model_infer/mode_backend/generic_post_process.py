@@ -21,7 +21,7 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
 
     logits = logits.contiguous()
 
-    req_sampling_manager = g_infer_context.req_manager.req_sampling_params_manager
+    sampling_params_manager = g_infer_context.req_manager.req_sampling_params_manager
 
     # 这里需要区分历史token的频率惩罚类的系数的生效模式，目前支持两种在线统计方式:
     # 一种是基于 cpu 的，每个 req 对象利用其上绑定的dict对象out_token_id_count，每生成一个token就进行相应
@@ -36,8 +36,8 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
     # 所以需要根据具体的显卡，使用场景，来判断使用那种方式，默认情况下 enable_gpu_buffer_for_out_token_id_counter
     # = False， 当设置环境变量 LIGHTLLM_ENABLE_GPU_BUFFER_FOR_OUT_TOKEN_ID_COUNTER=True时，会切换到使用gpu buffer
     # 的方式。
-    if not req_sampling_manager.enable_gpu_buffer_for_out_token_id_counter:
-        p_token_ids, p_token_counts, p_seq_len = req_sampling_manager.gen_cpu_out_token_counter_sampling_params(
+    if not sampling_params_manager.enable_gpu_buffer_for_out_token_id_counter:
+        p_token_ids, p_token_counts, p_seq_len = sampling_params_manager.gen_cpu_out_token_counter_sampling_params(
             req_objs=reqs
         )
 
@@ -50,6 +50,7 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
             p_token_counts=p_token_counts,
             p_cumsum_seq_len=p_seq_len,
             eos_ids=eos_ids,
+            sampling_params_manager=sampling_params_manager,
         )
     else:
         apply_penalty_gpu_cache(
@@ -58,6 +59,7 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
             b_length_penalty_param=b_length_penalty_param,
             b_mask_eos_reqs=b_mask_eos_reqs,
             eos_ids=eos_ids,
+            sampling_params_manager=sampling_params_manager,
         )
 
     logits.div_(b_temperatures.view((-1, 1)))
