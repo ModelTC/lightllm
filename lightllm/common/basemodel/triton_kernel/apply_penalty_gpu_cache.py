@@ -57,21 +57,27 @@ def _eos_penalty(
     b_length_penalty_param,
     eos_ids,
     b_mask_eos_reqs,
+    batch_size,
+    BLOCK: tl.constexpr,
     EOS_ID_NUM: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
-    cur_req_idx = tl.load(b_req_idx + cur_batch)
-    exponential_decay_length_penalty = tl.load(req_to_exponential_decay_length_penalty + cur_req_idx)
-    length_penalty = tl.load(b_length_penalty_param + cur_batch)
+    block_index = tl.program_id(0)
+    offs = block_index * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < batch_size
+    req_idxes = tl.load(b_req_idx + offs, mask=mask, other=0)
+    exponential_decay_length_penalty = tl.load(
+        req_to_exponential_decay_length_penalty + req_idxes, mask=mask, other=1.0
+    )
+    length_penalty = tl.load(b_length_penalty_param + offs, mask=mask, other=0)
     penalty_scale = tl.exp2(tl.log2(exponential_decay_length_penalty) * length_penalty) - 1
-    mask_eos = tl.load(b_mask_eos_reqs + cur_batch)
+    mask_eos = tl.load(b_mask_eos_reqs + offs, mask=mask, other=True)
     for eos_index in range(EOS_ID_NUM):
         eos_id = tl.load(eos_ids + eos_index)
-        cur_eos_logit_ptr = Logits + cur_batch * stride_logit_b + eos_id
-        cur_eos_logit = tl.load(cur_eos_logit_ptr)
+        cur_eos_logit_ptr = Logits + offs * stride_logit_b + eos_id
+        cur_eos_logit = tl.load(cur_eos_logit_ptr, mask=mask, other=0.0)
         cur_eos_logit = cur_eos_logit + tl.abs(cur_eos_logit) * penalty_scale
         cur_eos_logit = tl.where(mask_eos, -10000000.0, cur_eos_logit)
-        tl.store(cur_eos_logit_ptr, cur_eos_logit)
+        tl.store(cur_eos_logit_ptr, cur_eos_logit, mask=mask)
     return
 
 
@@ -108,7 +114,9 @@ def apply_penalty_gpu_cache(
         num_warps=num_warps,
     )
 
-    _eos_penalty[(Logits.shape[0],)](
+    BLOCK = (128,)
+    grid = (triton.cdiv(Logits.shape[0], BLOCK),)
+    _eos_penalty[grid](
         Logits=Logits,
         stride_logit_b=Logits.stride(0),
         stride_logit_s=Logits.stride(1),
@@ -117,7 +125,9 @@ def apply_penalty_gpu_cache(
         b_length_penalty_param=b_length_penalty_param,
         eos_ids=eos_ids,
         b_mask_eos_reqs=b_mask_eos_reqs,
-        num_warps=1,
+        batch_size=Logits.shape[0],
+        BLOCK=BLOCK,
         EOS_ID_NUM=eos_ids.shape[0],
+        num_warps=1,
     )
     return
