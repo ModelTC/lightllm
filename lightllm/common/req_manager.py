@@ -3,7 +3,7 @@ import collections
 from lightllm.utils.log_utils import init_logger
 from .mem_manager import MemoryManager
 from typing import List, Optional
-from lightllm.common.basemodel.triton_kernel.gen_sampling_params import gen_sampling_params, token_id_counter
+from lightllm.common.basemodel.triton_kernel.gen_sampling_params import token_id_counter
 from lightllm.common.basemodel.triton_kernel.gen_sampling_params import update_req_to_token_id_counter
 from lightllm.utils.envs_utils import enable_env_vars, get_env_start_args
 from lightllm.utils.config_utils import get_vocab_size
@@ -96,7 +96,7 @@ class ReqManager:
 class ReqSamplingParamsManager:
     """
     ReqSamplingParamsManager 将输出采样参数中，确定比较固定的部分，纳入到 gpu buffer中进行管理，这样可以更快捷的
-    利用cuda kernel 将采样参数提取为以batch 为单位的采样参数，对于哪些比较动态，或者存在特殊处理的后处理参数，
+    利用 triton kernel 进行处理，对于哪些比较动态(部分处理模式下会动态的修改某些后处理参数)，或者存在特殊处理的后处理参数，
     则保留从 InferSamplingParams 中进行动态读取和动态组batch， 具体使用可以参考
     lightllm/server/router/model_infer/mode_backend/generic_post_process.py 文件中的使用方式。
     """
@@ -110,7 +110,6 @@ class ReqSamplingParamsManager:
         self.req_to_presence_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
         self.req_to_frequency_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
         self.req_to_repetition_penalty = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
-        self.req_to_temperature = torch.zeros(max_request_num + 1, dtype=torch.float32, device="cuda")
         self.req_to_exponential_decay_length_penalty = torch.zeros(
             max_request_num + 1, dtype=torch.float32, device="cuda"
         )
@@ -142,7 +141,6 @@ class ReqSamplingParamsManager:
         self.req_to_presence_penalty[req.req_idx].fill_(shm_param.presence_penalty)
         self.req_to_frequency_penalty[req.req_idx].fill_(shm_param.frequency_penalty)
         self.req_to_repetition_penalty[req.req_idx].fill_(shm_param.repetition_penalty)
-        self.req_to_temperature[req.req_idx].fill_(shm_param.temperature)
         exponential_decay_length_penalty = shm_param.exponential_decay_length_penalty.to_tuple()
         self.req_to_exponential_decay_length_penalty[req.req_id].fill_(exponential_decay_length_penalty[1])
         # 提前标记当前请求是否需要统计输出token的计数，因为这个统计可能会导致一些特定场景下后处理效率的下降
@@ -167,23 +165,7 @@ class ReqSamplingParamsManager:
                 )
 
         shm_param = req.sampling_param.shm_param
-
-    def get_sampling_batch_params(self, req_idx_list: List[int]):
-        b_req_idx = torch.tensor(req_idx_list, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
-        (
-            b_presence_penalty,
-            b_frequency_penalty,
-            b_repetition_penalty,
-            b_temperature,
-            b_exponential_decay_length_penalty,
-        ) = gen_sampling_params(b_req_idx=b_req_idx, req_sampling_params_manager=self)
-        return (
-            b_presence_penalty,
-            b_frequency_penalty,
-            b_repetition_penalty,
-            b_temperature,
-            b_exponential_decay_length_penalty,
-        )
+        return
 
     def update_req_idxs_token_counter(
         self, req_objs: List, next_token_ids: List[int], accept_mark: Optional[List[List[bool]]] = None
@@ -238,6 +220,9 @@ class ReqSamplingParamsManager:
         p_seq_len = self._alloc_gpu_buffer_tensor_and_init(p_seq_len, self._p_seq_len_buffer, batch_index=batch_index)
         return p_token_ids, p_token_counts, p_seq_len
 
+    def get_gpu_out_token_counter_sampling_params(self, req_objs: List, batch_idnex: int = 0):
+        return self.req_to_out_token_id_counter
+
     def _alloc_gpu_buffer_tensor_and_init(self, in_data, buffer_list: List[torch.Tensor], batch_index: int = 0):
         size = len(in_data)
 
@@ -247,6 +232,3 @@ class ReqSamplingParamsManager:
         current_buffer = buffer_list[batch_index]
         current_buffer.numpy()[0:size] = in_data
         return current_buffer[0:size].cuda(non_blocking=True)
-
-    def get_gpu_out_token_counter_sampling_params(self, req_objs: List, batch_idnex: int = 0):
-        return self.req_to_out_token_id_counter
