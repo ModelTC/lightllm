@@ -19,8 +19,6 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
 
     eos_ids = torch.tensor(eos_id, dtype=torch.int32, device="cpu", pin_memory=True).cuda(non_blocking=True)
 
-    logits = logits.contiguous()
-
     sampling_params_manager = g_infer_context.req_manager.req_sampling_params_manager
 
     # 这里需要区分历史token的频率惩罚类的系数的生效模式，目前支持两种在线统计方式:
@@ -37,6 +35,7 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
     # = False， 当设置环境变量 LIGHTLLM_ENABLE_GPU_BUFFER_FOR_OUT_TOKEN_ID_COUNTER=True时，会切换到使用gpu buffer
     # 的方式。
     if not sampling_params_manager.enable_gpu_buffer_for_out_token_id_counter:
+        logits = logits.contiguous()
         p_token_ids, p_token_counts, p_seq_len = sampling_params_manager.gen_cpu_out_token_counter_sampling_params(
             req_objs=reqs
         )
@@ -53,6 +52,7 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
             sampling_params_manager=sampling_params_manager,
         )
     else:
+        logits = logits.contiguous()
         apply_penalty_gpu_cache(
             Logits=logits,
             b_req_idx=b_req_idx,
