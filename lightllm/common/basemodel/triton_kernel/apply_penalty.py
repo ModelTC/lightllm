@@ -78,10 +78,6 @@ def apply_penalty(
     eos_ids: torch.Tensor,
     sampling_params_manager: ReqSamplingParamsManager,
 ):
-    from lightllm.server.router.model_infer.infer_batch import g_infer_context
-
-    sampling_params_manager = g_infer_context.req_manager.req_sampling_params_manager
-
     assert Logits.is_contiguous()
     BLOCK_P = 1024
     num_warps = 8
