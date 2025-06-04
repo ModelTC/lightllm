@@ -96,7 +96,7 @@ class ReqManager:
 class ReqSamplingParamsManager:
     """
     ReqSamplingParamsManager 将输出采样参数中，确定比较固定的部分，纳入到 gpu buffer中进行管理，这样可以更快捷的
-    利用 triton kernel 进行处理，对于哪些比较动态(部分处理模式下会动态的修改某些后处理参数)，或者存在特殊处理的后处理参数，
+    利用 triton kernel 进行处理，对于那些比较动态(部分处理模式下会动态的修改某些后处理参数)，或者存在特殊处理的后处理参数，
     则保留从 InferSamplingParams 中进行动态读取和动态组batch， 具体使用可以参考
     lightllm/server/router/model_infer/mode_backend/generic_post_process.py 文件中的使用方式。
     """

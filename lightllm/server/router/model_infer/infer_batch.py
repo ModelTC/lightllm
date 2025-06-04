@@ -267,19 +267,6 @@ class InferReq:
             self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)
 
             g_infer_context.req_manager.req_sampling_params_manager.init_req_sampling_params(self)
-            if self.sampling_param.shm_param.input_penalty:
-                self.out_token_id_count = collections.Counter(self.shm_req.get_prompt_ids())
-            else:
-                self.out_token_id_count = collections.defaultdict(int)
-
-            shm_param = self.sampling_param.shm_param
-            # 提前标记当前请求是否需要统计输出token的计数，因为这个统计可能会导致一些特定场景下后处理效率的下降
-            # 所以提前标记不需要进行后处理统计的场景。
-            self.need_out_token_id_statistics = not (
-                shm_param.presence_penalty == 0.0
-                and shm_param.frequency_penalty == 0.0
-                and shm_param.repetition_penalty == 1.0
-            )
 
             self.stop_sequences = self.sampling_param.shm_param.stop_sequences.to_list()
             # token healing mode 才被使用的管理对象
