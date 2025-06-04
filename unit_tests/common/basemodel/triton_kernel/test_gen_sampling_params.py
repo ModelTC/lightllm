@@ -63,10 +63,10 @@ def test_gen_sampling_params():
 
 
 def test_update_req_to_token_id_counter():
-    req_to_req_idx = torch.tensor([0, 1, 3, 2], dtype=torch.int32, device="cuda")
+    b_req_idx = torch.tensor([0, 1, 3, 2], dtype=torch.int32, device="cuda")
     next_token_ids = torch.tensor([0, 1, 1, 0], dtype=torch.int32, device="cuda")
     req_to_out_token_id_counter = torch.zeros((4, 4), dtype=torch.int32, device="cuda")
-    update_req_to_token_id_counter(req_to_req_idx, next_token_ids, req_to_out_token_id_counter)
+    update_req_to_token_id_counter(b_req_idx, next_token_ids, req_to_out_token_id_counter)
     expected_output = torch.tensor(
         [
             [1, 0, 0, 0],

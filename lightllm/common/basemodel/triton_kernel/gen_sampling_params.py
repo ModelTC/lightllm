@@ -116,7 +116,7 @@ def token_id_counter(prompt_ids: torch.Tensor, out_token_id_counter: torch.Tenso
 
 @triton.jit
 def _token_id_counter_update_kernel(
-    req_to_req_idx_ptr,
+    b_req_idx_ptr,
     req_to_out_token_id_counter_ptr,
     counter_stride_m,
     counter_stride_n,
@@ -129,7 +129,7 @@ def _token_id_counter_update_kernel(
     offs = block_start_index + tl.arange(0, BLOCK)
     mask = offs < batch_size
 
-    req_idx = tl.load(req_to_req_idx_ptr + offs, mask=mask, other=0)
+    req_idx = tl.load(b_req_idx_ptr + offs, mask=mask, other=0)
     token_ids = tl.load(next_token_ids_ptr + offs, mask=mask, other=0)
 
     tl.atomic_add(
@@ -140,13 +140,13 @@ def _token_id_counter_update_kernel(
 
 @torch.no_grad()
 def update_req_to_token_id_counter(
-    req_to_req_idx: torch.Tensor, next_token_ids: torch.Tensor, req_to_out_token_id_counter: torch.Tensor
+    b_req_idx: torch.Tensor, next_token_ids: torch.Tensor, req_to_out_token_id_counter: torch.Tensor
 ):
-    batch_size = req_to_req_idx.shape[0]
+    batch_size = b_req_idx.shape[0]
     BLOCK = 256
 
     _token_id_counter_update_kernel[(triton.cdiv(batch_size, BLOCK),)](
-        req_to_req_idx_ptr=req_to_req_idx,
+        b_req_idx_ptr=b_req_idx,
         req_to_out_token_id_counter_ptr=req_to_out_token_id_counter,
         counter_stride_m=req_to_out_token_id_counter.stride(0),
         counter_stride_n=req_to_out_token_id_counter.stride(1),
