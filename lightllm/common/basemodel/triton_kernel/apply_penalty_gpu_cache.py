@@ -111,7 +111,7 @@ def apply_penalty_gpu_cache(
         num_warps=num_warps,
     )
 
-    BLOCK = (128,)
+    BLOCK = 128
     grid = (triton.cdiv(Logits.shape[0], BLOCK),)
     _eos_penalty[grid](
         Logits=Logits,
