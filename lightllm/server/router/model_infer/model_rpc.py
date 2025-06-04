@@ -21,6 +21,10 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPForDecodeNode,
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
+    PDNIXLBackendForPrefillNode,
+    PDNIXLBackendForDecodeNode,
+    PDNIXLDPBackendForPrefillNode,
+    PDNIXLDPBackendForDecodeNode,
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -42,12 +46,14 @@ class ModelRpcServer:
         rpc_event: multiprocessing.Event,
         rpc_finished_event: multiprocessing.Event,
         info_queue: mp.Queue,
+        result_queue: mp.Queue,
         mem_queue: mp.Queue,
     ):
         super().__init__()
         self.args: StartArgs = args
         self.node_world_size = node_world_size
         self.info_queue = info_queue
+        self.result_queue = result_queue
         self.mem_queue = mem_queue
         self.rpc_event = rpc_event
         self.rpc_finished_event = rpc_finished_event
@@ -122,22 +128,40 @@ class ModelRpcServer:
             ), "only one constraint mode can be true"
             is_prefill_node = kvargs.get("args", None).run_mode == "prefill"
             is_decode_node = kvargs.get("args", None).run_mode == "decode"
+            is_nixl_prefill_node = kvargs.get("args", None).run_mode == "nixl_prefill"
+            is_nixl_decode_node = kvargs.get("args", None).run_mode == "nixl_decode"
         else:
             is_outlines_constraint_mode = False
             is_xgrammar_constraint_mode = False
             is_prefill_node = False
             is_decode_node = False
+            is_nixl_prefill_node = False
+            is_nixl_decode_node = False
 
         if is_prefill_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
             else:
                 self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
+
+        elif is_nixl_prefill_node:
+            if kvargs.get("args", None).dp > 1:
+                self.backend = PDNIXLDPBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
+            else:
+                self.backend = PDNIXLBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
+
         elif is_decode_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
             else:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+
+        elif is_nixl_decode_node:
+            if kvargs.get("args", None).dp > 1:
+                self.backend = PDNIXLDPBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+            else:
+                self.backend = PDNIXLBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+
         elif kvargs.get("dp_size", 1) > 1:
             self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
@@ -291,6 +315,7 @@ def _init_env(
     rank_in_node,
     node_world_size,
     info_queue,
+    result_queue,
     mem_queue,
     router_lock,
     rpc_event: mp.Event,
@@ -309,7 +334,7 @@ def _init_env(
     g_router_lock.obj = router_lock
 
     model_rpc_server = ModelRpcServer(
-        args, rank, rank_in_node, node_world_size, rpc_event, rpc_finished_event, info_queue, mem_queue
+        args, rank, rank_in_node, node_world_size, rpc_event, rpc_finished_event, info_queue, result_queue, mem_queue
     )
     success_event.set()
 
@@ -325,6 +350,7 @@ async def start_model_process(
     rpc_event,
     rpc_finished_event,
     info_queue: mp.Queue,
+    result_queue: mp.Queue,
     mem_queue: mp.Queue,
     router_lock: mp.Queue,
 ):
@@ -340,6 +366,7 @@ async def start_model_process(
             rpc_event,
             rpc_finished_event,
             info_queue,
+            result_queue,
             mem_queue,
         )
 
@@ -352,6 +379,7 @@ async def start_model_process(
             rank_in_node,
             node_world_size,
             info_queue,
+            result_queue,
             mem_queue,
             router_lock,
             rpc_event,
