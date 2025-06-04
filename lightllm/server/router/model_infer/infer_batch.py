@@ -258,6 +258,7 @@ class InferReq:
         self.initialized = False
         self.paused = False
         self.need_out_token_id_statistics = True
+        self.out_token_id_count: Dict[int, int] = None
 
     def init_all(self):
         if self.initialized is False:

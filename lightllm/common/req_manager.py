@@ -142,7 +142,7 @@ class ReqSamplingParamsManager:
         self.req_to_frequency_penalty[req.req_idx].fill_(shm_param.frequency_penalty)
         self.req_to_repetition_penalty[req.req_idx].fill_(shm_param.repetition_penalty)
         exponential_decay_length_penalty = shm_param.exponential_decay_length_penalty.to_tuple()
-        self.req_to_exponential_decay_length_penalty[req.req_id].fill_(exponential_decay_length_penalty[1])
+        self.req_to_exponential_decay_length_penalty[req.req_idx].fill_(exponential_decay_length_penalty[1])
         # 提前标记当前请求是否需要统计输出token的计数，因为这个统计可能会导致一些特定场景下后处理效率的下降
         # 所以提前标记不需要进行后处理统计的场景。
         req.need_out_token_id_statistics = not (
@@ -153,9 +153,9 @@ class ReqSamplingParamsManager:
 
         if not self.enable_gpu_buffer_for_out_token_id_counter:
             if req.sampling_param.shm_param.input_penalty and req.need_out_token_id_statistics:
-                self.out_token_id_count = collections.Counter(req.shm_req.get_prompt_ids())
+                req.out_token_id_count = collections.Counter(req.shm_req.get_prompt_ids())
             else:
-                self.out_token_id_count = collections.defaultdict(int)
+                req.out_token_id_count = collections.defaultdict(int)
         else:
             self.req_to_out_token_id_counter[req.req_idx].fill_(0)
             if req.sampling_param.shm_param.input_penalty and req.need_out_token_id_statistics:
@@ -164,7 +164,6 @@ class ReqSamplingParamsManager:
                     prompt_ids=prompt_ids, out_token_id_counter=self.req_to_out_token_id_counter[req.req_idx]
                 )
 
-        shm_param = req.sampling_param.shm_param
         return
 
     def update_reqs_token_counter(

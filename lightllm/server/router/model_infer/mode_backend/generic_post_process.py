@@ -2,7 +2,6 @@ import torch
 from typing import List
 from lightllm.common.basemodel.triton_kernel.apply_penalty import apply_penalty
 from lightllm.common.basemodel.triton_kernel.apply_penalty_gpu_cache import apply_penalty_gpu_cache
-from dataclasses import dataclass
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.utils.envs_utils import get_env_start_args
 
@@ -35,12 +34,13 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
     # = False， 当设置环境变量 LIGHTLLM_ENABLE_GPU_BUFFER_FOR_OUT_TOKEN_ID_COUNTER=True时，会切换到使用gpu buffer
     # 的方式。
     if not sampling_params_manager.enable_gpu_buffer_for_out_token_id_counter:
-        logits = logits.contiguous()
         (
             p_token_ids,
             p_token_counts,
             p_cumsum_seq_len,
         ) = sampling_params_manager.gen_cpu_out_token_counter_sampling_params(req_objs=reqs)
+
+        logits = logits.contiguous()
 
         apply_penalty(
             Logits=logits,
