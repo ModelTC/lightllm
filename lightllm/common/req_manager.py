@@ -178,14 +178,14 @@ class ReqSamplingParamsManager:
                 if req_obj.need_out_token_id_statistics:
                     req_obj.out_token_id_count[next_token_id] += 1
         else:
-            req_to_req_idx = torch.tensor(
+            b_req_idx = torch.tensor(
                 [req.req_idx for req in req_objs], dtype=torch.int32, device="cpu", pin_memory=True
             ).cuda(non_blocking=True)
             next_token_ids = (
                 torch.tensor(next_token_ids, dtype=torch.int32, device="cpu").pin_memory().cuda(non_blocking=True)
             )
             update_req_to_token_id_counter(
-                req_to_req_idx=req_to_req_idx,
+                b_req_idx=b_req_idx,
                 next_token_ids=next_token_ids,
                 req_to_out_token_id_counter=self.req_to_out_token_id_counter,
             )
