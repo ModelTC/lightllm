@@ -123,7 +123,7 @@ def _get_post_sample_tensors(reqs: List[InferReq]):
         top_ks.append(shm_param.top_k)
         req_idxes.append(req_obj.req_idx)
 
-    req_idxes_cpu = torch.tensor(req_idxes, dtype=torch.float, device="cpu", pin_memory=True)
+    req_idxes_cpu = torch.tensor(req_idxes, dtype=torch.int32, device="cpu", pin_memory=True)
     temperatures_cpu = torch.tensor(temperatures, dtype=torch.float, device="cpu", pin_memory=True)
     top_ps_cpu = torch.tensor(top_ps, dtype=torch.float, device="cpu", pin_memory=True)
     top_ks_cpu = torch.tensor(top_ks, dtype=torch.int32, device="cpu", pin_memory=True)
