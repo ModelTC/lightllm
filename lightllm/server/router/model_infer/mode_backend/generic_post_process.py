@@ -24,8 +24,8 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
     # 这里需要区分历史token的频率惩罚类的系数的生效模式，目前支持两种在线统计方式:
     # 一种是基于 cpu 的，每个 req 对象利用其上绑定的dict对象out_token_id_count，每生成一个token就进行相应
     # 的计数更新，当进行使用的时候, 对一个需要处理的req list, 会生成对应的3个 triton kernel 需要使用的惩罚系数
-    # 输入参数  p_token_ids, p_token_counts, p_seq_len，这种方式的特点是占用的显存少，在请求输出不长的时候，速度
-    # 快且没有代价，但是目前 RL 采样场景下，需要进行大量的长输出生成，这时候，cpu进行的处理操作会形成一些瓶颈，影响
+    # 输入参数  p_token_ids, p_token_counts, p_cumsum_seq_len，这种方式的特点是占用的显存少，在请求输出不长的时候，
+    # 速度快且没有代价，但是目前 RL 采样场景下，需要进行大量的长输出生成，这时候，cpu进行的处理操作会形成一些瓶颈，影响
     # 推理的速度。
     # 一种是基于 gpu buffer的，每个请求都会被分配一个 vocab_size 大小的 cuda tensor 用于出现过的token进行计数，
     # 然后在直接使用 triton kernel 在对应的logits上进行相应的惩罚操作，这种方法的特点是，处理速度快，但是需要预先
@@ -36,9 +36,11 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
     # 的方式。
     if not sampling_params_manager.enable_gpu_buffer_for_out_token_id_counter:
         logits = logits.contiguous()
-        p_token_ids, p_token_counts, p_seq_len = sampling_params_manager.gen_cpu_out_token_counter_sampling_params(
-            req_objs=reqs
-        )
+        (
+            p_token_ids,
+            p_token_counts,
+            p_cumsum_seq_len,
+        ) = sampling_params_manager.gen_cpu_out_token_counter_sampling_params(req_objs=reqs)
 
         apply_penalty(
             Logits=logits,
@@ -47,7 +49,7 @@ def sample(logits: torch.Tensor, reqs: List[InferReq], eos_id: List[int] = [2]):
             b_mask_eos_reqs=b_mask_eos_reqs,
             p_token_ids=p_token_ids,
             p_token_counts=p_token_counts,
-            p_cumsum_seq_len=p_seq_len,
+            p_cumsum_seq_len=p_cumsum_seq_len,
             eos_ids=eos_ids,
             sampling_params_manager=sampling_params_manager,
         )

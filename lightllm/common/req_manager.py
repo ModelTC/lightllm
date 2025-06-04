@@ -127,7 +127,7 @@ class ReqSamplingParamsManager:
         self._p_token_counts_buffer: List[torch.Tensor] = [
             torch.zeros((0,), dtype=torch.int32, device="cpu", pin_memory=True) for _ in range(2)
         ]
-        self._p_seq_len_buffer: List[torch.Tensor] = [
+        self._p_cumsum_seq_len_buffer: List[torch.Tensor] = [
             torch.zeros((0,), dtype=torch.int32, device="cpu", pin_memory=True) for _ in range(2)
         ]
 
@@ -200,7 +200,7 @@ class ReqSamplingParamsManager:
 
         p_token_ids: List[int] = []
         p_token_counts: List[int] = []
-        p_seq_len: List[int] = [
+        p_cumsum_seq_len: List[int] = [
             0,
         ]
         cum_sum_len = 0
@@ -209,7 +209,7 @@ class ReqSamplingParamsManager:
             p_token_ids.extend(list(id_to_count.keys()))
             p_token_counts.extend(list(id_to_count.values()))
             cum_sum_len += len(id_to_count)
-            p_seq_len.append(cum_sum_len)
+            p_cumsum_seq_len.append(cum_sum_len)
 
         p_token_ids = self._alloc_gpu_buffer_tensor_and_init(
             p_token_ids, self._p_token_ids_buffer, batch_index=batch_index
@@ -217,8 +217,10 @@ class ReqSamplingParamsManager:
         p_token_counts = self._alloc_gpu_buffer_tensor_and_init(
             p_token_counts, self._p_token_counts_buffer, batch_index=batch_index
         )
-        p_seq_len = self._alloc_gpu_buffer_tensor_and_init(p_seq_len, self._p_seq_len_buffer, batch_index=batch_index)
-        return p_token_ids, p_token_counts, p_seq_len
+        p_cumsum_seq_len = self._alloc_gpu_buffer_tensor_and_init(
+            p_cumsum_seq_len, self._p_cumsum_seq_len_buffer, batch_index=batch_index
+        )
+        return p_token_ids, p_token_counts, p_cumsum_seq_len
 
     def _alloc_gpu_buffer_tensor_and_init(self, in_data, buffer_list: List[torch.Tensor], batch_index: int = 0):
         size = len(in_data)
