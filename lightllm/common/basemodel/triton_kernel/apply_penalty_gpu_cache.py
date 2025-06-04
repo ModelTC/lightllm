@@ -13,7 +13,7 @@ def _fwd_kernel_apply_penalty_cache(
     stride_logit_s,
     b_req_idx,
     req_to_presence_penalty,
-    req_to_freqency_penalty,
+    req_to_frequency_penalty,
     req_to_repetition_penalty,
     req_to_out_token_id_counter,
     stride_counter_r,
@@ -24,7 +24,7 @@ def _fwd_kernel_apply_penalty_cache(
     cur_batch = tl.program_id(0)
     cur_req_idx = tl.load(b_req_idx + cur_batch)
     block_idx = tl.program_id(1)
-    cur_freqency = tl.load(req_to_freqency_penalty + cur_req_idx)
+    cur_freqency = tl.load(req_to_frequency_penalty + cur_req_idx)
     cur_presence = tl.load(req_to_presence_penalty + cur_req_idx)
     cur_repetition = tl.load(req_to_repetition_penalty + cur_req_idx)
 
@@ -101,7 +101,7 @@ def apply_penalty_gpu_cache(
         stride_logit_s=Logits.stride(1),
         b_req_idx=b_req_idx,
         req_to_presence_penalty=sampling_params_manager.req_to_presence_penalty,
-        req_to_freqency_penalty=sampling_params_manager.req_to_frequency_penalty,
+        req_to_frequency_penalty=sampling_params_manager.req_to_frequency_penalty,
         req_to_repetition_penalty=sampling_params_manager.req_to_repetition_penalty,
         req_to_out_token_id_counter=req_to_out_token_id_counter,
         stride_counter_r=req_to_out_token_id_counter.stride(0),
