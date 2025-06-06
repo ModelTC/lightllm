@@ -11,6 +11,15 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.utils.envs_utils import get_env_start_args
 
+from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+    prepare_prefill_inputs,
+    prepare_decode_inputs
+)
+from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
+    prepare_mtp_chunked_prefill_inputs,
+    prepare_draft_main_model_decode_inputs,
+)
+from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 
 class DPChunkedPrefillBackend(ModeBackend):
     def __init__(self) -> None:
@@ -71,15 +80,14 @@ class DPChunkedPrefillBackend(ModeBackend):
         return
 
     def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        from .pre_process import padded_prepare_prefill_inputs
-
-        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
-            prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
+        model_input, run_reqs = prepare_prefill_inputs(
+            prefill_reqs, is_chuncked_mode=True, is_multimodal=self.is_multimodal, pad_for_empty_batch=True
         )
-        logits = self.model.forward(**kwargs)
+        model_output: ModelOutput = self.model.forward(model_input)
+        
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
-            logits = logits[0 : len(run_reqs), :]
+            logits = model_output.logits[0 : len(run_reqs), :]
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
@@ -89,43 +97,31 @@ class DPChunkedPrefillBackend(ModeBackend):
         return
 
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        from .pre_process import padded_prepare_decode_inputs
-
-        kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
-            decode_reqs, max_decode_num, is_multimodal=self.is_multimodal
-        )
-        logits = self.model.forward(**kwargs)
+        model_input, run_reqs = prepare_decode_inputs(decode_reqs, pad_for_empty_batch=True)
+        model_output: ModelOutput = self.model.forward(model_input)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
 
         if len(run_reqs) != 0:
-            logits = logits[0 : len(run_reqs), :]
+            logits = model_output.logits[0 : len(run_reqs), :]
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
             self._post_handle(
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
-        logits = None
 
     def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
         from .pre_process import padded_overlap_prepare_decode_inputs
 
-        (
-            micro_batch,
-            run_reqs,
-            padded_req_num,
-            micro_batch1,
-            run_reqs1,
-            padded_req_num1,
-        ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
+        micro_input, run_reqs, micro_input1, run_reqs1 = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=self.is_multimodal)
+        micro_output, micro_output1 = self.model.microbatch_overlap_decode(micro_input, micro_input1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
-        all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
+        all_logits = torch.empty((req_num + req_num1, micro_output.logits.shape[1]), dtype=micro_output.logits.dtype, device=micro_output.logits.device)
 
-        all_logits[0:req_num, :].copy_(logits[0:req_num, :], non_blocking=True)
-        all_logits[req_num : (req_num + req_num1), :].copy_(logits1[0:req_num1, :], non_blocking=True)
+        all_logits[0:req_num, :].copy_(micro_output.logits[0:req_num, :], non_blocking=True)
+        all_logits[req_num : (req_num + req_num1), :].copy_(micro_output1.logits[0:req_num1, :], non_blocking=True)
 
         all_run_reqs = run_reqs + run_reqs1
         if all_run_reqs:
@@ -140,21 +136,14 @@ class DPChunkedPrefillBackend(ModeBackend):
     def overlap_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
         from .pre_process import padded_overlap_prepare_prefill_inputs
 
-        (
-            micro_batch,
-            run_reqs,
-            padded_req_num,
-            micro_batch1,
-            run_reqs1,
-            padded_req_num1,
-        ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_prefill(micro_batch, micro_batch1)
+        micro_input, run_reqs, micro_input1, run_reqs1 = padded_overlap_prepare_prefill_inputs(prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal)
+        micro_output, micro_output1 = self.model.microbatch_overlap_prefill(micro_input, micro_input1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
-        all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
+        all_logits = torch.empty((req_num + req_num1, micro_output.logits.shape[1]), dtype=micro_output.logits.dtype, device=micro_output.logits.device)
 
-        all_logits[0:req_num, :].copy_(logits[0:req_num, :], non_blocking=True)
-        all_logits[req_num : (req_num + req_num1), :].copy_(logits1[0:req_num1, :], non_blocking=True)
+        all_logits[0:req_num, :].copy_(micro_output.logits[0:req_num, :], non_blocking=True)
+        all_logits[req_num : (req_num + req_num1), :].copy_(micro_output1.logits[0:req_num1, :], non_blocking=True)
 
         all_run_reqs = run_reqs + run_reqs1
         if all_run_reqs:

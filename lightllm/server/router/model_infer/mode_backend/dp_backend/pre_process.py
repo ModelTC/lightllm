@@ -8,6 +8,10 @@ from lightllm.utils.infer_utils import calculate_time
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch, PrefillMicroBatch
+from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+    prepare_prefill_inputs,
+    prepare_decode_inputs
+)
 
 
 def padded_prepare_prefill_inputs(req_objs: List[InferReq], max_prefill_num: int, is_multimodal=False):
@@ -153,14 +157,11 @@ def padded_overlap_prepare_decode_inputs(req_objs: List[InferReq], max_decode_nu
     assert max_decode_num != 0
     micro_batch_size = triton.cdiv(max_decode_num, 2)
     micro_batch1_req_num = triton.cdiv(len(req_objs), 2)
-    micro_batch, run_reqs, padded_req_num = _padded_prepare_decode_micro_batch(
-        req_objs[0:micro_batch1_req_num], micro_batch_size, is_multimodal=is_multimodal
-    )
-    micro_batch1, run_reqs1, padded_req_num1 = _padded_prepare_decode_micro_batch(
-        req_objs[micro_batch1_req_num:], micro_batch_size, is_multimodal=is_multimodal
-    )
 
-    return micro_batch, run_reqs, padded_req_num, micro_batch1, run_reqs1, padded_req_num1
+    micro_input, run_reqs = prepare_decode_inputs(req_objs[0:micro_batch1_req_num], is_multimodal=is_multimodal, pad_to_tgt_batch_size=micro_batch_size)
+    micro_input1, run_reqs1 = prepare_decode_inputs(req_objs[micro_batch1_req_num:], is_multimodal=is_multimodal, pad_to_tgt_batch_size=micro_batch_size)
+
+    return micro_input, run_reqs, micro_input1, run_reqs1
 
 
 def _padded_prepare_decode_micro_batch(req_objs: List[InferReq], micro_batch_size: int, is_multimodal=False):
@@ -228,14 +229,14 @@ def _padded_prepare_decode_micro_batch(req_objs: List[InferReq], micro_batch_siz
 def padded_overlap_prepare_prefill_inputs(req_objs: List[InferReq], max_prefill_num: int, is_multimodal=False):
     assert max_prefill_num != 0
     micro_batch1_req_num = triton.cdiv(len(req_objs), 2)
-    micro_batch, run_reqs, padded_req_num = _padded_prepare_prefill_micro_batch(
-        req_objs[0:micro_batch1_req_num], is_multimodal=is_multimodal
-    )
-    micro_batch1, run_reqs1, padded_req_num1 = _padded_prepare_prefill_micro_batch(
-        req_objs[micro_batch1_req_num:], is_multimodal=is_multimodal
-    )
-
-    return micro_batch, run_reqs, padded_req_num, micro_batch1, run_reqs1, padded_req_num1
+    
+    micro_input, run_reqs = prepare_prefill_inputs(
+        req_objs[0:micro_batch1_req_num], is_multimodal=is_multimodal, pad_for_empty_batch=True)
+    
+    micro_input1, run_reqs1 = prepare_prefill_inputs(
+        req_objs[micro_batch1_req_num:], is_multimodal=is_multimodal, pad_for_empty_batch=True)
+    
+    return micro_input, run_reqs, micro_input1, run_reqs1
 
 
 def _padded_prepare_prefill_micro_batch(req_objs: List[InferReq], is_multimodal=False):

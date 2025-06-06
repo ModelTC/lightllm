@@ -311,41 +311,14 @@ class TpPartBaseModel:
         return self._token_forward(model_input.input_ids, infer_state)
 
     @torch.no_grad()
-    def microbatch_overlap_decode(self, batch: DecodeMicroBatch, batch1: DecodeMicroBatch):
+    def microbatch_overlap_decode(self, batch: ModelInput, batch1: ModelInput):
         assert batch.batch_size == batch1.batch_size
         assert batch.mem_indexes.is_cuda
         assert batch1.mem_indexes.is_cuda
         input_ids, input_ids1 = batch.input_ids, batch1.input_ids
 
-        def create_inferstate(cur_batch: DecodeMicroBatch, batch_index):
-            infer_state = self.infer_state_class()
-            infer_state.is_prefill = False
-            infer_state.batch_size = cur_batch.batch_size
-            infer_state.total_token_num = cur_batch.total_token_num
-            infer_state.max_len_in_batch = cur_batch.max_len_in_batch
-            infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
-            assert cur_batch.b_req_idx.shape[0] == cur_batch.b_seq_len.shape[0]
-            infer_state.b_req_idx = cur_batch.b_req_idx
-            infer_state.b_seq_len = cur_batch.b_seq_len
-            infer_state.multimodal_params = None
-            infer_state.microbatch_index = batch_index
-
-            infer_state.mem_manager = self.mem_manager
-            infer_state.req_manager = self.req_manager
-
-            infer_state.mem_index = cur_batch.mem_indexes
-            infer_state.kv_buffer_shapedtype = (
-                (cur_batch.batch_size, self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                self.data_type,
-            )
-            infer_state.dist_group = dist_group_manager.get_group(batch_index)
-            copy_kv_index_to_req(
-                self.req_manager.req_to_token_indexs, cur_batch.b_req_idx, cur_batch.b_seq_len, infer_state.mem_index
-            )
-            return infer_state
-
-        infer_state = create_inferstate(batch, 0)
-        infer_state1 = create_inferstate(batch1, 1)
+        infer_state = self._create_inferstate(batch, 0)
+        infer_state1 = self._create_inferstate(batch1, 1)
 
         infer_state.init_some_extra_state(self, input_ids)
         infer_state1.init_some_extra_state(self, input_ids1)
@@ -376,53 +349,13 @@ class TpPartBaseModel:
         return predict_logits, predict_logits1
 
     @torch.no_grad()
-    def microbatch_overlap_prefill(self, batch: PrefillMicroBatch, batch1: PrefillMicroBatch):
+    def microbatch_overlap_prefill(self, batch: ModelInput, batch1: ModelInput):
         assert batch.mem_indexes.is_cuda
         assert batch1.mem_indexes.is_cuda
         input_ids, input_ids1 = batch.input_ids, batch1.input_ids
 
-        def create_inferstate(cur_batch: PrefillMicroBatch, batch_index):
-            infer_state = self.infer_state_class()
-            infer_state.is_prefill = True
-            infer_state.is_token_healing = self.is_token_healing
-            infer_state.return_all_prompt_logics = self.return_all_prompt_logics
-            infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
-            infer_state.batch_size = cur_batch.batch_size
-            infer_state.total_token_num = cur_batch.total_token_num
-            infer_state.max_len_in_batch = cur_batch.max_len_in_batch
-            assert cur_batch.b_req_idx.shape[0] == cur_batch.b_seq_len.shape[0]
-            infer_state.b_req_idx = cur_batch.b_req_idx
-            infer_state.b_seq_len = cur_batch.b_seq_len
-            if cur_batch.b_ready_cache_len is not None:
-                infer_state.b_ready_cache_len = cur_batch.b_ready_cache_len
-            else:
-                infer_state.b_ready_cache_len = torch.zeros_like(
-                    cur_batch.b_seq_len, dtype=cur_batch.b_seq_len.dtype, device=cur_batch.b_seq_len.device
-                )
-            infer_state.multimodal_params = cur_batch.multimodal_params
-            infer_state.microbatch_index = batch_index
-
-            infer_state.mem_manager = self.mem_manager
-            infer_state.req_manager = self.req_manager
-
-            infer_state.mem_index = cur_batch.mem_indexes
-            infer_state.kv_buffer_shapedtype = (
-                (cur_batch.input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
-                self.data_type,
-            )
-            infer_state.dist_group = dist_group_manager.get_group(batch_index)
-            init_req_to_token_indexes(
-                self.req_manager.req_to_token_indexs,
-                cur_batch.b_req_idx,
-                cur_batch.b_seq_len,
-                infer_state.b_ready_cache_len,
-                cur_batch.max_len_in_batch,
-                infer_state.mem_index,
-            )
-            return infer_state
-
-        infer_state = create_inferstate(batch, 0)
-        infer_state1 = create_inferstate(batch1, 1)
+        infer_state = self._create_inferstate(batch, 0)
+        infer_state1 = self._create_inferstate(batch1, 1)
 
         infer_state.init_some_extra_state(self, input_ids)
         infer_state1.init_some_extra_state(self, input_ids1)
@@ -508,9 +441,21 @@ class TpPartBaseModel:
         predict_logits, predict_logits1 = self.post_infer.overlap_tpsp_token_forward(
             input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
         )
-
+        
         g_cache_manager.cache_env_out()
-        return predict_logits, predict_logits1
+        is_return_hidden_states = self.spec_algo.is_mtp() or (
+            self.spec_algo.is_mtp_module() and not self.last_mtp_module
+        )
+        model_output = ModelOutput(
+            logits=predict_logits,
+            hidden_states=input_embs if is_return_hidden_states else None,
+        )
+        
+        model_output1 = ModelOutput(
+            logits=predict_logits1,
+            hidden_states=input_embs1 if is_return_hidden_states else None,
+        )
+        return model_output, model_output1
 
     @final
     def _overlap_tpsp_context_forward(
@@ -528,7 +473,21 @@ class TpPartBaseModel:
             input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
         )
         g_cache_manager.cache_env_out()
-        return predict_logits, predict_logits1
+        
+        is_return_hidden_states = self.spec_algo.is_mtp() or (
+            self.spec_algo.is_mtp_module() and not self.last_mtp_module
+        )
+        model_output = ModelOutput(
+            logits=predict_logits,
+            hidden_states=input_embs if is_return_hidden_states else None,
+        )
+        
+        model_output1 = ModelOutput(
+            logits=predict_logits1,
+            hidden_states=input_embs1 if is_return_hidden_states else None,
+        )
+        
+        return model_output, model_output1
 
     @final
     @torch.no_grad()
