@@ -41,8 +41,7 @@ def prepare_mtp_chunked_prefill_inputs(
 ):
     if len(req_objs) == 0:
         assert pad_for_empty_batch
-        model_input.hidden_states = last_hidden_states
-        return model_input, input_ids_cpu, prev_step_has_output
+        return model_input, np.array([1]), prev_step_has_output
     
     input_ids = []
     for i, req in enumerate(req_objs):

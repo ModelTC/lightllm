@@ -203,7 +203,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         all_logits[req_num : (req_num + req_num1), :].copy_(micro_output1.logits[0:req_num1, :], non_blocking=True)
 
         all_run_reqs = run_reqs + run_reqs1
-        mem_indexes_cpu = micro_mem_indexes_cpu + micro_mem_indexes_cpu1
+        mem_indexes_cpu = torch.cat((micro_mem_indexes_cpu, micro_mem_indexes_cpu1), dim=0)
         if all_run_reqs:
             next_token_ids_cuda, next_token_probs = sample(all_logits, all_run_reqs, self.eos_id)
             next_token_ids = next_token_ids_cuda.detach().cpu().numpy()
