@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Tuple
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
-from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
+from lightllm.common.basemodel.batch_objs import ModelInput
 
 IS_NONE = -1
 
@@ -66,7 +66,7 @@ def prepare_mtp_chunked_prefill_inputs(
     return model_input, input_ids_cpu, prev_step_has_output
 
 
-def prepare_draft_main_model_decode_inputs(req_objs: List[InferReq], draft_token_id_map, pad_for_empty_batch: bool = False):
+def prepare_draft_main_model_decode_inputs(req_objs: List[InferReq], draft_token_id_map, pad_for_empty_batch: bool = False, pad_to_tgt_batch_size : int = None):
     run_reqs = []
     nopad_total_token_num = 0
     nopad_max_len_in_batch = 0
@@ -95,12 +95,18 @@ def prepare_draft_main_model_decode_inputs(req_objs: List[InferReq], draft_token
             nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
 
     padded_req_num = 0
-    if pad_for_empty_batch and len(req_objs) == 0:
+    if pad_to_tgt_batch_size is not None:
+        assert pad_to_tgt_batch_size > 0
+        padded_req_num = max(0, pad_to_tgt_batch_size - len(run_reqs))
+    elif len(req_objs) == 0:
+        assert pad_for_empty_batch
         padded_req_num = 1
-        nopad_b_req_idx.append(g_infer_context.req_manager.HOLD_REQUEST_ID)
-        seq_len = 2
-        nopad_b_seq_len.append(seq_len)
+        
+    for _ in range(padded_req_num):
         input_ids.append(1)
+        seq_len = 2
+        nopad_b_req_idx.append(g_infer_context.req_manager.HOLD_REQUEST_ID)
+        nopad_b_seq_len.append(seq_len)
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
             

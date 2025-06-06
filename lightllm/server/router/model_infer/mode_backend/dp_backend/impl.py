@@ -15,10 +15,6 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
     prepare_prefill_inputs,
     prepare_decode_inputs
 )
-from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
-    prepare_mtp_chunked_prefill_inputs,
-    prepare_draft_main_model_decode_inputs,
-)
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 
 class DPChunkedPrefillBackend(ModeBackend):
@@ -33,16 +29,14 @@ class DPChunkedPrefillBackend(ModeBackend):
         pass
 
     def init_custom(self):
-        self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
         # 这个地方预先进行一次 prefill 推理，主要是为了填充后续fake请求的第一个token位置，因为填充的decode请求
         # 在推理的时候至少是两个token，1个是已经有kv的token，一个是等待计算kv的token，然后生成第三个token，这几个
         # token 实际引用的都是 g_infer_context.req_manager.mem_manager.HOLD_TOKEN_MEMINDEX，但是需要初始化排除
         # nan 值，避免后续构建的fake请求在计算的过程中出现计算错误。
-        from .pre_process import padded_prepare_prefill_inputs
-
-        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
-        self.model.forward(**kwargs)
-        assert len(run_reqs) == 0 and padded_req_num == 1
+        self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
+        model_input, run_reqs = prepare_prefill_inputs([], is_chuncked_mode=True, is_multimodal=self.is_multimodal, pad_for_empty_batch=True)
+        self.model.forward(model_input)
+        assert len(run_reqs) == 0
         return
 
     def prefill(self, reqs: List[Tuple]):
