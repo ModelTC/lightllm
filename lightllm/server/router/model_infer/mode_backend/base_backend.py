@@ -124,8 +124,7 @@ class ModeBackend:
                 get_unique_server_name(),
                 self.model.mem_manager.size,
                 self.rank_in_node,
-                mem_manager=self.model.mem_manager,
-                max_seq_length=kvargs.get("max_seq_length", 1024 * 5),
+                mem_manager=self.model.mem_manager
             )
             if self.use_dynamic_prompt_cache and self.use_hi_dynamic_prompt_cache
             else RadixCache(
@@ -361,23 +360,6 @@ class ModeBackend:
             if clear_list:
                 uninit_reqs.clear()
                 ok_finished_reqs.clear()
-
-        return
-
-    def _overlap_store_prefill_reqs(self, run_reqs: List[InferReq]):
-        if run_reqs:
-            with torch.cuda.stream(g_infer_context.get_overlap_stream()):
-                if self.use_hi_dynamic_prompt_cache and self.radix_cache is not None:
-                    for req in run_reqs:
-                        if req.cur_output_len > 1:
-                            continue
-                        key = torch.tensor(
-                            req.get_input_token_ids()[0 : req.cur_kv_len], dtype=torch.int64, device="cpu"
-                        )
-                        value = self.model.req_manager.req_to_token_indexs[req.req_idx][: req.cur_kv_len].detach().cpu()
-                        self.radix_cache.insert_disk(req.req_id, key, value)
-
-            torch.cuda.current_stream().wait_stream(g_infer_context.get_overlap_stream())
 
         return
 
