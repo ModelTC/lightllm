@@ -4,6 +4,7 @@ import numpy as np
 import rpyc
 import torch
 import socket
+import time
 from datetime import timedelta
 from typing import Dict, List, Tuple, Callable, Optional
 from transformers.configuration_utils import PretrainedConfig
@@ -243,6 +244,81 @@ class ModeBackend:
 
     # 一些可以复用的通用功能函数
     def _post_handle(
+        self,
+        run_reqs: List[InferReq],
+        next_token_ids,
+        next_token_logprobs,
+        is_chuncked_mode: bool,
+        do_filter_finished_reqs: bool,
+        extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
+    ) -> List[int]:
+        """
+        extra_post_req_handle_func 用于提供在一个请求确定输出的时候，给出额外的后处理操作，主要是用于
+        约束输出等模式，设置自己请求内部的状态机的状态，并添加额外的停止判定条件等。
+        """
+        if not hasattr(self, "_post_handle_impl"):
+            try:
+                finished_req_ids = self._fast_post_handle(
+                    run_reqs,
+                    next_token_ids,
+                    next_token_logprobs,
+                    is_chuncked_mode,
+                    do_filter_finished_reqs,
+                    extra_post_req_handle_func,
+                )
+                self._post_handle_impl = self._fast_post_handle
+                self.logger.info("use _fast_post_handle")
+                return finished_req_ids
+            except:
+                finished_req_ids = self._python_post_handle(
+                    run_reqs,
+                    next_token_ids,
+                    next_token_logprobs,
+                    is_chuncked_mode,
+                    do_filter_finished_reqs,
+                    extra_post_req_handle_func,
+                )
+                self.logger.info("use _python_post_handle")
+                self._post_handle_impl = self._python_post_handle
+                return finished_req_ids
+        else:
+            return self._post_handle_impl(
+                run_reqs,
+                next_token_ids,
+                next_token_logprobs,
+                is_chuncked_mode,
+                do_filter_finished_reqs,
+                extra_post_req_handle_func,
+            )
+
+    def _fast_post_handle(
+        self,
+        run_reqs: List[InferReq],
+        next_token_ids,
+        next_token_logprobs,
+        is_chuncked_mode: bool,
+        do_filter_finished_reqs: bool,
+        extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
+    ):
+        from . import cython_fast_impl
+
+        start = time.time()
+        finished_req_ids = cython_fast_impl.fast_post_handle(
+            self,
+            run_reqs,
+            next_token_ids,
+            next_token_logprobs,
+            is_chuncked_mode,
+            do_filter_finished_reqs,
+            extra_post_req_handle_func,
+        )
+        cost_time = time.time() - start
+        if self.is_master_in_dp and cost_time > 0.001:
+            self.logger.info(f"post handle cost time {cost_time} s, batch_size: {len(run_reqs)}")
+        return finished_req_ids
+
+    # 一些可以复用的通用功能函数
+    def _python_post_handle(
         self,
         run_reqs: List[InferReq],
         next_token_ids,
