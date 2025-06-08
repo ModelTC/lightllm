@@ -7,6 +7,7 @@ from .chunked_prefill.impl_for_token_healing import TokenHealingBackend
 from .chunked_prefill.impl_for_outlines_constraint_mode import OutlinesConstraintBackend
 from .chunked_prefill.impl_for_first_token_constraint_mode import FirstTokenConstraintBackend
 from .dp_backend.impl import DPChunkedPrefillBackend
+from .dp_backend.impl_mtp import DPChunkedPrefillWithMTPBackend
 from .continues_batch.pd_mode.prefill_node_impl.prefill_impl import ChunckedPrefillForPrefillNode
 from .continues_batch.pd_mode.decode_node_impl.decode_impl import ContinuesBatchBackendForDecodeNode
 from .chunked_prefill.impl_for_xgrammar_mode import XgrammarBackend
