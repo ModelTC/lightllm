@@ -36,7 +36,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
         model_input, run_reqs = prepare_prefill_inputs([], is_chuncked_mode=True, is_multimodal=self.is_multimodal, pad_for_empty_batch=True)
         self.model.forward(model_input)
-        assert len(run_reqs) == 0
+        assert len(run_reqs) == 0 and model_input.batch_size == 1
         return
 
     def prefill(self, reqs: List[Tuple]):
@@ -93,7 +93,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
             ]
         else:
             next_token_ids = np.array([1])
-            prev_step_has_output = []
+            prev_step_has_output = [True]
             
         # spec prefill: MTP
         last_input_ids_cpu = None
