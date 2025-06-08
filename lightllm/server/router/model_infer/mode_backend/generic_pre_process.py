@@ -38,7 +38,7 @@ def prepare_prefill_inputs(req_objs: List[InferReq], is_chuncked_mode: bool, is_
 
     padded_req_num = 0
     if len(req_objs) == 0:
-        assert pad_for_empty_batch
+        assert pad_for_empty_batch, "pad_for_empty_batch must be True when req_objs is empty"
         padded_req_num = 1
         input_ids.append(1)  
         nopad_b_req_idx.append(g_infer_context.req_manager.HOLD_REQUEST_ID)
@@ -46,6 +46,7 @@ def prepare_prefill_inputs(req_objs: List[InferReq], is_chuncked_mode: bool, is_
         b_ready_cache_len.append(0)
         nopad_total_token_num += 1
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, 1)
+        batch_multimodal_params.append(None)
 
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
     nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device="cuda")
@@ -143,7 +144,7 @@ def prepare_decode_inputs(req_objs: List[InferReq], pad_for_empty_batch: bool = 
         mem_indexes = torch.cat((mem_indexes, padding_mem_indexs), dim=0)
         
     model_input = ModelInput(
-        batch_size=len(run_reqs),
+        batch_size=nopad_b_seq_len.shape[0],
         total_token_num=nopad_total_token_num,
         max_len_in_batch=nopad_max_len_in_batch,
         input_ids=input_ids,

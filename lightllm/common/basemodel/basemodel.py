@@ -311,60 +311,82 @@ class TpPartBaseModel:
         return self._token_forward(model_input.input_ids, infer_state)
 
     @torch.no_grad()
-    def microbatch_overlap_decode(self, batch: ModelInput, batch1: ModelInput):
-        assert batch.batch_size == batch1.batch_size
-        assert batch.mem_indexes.is_cuda
-        assert batch1.mem_indexes.is_cuda
-        input_ids, input_ids1 = batch.input_ids, batch1.input_ids
+    def microbatch_overlap_decode(self, model_input0: ModelInput, model_input1: ModelInput):
+        assert model_input0.batch_size == model_input1.batch_size
+        assert model_input0.mem_indexes.is_cuda
+        assert model_input1.mem_indexes.is_cuda
+        input_ids0, input_ids1 = model_input0.input_ids, model_input1.input_ids
 
-        infer_state = self._create_inferstate(batch, 0)
-        infer_state1 = self._create_inferstate(batch1, 1)
+        infer_state0 = self._create_inferstate(model_input0, 0)
+        copy_kv_index_to_req(
+            self.req_manager.req_to_token_indexs, model_input0.b_req_idx, model_input0.b_seq_len, infer_state0.mem_index
+        )
+        infer_state0.init_some_extra_state(self, input_ids0)
 
-        infer_state.init_some_extra_state(self, input_ids)
+        infer_state1 = self._create_inferstate(model_input1, 1)
+        copy_kv_index_to_req(
+            self.req_manager.req_to_token_indexs, model_input1.b_req_idx, model_input1.b_seq_len, infer_state1.mem_index
+        )
         infer_state1.init_some_extra_state(self, input_ids1)
 
-        batch_size = batch.batch_size
-        max_len_in_batch = max(batch.max_len_in_batch, batch1.max_len_in_batch)
+        batch_size = model_input0.batch_size
+        max_len_in_batch = max(model_input0.max_len_in_batch, model_input1.max_len_in_batch)
 
         if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
             if self.graph.need_capture(batch_size):
-                infer_state.is_cuda_graph = True
+                infer_state0.is_cuda_graph = True
                 infer_state1.is_cuda_graph = True
 
-                predict_logits, predict_logits1 = self.graph.capture_decode(
+                predict_logits0, predict_logits1 = self.graph.capture_decode(
                     self._overlap_tpsp_token_forward,
-                    input_ids,
-                    infer_state,
+                    input_ids0,
+                    infer_state0,
                     input_ids1=input_ids1,
                     infer_state1=infer_state1,
                 )
             else:
-                predict_logits, predict_logits1 = self.graph.replay(
-                    input_ids, infer_state, input_ids1=input_ids1, infer_state1=infer_state1
+                predict_logits0, predict_logits1 = self.graph.replay(
+                    input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
                 )
         else:
-            predict_logits, predict_logits1 = self._overlap_tpsp_token_forward(
-                input_ids, infer_state, input_ids1=input_ids1, infer_state1=infer_state1
+            predict_logits0, predict_logits1 = self._overlap_tpsp_token_forward(
+                input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
             )
-        return predict_logits, predict_logits1
+        return predict_logits0, predict_logits1
 
     @torch.no_grad()
-    def microbatch_overlap_prefill(self, batch: ModelInput, batch1: ModelInput):
-        assert batch.mem_indexes.is_cuda
-        assert batch1.mem_indexes.is_cuda
-        input_ids, input_ids1 = batch.input_ids, batch1.input_ids
+    def microbatch_overlap_prefill(self, model_input0: ModelInput, model_input1: ModelInput):
+        assert model_input0.mem_indexes.is_cuda
+        assert model_input1.mem_indexes.is_cuda
+        input_ids0, input_ids1 = model_input0.input_ids, model_input1.input_ids
 
-        infer_state = self._create_inferstate(batch, 0)
-        infer_state1 = self._create_inferstate(batch1, 1)
-
-        infer_state.init_some_extra_state(self, input_ids)
+        infer_state0 = self._create_inferstate(model_input0, 0)
+        init_req_to_token_indexes(
+            self.req_manager.req_to_token_indexs,
+            model_input0.b_req_idx,
+            model_input0.b_seq_len,
+            infer_state0.b_ready_cache_len,
+            model_input0.max_len_in_batch,
+            infer_state0.mem_index,
+        )
+        infer_state0.init_some_extra_state(self, input_ids0)
+        
+        infer_state1 = self._create_inferstate(model_input1, 1)
+        init_req_to_token_indexes(
+            self.req_manager.req_to_token_indexs,
+            model_input1.b_req_idx,
+            model_input1.b_seq_len,
+            infer_state1.b_ready_cache_len,
+            model_input1.max_len_in_batch,
+            infer_state1.mem_index,
+        )
         infer_state1.init_some_extra_state(self, input_ids1)
 
-        predict_logits, predict_logits1 = self._overlap_tpsp_context_forward(
-            input_ids, infer_state, input_ids1=input_ids1, infer_state1=infer_state1
+        predict_logits0, predict_logits1 = self._overlap_tpsp_context_forward(
+            input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
         )
         dist_group_manager.clear_deepep_buffer()
-        return predict_logits, predict_logits1
+        return predict_logits0, predict_logits1
 
     @final
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
