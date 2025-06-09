@@ -264,6 +264,7 @@ class InferReq:
         # 的技术，在没有开启 mtp 功能的时候，这个成员变量不会有任何的实际实用意义。
         # 当开启后，mtp_gen_token_ids 保存多生成的多余的token_id,但是在后面的
         # 步骤中需要重新进行校验。
+        self.mtp_cur_accepted_len = 0
         self.mtp_gen_token_ids: List[int] = []
 
     def init_all(self):
@@ -320,18 +321,21 @@ class InferReq:
     def get_input_token_ids(self):
         return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
 
+    def get_input_token_ids_shift(self, shift=1):
+        origin_input_ids = self.get_input_token_ids()
+        input_ids = np.concatenate([origin_input_ids, self.mtp_gen_token_ids])
+        return input_ids[shift:]
+
     def get_chuncked_input_token_ids(self):
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 
     def get_chunked_input_token_ids_shift(self, shift=1):
-        input_ids = self.get_input_token_ids()
-        shift_input_ids = np.roll(input_ids, -1 * shift)
+        input_ids = self.get_input_token_ids_shift(shift)
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
-        is_last_chunked = chunked_end == self.get_cur_total_len() - shift
-        return shift_input_ids[0:chunked_end], is_last_chunked
+        return input_ids[0:chunked_end]
 
     def get_chuncked_input_token_len(self):
         chunked_start = self.cur_kv_len
@@ -345,7 +349,7 @@ class InferReq:
         return
 
     def set_total_accepted_len(self):
-        self.shm_req.mtp_accepted_len += self.cur_accepted_len
+        self.shm_req.mtp_accepted_len += self.mtp_cur_accepted_len
 
     def get_last_gen_token(self):
         return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.cur_output_len - 1]
