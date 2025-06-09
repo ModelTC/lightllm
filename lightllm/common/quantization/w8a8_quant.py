@@ -109,11 +109,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         workspace=None,
         use_custom_tensor_mananger=True,
     ):
-        if HAS_LIGHTLLM_KERNEL:
-            x_q, x_scale = light_ops.per_token_quant_bf16_fp8(input_tensor)
-        else:
-            x_q, x_scale = scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
-
+        x_q, x_scale = scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
         if out is None:
@@ -130,7 +126,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         return out
 
 
-@QUANTMETHODS.register(["vllm-fp8w8a8-b128, fp8w8a8-b128"])
+@QUANTMETHODS.register(["vllm-fp8w8a8-b128", "fp8w8a8-b128"])
 class FP8w8a8B128QuantizationMethod(BaseQuantizationMethod):
     def __init__(self):
         super().__init__()
