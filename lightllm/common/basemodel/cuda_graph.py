@@ -1,12 +1,16 @@
 import os
 import torch
 import copy
+import bisect
+from typing import Optional
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
 from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
+from .infer_struct import InferStateInfo
+
 
 logger = init_logger(__name__)
 
@@ -19,15 +23,45 @@ class CudaGraph:
         self.mempool = torch.cuda.graph_pool_handle() if torch.cuda.is_available() else None
         self.max_batch_size = max_batch_size
         self.graph_max_len_in_batch = max_len_in_batch
-        self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap
+        self.args = get_env_start_args()
+        self.enable_decode_microbatch_overlap = self.args.enable_decode_microbatch_overlap
+
+        # gen cuda graph batch_sizes
+        # cuda graph gen for batch size = [1, 2, 3, ..., graph_split_batch_size]
+        # and [graph_split_batch_size + graph_grow_step_size,
+        # graph_split_batch_size + 2 * graph_grow_step_size,  ...,  self.max_batch_size]
+        graph_split_batch_size = self.args.graph_split_batch_size
+        max_batch_size = self.max_batch_size
+        graph_grow_step_size = self.args.graph_grow_step_size
+
+        batch_sizes = [i for i in range(1, min(graph_split_batch_size, max_batch_size) + 1)]
+        for _batch_size in range(
+            graph_split_batch_size + graph_grow_step_size, max_batch_size + 1, step=graph_grow_step_size
+        ):
+            batch_sizes.append(_batch_size)
+        self.cuda_graph_batch_sizes = batch_sizes
+        assert batch_sizes[-1] == self.max_batch_size
+        logger.info(f"cuda graph batch_sizes: {self.cuda_graph_batch_sizes}")
 
     def can_run(self, batch_size, max_len_in_batch):
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
 
     def need_capture(self, batch_size):
-        return batch_size not in self.graph
+        find_batch_size = self._find_closest_graph_batch_size(batch_size)
+        if find_batch_size is not None:
+            return find_batch_size not in self.graph
+        else:
+            assert False, "dead code"
 
-    def _capture_decode(self, decode_func, input_ids, infer_state):
+    def _find_closest_graph_batch_size(self, batch_size):
+        index = bisect.bisect_left(self.cuda_graph_batch_sizes, batch_size)
+        if index < len(self.cuda_graph_batch_sizes):
+            find_batch_size = self.cuda_graph_batch_sizes[index]
+            return find_batch_size
+        else:
+            return None
+
+    def _capture_decode(self, decode_func, input_ids: torch.Tensor, infer_state: InferStateInfo):
         dist_group: CustomProcessGroup = infer_state.dist_group
         graph_obj = torch.cuda.CUDAGraph()
         batch_size = input_ids.shape[0]
@@ -53,7 +87,14 @@ class CudaGraph:
         graph_obj.replay()
         return model_output
 
-    def _capture_decode_overlap(self, decode_func, input_ids, infer_state, input_ids1, infer_state1):
+    def _capture_decode_overlap(
+        self,
+        decode_func,
+        input_ids: torch.Tensor,
+        infer_state: InferStateInfo,
+        input_ids1: torch.Tensor,
+        infer_state1: InferStateInfo,
+    ):
         dist_group: CustomProcessGroup = infer_state.dist_group
         dist_group1 = infer_state1.dist_group
         graph_obj = torch.cuda.CUDAGraph()
@@ -83,7 +124,14 @@ class CudaGraph:
         graph_obj.replay()
         return predict_logics, predict_logics1
 
-    def capture_decode(self, decode_func, input_ids, infer_state, input_ids1=None, infer_state1=None):
+    def capture_decode(
+        self,
+        decode_func,
+        input_ids: torch.Tensor,
+        infer_state: InferStateInfo,
+        input_ids1: Optional[torch.Tensor] = None,
+        infer_state1: Optional[torch.Tensor] = None,
+    ):
         """
         Capture the cuda graph for the decoding stage.
         input_ids1 and infer_state1 is used for the overlap.
@@ -94,16 +142,29 @@ class CudaGraph:
             assert input_ids1 is None and infer_state1 is None
             return self._capture_decode(decode_func, input_ids, infer_state)
 
-    def _replay(self, input_ids, infer_state):
+    def _replay(self, input_ids: torch.Tensor, infer_state: InferStateInfo):
         batch_size = input_ids.shape[0]
-        graph_obj, graph_input_ids, graph_infer_state, graph_output = self.graph[batch_size]
-        graph_input_ids.copy_(input_ids)
+        find_batch_size = self._find_closest_graph_batch_size(batch_size)
+        need_mask_fill = batch_size < find_batch_size
+        graph_obj, graph_input_ids, graph_infer_state, graph_output = self.graph[find_batch_size]
+        graph_input_ids[0:batch_size].copy_(input_ids)
+        # fill a valid token_id
+        if need_mask_fill:
+            graph_input_ids[batch_size:].fill_(1)
         graph_infer_state.copy_for_cuda_graph(infer_state)
         graph_obj.replay()
         return graph_output
 
-    def _replay_overlap(self, input_ids, infer_state, input_ids1, infer_state1):
+    def _replay_overlap(
+        self,
+        input_ids: torch.Tensor,
+        infer_state: InferStateInfo,
+        input_ids1: torch.Tensor,
+        infer_state1: InferStateInfo,
+    ):
         batch_size = input_ids.shape[0]
+        find_batch_size = self._find_closest_graph_batch_size(batch_size)
+        need_mask_fill = batch_size < find_batch_size
         (
             graph_obj,
             graph_input_ids,
@@ -112,10 +173,14 @@ class CudaGraph:
             graph_infer_state1,
             graph_predict_logics,
             graph_predict_logics1,
-        ) = self.graph[batch_size]
-        graph_input_ids.copy_(input_ids)
+        ) = self.graph[find_batch_size]
+        graph_input_ids[0:batch_size].copy_(input_ids)
+        if need_mask_fill:
+            graph_input_ids[batch_size:].fill_(1)
         graph_infer_state.copy_for_cuda_graph(infer_state)
-        graph_input_ids1.copy_(input_ids1)
+        graph_input_ids1[0:batch_size].copy_(input_ids1)
+        if need_mask_fill:
+            graph_input_ids1[batch_size:].fill_(1)
         graph_infer_state1.copy_for_cuda_graph(infer_state1)
         graph_obj.replay()
         return graph_predict_logics, graph_predict_logics1
@@ -130,70 +195,44 @@ class CudaGraph:
     @torch.no_grad()
     def warmup(self, model):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
-        if model.spec_algo is not None:
-            spec_stride = model.spec_step + 1
-        else:
-            spec_stride = 1
+        # for typing easy
+        from .basemodel import TpPartBaseModel
 
-        for batch_size in range(self.max_batch_size * spec_stride, 0, -1 * spec_stride):
-            # dummy prefill
-            prefill_input_len = 1
-            dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
+        model: TpPartBaseModel = model
+
+        # prefill init padding req.
+        predict_id = self._warmup_prefill(model)
+
+        # decode cuda graph init
+        for batch_size in self.cuda_graph_batch_sizes[::-1]:
+            seq_len = 2
+            total_token_num = batch_size * seq_len
+            max_len_in_batch = self.graph_max_len_in_batch
+            input_ids = torch.tensor([predict_id for _ in range(batch_size)], dtype=torch.int32, device="cuda")
+            mem_indexes = model.mem_manager.alloc(len(input_ids)).cuda()
             b_req_idx = torch.tensor(
-                [model.req_manager.alloc() for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+                [model.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
             )
-            mem_indexes = model.mem_manager.alloc(len(dummy_input_ids)).cuda()
-            b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
-            b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
-            total_token_num = prefill_input_len * batch_size
+            b_seq_len = torch.empty(batch_size, dtype=torch.int32, device="cuda")
+            b_seq_len.fill_(seq_len)
+
             model_input = ModelInput(
                 batch_size=batch_size,
                 total_token_num=total_token_num,
-                max_len_in_batch=prefill_input_len,
-                input_ids=dummy_input_ids,
-                mem_indexes=mem_indexes,
-                b_req_idx=b_req_idx,
-                b_seq_len=b_seq_len,
-                b_ready_cache_len=b_ready_cache_len,
-                is_prefill=True,
-                multimodal_params=[],
-            )
-            if model.spec_algo.is_mtp_module():
-                dummy_hidden_states = torch.zeros(
-                    (batch_size, model.config["hidden_size"]), dtype=model.data_type, device="cuda"
-                )
-                model_input.hidden_states = dummy_hidden_states
-
-            model_output: ModelOutput = model.forward(model_input)
-            mem_indexes = None
-            prob_out = torch.softmax(model_output.logits, dim=-1)
-            del model_output
-            predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
-            prob_out = None
-            predict_ids = predict_ids.detach().cpu().numpy()
-            torch.cuda.empty_cache()
-
-            total_token_num += batch_size
-            b_seq_len += 1
-            mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
-            model_input = ModelInput(
-                batch_size=batch_size,
-                total_token_num=total_token_num,
-                max_len_in_batch=prefill_input_len + 1,
-                input_ids=torch.from_numpy(predict_ids).cuda().reshape(-1),
+                max_len_in_batch=max_len_in_batch,
+                input_ids=input_ids,
                 mem_indexes=mem_indexes,
                 b_req_idx=b_req_idx,
                 b_seq_len=b_seq_len,
                 is_prefill=False,
             )
-            if model.spec_algo.is_mtp_module():
-                dummy_hidden_states = torch.zeros(
-                    (batch_size, model.config["hidden_size"]), dtype=model.data_type, device="cuda"
-                )
-                model_input.hidden_states = dummy_hidden_states
             model_output: ModelOutput = model.forward(model_input)
             del model_output
-            mem_indexes = None
+            del input_ids
+            del mem_indexes
+            del b_req_idx
+            del b_seq_len
+
             model.mem_manager.free_all()
             model.req_manager.free_all()
             # release local tensors
@@ -201,6 +240,7 @@ class CudaGraph:
                 if isinstance(var_value, torch.Tensor):
                     del locals()[var_name]
             torch.cuda.empty_cache()
+
         logger.info(
             f"Capture cudagraph success, batch_size <={self.max_batch_size} "
             f"and max_len_in_batch <= {self.graph_max_len_in_batch} will infer with cudagraph."
@@ -209,49 +249,33 @@ class CudaGraph:
     @torch.no_grad()
     def warmup_overlap(self, model):
         logger.info("Begin capture overlap cudagraph, use the --disable_cudagraph to disable it.")
-        for batch_size in range(self.max_batch_size, 0, -1):
+        # for typing easy
+        from .basemodel import TpPartBaseModel
+
+        model: TpPartBaseModel = model
+
+        predict_id = self._warmup_prefill(model)
+
+        for batch_size in self.cuda_graph_batch_sizes[::-1]:
             decode_batches = []
             for micro_batch_index in [0, 1]:
-                # dummy prefill
-                prefill_input_len = 1
-                dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
-                b_req_idx = torch.tensor(
-                    [model.req_manager.alloc() for _ in range(batch_size)], dtype=torch.int32, device="cuda"
-                )
-                mem_indexes = model.mem_manager.alloc(len(dummy_input_ids)).cuda()
-                b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
-                b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
-                total_token_num = prefill_input_len * batch_size
-                logics = model.forward(
-                    batch_size,
-                    total_token_num,
-                    prefill_input_len,
-                    dummy_input_ids,
-                    mem_indexes,
-                    b_req_idx,
-                    b_seq_len,
-                    b_ready_cache_len=b_ready_cache_len,
-                    is_prefill=True,
-                    multimodal_params=[],
-                )
-                mem_indexes = None
-                prob_out = torch.softmax(logics, dim=-1)
-                logics = None
-                predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
-                prob_out = None
-                predict_ids = predict_ids.detach().cpu().numpy()
-                torch.cuda.empty_cache()
-
                 # dummy decoding, capture the cudagraph
-                total_token_num += batch_size
-                b_seq_len += 1
-                mem_indexes = model.mem_manager.alloc(len(predict_ids)).cuda()
+                seq_len = 2
+                total_token_num = batch_size * seq_len
+                max_len_in_batch = self.graph_max_len_in_batch
+                input_ids = torch.tensor([predict_id for _ in range(batch_size)], dtype=torch.int32, device="cuda")
+                mem_indexes = model.mem_manager.alloc(len(input_ids)).cuda()
+                b_req_idx = torch.tensor(
+                    [model.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+                )
+                b_seq_len = torch.empty(batch_size, dtype=torch.int32, device="cuda")
+                b_seq_len.fill_(seq_len)
 
-                micro_batch = DecodeMicroBatch(
+                micro_batch = ModelInput(
                     batch_size=batch_size,
                     total_token_num=total_token_num,
-                    max_len_in_batch=prefill_input_len + 1,
-                    input_ids=torch.from_numpy(predict_ids).cuda().reshape(-1),
+                    max_len_in_batch=max_len_in_batch,
+                    input_ids=input_ids,
                     mem_indexes=mem_indexes,
                     b_req_idx=b_req_idx,
                     b_seq_len=b_seq_len,
@@ -262,6 +286,7 @@ class CudaGraph:
                     if isinstance(var_value, torch.Tensor):
                         del locals()[var_name]
                 torch.cuda.empty_cache()
+
             _, _ = model.microbatch_overlap_decode(decode_batches[0], decode_batches[1])
 
             model.mem_manager.free_all()
@@ -277,3 +302,49 @@ class CudaGraph:
             f"Capture overlap cudagraph success, batch_size <={self.max_batch_size} "
             f"and max_len_in_batch <= {self.graph_max_len_in_batch} will infer with cudagraph."
         )
+
+    def _warmup_prefill(self, model) -> int:
+        from .basemodel import TpPartBaseModel
+
+        model: TpPartBaseModel = model
+
+        # prefill init padding req.
+        prefill_input_len = 1
+        batch_size = 1
+        dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
+        b_req_idx = torch.tensor(
+            [model.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+        )
+        mem_indexes = torch.tensor(
+            [model.mem_manager.HOLD_TOKEN_MEMINDEX for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+        )
+        b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
+        b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+        total_token_num = prefill_input_len * batch_size
+        model_input = ModelInput(
+            batch_size=batch_size,
+            total_token_num=total_token_num,
+            max_len_in_batch=prefill_input_len,
+            input_ids=dummy_input_ids,
+            mem_indexes=mem_indexes,
+            b_req_idx=b_req_idx,
+            b_seq_len=b_seq_len,
+            b_ready_cache_len=b_ready_cache_len,
+            is_prefill=True,
+            multimodal_params=[],
+        )
+
+        model_output: ModelOutput = model.forward(model_input)
+        del dummy_input_ids
+        del b_req_idx
+        del mem_indexes
+        del b_seq_len
+        del b_ready_cache_len
+        prob_out = torch.softmax(model_output.logits, dim=-1)
+        del model_output
+        predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
+        del prob_out
+        predict_ids = predict_ids.detach().cpu().numpy()
+        predict_id = int(predict_ids[0][0])
+        torch.cuda.empty_cache()
+        return predict_id
