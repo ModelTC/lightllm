@@ -23,6 +23,7 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPChunkedForPrefillNode,
     ContinuesBatchWithMTPBackend,
     ChunkedPrefillWithMTPBackend,
+    DPChunkedPrefillWithMTPBackend
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -141,7 +142,10 @@ class ModelRpcServer:
             else:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
-            self.backend = DPChunkedPrefillBackend()
+            if kvargs.get("spec_algo", "NONE") == "MTP":
+                self.backend = DPChunkedPrefillWithMTPBackend()
+            else:
+                self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
             self.backend = RewardModelBackend()
         elif return_all_prompt_logprobs:
