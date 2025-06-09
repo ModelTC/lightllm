@@ -36,7 +36,7 @@ class CudaGraph:
 
         batch_sizes = [i for i in range(1, min(graph_split_batch_size, max_batch_size) + 1)]
         for _batch_size in range(
-            graph_split_batch_size + graph_grow_step_size, max_batch_size + 1, step=graph_grow_step_size
+            graph_split_batch_size + graph_grow_step_size, max_batch_size + 1, graph_grow_step_size
         ):
             batch_sizes.append(_batch_size)
         self.cuda_graph_batch_sizes = batch_sizes
@@ -321,6 +321,11 @@ class CudaGraph:
         b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
         b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         total_token_num = prefill_input_len * batch_size
+        dummy_hidden_states = None
+        if model.spec_algo.is_mtp_module():
+            dummy_hidden_states = torch.randn(
+                total_token_num, model.config["hidden_size"], dtype=model.data_type, device="cuda"
+            )
         model_input = ModelInput(
             batch_size=batch_size,
             total_token_num=total_token_num,
@@ -332,6 +337,7 @@ class CudaGraph:
             b_ready_cache_len=b_ready_cache_len,
             is_prefill=True,
             multimodal_params=[],
+            hidden_states=dummy_hidden_states,
         )
 
         model_output: ModelOutput = model.forward(model_input)
