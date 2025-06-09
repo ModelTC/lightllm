@@ -22,7 +22,6 @@ from lightllm.server.router.model_infer.mode_backend import (
     ChunckedPrefillForPrefillNode,
     DPChunkedForPrefillNode,
     ContinuesBatchWithMTPBackend,
-    ChunkedPrefillWithMTPBackend,
     DPChunkedPrefillWithMTPBackend,
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
