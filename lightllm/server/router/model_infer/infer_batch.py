@@ -259,7 +259,12 @@ class InferReq:
         self.paused = False
         self.need_out_token_id_statistics = True
         self.out_token_id_count: Dict[int, int] = None
-        self.cur_accepted_len = 0  # for mtp forward
+
+        # mtp_gen_token_ids 用于处理一个请求可以通过mtp进行很多token的预先生成
+        # 的技术，在没有开启 mtp 功能的时候，这个成员变量不会有任何的实际实用意义。
+        # 当开启后，mtp_gen_token_ids 保存多生成的多余的token_id,但是在后面的
+        # 步骤中需要重新进行校验。
+        self.mtp_gen_token_ids: List[int] = []
 
     def init_all(self):
         if self.initialized is False:
