@@ -272,7 +272,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         micro_input1, run_reqs1 = prepare_prefill_inputs(
             prefill_reqs[micro_batch1_req_num:], is_multimodal=self.is_multimodal, pad_for_empty_batch=True)
     
-        micro_output0, micro_output1 = self.model.microbatch_overlap_decode(micro_input0, micro_input1)
+        micro_output0, micro_output1 = self.model.microbatch_overlap_prefill(micro_input0, micro_input1)
         
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         
@@ -281,7 +281,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
                                  dtype=micro_output0.logits.dtype, device=micro_output0.logits.device)
 
         all_logits[0:req_num0, :].copy_(micro_output0.logits[0:req_num0, :], non_blocking=True)
-        all_logits[req_num1 : (req_num1 + req_num1), :].copy_(micro_output1.logits[0:req_num1, :], non_blocking=True)
+        all_logits[req_num0 : (req_num0 + req_num1), :].copy_(micro_output1.logits[0:req_num1, :], non_blocking=True)
 
         all_run_reqs = run_reqs0 + run_reqs1
         if all_run_reqs:
