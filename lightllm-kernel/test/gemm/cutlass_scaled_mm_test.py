@@ -10,6 +10,7 @@ def torch_cutlass_scale_gemm_with_ls(x_q, w_q_t, x_scale, w_scale, out_dtype=tor
     y_pred = y_pred_tmp * ls
     return y_pred
 
+
 class TestQuantBF16(unittest.TestCase):
     def setUp(self):
         """Set up common test parameters."""
@@ -17,7 +18,6 @@ class TestQuantBF16(unittest.TestCase):
         self.hiddenDims = [256, 512, 1024, 3200]
         self.device = "cuda"
         self.dtype = torch.bfloat16
-
 
     def test_accuracy(self):
         """Test the accuracy of cutlass_scaled_mm_bias_ls"""
@@ -29,10 +29,11 @@ class TestQuantBF16(unittest.TestCase):
                     input = torch.randn(size=[M, K], device=self.device, dtype=self.dtype)
                     x_q, x_scale = ops.scaled_fp8_quant(input, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
 
-                    
                     # 生成权重张量w_q（N×K），转置后为K×N（列优先）
                     weight = torch.randn(size=[N, K], device=self.device, dtype=self.dtype)
-                    w_q, w_scale = ops.scaled_fp8_quant(weight, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+                    w_q, w_scale = ops.scaled_fp8_quant(
+                        weight, scale=None, scale_ub=None, use_per_token_if_dynamic=True
+                    )
 
                     # 转置，w_q_t为列优先
                     w_q_t = w_q.t()
@@ -43,11 +44,13 @@ class TestQuantBF16(unittest.TestCase):
                     ls = torch.randn(size=[N], device=self.device, dtype=torch.bfloat16)
 
                     cutlass_scaled_mm_bias_ls(y_pred, x_q, w_q_t, x_scale, w_scale, bias=bias, ls=ls)
-                    y_real = torch_cutlass_scale_gemm_with_ls(x_q, w_q_t, x_scale, w_scale, out_dtype=torch.bfloat16, bias=bias, ls=ls)
+                    y_real = torch_cutlass_scale_gemm_with_ls(
+                        x_q, w_q_t, x_scale, w_scale, out_dtype=torch.bfloat16, bias=bias, ls=ls
+                    )
 
                     self.assertTrue(
                         error(y_pred, y_real) < 0.01,
-                        f"Accuracy test failed for size {token}, {hiddenDim}. y_pred={y_pred}, y_real={y_real}"
+                        f"Accuracy test failed for size {token}, {hiddenDim}. y_pred={y_pred}, y_real={y_real}",
                     )
 
     def test_performance(self):
@@ -62,7 +65,9 @@ class TestQuantBF16(unittest.TestCase):
 
                     # 生成权重张量w_q（N×K），转置后为K×N（列优先）
                     weight = torch.randn(size=[N, K], device=self.device, dtype=self.dtype) - 0.5
-                    w_q, w_scale = ops.scaled_fp8_quant(weight, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
+                    w_q, w_scale = ops.scaled_fp8_quant(
+                        weight, scale=None, scale_ub=None, use_per_token_if_dynamic=True
+                    )
 
                     bias = torch.randn(size=[N], device=self.device, dtype=torch.bfloat16)
                     ls = torch.randn(size=[N], device=self.device, dtype=torch.bfloat16)
@@ -72,9 +77,34 @@ class TestQuantBF16(unittest.TestCase):
 
                     y_pred = torch.empty((M, N), dtype=input.dtype, device=input.device)
                     shape = [[token, hiddenDim]]
-                    tflops = 2 * token * (3 * hiddenDim) * hiddenDim / 1024**4
-                    benchmark(cutlass_scaled_mm_bias_ls, shape, tflops, 100, y_pred, x_q, w_q_t, x_scale, w_scale, bias=bias, ls=ls)
-                    benchmark(torch_cutlass_scale_gemm_with_ls, shape, tflops, 100, x_q, w_q_t, x_scale, w_scale, out_dtype=torch.bfloat16, bias=bias, ls=ls) # 无bias 495GB/s, 有bias 482GB/s
+                    tflops = 2 * token * (3 * hiddenDim) * hiddenDim / 1024 ** 4
+                    benchmark(
+                        cutlass_scaled_mm_bias_ls,
+                        shape,
+                        tflops,
+                        100,
+                        y_pred,
+                        x_q,
+                        w_q_t,
+                        x_scale,
+                        w_scale,
+                        bias=bias,
+                        ls=ls,
+                    )
+                    benchmark(
+                        torch_cutlass_scale_gemm_with_ls,
+                        shape,
+                        tflops,
+                        100,
+                        x_q,
+                        w_q_t,
+                        x_scale,
+                        w_scale,
+                        out_dtype=torch.bfloat16,
+                        bias=bias,
+                        ls=ls,
+                    )  # 无bias 495GB/s, 有bias 482GB/s
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,7 @@ def post_tp_norm(input, weight, tp_variance, embed_dim, eps):
     out = weight * input.to(torch.bfloat16)
     return out
 
+
 class TestPostTpNormBF16(unittest.TestCase):
     def setUp(self):
         """Set up common test parameters."""
@@ -34,7 +35,7 @@ class TestPostTpNormBF16(unittest.TestCase):
                     y_pred = post_tp_norm_bf16(X, W, V, self.embed_dim, self.eps)
                     self.assertTrue(
                         error(y_pred, y_real) < 0.01,
-                        f"Accuracy test failed for size {batch}, {size}. y_real={y_real}, y_pred={y_pred}"
+                        f"Accuracy test failed for size {batch}, {size}. y_real={y_real}, y_pred={y_pred}",
                     )
 
     def test_performance(self):
@@ -49,6 +50,7 @@ class TestPostTpNormBF16(unittest.TestCase):
                     tflops = 0.0
                     benchmark(post_tp_norm_bf16, shape, tflops, 100, X, W, V, self.embed_dim, self.eps)
                     benchmark(post_tp_norm, shape, tflops, 100, X, W, V, self.embed_dim, self.eps)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,7 @@ def pre_tp_norm(input):
     tp_variance = input.pow(2).sum(-1, keepdim=False)
     return tp_variance
 
+
 class TestPreTpNormBF16(unittest.TestCase):
     def setUp(self):
         """Set up common test parameters."""
@@ -27,7 +28,7 @@ class TestPreTpNormBF16(unittest.TestCase):
                     y_pred = pre_tp_norm_bf16(X)
                     self.assertTrue(
                         error(y_pred, y_real) < 0.01,
-                        f"Accuracy test failed for size {batch}, {size}. y_real={y_real}, y_pred={y_pred}"
+                        f"Accuracy test failed for size {batch}, {size}. y_real={y_real}, y_pred={y_pred}",
                     )
 
     def test_performance(self):
@@ -35,12 +36,13 @@ class TestPreTpNormBF16(unittest.TestCase):
             for size in self.sizes:
                 with self.subTest(shape=[batch, size]):
                     X = torch.rand(size=[batch, size], device=self.device, dtype=self.dtype) - 0.5
-                    W = torch.rand(size=[size], device=self.device, dtype=self.dtype) - 0.5
+                    # W = torch.rand(size=[size], device=self.device, dtype=self.dtype) - 0.5
 
                     shape = [[batch, size], [size], [batch, size]]
                     tflops = 0.0
                     benchmark(pre_tp_norm_bf16, shape, tflops, 100, X)
                     benchmark(pre_tp_norm, shape, tflops, 100, X)
+
 
 if __name__ == "__main__":
     unittest.main()

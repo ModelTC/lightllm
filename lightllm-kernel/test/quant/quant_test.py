@@ -25,11 +25,12 @@ class TestQuantBF16(unittest.TestCase):
                     y_pred, scales_pred = per_token_quant_bf16_fp8(input)
                     self.assertTrue(
                         error(scales_real, scales_pred) < 0.01,
-                        f"Accuracy test failed for size {token}, {hiddenDim}. scales_real={scales_real}, scales_pred={scales_pred}"
+                        f"Accuracy test failed for size {token}, {hiddenDim}."
+                        f"scales_real={scales_real}, scales_pred={scales_pred}",
                     )
                     self.assertTrue(
                         error(y_real, y_pred) < 0.01,
-                        f"Accuracy test failed for size {token}, {hiddenDim}. y_real={y_real}, y_pred={y_pred}"
+                        f"Accuracy test failed for size {token}, {hiddenDim}. y_real={y_real}, y_pred={y_pred}",
                     )
 
     def test_performance(self):
@@ -39,9 +40,10 @@ class TestQuantBF16(unittest.TestCase):
                 with self.subTest(shape=[token, size]):
                     input = torch.rand(size=[token, size], device=self.device, dtype=self.dtype) - 0.5
                     shape = [[token, size]]
-                    tflops = token * size / 1024**4
+                    tflops = token * size / 1024 ** 4
                     benchmark(per_token_quant_bf16_fp8, shape, tflops, 100, input)
                     benchmark(ops.scaled_fp8_quant, shape, tflops, 100, input, None, True)
+
 
 if __name__ == "__main__":
     unittest.main()

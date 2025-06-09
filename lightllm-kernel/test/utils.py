@@ -6,14 +6,15 @@ from typing import List
 def error(y_pred: torch.Tensor, y_real: torch.Tensor) -> torch.Tensor:
     """
     Compute SNR between y_pred(tensor) and y_real(tensor)
-    
+
     SNR can be calcualted as following equation:
-    
+
         SNR(pred, real) = (pred - real) ^ 2 / (real) ^ 2
-    
+
     if x and y are matrixs, SNR error over matrix should be the mean value of SNR error over all elements.
-    
+
         SNR(pred, real) = mean((pred - real) ^ 2 / (real) ^ 2)
+
 
     Args:
         y_pred (torch.Tensor): _description_
@@ -31,10 +32,11 @@ def error(y_pred: torch.Tensor, y_real: torch.Tensor) -> torch.Tensor:
     y_real = torch.flatten(y_real).float()
 
     if y_pred.shape != y_real.shape:
-        raise ValueError(f'Can not compute snr loss for tensors with different shape. '
-            f'({y_pred.shape} and {y_real.shape})')
+        raise ValueError(
+            f"Can not compute snr loss for tensors with different shape. " f"({y_pred.shape} and {y_real.shape})"
+        )
 
-    noise_power  = torch.pow(y_pred - y_real, 2).sum(dim=-1)
+    noise_power = torch.pow(y_pred - y_real, 2).sum(dim=-1)
     signal_power = torch.pow(y_real, 2).sum(dim=-1)
     snr = (noise_power) / (signal_power + 1e-7)
     return snr.item()
@@ -43,11 +45,11 @@ def error(y_pred: torch.Tensor, y_real: torch.Tensor) -> torch.Tensor:
 def benchmark(func: Callable, shape: List[int], tflops: float, steps: int, *args, **kwargs):
     """
     A decorator function to assist in performance testing of CUDA operations.
-    
+
     This function will:
-    1. Automatically determine whether any parameters in the argument list, 
+    1. Automatically determine whether any parameters in the argument list,
        or the output of the `func`, are of type `torch.Tensor`.
-    2. If so, calculate the memory usage of the input and output tensors 
+    2. If so, calculate the memory usage of the input and output tensors
        on the GPU (based on their data type and `torch.numel()`).
     3. Establish a CUDA graph and attempt to execute `func` repeatedly for `steps` iterations.
     4. Record the execution time during these iterations.
@@ -64,7 +66,7 @@ def benchmark(func: Callable, shape: List[int], tflops: float, steps: int, *args
     Returns:
         function result
     """
-    
+
     # Ensure CUDA is available
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for benchmarking.")
@@ -113,7 +115,7 @@ def benchmark(func: Callable, shape: List[int], tflops: float, steps: int, *args
     elapsed_time_s = elapsed_time_ms / 1000  # Convert to seconds
     avg_time_per_step = elapsed_time_s / steps
     compute_performance = tflops / avg_time_per_step  # TFLOPS
-    memory_throughput = (total_memory * steps / (1024**3)) / elapsed_time_s  # GB/s
+    memory_throughput = (total_memory * steps / (1024 ** 3)) / elapsed_time_s  # GB/s
 
     # Print performance metrics
     print(f"Function: {func.__name__}{shape}")
@@ -122,4 +124,4 @@ def benchmark(func: Callable, shape: List[int], tflops: float, steps: int, *args
     print(f"Average Time Per Step: {avg_time_per_step * 1000 :.3f} ms")
     print(f"Compute Performance: {compute_performance:.2f} TFLOPS")
     print(f"Memory Throughput: {memory_throughput:.2f} GB/s")
-    print("") # print a blank line.
+    print("")  # print a blank line.
