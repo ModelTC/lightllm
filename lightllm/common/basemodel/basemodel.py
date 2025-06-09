@@ -337,7 +337,7 @@ class TpPartBaseModel:
                 infer_state0.is_cuda_graph = True
                 infer_state1.is_cuda_graph = True
 
-                predict_logits0, predict_logits1 = self.graph.capture_decode(
+                model_output0, model_output1 = self.graph.capture_decode(
                     self._overlap_tpsp_token_forward,
                     input_ids0,
                     infer_state0,
@@ -345,14 +345,14 @@ class TpPartBaseModel:
                     infer_state1=infer_state1,
                 )
             else:
-                predict_logits0, predict_logits1 = self.graph.replay(
+                model_output0, model_output1 = self.graph.replay(
                     input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
                 )
         else:
-            predict_logits0, predict_logits1 = self._overlap_tpsp_token_forward(
+            model_output0, model_output1 = self._overlap_tpsp_token_forward(
                 input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
             )
-        return predict_logits0, predict_logits1
+        return model_output0, model_output1
 
     @torch.no_grad()
     def microbatch_overlap_prefill(self, model_input0: ModelInput, model_input1: ModelInput):
@@ -382,11 +382,11 @@ class TpPartBaseModel:
         )
         infer_state1.init_some_extra_state(self, input_ids1)
 
-        predict_logits0, predict_logits1 = self._overlap_tpsp_context_forward(
+        model_output0, model_output1 = self._overlap_tpsp_context_forward(
             input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
         )
         dist_group_manager.clear_deepep_buffer()
-        return predict_logits0, predict_logits1
+        return model_output0, model_output1
 
     @final
     def _context_forward(self, input_ids, infer_state: InferStateInfo):
