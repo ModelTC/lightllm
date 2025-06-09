@@ -87,10 +87,10 @@ class InferStateInfo:
             ) = gen_decode_params(b_seq_len=self.b_seq_len)
             self.b_start_loc = self.b1_cu_kv_seq_len[0:-1]
 
-    def copy_for_cuda_graph(self, new_infer_state):
+    def copy_for_cuda_graph(self, new_infer_state: "InferStateInfo"):
         for attr_name, attr_value in vars(new_infer_state).items():
             if isinstance(attr_value, torch.Tensor):
                 attr_ = getattr(self, attr_name, None)
                 if attr_ is not None and attr_.data_ptr() != attr_value.data_ptr():
-                    attr_.copy_(attr_value, non_blocking=True)
+                    attr_[: new_infer_state.batch_size].copy_(attr_value, non_blocking=True)
         return
