@@ -321,9 +321,9 @@ class InferReq:
     def get_input_token_ids(self):
         return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
 
-    def get_input_token_ids_shift(self, shift=1):
+    def get_input_token_ids_shift(self, next_token_ids_cpu: np.ndarray, shift: int = 1):
         origin_input_ids = self.get_input_token_ids()
-        input_ids = np.concatenate([origin_input_ids, self.mtp_gen_token_ids])
+        input_ids = np.concatenate([origin_input_ids, next_token_ids_cpu, self.mtp_gen_token_ids])
         return input_ids[shift:]
 
     def get_chuncked_input_token_ids(self):
@@ -331,10 +331,15 @@ class InferReq:
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
 
-    def get_chunked_input_token_ids_shift(self, shift=1):
-        input_ids = self.get_input_token_ids_shift(shift)
+    def get_chunked_input_token_ids_shift(self, next_token_ids_cpu: np.ndarray, shift: int = 1):
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
+        is_last_chunk = chunked_end == self.get_cur_total_len()
+        # if the current chunk is not the last chunk, the main model has not generated the next token,
+        # so we should not use the next token ids.
+        if not is_last_chunk:
+            next_token_ids_cpu = []
+        input_ids = self.get_input_token_ids_shift(next_token_ids_cpu, shift)
         return input_ids[0:chunked_end]
 
     def get_chuncked_input_token_len(self):
