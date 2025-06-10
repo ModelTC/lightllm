@@ -102,20 +102,18 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
 
             # spec prefill: MTP
             draft_model_input = model_input
-            last_hidden_states = model_output.hidden_states
-            # For simplicity, we also save the output of the main model to req.mtp_gen_token_ids.
-            self._save_prefill_draft_tokens(next_token_ids_cpu, run_reqs, -1)
+            draft_model_input.hidden_states = model_output.hidden_states
             for draft_model_idx in range(self.spec_step):
                 draft_model_input = prepare_mtp_prefill_inputs(
                     prefill_reqs,
                     model_input,
-                    last_hidden_states,
+                    next_token_ids_cpu,
                     draft_model_idx,
                     is_chunked_mode=not self.disable_chunked_prefill,
                 )
                 draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
                 _, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_model_output)
-                last_hidden_states = draft_model_output.hidden_states
+                model_input.hidden_states = draft_model_output.hidden_states
                 self._save_prefill_draft_tokens(draft_next_token_ids_cpu, run_reqs, draft_model_idx)
 
             self._post_handle(
@@ -144,7 +142,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             accepted_reqs, accepted_index, need_free_mem_indexes = self._verify(
                 next_token_ids, run_reqs, mem_indexes_cpu
             )
-            self._save_decode_draft_token_ids(next_token_ids_cpu, run_reqs, -1)
             self._post_handle(
                 accepted_reqs,
                 next_token_ids_cpu[accepted_index],
@@ -193,7 +190,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             req_end_idx = (b + 1) * self.spec_stride
             # step_idx==0 means the output of the main model
             for step_idx in range(self.spec_stride):
-                if step_idx == 0 or req.mtp_gen_token_ids[step_idx] == next_token_ids[req_start_idx + step_idx - 1]:
+                if step_idx == 0 or req.mtp_gen_token_ids[step_idx - 1] == next_token_ids[req_start_idx + step_idx - 1]:
                     accepted_reqs.append(req)
                     accepted_index.append(req_start_idx + step_idx)
                     req.mtp_cur_accepted_len += 1 if step_idx != 0 else 0

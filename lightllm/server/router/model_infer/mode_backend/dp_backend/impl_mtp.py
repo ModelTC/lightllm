@@ -14,11 +14,11 @@ from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.router.model_infer.mode_backend.continues_batch.impl_mtp import ContinuesBatchWithMTPBackend
 from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
     prepare_prefill_inputs,
+    prepare_decode_inputs,
 )
 
 from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
     prepare_mtp_prefill_inputs,
-    prepare_draft_main_model_decode_inputs,
 )
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
@@ -130,7 +130,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
             )
 
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        model_input, run_reqs, mem_indexes_cpu = prepare_draft_main_model_decode_inputs(
+        model_input, run_reqs, mem_indexes_cpu = prepare_decode_inputs(
             decode_reqs, self.draft_token_id_map, pad_for_empty_batch=True
         )
         model_output = self.model.forward(model_input)
@@ -183,10 +183,10 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
     def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
         micro_batch_size = triton.cdiv(max_decode_num, 2)
         micro_batch1_req_num = triton.cdiv(len(decode_reqs), 2)
-        micro_input, run_reqs, micro_mem_indexes_cpu = prepare_draft_main_model_decode_inputs(
+        micro_input, run_reqs, micro_mem_indexes_cpu = prepare_decode_inputs(
             decode_reqs[0:micro_batch1_req_num], self.draft_token_id_map, pad_to_tgt_batch_size=micro_batch_size
         )
-        micro_input1, run_reqs1, micro_mem_indexes_cpu1 = prepare_draft_main_model_decode_inputs(
+        micro_input1, run_reqs1, micro_mem_indexes_cpu1 = prepare_decode_inputs(
             decode_reqs[micro_batch1_req_num:], self.draft_token_id_map, pad_to_tgt_batch_size=micro_batch_size
         )
 

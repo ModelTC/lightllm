@@ -11,20 +11,18 @@ IS_NONE = -1
 def prepare_mtp_prefill_inputs(
     req_objs: List[InferReq],
     model_input: ModelInput,
-    last_hidden_states: torch.Tensor,
+    next_token_ids_cpu: torch.Tensor,
     draft_model_idx: int,
     is_chunked_mode: bool,
 ):
     input_ids = []
     for i, req in enumerate(req_objs):
         if is_chunked_mode:
-            input_token_ids = req.get_chunked_input_token_ids_shift(draft_model_idx + 1)
+            input_token_ids = req.get_chunked_input_token_ids_shift(next_token_ids_cpu[i : i + 1], draft_model_idx + 1)
         else:
-            input_token_ids = req.get_input_token_ids_shift(draft_model_idx + 1)
-        input_ids.append(input_token_ids[req.cur_kv_len :])
+            input_token_ids = req.get_input_token_ids_shift(next_token_ids_cpu[i : i + 1], draft_model_idx + 1)
+        input_ids.append(input_token_ids[req.cur_kv_len :].astype(np.int64))
     input_ids = np.concatenate(input_ids, dtype=np.int64)
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
     model_input.input_ids = input_ids
-    # mtp embedding
-    model_input.hidden_states = last_hidden_states
     return model_input
