@@ -18,9 +18,9 @@ def prepare_mtp_prefill_inputs(
     input_ids = []
     for i, req in enumerate(req_objs):
         if is_chunked_mode:
-            input_token_ids = req.get_chunked_input_token_ids_shift(draft_model_idx)
+            input_token_ids = req.get_chunked_input_token_ids_shift(draft_model_idx + 1)
         else:
-            input_token_ids = req.get_input_token_ids_shift(draft_model_idx)
+            input_token_ids = req.get_input_token_ids_shift(draft_model_idx + 1)
         input_ids.append(input_token_ids[req.cur_kv_len :])
     input_ids = np.concatenate(input_ids, dtype=np.int64)
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
@@ -42,6 +42,7 @@ def prepare_draft_main_model_decode_inputs(
     for req in req_objs:
         # req.mtp_gen_token_ids[0]: output of main model
         # req.mtp_gen_token_ids[1:]: output of draft models
+        print(f"req.mtp_gen_token_ids: {req.mtp_gen_token_ids}")
         for step in range(len(req.mtp_gen_token_ids)):
             run_reqs.append(req)
             nopad_b_req_idx.append(req.req_idx)
@@ -102,4 +103,5 @@ def prepare_draft_main_model_decode_inputs(
         b_seq_len=nopad_b_seq_len,
         is_prefill=False,
     )
+    print(f"model_input: {model_input}")
     return model_input, run_reqs, mem_indexes_cpu

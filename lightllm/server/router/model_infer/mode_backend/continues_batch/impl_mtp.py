@@ -40,6 +40,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
 
         os.environ["DISABLE_CHECK_MAX_LEN_INFER"] = "1"
         for i in range(self.spec_step):
+            mtp_model_cfg, _ = PretrainedConfig.get_config_dict(kvargs["spec_weight_dir"])
             mtp_model_kvargs = {
                 "weight_dir": kvargs["spec_weight_dir"],
                 "max_total_token_num": kvargs["max_total_token_num"],
@@ -63,6 +64,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 "spec_algo": "MTP_MOUDLE",
                 "main_model": self.model,
                 "last_mtp_module": i == self.spec_step - 1,
+                "mem_layer_start": self.model.config["num_hidden_layers"] + i * mtp_model_cfg["num_hidden_layers"],
             }
 
             mtp_model_cfg, _ = PretrainedConfig.get_config_dict(kvargs["spec_weight_dir"])
@@ -102,7 +104,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             draft_model_input = model_input
             last_hidden_states = model_output.hidden_states
             # For simplicity, we also save the output of the main model to req.mtp_gen_token_ids.
-            self._save_prefill_draft_tokens(next_token_ids, run_reqs, -1)
+            self._save_prefill_draft_tokens(next_token_ids_cpu, run_reqs, -1)
             for draft_model_idx in range(self.spec_step):
                 draft_model_input = prepare_mtp_prefill_inputs(
                     prefill_reqs,
@@ -111,6 +113,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                     draft_model_idx,
                     is_chunked_mode=not self.disable_chunked_prefill,
                 )
+                print(f"draft_model_input: {draft_model_input}")
                 draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
                 _, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_model_output)
                 last_hidden_states = draft_model_output.hidden_states
@@ -141,7 +144,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             accepted_reqs, accepted_index, need_free_mem_indexes = self._verify(
                 next_token_ids, run_reqs, mem_indexes_cpu
             )
-            self._save_decode_draft_token_ids(next_token_ids, run_reqs, -1)
+            self._save_decode_draft_token_ids(next_token_ids_cpu, run_reqs, -1)
             self._post_handle(
                 accepted_reqs,
                 next_token_ids_cpu[accepted_index],
@@ -196,6 +199,8 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 else:
                     need_free_mem_indexes.append(draft_mem_indexes[req_start_idx + step_idx : req_end_idx])
                     break
+            #  reset the mtp status
+            req.mtp_gen_token_ids = []
         return accepted_reqs, accepted_index, need_free_mem_indexes
 
     def _save_prefill_draft_tokens(
@@ -205,12 +210,9 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         for i in range(batch_size):
             req = run_reqs[i]
             # if the request has unfinished chunked tokens, skip it.
-            if req.get_chunked_input_token_len() < req.get_cur_total_len():
+            if req.get_chuncked_input_token_len() < req.get_cur_total_len():
                 continue
             req.mtp_gen_token_ids.append(draft_next_token_ids[i])
-            #  reset the mtp status
-            if draft_model_idx == self.spec_step - 1:
-                req.mtp_gen_token_ids = []
 
     def _save_decode_draft_token_ids(
         self, draft_next_token_ids: torch.Tensor, run_reqs: List[InferReq], draft_model_idx: int
@@ -225,4 +227,3 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 if self.is_master_in_dp:
                     req.set_total_accepted_len()
                 req.mtp_cur_accepted_len = 0
-                req.mtp_gen_token_ids = []
