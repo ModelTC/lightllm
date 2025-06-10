@@ -42,7 +42,6 @@ def prepare_draft_main_model_decode_inputs(
     for req in req_objs:
         # req.mtp_gen_token_ids[0]: output of main model
         # req.mtp_gen_token_ids[1:]: output of draft models
-        print(f"req.mtp_gen_token_ids: {req.mtp_gen_token_ids}")
         for step in range(len(req.mtp_gen_token_ids)):
             run_reqs.append(req)
             nopad_b_req_idx.append(req.req_idx)
@@ -103,5 +102,4 @@ def prepare_draft_main_model_decode_inputs(
         b_seq_len=nopad_b_seq_len,
         is_prefill=False,
     )
-    print(f"model_input: {model_input}")
     return model_input, run_reqs, mem_indexes_cpu
