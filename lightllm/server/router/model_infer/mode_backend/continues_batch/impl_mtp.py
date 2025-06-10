@@ -113,7 +113,6 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                     draft_model_idx,
                     is_chunked_mode=not self.disable_chunked_prefill,
                 )
-                print(f"draft_model_input: {draft_model_input}")
                 draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
                 _, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_model_output)
                 last_hidden_states = draft_model_output.hidden_states
@@ -191,13 +190,14 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             req = run_reqs[b % self.spec_stride]
             req_start_idx = b * self.spec_stride
             req_end_idx = (b + 1) * self.spec_stride
+            # step_idx==0 means the output of the main model
             for step_idx in range(self.spec_stride):
                 if step_idx == 0 or req.mtp_gen_token_ids[step_idx] == next_token_ids[req_start_idx + step_idx - 1]:
                     accepted_reqs.append(req)
                     accepted_index.append(req_start_idx + step_idx)
-                    req.mtp_cur_accepted_len += 1
+                    req.mtp_cur_accepted_len += 1 if step_idx != 0 else 0
                 else:
-                    need_free_mem_indexes.append(draft_mem_indexes[req_start_idx + step_idx : req_end_idx])
+                    need_free_mem_indexes.extend(draft_mem_indexes[req_start_idx + step_idx : req_end_idx])
                     break
             #  reset the mtp status
             req.mtp_gen_token_ids = []
