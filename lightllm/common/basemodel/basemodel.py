@@ -1,8 +1,10 @@
 import os
 
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+import copy
 import json
 import torch
+import torch.nn.functional as F
 from typing import final
 
 from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weights
@@ -256,12 +258,12 @@ class TpPartBaseModel:
         assert model_input.b_req_idx.shape[0] == model_input.b_seq_len.shape[0]
         infer_state.b_req_idx = model_input.b_req_idx
         infer_state.b_seq_len = model_input.b_seq_len
-        if model_input.b_ready_cache_len is not None and model_input.is_prefill:
-            infer_state.b_ready_cache_len = model_input.b_ready_cache_len
-        else:
-            infer_state.b_ready_cache_len = torch.zeros_like(
-                model_input.b_seq_len, dtype=model_input.b_seq_len.dtype, device=model_input.b_seq_len.device
-            )
+        if model_input.is_prefill:
+            if model_input.b_ready_cache_len is not None:
+                infer_state.b_ready_cache_len = model_input.b_ready_cache_len
+            else:
+                infer_state.b_ready_cache_len = torch.zeros_like(input=infer_state.b_seq_len)
+
         infer_state.multimodal_params = model_input.multimodal_params
 
         infer_state.mem_manager = self.mem_manager
@@ -274,6 +276,37 @@ class TpPartBaseModel:
         )
         infer_state.dist_group = dist_group_manager.get_group(batch_index)
         return infer_state
+
+    def _create_padded_decode_model_input(self, model_input: ModelInput, new_batch_size: int):
+        if model_input.batch_size == new_batch_size:
+            return model_input
+
+        assert model_input.batch_size <= new_batch_size
+
+        padded_batch_size = new_batch_size - model_input.batch_size
+        new_model_input = copy.copy(model_input)
+        new_model_input.batch_size = new_batch_size
+        new_model_input.total_token_num += padded_batch_size * 2
+        new_model_input.input_ids = F.pad(new_model_input.input_ids, (0, padded_batch_size), mode="constant", value=1)
+        new_model_input.b_req_idx = F.pad(
+            new_model_input.b_req_idx, (0, padded_batch_size), mode="constant", value=self.req_manager.HOLD_REQUEST_ID
+        )
+        new_model_input.b_seq_len = F.pad(new_model_input.b_seq_len, (0, padded_batch_size), mode="constant", value=2)
+        new_model_input.mem_indexes = F.pad(
+            new_model_input.mem_indexes,
+            (0, padded_batch_size),
+            mode="constant",
+            value=self.mem_manager.HOLD_TOKEN_MEMINDEX,
+        )
+        return new_model_input
+
+    def _create_unpad_decode_model_output(self, model_output: ModelOutput, origin_batch_size: int):
+        padded_batch_size = model_output.logits.shape[0]
+        if padded_batch_size == origin_batch_size:
+            return model_output
+        new_model_output = copy.copy(model_output)
+        new_model_output.logits = new_model_output.logits[0:origin_batch_size]
+        return new_model_output
 
     def _prefill(
         self,
@@ -295,62 +328,113 @@ class TpPartBaseModel:
     def _decode(
         self,
         model_input: ModelInput,
-    ):
-        infer_state = self._create_inferstate(model_input)
-        copy_kv_index_to_req(
-            self.req_manager.req_to_token_indexs, model_input.b_req_idx, model_input.b_seq_len, infer_state.mem_index
-        )
-        infer_state.init_some_extra_state(self, model_input.input_ids)
+    ) -> ModelOutput:
         if self.graph is not None and self.graph.can_run(model_input.batch_size, model_input.max_len_in_batch):
-            if self.graph.need_capture(model_input.batch_size):
-                infer_state.is_cuda_graph = True
-                return self.graph.capture_decode(self._token_forward, model_input.input_ids, infer_state)
-            else:
-                return self.graph.replay(model_input.input_ids, infer_state)
+            find_graph_batch_size = self.graph.find_closest_graph_batch_size(model_input.batch_size)
+            padded_model_input = self._create_padded_decode_model_input(model_input, find_graph_batch_size)
+            infer_state = self._create_inferstate(padded_model_input)
+            copy_kv_index_to_req(
+                self.req_manager.req_to_token_indexs,
+                infer_state.b_req_idx,
+                infer_state.b_seq_len,
+                infer_state.mem_index,
+            )
+            infer_state.init_some_extra_state(self, padded_model_input.input_ids)
 
-        return self._token_forward(model_input.input_ids, infer_state)
+            if self.graph.need_capture(find_graph_batch_size):
+                infer_state.is_cuda_graph = True
+                model_output: ModelOutput = self.graph.capture_decode(
+                    self._token_forward, padded_model_input.input_ids, infer_state
+                )
+            else:
+                model_output: ModelOutput = self.graph.replay(padded_model_input.input_ids, infer_state)
+
+            model_output = self._create_unpad_decode_model_output(
+                model_output, origin_batch_size=model_input.batch_size
+            )
+        else:
+            infer_state = self._create_inferstate(model_input)
+            copy_kv_index_to_req(
+                self.req_manager.req_to_token_indexs,
+                infer_state.b_req_idx,
+                infer_state.b_seq_len,
+                infer_state.mem_index,
+            )
+            infer_state.init_some_extra_state(self, model_input.input_ids)
+            model_output = self._token_forward(model_input.input_ids, infer_state)
+
+        return model_output
 
     @torch.no_grad()
     def microbatch_overlap_decode(self, model_input0: ModelInput, model_input1: ModelInput):
         assert model_input0.batch_size == model_input1.batch_size
         assert model_input0.mem_indexes.is_cuda
         assert model_input1.mem_indexes.is_cuda
-        input_ids0, input_ids1 = model_input0.input_ids, model_input1.input_ids
 
-        infer_state0 = self._create_inferstate(model_input0, 0)
-        copy_kv_index_to_req(
-            self.req_manager.req_to_token_indexs, model_input0.b_req_idx, model_input0.b_seq_len, infer_state0.mem_index
-        )
-        infer_state0.init_some_extra_state(self, input_ids0)
-
-        infer_state1 = self._create_inferstate(model_input1, 1)
-        copy_kv_index_to_req(
-            self.req_manager.req_to_token_indexs, model_input1.b_req_idx, model_input1.b_seq_len, infer_state1.mem_index
-        )
-        infer_state1.init_some_extra_state(self, input_ids1)
-
-        batch_size = model_input0.batch_size
+        origin_batch_size = model_input0.batch_size
         max_len_in_batch = max(model_input0.max_len_in_batch, model_input1.max_len_in_batch)
 
-        if self.graph is not None and self.graph.can_run(batch_size, max_len_in_batch):
-            if self.graph.need_capture(batch_size):
+        if self.graph is not None and self.graph.can_run(origin_batch_size, max_len_in_batch):
+            find_graph_batch_size = self.graph.find_closest_graph_batch_size(origin_batch_size)
+            padded_model_input0 = self._create_padded_decode_model_input(model_input0, find_graph_batch_size)
+            padded_model_input1 = self._create_padded_decode_model_input(model_input1, find_graph_batch_size)
+            infer_state0 = self._create_inferstate(padded_model_input0, 0)
+            copy_kv_index_to_req(
+                self.req_manager.req_to_token_indexs,
+                infer_state0.b_req_idx,
+                infer_state0.b_seq_len,
+                infer_state0.mem_index,
+            )
+            infer_state0.init_some_extra_state(self, padded_model_input0.input_ids)
+            infer_state1 = self._create_inferstate(padded_model_input1, 1)
+            copy_kv_index_to_req(
+                self.req_manager.req_to_token_indexs,
+                infer_state1.b_req_idx,
+                infer_state1.b_seq_len,
+                infer_state1.mem_index,
+            )
+            infer_state1.init_some_extra_state(self, padded_model_input1.input_ids)
+
+            if self.graph.need_capture(find_graph_batch_size):
                 infer_state0.is_cuda_graph = True
                 infer_state1.is_cuda_graph = True
 
                 model_output0, model_output1 = self.graph.capture_decode(
                     self._overlap_tpsp_token_forward,
-                    input_ids0,
+                    padded_model_input0.input_ids,
                     infer_state0,
-                    input_ids1=input_ids1,
+                    input_ids1=padded_model_input1.input_ids,
                     infer_state1=infer_state1,
                 )
             else:
                 model_output0, model_output1 = self.graph.replay(
-                    input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
+                    padded_model_input0.input_ids,
+                    infer_state0,
+                    input_ids1=padded_model_input1.input_ids,
+                    infer_state1=infer_state1,
                 )
+            model_output0 = self._create_unpad_decode_model_output(model_output0, origin_batch_size=origin_batch_size)
+            model_output1 = self._create_unpad_decode_model_output(model_output1, origin_batch_size=origin_batch_size)
         else:
+            infer_state0 = self._create_inferstate(model_input0, 0)
+            copy_kv_index_to_req(
+                self.req_manager.req_to_token_indexs,
+                infer_state0.b_req_idx,
+                infer_state0.b_seq_len,
+                infer_state0.mem_index,
+            )
+            infer_state0.init_some_extra_state(self, model_input0.input_ids)
+            infer_state1 = self._create_inferstate(model_input1, 1)
+            copy_kv_index_to_req(
+                self.req_manager.req_to_token_indexs,
+                infer_state1.b_req_idx,
+                infer_state1.b_seq_len,
+                infer_state1.mem_index,
+            )
+            infer_state1.init_some_extra_state(self, model_input1.input_ids)
+
             model_output0, model_output1 = self._overlap_tpsp_token_forward(
-                input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
+                model_input0.input_ids, infer_state0, input_ids1=model_input1.input_ids, infer_state1=infer_state1
             )
         return model_output0, model_output1
 
@@ -370,7 +454,7 @@ class TpPartBaseModel:
             infer_state0.mem_index,
         )
         infer_state0.init_some_extra_state(self, input_ids0)
-        
+
         infer_state1 = self._create_inferstate(model_input1, 1)
         init_req_to_token_indexes(
             self.req_manager.req_to_token_indexs,
@@ -463,7 +547,7 @@ class TpPartBaseModel:
         predict_logits, predict_logits1 = self.post_infer.overlap_tpsp_token_forward(
             input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
         )
-        
+
         g_cache_manager.cache_env_out()
         is_return_hidden_states = self.spec_algo.is_mtp() or (
             self.spec_algo.is_mtp_module() and not self.last_mtp_module
@@ -472,7 +556,7 @@ class TpPartBaseModel:
             logits=predict_logits,
             hidden_states=input_embs if is_return_hidden_states else None,
         )
-        
+
         model_output1 = ModelOutput(
             logits=predict_logits1,
             hidden_states=input_embs1 if is_return_hidden_states else None,
@@ -495,7 +579,7 @@ class TpPartBaseModel:
             input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
         )
         g_cache_manager.cache_env_out()
-        
+
         is_return_hidden_states = self.spec_algo.is_mtp() or (
             self.spec_algo.is_mtp_module() and not self.last_mtp_module
         )
@@ -503,12 +587,12 @@ class TpPartBaseModel:
             logits=predict_logits,
             hidden_states=input_embs if is_return_hidden_states else None,
         )
-        
+
         model_output1 = ModelOutput(
             logits=predict_logits1,
             hidden_states=input_embs1 if is_return_hidden_states else None,
         )
-        
+
         return model_output, model_output1
 
     @final

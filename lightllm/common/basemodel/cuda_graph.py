@@ -47,13 +47,13 @@ class CudaGraph:
         return batch_size <= self.max_batch_size and max_len_in_batch <= self.graph_max_len_in_batch
 
     def need_capture(self, batch_size):
-        find_batch_size = self._find_closest_graph_batch_size(batch_size)
+        find_batch_size = self.find_closest_graph_batch_size(batch_size)
         if find_batch_size is not None:
             return find_batch_size not in self.graph
         else:
             assert False, "dead code"
 
-    def _find_closest_graph_batch_size(self, batch_size):
+    def find_closest_graph_batch_size(self, batch_size):
         index = bisect.bisect_left(self.cuda_graph_batch_sizes, batch_size)
         if index < len(self.cuda_graph_batch_sizes):
             find_batch_size = self.cuda_graph_batch_sizes[index]
@@ -144,13 +144,8 @@ class CudaGraph:
 
     def _replay(self, input_ids: torch.Tensor, infer_state: InferStateInfo):
         batch_size = input_ids.shape[0]
-        find_batch_size = self._find_closest_graph_batch_size(batch_size)
-        need_mask_fill = batch_size < find_batch_size
-        graph_obj, graph_input_ids, graph_infer_state, graph_output = self.graph[find_batch_size]
-        graph_input_ids[0:batch_size].copy_(input_ids)
-        # fill a valid token_id
-        if need_mask_fill:
-            graph_input_ids[batch_size:].fill_(1)
+        graph_obj, graph_input_ids, graph_infer_state, graph_output = self.graph[batch_size]
+        graph_input_ids.copy_(input_ids)
         graph_infer_state.copy_for_cuda_graph(infer_state)
         graph_obj.replay()
         return graph_output
@@ -163,8 +158,6 @@ class CudaGraph:
         infer_state1: InferStateInfo,
     ):
         batch_size = input_ids.shape[0]
-        find_batch_size = self._find_closest_graph_batch_size(batch_size)
-        need_mask_fill = batch_size < find_batch_size
         (
             graph_obj,
             graph_input_ids,
@@ -173,14 +166,10 @@ class CudaGraph:
             graph_infer_state1,
             graph_predict_logics,
             graph_predict_logics1,
-        ) = self.graph[find_batch_size]
-        graph_input_ids[0:batch_size].copy_(input_ids)
-        if need_mask_fill:
-            graph_input_ids[batch_size:].fill_(1)
+        ) = self.graph[batch_size]
+        graph_input_ids.copy_(input_ids)
         graph_infer_state.copy_for_cuda_graph(infer_state)
-        graph_input_ids1[0:batch_size].copy_(input_ids1)
-        if need_mask_fill:
-            graph_input_ids1[batch_size:].fill_(1)
+        graph_input_ids1.copy_(input_ids1)
         graph_infer_state1.copy_for_cuda_graph(infer_state1)
         graph_obj.replay()
         return graph_predict_logics, graph_predict_logics1

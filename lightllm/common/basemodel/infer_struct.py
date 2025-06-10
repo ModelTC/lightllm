@@ -92,5 +92,5 @@ class InferStateInfo:
             if isinstance(attr_value, torch.Tensor):
                 attr_ = getattr(self, attr_name, None)
                 if attr_ is not None and attr_.data_ptr() != attr_value.data_ptr():
-                    attr_[: new_infer_state.batch_size].copy_(attr_value, non_blocking=True)
+                    attr_.copy_(attr_value, non_blocking=True)
         return
