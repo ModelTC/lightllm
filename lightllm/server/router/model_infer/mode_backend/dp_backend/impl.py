@@ -3,6 +3,7 @@ import torch.distributed as dist
 import numpy as np
 from typing import List, Tuple
 from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
+from lightllm.common.basemodel.batch_objs import ModelOutput
 from lightllm.utils.infer_utils import set_random_seed
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
@@ -76,7 +77,8 @@ class DPChunkedPrefillBackend(ModeBackend):
         model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
             prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
         )
-        logits = self.model.forward(model_input)
+        model_output: ModelOutput = self.model.forward(model_input)
+        logits = model_output.logits
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]
@@ -94,7 +96,8 @@ class DPChunkedPrefillBackend(ModeBackend):
         model_input, run_reqs, padded_req_num = padded_prepare_decode_inputs(
             decode_reqs, max_decode_num, is_multimodal=self.is_multimodal
         )
-        logits = self.model.forward(model_input)
+        model_output: ModelOutput = self.model.forward(model_input)
+        logits = model_output.logits
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
 
@@ -119,7 +122,9 @@ class DPChunkedPrefillBackend(ModeBackend):
             run_reqs1,
             padded_req_num1,
         ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_decode(micro_input, micro_input1)
+        model_output, model_output1 = self.model.microbatch_overlap_decode(micro_input, micro_input1)
+        logits = model_output.logits
+        logits1 = model_output1.logits
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
         all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
@@ -148,7 +153,9 @@ class DPChunkedPrefillBackend(ModeBackend):
             run_reqs1,
             padded_req_num1,
         ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_prefill(micro_input, micro_input1)
+        model_output, model_output1 = self.model.microbatch_overlap_prefill(micro_input, micro_input1)
+        logits = model_output.logits
+        logits1 = model_output1.logits
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
         all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
