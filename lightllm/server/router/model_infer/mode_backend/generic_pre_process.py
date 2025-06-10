@@ -85,6 +85,16 @@ def prepare_decode_inputs(req_objs: List[InferReq]):
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
 
+        # process the draft tokens.
+        for step in range(len(req.mtp_gen_token_ids)):
+            run_reqs.append(req)
+            nopad_b_req_idx.append(req.req_idx)
+            seq_len = req.get_cur_total_len() + step + 1
+            nopad_b_seq_len.append(seq_len)
+            input_ids.append(req.mtp_gen_token_ids[step])
+            nopad_total_token_num += seq_len
+            nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
+
     input_ids = torch.tensor(input_ids, dtype=torch.int64, device="cuda")
     nopad_b_req_idx = torch.tensor(nopad_b_req_idx, dtype=torch.int32, device="cuda")
     nopad_b_seq_len = torch.tensor(nopad_b_seq_len, dtype=torch.int32, device="cuda")
