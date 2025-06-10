@@ -7,10 +7,10 @@ from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBac
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
     prepare_prefill_inputs,
+    prepare_decode_inputs,
 )
 from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
     prepare_mtp_prefill_inputs,
-    prepare_draft_main_model_decode_inputs,
     IS_NONE,
 )
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
@@ -127,7 +127,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             )
 
         if decode_reqs:
-            model_input, run_reqs, mem_indexes_cpu = prepare_draft_main_model_decode_inputs(decode_reqs)
+            model_input, run_reqs = prepare_decode_inputs(decode_reqs)
             model_output = self.model.forward(model_input)
             assert model_output.logits.shape[0] % self.spec_stride == 0
 
@@ -140,6 +140,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             next_token_logprobs_cpu = torch.log(next_token_probs).detach().cpu().numpy()
 
             # verify
+            mem_indexes_cpu = model_input.mem_indexes.cpu()
             accepted_reqs, accepted_index, need_free_mem_indexes = self._verify(
                 next_token_ids, run_reqs, mem_indexes_cpu
             )
