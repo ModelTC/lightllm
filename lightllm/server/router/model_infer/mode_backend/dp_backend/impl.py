@@ -31,8 +31,8 @@ class DPChunkedPrefillBackend(ModeBackend):
         # nan 值，避免后续构建的fake请求在计算的过程中出现计算错误。
         from .pre_process import padded_prepare_prefill_inputs
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
-        self.model.forward(**kwargs)
+        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
+        self.model.forward(model_input)
         assert len(run_reqs) == 0 and padded_req_num == 1
         return
 
@@ -73,10 +73,10 @@ class DPChunkedPrefillBackend(ModeBackend):
     def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
         from .pre_process import padded_prepare_prefill_inputs
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
+        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
             prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
         )
-        logits = self.model.forward(**kwargs)
+        logits = self.model.forward(model_input)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]
@@ -91,10 +91,10 @@ class DPChunkedPrefillBackend(ModeBackend):
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
         from .pre_process import padded_prepare_decode_inputs
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
+        model_input, run_reqs, padded_req_num = padded_prepare_decode_inputs(
             decode_reqs, max_decode_num, is_multimodal=self.is_multimodal
         )
-        logits = self.model.forward(**kwargs)
+        logits = self.model.forward(model_input)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
 
@@ -112,14 +112,14 @@ class DPChunkedPrefillBackend(ModeBackend):
         from .pre_process import padded_overlap_prepare_decode_inputs
 
         (
-            micro_batch,
+            micro_input,
             run_reqs,
             padded_req_num,
-            micro_batch1,
+            micro_input1,
             run_reqs1,
             padded_req_num1,
         ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
+        logits, logits1 = self.model.microbatch_overlap_decode(micro_input, micro_input1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
         all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
@@ -141,14 +141,14 @@ class DPChunkedPrefillBackend(ModeBackend):
         from .pre_process import padded_overlap_prepare_prefill_inputs
 
         (
-            micro_batch,
+            micro_input,
             run_reqs,
             padded_req_num,
-            micro_batch1,
+            micro_input1,
             run_reqs1,
             padded_req_num1,
         ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_prefill(micro_batch, micro_batch1)
+        logits, logits1 = self.model.microbatch_overlap_prefill(micro_input, micro_input1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
         all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
