@@ -17,6 +17,7 @@ from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.multimodal_params import MultimodalParams
 from lightllm.utils.custom_kernel_utis import custom_cat
+from lightllm.utils.envs_utils import get_env_start_args
 
 logger = init_logger(__name__)
 
@@ -293,7 +294,10 @@ class InferReq:
             if g_infer_context.radix_cache is not None and self.get_cur_total_len() > 1:
                 input_token_ids = self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
                 key = torch.tensor(input_token_ids, dtype=torch.int64, device="cpu")
-                key = key[0 : len(key) - 1]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
+                # 如果开启了mtp，为了保障draft model 命中的cache的准确性，将命中的cache 长度减 spec_step
+                spec_step = get_env_start_args().spec_step
+                assert spec_step >= 0, f"spec_step must be greater than or equal to 0, but got {spec_step}"
+                key = key[0 : max(len(key) - 1 - spec_step, 0)]  # 最后一个不需要，因为需要一个额外的token，让其在prefill的时候输出下一个token的值
                 share_node, kv_len, value_tensor = g_infer_context.radix_cache.match_prefix(key, update_refs=True)
                 if share_node is not None:
                     self.shared_kv_node = share_node
