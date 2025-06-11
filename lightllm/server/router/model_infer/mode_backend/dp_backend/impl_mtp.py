@@ -127,7 +127,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         model_output = self.model.forward(model_input)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
-        next_token_ids = []
+        next_token_ids = torch.empty((0,), dtype=torch.int64, device="cuda")
         need_free_mem_indexes = []
         if len(run_reqs) != 0:
             next_token_ids, next_token_probs = sample(model_output.logits[: len(run_reqs)], run_reqs, self.eos_id)
@@ -189,8 +189,9 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
         all_run_reqs = run_reqs + run_reqs1
-        next_token_ids = []
+        next_token_ids = torch.empty((0,), dtype=torch.int64, device="cuda")
         next_token_ids_cpu = []
+        need_free_mem_indexes = []
         if len(all_run_reqs) != 0:
             all_logits = torch.empty(
                 (req_num + req_num1, micro_output.logits.shape[1]),
@@ -247,8 +248,8 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
 
             draft_next_token_ids, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_micro_output)
             draft_next_token_ids1, draft_next_token_ids_cpu1 = self._gen_draft_tokens(draft_micro_output1)
-            self._save_decode_draft_token_ids(draft_next_token_ids_cpu, all_run_reqs, draft_model_idx)
-            self._save_decode_draft_token_ids(draft_next_token_ids_cpu1, all_run_reqs, draft_model_idx)
+            self._save_decode_draft_token_ids(draft_next_token_ids_cpu, run_reqs, draft_model_idx)
+            self._save_decode_draft_token_ids(draft_next_token_ids_cpu1, run_reqs1, draft_model_idx)
             # prepare inputs for the next draft model
             draft_micro_input.input_ids = draft_next_token_ids
             draft_micro_input.hidden_states = draft_micro_output.hidden_states
@@ -319,20 +320,21 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
                 padded_req_num=padded_req_num1,
             )
 
-            draft_micro_output, draft_micro_output1 = self.draft_models[draft_model_idx].microbatch_overlap_decode(
+            draft_micro_output, draft_micro_output1 = self.draft_models[draft_model_idx].microbatch_overlap_prefill(
                 draft_micro_input, draft_micro_input1
             )
-            draft_next_token_ids_cpu = self._gen_draft_tokens(draft_micro_output)
-            draft_next_token_ids_cpu1 = self._gen_draft_tokens(draft_micro_output1)
+            _, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_micro_output)
+            _, draft_next_token_ids_cpu1 = self._gen_draft_tokens(draft_micro_output1)
             self._save_prefill_draft_tokens(draft_next_token_ids_cpu, run_reqs, draft_model_idx)
             self._save_prefill_draft_tokens(draft_next_token_ids_cpu1, run_reqs1, draft_model_idx)
 
-        self._post_handle(
-            all_run_reqs,
-            next_token_ids_cpu,
-            next_token_logprobs_cpu,
-            is_chuncked_mode=True,
-            do_filter_finished_reqs=False,
-        )
+        if len(all_run_reqs) != 0:
+            self._post_handle(
+                all_run_reqs,
+                next_token_ids_cpu,
+                next_token_logprobs_cpu,
+                is_chuncked_mode=True,
+                do_filter_finished_reqs=False,
+            )
 
         return
