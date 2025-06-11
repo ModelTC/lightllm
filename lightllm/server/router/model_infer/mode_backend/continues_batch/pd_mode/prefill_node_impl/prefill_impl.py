@@ -76,7 +76,8 @@ class ChunckedPrefillForPrefillNode(ModeBackend):
                 prefill_reqs, is_chuncked_mode=True, is_multimodal=self.is_multimodal
             )
 
-            logits = self.model.forward(model_input)
+            model_output = self.model.forward(model_input)
+            logits = model_output.logits
             next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()

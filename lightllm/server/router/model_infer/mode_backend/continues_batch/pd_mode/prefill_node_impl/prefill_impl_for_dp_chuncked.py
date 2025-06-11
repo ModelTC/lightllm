@@ -72,10 +72,11 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
             padded_prepare_prefill_inputs,
         )
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
+        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
             prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
         )
-        logits = self.model.forward(**kwargs)
+        model_output = self.model.forward(model_input)
+        logits = model_output.logits
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]

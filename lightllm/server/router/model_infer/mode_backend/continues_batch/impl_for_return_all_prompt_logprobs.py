@@ -21,7 +21,8 @@ class ReturnPromptLogProbBackend(ContinuesBatchBackend):
             req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
         )
 
-        prompt_all_logits = self.model.forward(model_input)
+        model_output = self.model.forward(model_input)
+        prompt_all_logits = model_output.logits
         input_ids = model_input.input_ids
         b_ready_cache_len = model_input.b_ready_cache_len
         b_seq_len = model_input.b_seq_len

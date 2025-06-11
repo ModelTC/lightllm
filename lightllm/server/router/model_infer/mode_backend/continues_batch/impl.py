@@ -33,7 +33,8 @@ class ContinuesBatchBackend(ModeBackend):
             model_input, run_reqs = prepare_prefill_inputs(
                 prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
             )
-            logits = self.model.forward(model_input)
+            model_output = self.model.forward(model_input)
+            logits = model_output.logits
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
@@ -49,7 +50,8 @@ class ContinuesBatchBackend(ModeBackend):
 
         if decode_reqs:
             model_input, run_reqs = prepare_decode_inputs(decode_reqs)
-            logits = self.model.forward(model_input)
+            model_output = self.model.forward(model_input)
+            logits = model_output.logits
 
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
