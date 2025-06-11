@@ -14,7 +14,7 @@ def prepare_mtp_prefill_inputs(
     next_token_ids_cpu: torch.Tensor,
     draft_model_idx: int,
     is_chunked_mode: bool,
-    padded_req_num: int,
+    padded_req_num: int = 0,
 ):
     assert padded_req_num >= 0, f"padded_req_num must be greater than or euqal to 0, but got {padded_req_num}"
     input_ids = []

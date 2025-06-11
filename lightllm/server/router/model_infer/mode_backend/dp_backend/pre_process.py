@@ -101,7 +101,7 @@ def padded_prepare_decode_inputs(
         padded_req_num = max_decode_num - len(req_objs)
         # For MTP, we need to pad the reqs to the max_decode_num * (spec_step + 1).
         spec_step = get_env_start_args().spec_step
-        padded_req_num *= spec_step + 1
+        padded_req_num = padded_req_num * (spec_step + 1)
     else:
         padded_req_num = 1 if len(req_objs) == 0 else 0
 
@@ -116,7 +116,6 @@ def padded_prepare_decode_inputs(
         input_ids.append(input_id)
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
-
         # process the draft tokens.
         for step in range(len(req.mtp_gen_token_ids)):
             run_reqs.append(req)
