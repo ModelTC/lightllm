@@ -5,6 +5,7 @@ import triton
 from typing import List
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
 from lightllm.utils.infer_utils import calculate_time
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
@@ -86,7 +87,9 @@ def padded_prepare_prefill_inputs(req_objs: List[InferReq], max_prefill_num: int
     return model_input, run_reqs, padded_req_num
 
 
-def padded_prepare_decode_inputs(req_objs: List[InferReq], max_decode_num: int, is_multimodal=False):
+def padded_prepare_decode_inputs(
+    req_objs: List[InferReq], max_decode_num: int, is_multimodal=False, padding_to_max_len: bool = False
+):
     assert max_decode_num != 0
     run_reqs = []
     nopad_total_token_num = 0
@@ -94,7 +97,14 @@ def padded_prepare_decode_inputs(req_objs: List[InferReq], max_decode_num: int, 
     input_ids = []
     nopad_b_req_idx = []
     nopad_b_seq_len = []
-    padded_req_num = 1 if len(req_objs) == 0 else 0
+    if padding_to_max_len:
+        padded_req_num = max_decode_num - len(req_objs)
+        # For MTP, we need to pad the reqs to the max_decode_num * (spec_step + 1).
+        spec_step = get_env_start_args().spec_step
+        padded_req_num *= spec_step + 1
+    else:
+        padded_req_num = 1 if len(req_objs) == 0 else 0
+
     for req in req_objs:
         run_reqs.append(req)
         nopad_b_req_idx.append(req.req_idx)
@@ -106,6 +116,16 @@ def padded_prepare_decode_inputs(req_objs: List[InferReq], max_decode_num: int, 
         input_ids.append(input_id)
         nopad_total_token_num += seq_len
         nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
+
+        # process the draft tokens.
+        for step in range(len(req.mtp_gen_token_ids)):
+            run_reqs.append(req)
+            nopad_b_req_idx.append(req.req_idx)
+            seq_len = req.get_cur_total_len() + step + 1
+            nopad_b_seq_len.append(seq_len)
+            input_ids.append(req.mtp_gen_token_ids[step])
+            nopad_total_token_num += seq_len
+            nopad_max_len_in_batch = max(nopad_max_len_in_batch, seq_len)
 
     # padding fake req for decode
     for _ in range(padded_req_num):
@@ -155,10 +175,10 @@ def padded_overlap_prepare_decode_inputs(req_objs: List[InferReq], max_decode_nu
     micro_batch1_req_num = triton.cdiv(len(req_objs), 2)
 
     micro_input, run_reqs, padded_req_num = padded_prepare_decode_inputs(
-        req_objs[0:micro_batch1_req_num], micro_batch_size, is_multimodal
+        req_objs[0:micro_batch1_req_num], micro_batch_size, is_multimodal, padding_to_max_len=True
     )
     micro_input1, run_reqs1, padded_req_num1 = padded_prepare_decode_inputs(
-        req_objs[micro_batch1_req_num:], micro_batch_size, is_multimodal
+        req_objs[micro_batch1_req_num:], micro_batch_size, is_multimodal, padding_to_max_len=True
     )
 
     return micro_input, run_reqs, padded_req_num, micro_input1, run_reqs1, padded_req_num1

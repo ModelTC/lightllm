@@ -140,7 +140,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             # verify
             mem_indexes_cpu = model_input.mem_indexes.cpu()
             accepted_reqs, accepted_index, need_free_mem_indexes = self._verify(
-                next_token_ids, run_reqs, mem_indexes_cpu
+                next_token_ids_cpu, run_reqs, mem_indexes_cpu
             )
             self._post_handle(
                 accepted_reqs,
