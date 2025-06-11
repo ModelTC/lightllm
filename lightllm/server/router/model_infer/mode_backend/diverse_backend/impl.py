@@ -72,7 +72,8 @@ class DiversehBackend(ModeBackend):
             model_input, group_run_reqs = prepare_prefill_inputs(
                 group_reqs, is_chuncked_mode=True, is_multimodal=self.is_multimodal
             )
-            logits = self.model.forward(model_input)
+            model_output = self.model.forward(model_input)
+            logits = model_output.logits
 
             uninit_req_ids = [req.req_id for req in uninit_reqs]
             self._overlap_req_init_and_filter(
@@ -91,7 +92,8 @@ class DiversehBackend(ModeBackend):
 
         if decode_reqs:
             model_input, run_reqs = prepare_decode_inputs(decode_reqs)
-            logits = self.model.forward(model_input)
+            model_output = self.model.forward(model_input)
+            logits = model_output.logits
             uninit_req_ids = [req.req_id for req in uninit_reqs]
             self._overlap_req_init_and_filter(
                 uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True

@@ -38,8 +38,8 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         # nan 值，避免后续构建的fake请求在计算的过程中出现计算错误。
         from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import padded_prepare_prefill_inputs
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
-        self.model.forward(**kwargs)
+        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
+        self.model.forward(model_input)
         assert len(run_reqs) == 0 and padded_req_num == 1
 
         return
@@ -71,10 +71,11 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
         from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import padded_prepare_decode_inputs
 
-        kwargs, run_reqs, padded_req_num = padded_prepare_decode_inputs(
+        model_input, run_reqs, padded_req_num = padded_prepare_decode_inputs(
             decode_reqs, max_decode_num, is_multimodal=self.is_multimodal
         )
-        logits = self.model.forward(**kwargs)
+        model_output = self.model.forward(model_input)
+        logits = model_output.logits
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         if len(run_reqs) != 0:
             logits = logits[0 : len(run_reqs), :]

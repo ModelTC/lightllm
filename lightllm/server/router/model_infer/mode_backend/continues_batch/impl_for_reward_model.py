@@ -18,7 +18,8 @@ class RewardModelBackend(ContinuesBatchBackend):
             req_objs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
         )
 
-        scores: torch.Tensor = self.model.forward(model_input)
+        model_output = self.model.forward(model_input)
+        scores: torch.Tensor = model_output.logits
         scores = scores.unsqueeze(1).detach().cpu().float().numpy()
 
         next_token_id = 1
