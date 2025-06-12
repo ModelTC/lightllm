@@ -15,9 +15,10 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
+from lightllm.common.basemodel.basemodel import TpPartBaseModel
 from lightllm.utils.dist_utils import init_distributed_env
 from lightllm.utils.envs_utils import get_unique_server_name
-from lightllm.server.core.objs import ShmReqManager
+from lightllm.server.core.objs import ShmReqManager, StartArgs
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from lightllm.utils.dist_utils import get_global_rank, get_global_world_size, get_dp_size
 from lightllm.utils.dist_utils import get_dp_world_size, get_global_dp_rank, get_current_rank_in_dp
@@ -33,26 +34,26 @@ class ModeBackend:
         pass
 
     def init_model(self, kvargs):
-        self.args = kvargs.get("args", None)
+        self.args: StartArgs = kvargs.get("args", None)
+        assert self.args is not None
         # p d 分离模式下会有特殊的一些初始化, 所以需要传递
         # 模式参数到模型的初始化过程中进行控制
-        self.run_mode = "normal" if self.args is None else self.args.run_mode
+        self.run_mode = self.args.run_mode
         self.is_multimodal = False
         self.nnodes = self.args.nnodes
         self.node_rank = self.args.node_rank
-        self.tp_rank = kvargs["rank_id"]
         self.world_size = kvargs["world_size"]
-        self.dp_size = kvargs.get("dp_size", 1)
+        self.dp_size = self.args.dp
         # dp_size_in_node 计算兼容多机纯tp的运行模式，这时候 1 // 2 == 0, 需要兼容
         self.dp_size_in_node = max(1, self.dp_size // self.nnodes)
         self.load_way = kvargs["load_way"]
         self.mode = kvargs["mode"]
-        self.disable_chunked_prefill = kvargs.get("disable_chunked_prefill", False)
-        self.chunked_prefill_size = kvargs.get("chunked_prefill_size", None)
-        self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
-        self.use_dynamic_prompt_cache = not kvargs.get("disable_dynamic_prompt_cache", False)
+        self.disable_chunked_prefill = self.args.disable_chunked_prefill
+        self.chunked_prefill_size = self.args.chunked_prefill_size
+        self.return_all_prompt_logprobs = self.args.return_all_prompt_logprobs
+        self.use_dynamic_prompt_cache = not self.args.disable_dynamic_prompt_cache
         self.eos_id: List[int] = kvargs.get("eos_id", [2])
-        self.disable_cudagraph = kvargs.get("disable_cudagraph", False)
+        self.disable_cudagraph = self.args.disable_cudagraph
 
         self.cache = {}
         self.logger = init_logger(__name__)
@@ -110,11 +111,10 @@ class ModeBackend:
             "batch_max_tokens": kvargs.get("batch_max_tokens", None),
             "quant_type": kvargs.get("quant_type", None),
             "quant_cfg": kvargs.get("quant_cfg", None),
-            "spec_algo": kvargs.get("spec_algo", "NONE"),
-            "spec_step": kvargs.get("spec_step", 1),
             "run_mode": self.run_mode,
         }
         self.model, self.is_multimodal = get_model(model_cfg, model_kvargs)
+        self.model: TpPartBaseModel = self.model  # for easy typing
         set_random_seed(2147483647)
         self.radix_cache = (
             RadixCache(
