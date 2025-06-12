@@ -20,6 +20,9 @@ from lightllm.utils.device_utils import kv_trans_use_p2p
 from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
 from .prefill_impl import ChunckedPrefillForPrefillNode
 from lightllm.server.router.model_infer.mode_backend.dp_backend.impl import DPChunkedPrefillBackend
+from lightllm.server.router.model_infer.mode_backend import padded_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_prepare_decode_inputs
 
 logger = init_logger(__name__)
 
@@ -68,12 +71,8 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
         return
 
     def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import (
-            padded_prepare_prefill_inputs,
-        )
-
         model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
-            prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
+            prefill_reqs, is_multimodal=self.is_multimodal
         )
         model_output = self.model.forward(model_input)
         logits = model_output.logits
@@ -88,10 +87,6 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
             )
 
     def overlap_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import (
-            padded_overlap_prepare_prefill_inputs,
-        )
-
         (
             micro_batch,
             run_reqs,
@@ -99,7 +94,7 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
             micro_batch1,
             run_reqs1,
             padded_req_num1,
-        ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal)
+        ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, is_multimodal=self.is_multimodal)
         logits, logits1 = self.model.microbatch_overlap_prefill(micro_batch, micro_batch1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         req_num, req_num1 = len(run_reqs), len(run_reqs1)

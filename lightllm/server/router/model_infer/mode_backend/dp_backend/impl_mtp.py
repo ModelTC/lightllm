@@ -12,7 +12,10 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.router.model_infer.mode_backend.continues_batch.impl_mtp import ContinuesBatchWithMTPBackend
-
+from lightllm.server.router.model_infer.mode_backend import padded_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_decode_inputs
 from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
     prepare_mtp_prefill_inputs,
 )
@@ -32,9 +35,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
 
     def init_custom(self):
         self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
-        from .pre_process import padded_prepare_prefill_inputs
-
-        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
+        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], is_multimodal=self.is_multimodal)
         self.model.forward(model_input)
         assert len(run_reqs) == 0 and padded_req_num == 1
         return
@@ -74,11 +75,9 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         return
 
     def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        from .pre_process import padded_prepare_prefill_inputs
-
         # main model prefill
         model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
-            prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal
+            prefill_reqs, is_multimodal=self.is_multimodal
         )
         model_output: ModelOutput = self.model.forward(model_input)
 
@@ -118,10 +117,8 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
             )
 
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        from .pre_process import padded_prepare_decode_inputs
-
         model_input, run_reqs, padded_req_num = padded_prepare_decode_inputs(
-            decode_reqs, max_decode_num, is_multimodal=self.is_multimodal
+            decode_reqs, is_multimodal=self.is_multimodal
         )
         # main model decode
         model_output = self.model.forward(model_input)
@@ -171,8 +168,6 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
             g_infer_state_lock.release()
 
     def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        from .pre_process import padded_overlap_prepare_decode_inputs
-
         (
             micro_input,
             run_reqs,
@@ -180,7 +175,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
             micro_input1,
             run_reqs1,
             padded_req_num1,
-        ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=self.is_multimodal)
+        ) = padded_overlap_prepare_decode_inputs(decode_reqs, is_multimodal=self.is_multimodal)
         micro_output, micro_output1 = self.model.microbatch_overlap_decode(micro_input, micro_input1)
 
         assert micro_output.logits.shape[0] % self.spec_stride == 0
@@ -263,8 +258,6 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         return
 
     def overlap_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        from .pre_process import padded_overlap_prepare_prefill_inputs
-
         (
             micro_input,
             run_reqs,
@@ -272,7 +265,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
             micro_input1,
             run_reqs1,
             padded_req_num1,
-        ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, max_prefill_num, is_multimodal=self.is_multimodal)
+        ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, is_multimodal=self.is_multimodal)
 
         micro_output, micro_output1 = self.model.microbatch_overlap_prefill(micro_input, micro_input1)
 
