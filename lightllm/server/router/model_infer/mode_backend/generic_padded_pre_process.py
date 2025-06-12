@@ -179,7 +179,7 @@ def padded_overlap_prepare_decode_inputs(req_objs: List[InferReq], is_multimodal
     req_objs_0 = req_objs[0:split_req_bound]
     req_objs_1 = req_objs[split_req_bound:]
 
-    enable_mtp = get_env_start_args().mtp_step > 0 and get_env_start_args().mtp_draft_model_dir is not None
+    enable_mtp = get_env_start_args().mtp_mode is not None
     if enable_mtp:
         micro_batch_size = max(
             sum([len(req.mtp_gen_token_ids) + 1 for req in req_objs_0]),

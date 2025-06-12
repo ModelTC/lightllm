@@ -123,7 +123,7 @@ class ModelRpcServer:
         is_prefill_node = self.args.run_mode == "prefill"
         is_decode_node = self.args.run_mode == "decode"
 
-        enable_mtp = self.args.mtp_draft_model_dir is not None
+        enable_mtp = self.args.mtp_mode is not None
 
         if is_prefill_node:
             if self.args.dp > 1:
