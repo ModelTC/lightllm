@@ -413,6 +413,12 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Whether to update the redundant expert for deepseekv3 model by online expert used counter.""",
     )
     parser.add_argument(
+        "--mtp_mode",
+        choices=["deepseekv3", None],
+        default=None,
+        help="""supported mtp mode, None is not enable mtp, """,
+    )
+    parser.add_argument(
         "--mtp_draft_model_dir",
         type=str,
         default=None,
