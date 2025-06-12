@@ -130,6 +130,8 @@ class ModelRpcServer:
             is_prefill_node = False
             is_decode_node = False
 
+        enable_mtp = self.args.mtp_draft_model_dir is not None
+
         if is_prefill_node:
             if kvargs.get("args", None).dp > 1:
                 self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
@@ -141,7 +143,7 @@ class ModelRpcServer:
             else:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif kvargs.get("dp_size", 1) > 1:
-            if kvargs.get("spec_algo", "NONE") == "MTP":
+            if enable_mtp:
                 self.backend = DPChunkedPrefillWithMTPBackend()
             else:
                 self.backend = DPChunkedPrefillBackend()
@@ -160,12 +162,12 @@ class ModelRpcServer:
         elif is_first_token_constraint_mode:
             self.backend = FirstTokenConstraintBackend()
         elif disable_chunked_prefill:
-            if kvargs.get("spec_algo", "NONE") == "MTP":
+            if enable_mtp:
                 self.backend = ContinuesBatchWithMTPBackend()
             else:
                 self.backend = ContinuesBatchBackend()
         else:
-            if kvargs.get("spec_algo", "NONE") == "MTP":
+            if enable_mtp:
                 self.backend = ContinuesBatchWithMTPBackend()
             else:
                 self.backend = ChunkedPrefillBackend()
