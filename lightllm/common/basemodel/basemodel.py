@@ -21,7 +21,6 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.utils.dist_utils import get_dp_world_size
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
-from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch, PrefillMicroBatch
 from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 
