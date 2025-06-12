@@ -1,28 +1,12 @@
-import os
-import time
-import threading
 import torch
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from typing import List, Tuple
-from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
-from lightllm.utils.infer_utils import set_random_seed
-from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams, g_infer_context
-from lightllm.server.core.objs import FinishStatus
-from lightllm.server.pd_io_struct import KVMoveTask, DecodeNodeInfo
 from lightllm.utils.log_utils import init_logger
-from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
-from lightllm.common.basemodel.infer_lock import g_infer_state_lock
-from rpyc.utils.server import ThreadedServer
-from .prefill_task_cache import g_kv_move_task_cache
-from lightllm.utils.device_utils import kv_trans_use_p2p
 from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
 from .prefill_impl import ChunckedPrefillForPrefillNode
 from lightllm.server.router.model_infer.mode_backend.dp_backend.impl import DPChunkedPrefillBackend
-from lightllm.server.router.model_infer.mode_backend import padded_prepare_prefill_inputs
-from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_prefill_inputs
-from lightllm.server.router.model_infer.mode_backend import padded_prepare_decode_inputs
 
 logger = init_logger(__name__)
 
@@ -71,43 +55,21 @@ class DPChunkedForPrefillNode(ChunckedPrefillForPrefillNode):
         return
 
     def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
-            prefill_reqs, is_multimodal=self.is_multimodal
+        DPChunkedPrefillBackend.normal_prefill_reqs(
+            self,
+            prefill_reqs=prefill_reqs,
+            max_prefill_num=max_prefill_num,
+            uninit_reqs=uninit_reqs,
+            ok_finished_reqs=ok_finished_reqs,
         )
-        model_output = self.model.forward(model_input)
-        logits = model_output.logits
-        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
-        if len(run_reqs) != 0:
-            logits = logits[0 : len(run_reqs), :]
-            next_token_ids, next_token_probs = sample(logits, run_reqs, self.eos_id)
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self._post_handle(
-                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
-            )
+        return
 
     def overlap_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs):
-        (
-            micro_batch,
-            run_reqs,
-            padded_req_num,
-            micro_batch1,
-            run_reqs1,
-            padded_req_num1,
-        ) = padded_overlap_prepare_prefill_inputs(prefill_reqs, is_multimodal=self.is_multimodal)
-        logits, logits1 = self.model.microbatch_overlap_prefill(micro_batch, micro_batch1)
-        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
-        req_num, req_num1 = len(run_reqs), len(run_reqs1)
-        all_logits = torch.empty((req_num + req_num1, logits.shape[1]), dtype=logits.dtype, device=logits.device)
-
-        all_logits[0:req_num, :].copy_(logits[0:req_num, :], non_blocking=True)
-        all_logits[req_num : (req_num + req_num1), :].copy_(logits1[0:req_num1, :], non_blocking=True)
-
-        all_run_reqs = run_reqs + run_reqs1
-        if all_run_reqs:
-            next_token_ids, next_token_probs = sample(all_logits, all_run_reqs, self.eos_id)
-            next_token_ids = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
-            self._post_handle(
-                all_run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
-            )
+        DPChunkedPrefillBackend.overlap_prefill_reqs(
+            self,
+            prefill_reqs=prefill_reqs,
+            max_prefill_num=max_prefill_num,
+            uninit_reqs=uninit_reqs,
+            ok_finished_reqs=ok_finished_reqs,
+        )
+        return
