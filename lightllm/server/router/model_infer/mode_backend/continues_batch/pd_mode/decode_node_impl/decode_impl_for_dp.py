@@ -12,6 +12,9 @@ from lightllm.server.core.objs import FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
+from lightllm.server.router.model_infer.mode_backend import padded_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_decode_inputs
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
@@ -36,9 +39,7 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         # 在推理的时候至少是两个token，1个是已经有kv的token，一个是等待计算kv的token，然后生成第三个token，这几个
         # token 实际引用的都是 g_infer_context.req_manager.mem_manager.HOLD_TOKEN_MEMINDEX，但是需要初始化排除
         # nan 值，避免后续构建的fake请求在计算的过程中出现计算错误。
-        from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import padded_prepare_prefill_inputs
-
-        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], 1, is_multimodal=self.is_multimodal)
+        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], is_multimodal=self.is_multimodal)
         self.model.forward(model_input)
         assert len(run_reqs) == 0 and padded_req_num == 1
 
@@ -69,10 +70,8 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         return
 
     def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import padded_prepare_decode_inputs
-
         model_input, run_reqs, padded_req_num = padded_prepare_decode_inputs(
-            decode_reqs, max_decode_num, is_multimodal=self.is_multimodal
+            decode_reqs, is_multimodal=self.is_multimodal
         )
         model_output = self.model.forward(model_input)
         logits = model_output.logits
@@ -88,10 +87,6 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         return
 
     def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        from lightllm.server.router.model_infer.mode_backend.dp_backend.pre_process import (
-            padded_overlap_prepare_decode_inputs,
-        )
-
         (
             micro_batch,
             run_reqs,
@@ -99,7 +94,7 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
             micro_batch1,
             run_reqs1,
             padded_req_num1,
-        ) = padded_overlap_prepare_decode_inputs(decode_reqs, max_decode_num, is_multimodal=self.is_multimodal)
+        ) = padded_overlap_prepare_decode_inputs(decode_reqs, is_multimodal=self.is_multimodal)
 
         logits, logits1 = self.model.microbatch_overlap_decode(micro_batch, micro_batch1)
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
