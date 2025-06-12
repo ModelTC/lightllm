@@ -6,7 +6,6 @@ from typing import Optional
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
-from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 from .infer_struct import InferStateInfo
