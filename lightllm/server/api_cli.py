@@ -413,22 +413,19 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Whether to update the redundant expert for deepseekv3 model by online expert used counter.""",
     )
     parser.add_argument(
-        "--spec_algo",
-        type=str,
-        choices=["none", "MTP"],
-        default="none",
-        help="""spec algo used for spec model, none means no spec algo,
-        mtp means use mtp spec algo, only support deepseekv3 model""",
-    )
-    parser.add_argument(
-        "--spec_model_dir",
+        "--mtp_draft_model_dir",
         type=str,
         default=None,
+        help="""Path to the draft model for the MTP multi-prediction feature,
+        used for loading the MTP multi-output token model.""",
     )
     parser.add_argument(
-        "--spec_step",
+        "--mtp_step",
         type=int,
         default=0,
-        help="spec step for spec algo, only support deepseekv3 model.",
+        help="""Specifies the number of additional tokens to predict using the draft model.
+        Currently, this feature supports only the DeepSeekV3 model.
+        Increasing this value allows for more predictions,
+        but ensure that the model is compatible with the specified step count.""",
     )
     return parser
