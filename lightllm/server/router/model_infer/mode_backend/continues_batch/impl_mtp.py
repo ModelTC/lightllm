@@ -185,7 +185,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
         assert next_token_ids.shape[0] % self.spec_stride == 0
         batch_size = next_token_ids.shape[0] // self.spec_stride
         for b in range(batch_size):
-            req = run_reqs[b % self.spec_stride]
+            req: InferReq = run_reqs[b % self.spec_stride]
             req_start_idx = b * self.spec_stride
             req_end_idx = (b + 1) * self.spec_stride
             # step_idx==0 means the output of the main model
@@ -193,7 +193,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
                 if step_idx == 0 or req.mtp_gen_token_ids[step_idx - 1] == next_token_ids[req_start_idx + step_idx - 1]:
                     accepted_reqs.append(req)
                     accepted_index.append(req_start_idx + step_idx)
-                    req.mtp_cur_accepted_len += 1 if step_idx != 0 else 0
+                    req.mtp_step_accepted_token_num += 1 if step_idx != 0 else 0
                 else:
                     need_free_mem_indexes.extend(draft_mem_indexes[req_start_idx + step_idx : req_end_idx])
                     break
@@ -217,11 +217,11 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
     ):
         batch_size = len(run_reqs) // self.spec_stride
         for i in range(batch_size):
-            req = run_reqs[self.spec_stride * i]
+            req: InferReq = run_reqs[self.spec_stride * i]
             # append the draft token
-            req.mtp_gen_token_ids.append(draft_next_token_ids[i * self.spec_stride + req.mtp_cur_accepted_len])
+            req.mtp_gen_token_ids.append(draft_next_token_ids[i * self.spec_stride + req.mtp_step_accepted_token_num])
             #  reset the mtp status
             if draft_model_idx == self.spec_step - 1:
                 if self.is_master_in_dp:
                     req.set_total_accepted_len()
-                req.mtp_cur_accepted_len = 0
+                req.mtp_step_accepted_token_num = 0
