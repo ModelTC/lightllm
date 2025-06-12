@@ -265,8 +265,9 @@ class InferReq:
         # 的技术，在没有开启 mtp 功能的时候，这个成员变量不会有任何的实际实用意义。
         # 当开启后，mtp_gen_token_ids 保存多生成的多余的token_id,但是在后面的
         # 步骤中需要重新进行校验。
-        self.mtp_cur_accepted_len = 0
         self.mtp_gen_token_ids: List[int] = []
+        # 用于记录每一次 decode verify 接受的 mtp token 的数量
+        self.mtp_step_accepted_token_num = 0
 
     def init_all(self):
         if self.initialized is False:
@@ -355,7 +356,7 @@ class InferReq:
         return
 
     def set_total_accepted_len(self):
-        self.shm_req.mtp_accepted_token_num += self.mtp_cur_accepted_len
+        self.shm_req.mtp_accepted_token_num += self.mtp_step_accepted_token_num
 
     def get_last_gen_token(self):
         return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.cur_output_len - 1]
