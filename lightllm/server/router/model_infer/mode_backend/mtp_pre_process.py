@@ -5,8 +5,6 @@ from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_con
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.batch_objs import ModelInput
 
-IS_NONE = -1
-
 
 def prepare_mtp_prefill_inputs(
     req_objs: List[InferReq],

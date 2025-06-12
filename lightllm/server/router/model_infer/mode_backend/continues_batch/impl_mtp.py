@@ -11,7 +11,6 @@ from lightllm.server.router.model_infer.mode_backend.generic_pre_process import 
 )
 from lightllm.server.router.model_infer.mode_backend.mtp_pre_process import (
     prepare_mtp_prefill_inputs,
-    IS_NONE,
 )
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.server.router.model_infer.infer_batch import InferReq
