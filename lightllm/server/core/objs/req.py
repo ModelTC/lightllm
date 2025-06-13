@@ -94,6 +94,8 @@ class Req(ctypes.Structure):
         ("reward_score", ctypes.c_float),
         # 请求回复累计概率和
         ("cumlogprob", ctypes.c_float),
+        # mtp draft model 多输出命中接受的token数量
+        ("mtp_accepted_token_num", ctypes.c_int),
     ]
 
     def get_str(self):
@@ -145,6 +147,7 @@ class Req(ctypes.Structure):
         self.create_prompt_ids_shm_array()
         self.chunked_prefill_size = chunked_prefill_size
         self.shm_prompt_ids.arr[0 : len(prompt_ids)] = prompt_ids
+        self.mtp_accepted_token_num = 0
 
         self.post_init()
 
