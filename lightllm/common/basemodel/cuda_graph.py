@@ -7,7 +7,6 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed import dist_group_manager, lightllm_capture_graph, CustomProcessGroup
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
-from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 from .infer_struct import InferStateInfo
 
 
@@ -180,12 +179,6 @@ class CudaGraph:
             assert input_ids1 is None and infer_state1 is None
             return self._replay(input_ids, infer_state)
 
-    def _gen_dummy_hidden_states(self, model, batch_size):
-        if model.spec_algo.is_mtp_module():
-            return torch.randn(batch_size, model.config["hidden_size"], dtype=model.data_type, device="cuda")
-        else:
-            return None
-
     @torch.no_grad()
     def warmup(self, model):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
@@ -218,7 +211,7 @@ class CudaGraph:
                 b_req_idx=b_req_idx,
                 b_seq_len=b_seq_len,
                 is_prefill=False,
-                hidden_states=self._gen_dummy_hidden_states(model, batch_size),
+                **self._gen_special_model_input(model, batch_size),
             )
             model_output: ModelOutput = model.forward(model_input)
             del model_output
@@ -273,7 +266,7 @@ class CudaGraph:
                     mem_indexes=mem_indexes,
                     b_req_idx=b_req_idx,
                     b_seq_len=b_seq_len,
-                    hidden_states=self._gen_dummy_hidden_states(model, batch_size),
+                    **self._gen_special_model_input(model, batch_size),
                 )
                 decode_batches.append(micro_batch)
 
@@ -327,7 +320,7 @@ class CudaGraph:
             b_ready_cache_len=b_ready_cache_len,
             is_prefill=True,
             multimodal_params=[],
-            hidden_states=self._gen_dummy_hidden_states(model, total_token_num),
+            **self._gen_special_model_input(model, total_token_num),
         )
 
         model_output: ModelOutput = model.forward(model_input)
@@ -344,3 +337,16 @@ class CudaGraph:
         predict_id = int(predict_ids[0][0])
         torch.cuda.empty_cache()
         return predict_id
+
+    def _gen_special_model_input(self, model, batch_size):
+        special_model_input = {}
+
+        is_deepseekv3_mtp_draft_model = "Deepseek3MTPModel" in str(model.__class__)
+        if is_deepseekv3_mtp_draft_model:
+            special_model_input["deepseekv3_mtp_draft_input_hiddens"] = torch.randn(
+                batch_size, model.config["hidden_size"], dtype=model.data_type, device="cuda"
+            )
+        else:
+            special_model_input["deepseekv3_mtp_draft_input_hiddens"] = None
+
+        return special_model_input
