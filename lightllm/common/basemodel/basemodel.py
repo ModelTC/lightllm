@@ -21,8 +21,8 @@ from lightllm.utils.log_utils import init_logger
 from lightllm.utils.dist_utils import get_dp_world_size
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
-from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
+from lightllm.utils.custom_kernel_utis import pad2dim_tensor_to_new_batch
 
 
 logger = init_logger(__name__)
@@ -44,6 +44,7 @@ class TpPartBaseModel:
     infer_state_class = InferStateInfo
 
     def __init__(self, kvargs):
+        self.args = get_env_start_args()
         self.run_mode = kvargs["run_mode"]
         self.weight_dir_ = kvargs["weight_dir"]
         self.max_total_token_num = kvargs["max_total_token_num"]
@@ -75,9 +76,7 @@ class TpPartBaseModel:
         self.tp_world_size_ = get_dp_world_size()
         self.enable_tpsp_mix_mode = get_env_start_args().enable_tpsp_mix_mode
 
-        # Speculative decoding
-        self.spec_algo = SpeculativeDecodeAlgorithm.from_string(kvargs.get("spec_algo", "NONE"))
-        self.spec_step = kvargs.get("spec_step", 1)
+        self.is_deepseekv3_mtp_mode = self.args.mtp_mode == "deepseekv3"
 
         self._init_datatype()
         self._init_config()
@@ -245,9 +244,6 @@ class TpPartBaseModel:
     def _create_inferstate(self, model_input: ModelInput, batch_index: int = 0):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = model_input.is_prefill
-        infer_state.spec_algo = self.spec_algo
-        infer_state.spec_info = model_input.hidden_states
-
         infer_state.is_token_healing = self.is_token_healing
         infer_state.return_all_prompt_logics = self.return_all_prompt_logics
         infer_state.use_dynamic_prompt_cache = self.use_dynamic_prompt_cache
@@ -274,6 +270,10 @@ class TpPartBaseModel:
             self.data_type,
         )
         infer_state.dist_group = dist_group_manager.get_group(batch_index)
+
+        # 特殊模型，特殊模式的特定变量初始化操作。
+        infer_state.deepseekv3_mtp_draft_input_hiddens = model_input.deepseekv3_mtp_draft_input_hiddens
+
         return infer_state
 
     def _create_padded_decode_model_input(self, model_input: ModelInput, new_batch_size: int):
@@ -297,6 +297,14 @@ class TpPartBaseModel:
             mode="constant",
             value=self.mem_manager.HOLD_TOKEN_MEMINDEX,
         )
+
+        # 特殊模型，特殊模式的特殊变量的特殊 padding
+        if new_model_input.deepseekv3_mtp_draft_input_hiddens is not None:
+            new_model_input.deepseekv3_mtp_draft_input_hiddens = pad2dim_tensor_to_new_batch(
+                input=new_model_input.deepseekv3_mtp_draft_input_hiddens,
+                new_batch_size=new_batch_size,
+            )
+
         return new_model_input
 
     def _create_unpad_decode_model_output(self, model_output: ModelOutput, origin_batch_size: int):
@@ -305,6 +313,12 @@ class TpPartBaseModel:
             return model_output
         new_model_output = copy.copy(model_output)
         new_model_output.logits = new_model_output.logits[0:origin_batch_size]
+
+        # 特殊模型，特殊模式的特殊变量的特殊 unpad
+        if new_model_output.deepseekv3_mtp_main_output_hiddens is not None:
+            _hidden_states = new_model_output.deepseekv3_mtp_main_output_hiddens
+            new_model_output.deepseekv3_mtp_main_output_hiddens = _hidden_states[0:origin_batch_size]
+
         return new_model_output
 
     def _prefill(
@@ -363,6 +377,106 @@ class TpPartBaseModel:
             model_output = self._token_forward(model_input.input_ids, infer_state)
 
         return model_output
+
+    @final
+    def _context_forward(self, input_ids, infer_state: InferStateInfo):
+        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
+        g_cache_manager.cache_env_in()
+        cuda_input_ids = input_ids
+
+        pre_method = (self.pre_infer.context_forward, self.pre_infer.tpsp_context_forward)[run_mode_index]
+        input_embs = pre_method(cuda_input_ids, infer_state, self.pre_post_weight)
+
+        for i in range(self.layers_num):
+            layer = self.layers_infer[i]
+            layer_method = (layer.context_forward, layer.tpsp_context_forward)[run_mode_index]
+            input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
+
+        post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
+        predict_logits = post_method(input_embs, infer_state, self.pre_post_weight)
+
+        g_cache_manager.cache_env_out()
+
+        model_output = ModelOutput(logits=predict_logits)
+
+        # 特殊模型特殊模式的额外输出
+        if self.is_deepseekv3_mtp_mode:
+            model_output.deepseekv3_mtp_main_output_hiddens = input_embs
+
+        return model_output
+
+    @final
+    def _token_forward(self, input_ids, infer_state: InferStateInfo):
+        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
+        g_cache_manager.cache_env_in(
+            is_cuda_graph=infer_state.is_cuda_graph,
+            cur_batch_size=infer_state.batch_size,
+            cuda_graph_max_batch_size=self.graph_max_batch_size,
+        )
+        cuda_input_ids = input_ids
+        pre_method = (self.pre_infer.token_forward, self.pre_infer.tpsp_token_forward)[run_mode_index]
+        input_embs = pre_method(cuda_input_ids, infer_state, self.pre_post_weight)
+        for i in range(self.layers_num):
+            layer = self.layers_infer[i]
+            layer_method = (layer.token_forward, layer.tpsp_token_forward)[run_mode_index]
+            input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
+
+        post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
+        predict_logits = post_method(input_embs, infer_state, self.pre_post_weight)
+
+        if self.is_deepseekv3_mtp_mode:
+            graph_out_hiddens = g_cache_manager.alloc_tensor(
+                input_embs.shape,
+                data_type=input_embs.data_type,
+                is_graph_out=True,
+                microbatch_index=infer_state.microbatch_index,
+                graph_out_key=520,
+            )
+            graph_out_hiddens.copy_(input_embs)
+
+        g_cache_manager.cache_env_out()
+
+        model_output = ModelOutput(logits=predict_logits)
+
+        # 特殊模型特殊模式的额外输出
+        if self.is_deepseekv3_mtp_mode:
+            model_output.deepseekv3_mtp_main_output_hiddens = graph_out_hiddens
+
+        return model_output
+
+    @torch.no_grad()
+    def microbatch_overlap_prefill(self, model_input0: ModelInput, model_input1: ModelInput):
+        assert model_input0.mem_indexes.is_cuda
+        assert model_input1.mem_indexes.is_cuda
+        input_ids0, input_ids1 = model_input0.input_ids, model_input1.input_ids
+
+        infer_state0 = self._create_inferstate(model_input0, 0)
+        init_req_to_token_indexes(
+            self.req_manager.req_to_token_indexs,
+            model_input0.b_req_idx,
+            model_input0.b_seq_len,
+            infer_state0.b_ready_cache_len,
+            model_input0.max_len_in_batch,
+            infer_state0.mem_index,
+        )
+        infer_state0.init_some_extra_state(self, input_ids0)
+
+        infer_state1 = self._create_inferstate(model_input1, 1)
+        init_req_to_token_indexes(
+            self.req_manager.req_to_token_indexs,
+            model_input1.b_req_idx,
+            model_input1.b_seq_len,
+            infer_state1.b_ready_cache_len,
+            model_input1.max_len_in_batch,
+            infer_state1.mem_index,
+        )
+        infer_state1.init_some_extra_state(self, input_ids1)
+
+        model_output0, model_output1 = self._overlap_tpsp_context_forward(
+            input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
+        )
+        dist_group_manager.clear_deepep_buffer()
+        return model_output0, model_output1
 
     @torch.no_grad()
     def microbatch_overlap_decode(self, model_input0: ModelInput, model_input1: ModelInput):
@@ -437,93 +551,31 @@ class TpPartBaseModel:
             )
         return model_output0, model_output1
 
-    @torch.no_grad()
-    def microbatch_overlap_prefill(self, model_input0: ModelInput, model_input1: ModelInput):
-        assert model_input0.mem_indexes.is_cuda
-        assert model_input1.mem_indexes.is_cuda
-        input_ids0, input_ids1 = model_input0.input_ids, model_input1.input_ids
-
-        infer_state0 = self._create_inferstate(model_input0, 0)
-        init_req_to_token_indexes(
-            self.req_manager.req_to_token_indexs,
-            model_input0.b_req_idx,
-            model_input0.b_seq_len,
-            infer_state0.b_ready_cache_len,
-            model_input0.max_len_in_batch,
-            infer_state0.mem_index,
-        )
-        infer_state0.init_some_extra_state(self, input_ids0)
-
-        infer_state1 = self._create_inferstate(model_input1, 1)
-        init_req_to_token_indexes(
-            self.req_manager.req_to_token_indexs,
-            model_input1.b_req_idx,
-            model_input1.b_seq_len,
-            infer_state1.b_ready_cache_len,
-            model_input1.max_len_in_batch,
-            infer_state1.mem_index,
-        )
-        infer_state1.init_some_extra_state(self, input_ids1)
-
-        model_output0, model_output1 = self._overlap_tpsp_context_forward(
-            input_ids0, infer_state0, input_ids1=input_ids1, infer_state1=infer_state1
-        )
-        dist_group_manager.clear_deepep_buffer()
-        return model_output0, model_output1
-
     @final
-    def _context_forward(self, input_ids, infer_state: InferStateInfo):
-        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
+    def _overlap_tpsp_context_forward(
+        self, input_ids, infer_state: InferStateInfo, input_ids1, infer_state1: InferStateInfo
+    ):
         g_cache_manager.cache_env_in()
-        cuda_input_ids = input_ids
-
-        pre_method = (self.pre_infer.context_forward, self.pre_infer.tpsp_context_forward)[run_mode_index]
-        input_embs = pre_method(cuda_input_ids, infer_state, self.pre_post_weight)
-
+        input_embs, input_embs1 = self.pre_infer.overlap_tpsp_context_forward(
+            input_ids, input_ids1, infer_state, infer_state1, self.pre_post_weight
+        )
         for i in range(self.layers_num):
-            layer = self.layers_infer[i]
-            layer_method = (layer.context_forward, layer.tpsp_context_forward)[run_mode_index]
-            input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
-
-        post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
-        predict_logits = post_method(input_embs, infer_state, self.pre_post_weight)
-
+            input_embs, input_embs1 = self.layers_infer[i].overlap_tpsp_context_forward(
+                input_embs, input_embs1, infer_state, infer_state1, self.trans_layers_weight[i]
+            )
+        predict_logits, predict_logits1 = self.post_infer.overlap_tpsp_token_forward(
+            input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
+        )
         g_cache_manager.cache_env_out()
-        is_return_hidden_states = self.spec_algo.is_mtp() or (
-            self.spec_algo.is_mtp_module() and not self.last_mtp_module
-        )
-        return ModelOutput(
-            logits=predict_logits,
-            hidden_states=input_embs if is_return_hidden_states else None,
-        )
 
-    @final
-    def _token_forward(self, input_ids, infer_state: InferStateInfo):
-        run_mode_index = 1 if self.enable_tpsp_mix_mode else 0
-        g_cache_manager.cache_env_in(
-            is_cuda_graph=infer_state.is_cuda_graph,
-            cur_batch_size=infer_state.batch_size,
-            cuda_graph_max_batch_size=self.graph_max_batch_size,
-        )
-        cuda_input_ids = input_ids
-        pre_method = (self.pre_infer.token_forward, self.pre_infer.tpsp_token_forward)[run_mode_index]
-        input_embs = pre_method(cuda_input_ids, infer_state, self.pre_post_weight)
-        for i in range(self.layers_num):
-            layer = self.layers_infer[i]
-            layer_method = (layer.token_forward, layer.tpsp_token_forward)[run_mode_index]
-            input_embs = layer_method(input_embs, infer_state, self.trans_layers_weight[i])
+        model_output = ModelOutput(logits=predict_logits)
+        model_output1 = ModelOutput(logits=predict_logits1)
 
-        post_method = (self.post_infer.token_forward, self.post_infer.tpsp_token_forward)[run_mode_index]
-        predict_logits = post_method(input_embs, infer_state, self.pre_post_weight)
+        if self.is_deepseekv3_mtp_mode:
+            model_output.deepseekv3_mtp_main_output_hiddens = input_embs
+            model_output1.deepseekv3_mtp_main_output_hiddens = input_embs1
 
-        g_cache_manager.cache_env_out()
-        is_return_hidden_states = self.spec_algo.is_mtp() or (
-            self.spec_algo.is_mtp_module() and not self.last_mtp_module
-        )
-        return ModelOutput(
-            logits=predict_logits,
-            hidden_states=input_embs if is_return_hidden_states else None,
-        )
+        return model_output, model_output1
 
     @final
     def _overlap_tpsp_token_forward(
@@ -547,50 +599,32 @@ class TpPartBaseModel:
             input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
         )
 
-        g_cache_manager.cache_env_out()
-        is_return_hidden_states = self.spec_algo.is_mtp() or (
-            self.spec_algo.is_mtp_module() and not self.last_mtp_module
-        )
-        model_output = ModelOutput(
-            logits=predict_logits,
-            hidden_states=input_embs if is_return_hidden_states else None,
-        )
-
-        model_output1 = ModelOutput(
-            logits=predict_logits1,
-            hidden_states=input_embs1 if is_return_hidden_states else None,
-        )
-        return model_output, model_output1
-
-    @final
-    def _overlap_tpsp_context_forward(
-        self, input_ids, infer_state: InferStateInfo, input_ids1, infer_state1: InferStateInfo
-    ):
-        g_cache_manager.cache_env_in()
-        input_embs, input_embs1 = self.pre_infer.overlap_tpsp_context_forward(
-            input_ids, input_ids1, infer_state, infer_state1, self.pre_post_weight
-        )
-        for i in range(self.layers_num):
-            input_embs, input_embs1 = self.layers_infer[i].overlap_tpsp_context_forward(
-                input_embs, input_embs1, infer_state, infer_state1, self.trans_layers_weight[i]
+        if self.is_deepseekv3_mtp_mode:
+            graph_out_hiddens = g_cache_manager.alloc_tensor(
+                input_embs.shape,
+                data_type=input_embs.data_type,
+                is_graph_out=True,
+                microbatch_index=0,
+                graph_out_key=520,
             )
-        predict_logits, predict_logits1 = self.post_infer.overlap_tpsp_token_forward(
-            input_embs, input_embs1, infer_state, infer_state1, self.pre_post_weight
-        )
+            graph_out_hiddens.copy_(input_embs)
+            graph_out_hiddens1 = g_cache_manager.alloc_tensor(
+                input_embs1.shape,
+                data_type=input_embs1.data_type,
+                is_graph_out=True,
+                microbatch_index=1,
+                graph_out_key=520,
+            )
+            graph_out_hiddens1.copy_(input_embs1)
+
         g_cache_manager.cache_env_out()
 
-        is_return_hidden_states = self.spec_algo.is_mtp() or (
-            self.spec_algo.is_mtp_module() and not self.last_mtp_module
-        )
-        model_output = ModelOutput(
-            logits=predict_logits,
-            hidden_states=input_embs if is_return_hidden_states else None,
-        )
+        model_output = ModelOutput(logits=predict_logits)
+        model_output1 = ModelOutput(logits=predict_logits1)
 
-        model_output1 = ModelOutput(
-            logits=predict_logits1,
-            hidden_states=input_embs1 if is_return_hidden_states else None,
-        )
+        if self.is_deepseekv3_mtp_mode:
+            model_output.deepseekv3_mtp_main_output_hiddens = graph_out_hiddens
+            model_output1.deepseekv3_mtp_main_output_hiddens = graph_out_hiddens1
 
         return model_output, model_output1
 
