@@ -262,6 +262,7 @@ class ModeBackend:
         for req_obj, next_token_id, next_token_logprob in zip(run_reqs, next_token_ids, next_token_logprobs):
             req_obj: InferReq = req_obj
             shm_req = req_obj.shm_req
+            finish_status = req_obj.finish_status
             if is_chuncked_mode:
                 new_kv_len = req_obj.get_chuncked_input_token_len()
             else:
@@ -271,13 +272,8 @@ class ModeBackend:
             if self.is_master_in_dp:
                 shm_req.shm_cur_kv_len = req_obj.cur_kv_len
 
-            # 这个地方主要是为了提前判断是否存在abort的情况，如果abort了
-            # 直接将请求放入finished 处理队列中。
-            if req_obj.is_finished_or_aborted():
-                finished_req_ids.append(shm_req.request_id)
-                continue
-
-            # 对于没有到达需要输出 token 阶段的请求，直接略过
+            # 对于没有到达需要输出 token 阶段的请求，直接略过, 说明还
+            # 处于chuncked prefill kv 填充的阶段。
             if req_obj.cur_kv_len < req_obj.get_cur_total_len():
                 continue
 
@@ -285,13 +281,26 @@ class ModeBackend:
             req_obj.set_next_gen_token_id(next_token_id, next_token_logprob)
             req_obj.cur_output_len += 1
 
+            # 这里提前判定的主要作用是：
+            # 在 mtp mode 下，可以存在同一个 req 对象的多次处理，
+            # 在这种情况下， 如果前一步接收的mtp token 已经导致了请求
+            # 达到了finished 状态，后续的请求就不再进行后续的复杂流程
+            # 判断和处理，但是，因为 mtp 多请求还是导致了kv 的使用，所以
+            # 还是需要更新对应的 input_tokens 和 cur_kv_len 信息，否则
+            # 在 filter req 的时候，容易导致kv 管理的泄露和插入radix cache
+            # 的信息不完整等问题。
+            if finish_status.is_finished():
+                finished_req_ids.append(shm_req.request_id)
+                continue
+
+            # 更新判断请求的 finished 状态
             req_obj.update_finish_status(self.eos_id)
 
             if extra_post_req_handle_func is not None:
                 extra_post_req_handle_func(req_obj, next_token_id, next_token_logprob)
 
             # 判断是否已经满足生成结束条件。
-            if req_obj.is_finished_or_aborted():
+            if finish_status.is_finished():
                 finished_req_ids.append(shm_req.request_id)
 
             if self.is_master_in_dp:
@@ -300,7 +309,7 @@ class ModeBackend:
                 # detokenization 进程需要的信息，注意这些变量的写入顺序避免异步协同问题。
                 shm_req.shm_cur_output_len = req_obj.cur_output_len
 
-                if req_obj.finish_status.is_finished():
+                if finish_status.is_finished():
                     shm_req.finish_token_index = req_obj.get_cur_total_len() - 1
                     shm_req.finish_status = req_obj.finish_status
 
@@ -310,8 +319,13 @@ class ModeBackend:
             req_objs=run_reqs, next_token_ids=next_token_ids
         )
 
+        # mtp_mode 模式下，因为存在重复对象，需要进行去重操作。
+        if self.args.mtp_mode is not None:
+            finished_req_ids = list(set(finished_req_ids))
+
         if do_filter_finished_reqs:
             g_infer_context.filter(finished_req_ids)
+
         return finished_req_ids
 
     # 一些可以复用的通用功能函数
