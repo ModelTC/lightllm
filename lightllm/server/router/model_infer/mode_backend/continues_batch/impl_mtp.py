@@ -31,42 +31,41 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
     # 支持双模型
     def init_model(self, kvargs):
         super().init_model(kvargs)
-        max_total_token_num = self.model.mem_manager.size
-        kvargs["max_total_token_num"] = max_total_token_num
-        self.spec_step = kvargs.get("spec_step", 1)
-        self.spec_stride = self.spec_step + 1
+        self._init_mtp_draft_model(kvargs)
+        return
+
+    def _init_mtp_draft_model(self, main_kvargs: dict):
+        self.mtp_step = self.args.mtp_step
         self.draft_models = []
 
         os.environ["DISABLE_CHECK_MAX_LEN_INFER"] = "1"
-        for i in range(self.spec_step):
-            mtp_model_cfg, _ = PretrainedConfig.get_config_dict(kvargs["spec_weight_dir"])
+        for i in range(self.mtp_step):
+            mtp_model_cfg, _ = PretrainedConfig.get_config_dict(self.args.mtp_draft_model_dir)
             mtp_model_kvargs = {
-                "weight_dir": kvargs["spec_weight_dir"],
-                "max_total_token_num": kvargs["max_total_token_num"],
-                "load_way": kvargs["load_way"],
-                "mode": kvargs["mode"],
-                "max_req_num": kvargs.get("max_req_num", 1000),
-                "max_seq_length": kvargs.get("max_seq_length", 1024 * 5),
+                "weight_dir": self.args.mtp_draft_model_dir,
+                "max_total_token_num": self.model.mem_manager.size,
+                "load_way": main_kvargs["load_way"],
+                "mode": main_kvargs["mode"],
+                "max_req_num": main_kvargs.get("max_req_num", 1000),
+                "max_seq_length": main_kvargs.get("max_seq_length", 1024 * 5),
                 "is_token_healing": False,
                 "return_all_prompt_logics": False,
                 "use_dynamic_prompt_cache": self.use_dynamic_prompt_cache,
                 "disable_chunked_prefill": self.disable_chunked_prefill,
-                "data_type": kvargs.get("data_type", "float16"),
-                "graph_max_batch_size": kvargs.get("graph_max_batch_size", 16),
-                "graph_max_len_in_batch": kvargs.get("graph_max_len_in_batch", 8196),
-                "disable_cudagraph": kvargs.get("disable_cudagraph", False),
-                "mem_fraction": kvargs["mem_fraction"],
-                "batch_max_tokens": kvargs.get("batch_max_tokens", None),
-                "quant_type": kvargs.get("quant_type", None),
-                "quant_cfg": kvargs.get("quant_cfg", None),
+                "data_type": main_kvargs.get("data_type", "float16"),
+                "graph_max_batch_size": main_kvargs.get("graph_max_batch_size", 16),
+                "graph_max_len_in_batch": main_kvargs.get("graph_max_len_in_batch", 8196),
+                "disable_cudagraph": main_kvargs.get("disable_cudagraph", False),
+                "mem_fraction": main_kvargs["mem_fraction"],
+                "batch_max_tokens": main_kvargs.get("batch_max_tokens", None),
+                "quant_type": main_kvargs.get("quant_type", None),
+                "quant_cfg": main_kvargs.get("quant_cfg", None),
                 "run_mode": "normal",
-                "spec_algo": "MTP_MOUDLE",
                 "main_model": self.model,
-                "last_mtp_module": i == self.spec_step - 1,
                 "mem_layer_start": self.model.config["num_hidden_layers"] + i * mtp_model_cfg["num_hidden_layers"],
             }
 
-            mtp_model_cfg, _ = PretrainedConfig.get_config_dict(kvargs["spec_weight_dir"])
+            mtp_model_cfg, _ = PretrainedConfig.get_config_dict(self.args.mtp_draft_model_dir)
             assert mtp_model_cfg["model_type"] == "deepseek_v3"
             assert mtp_model_cfg["architectures"][0] == "DeepseekV3ForCausalLMNextN"
             self.draft_models.append(Deepseek3MTPModel(mtp_model_kvargs))
