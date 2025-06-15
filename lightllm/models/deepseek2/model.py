@@ -65,6 +65,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.enable_flashinfer = (
             get_env_start_args().enable_flashinfer_prefill or get_env_start_args().enable_flashinfer_decode
         )
+        self.mtp_layer_num = get_env_start_args().spec_step
         super().__init__(kvargs)
         return
 
@@ -102,7 +103,7 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
             dtype=self.data_type,
             head_num=1,
             head_dim=self.config["kv_lora_rank"] + self.config["qk_rope_head_dim"],
-            layer_num=self.config["num_hidden_layers"],
+            layer_num=self.config["num_hidden_layers"] + self.mtp_layer_num,
             mem_fraction=self.mem_fraction,
         )
         return

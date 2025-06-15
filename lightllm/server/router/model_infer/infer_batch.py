@@ -17,6 +17,7 @@ from lightllm.server.req_id_generator import convert_sub_id_to_group_id
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.server.multimodal_params import MultimodalParams
 from lightllm.utils.custom_kernel_utis import custom_cat
+from lightllm.utils.envs_utils import get_env_start_args
 
 logger = init_logger(__name__)
 
@@ -260,6 +261,14 @@ class InferReq:
         self.need_out_token_id_statistics = True
         self.out_token_id_count: Dict[int, int] = None
 
+        # mtp_gen_token_ids 用于处理一个请求可以通过mtp进行很多token的预先生成
+        # 的技术，在没有开启 mtp 功能的时候，这个成员变量不会有任何的实际实用意义。
+        # 当开启后，mtp_gen_token_ids 保存多生成的多余的token_id,但是在后面的
+        # 步骤中需要重新进行校验。
+        self.mtp_gen_token_ids: List[int] = []
+        # 用于记录每一次 decode verify 接受的 mtp token 的数量
+        self.mtp_step_accepted_token_num = 0
+
     def init_all(self):
         if self.initialized is False:
             self.shm_req = g_infer_context.shm_req_manager.get_req_obj_by_index(self.shm_index)
@@ -314,10 +323,26 @@ class InferReq:
     def get_input_token_ids(self):
         return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
 
+    def get_input_token_ids_shift(self, next_token_ids_cpu: np.ndarray, shift: int = 1):
+        origin_input_ids = self.get_input_token_ids()
+        input_ids = np.concatenate([origin_input_ids, next_token_ids_cpu, self.mtp_gen_token_ids])
+        return input_ids[shift:]
+
     def get_chuncked_input_token_ids(self):
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
+
+    def get_chunked_input_token_ids_shift(self, next_token_ids_cpu: np.ndarray, shift: int = 1):
+        chunked_start = self.cur_kv_len
+        chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
+        is_last_chunk = chunked_end == self.get_cur_total_len()
+        # if the current chunk is not the last chunk, the main model has not generated the next token,
+        # so we should not use the next token ids.
+        if not is_last_chunk:
+            next_token_ids_cpu = []
+        input_ids = self.get_input_token_ids_shift(next_token_ids_cpu, shift)
+        return input_ids[0:chunked_end]
 
     def get_chuncked_input_token_len(self):
         chunked_start = self.cur_kv_len
@@ -329,6 +354,9 @@ class InferReq:
         self.shm_req.shm_prompt_ids.arr[index] = next_token_id
         self.shm_req.shm_logprobs.arr[index] = logprob
         return
+
+    def set_total_accepted_len(self):
+        self.shm_req.mtp_accepted_token_num += self.mtp_step_accepted_token_num
 
     def get_last_gen_token(self):
         return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.cur_output_len - 1]
