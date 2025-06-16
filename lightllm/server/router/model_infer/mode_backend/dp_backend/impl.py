@@ -11,10 +11,10 @@ from lightllm.server.core.objs import FinishStatus
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.utils.envs_utils import get_env_start_args
-from lightllm.server.router.model_infer.mode_backend import padded_prepare_prefill_inputs
-from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_prefill_inputs
-from lightllm.server.router.model_infer.mode_backend import padded_prepare_decode_inputs
-from lightllm.server.router.model_infer.mode_backend import padded_overlap_prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend.pre import padded_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend.pre import padded_overlap_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend.pre import padded_prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend.pre import padded_overlap_prepare_decode_inputs
 
 
 class DPChunkedPrefillBackend(ModeBackend):

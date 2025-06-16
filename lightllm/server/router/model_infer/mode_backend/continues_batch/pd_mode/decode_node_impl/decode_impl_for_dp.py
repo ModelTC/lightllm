@@ -4,7 +4,7 @@ import torch.distributed as dist
 from typing import List, Tuple
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
 from lightllm.utils.log_utils import init_logger
-from lightllm.server.router.model_infer.mode_backend import padded_prepare_prefill_inputs
+from lightllm.server.router.model_infer.mode_backend.pre import padded_prepare_prefill_inputs
 from lightllm.utils.envs_utils import get_unique_server_name, get_env_start_args
 from .decode_impl import ContinuesBatchBackendForDecodeNode
 from lightllm.server.router.model_infer.mode_backend.dp_backend.impl import DPChunkedPrefillBackend

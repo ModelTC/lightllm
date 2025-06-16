@@ -10,7 +10,7 @@ from typing import List, Tuple
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.tokenizer import get_tokenizer
 from lightllm.server.req_id_generator import convert_sub_id_to_group_id
-from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+from lightllm.server.router.model_infer.mode_backend.pre import (
     prepare_prefill_inputs,
     prepare_decode_inputs,
 )

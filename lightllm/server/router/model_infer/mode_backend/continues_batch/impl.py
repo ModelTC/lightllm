@@ -4,7 +4,7 @@ from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBac
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.server.router.model_infer.infer_batch import g_infer_context
-from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+from lightllm.server.router.model_infer.mode_backend.pre import (
     prepare_prefill_inputs,
     prepare_decode_inputs,
 )

@@ -11,7 +11,7 @@ from lightllm.server.router.model_infer.infer_batch import g_infer_context, Infe
 from lightllm.server.core.objs import FinishStatus
 from lightllm.server.pd_io_struct import UpKVStatus
 from lightllm.utils.log_utils import init_logger
-from lightllm.server.router.model_infer.mode_backend.generic_pre_process import prepare_decode_inputs
+from lightllm.server.router.model_infer.mode_backend.pre import prepare_decode_inputs
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from .up_status import UpStatusManager
 from rpyc.utils.server import ThreadedServer

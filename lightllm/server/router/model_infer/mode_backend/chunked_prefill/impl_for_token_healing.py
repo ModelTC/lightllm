@@ -2,7 +2,7 @@ import torch
 from .impl import ChunkedPrefillBackend
 from typing import List, Tuple
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
-from lightllm.server.router.model_infer.mode_backend.generic_pre_process import (
+from lightllm.server.router.model_infer.mode_backend.pre import (
     prepare_prefill_inputs,
     prepare_decode_inputs,
 )

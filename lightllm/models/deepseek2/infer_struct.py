@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import torch.distributed as dist
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
-from lightllm.common.spec_info import SpeculativeDecodeAlgorithm
 
 
 class Deepseek2InferStateInfo(LlamaInferStateInfo):
