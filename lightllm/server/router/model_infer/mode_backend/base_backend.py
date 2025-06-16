@@ -417,7 +417,7 @@ class ModeBackend:
 
         return verify_ok_reqs, verify_ok_req_indexes, verify_ok_req_last_indexes, need_free_mem_indexes
 
-    def _group_mtp_run_reqs(reqs: List[InferReq], next_token_ids_cpu: np.ndarray, input_mem_indexes: np.ndarray):
+    def _group_mtp_run_reqs(self, reqs: List[InferReq], next_token_ids_cpu: np.ndarray, input_mem_indexes: np.ndarray):
         if not reqs:
             return []
 
