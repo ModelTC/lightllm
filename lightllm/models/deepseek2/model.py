@@ -65,7 +65,6 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         self.enable_flashinfer = (
             get_env_start_args().enable_flashinfer_prefill or get_env_start_args().enable_flashinfer_decode
         )
-        self.mtp_layer_num = get_env_start_args().spec_step
         super().__init__(kvargs)
         return
 
@@ -98,12 +97,18 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
         manager_class = Deepseek2MemoryManager
         if "triton_fp8kv" in self.mode:
             manager_class = Deepseek2FP8KVMemoryManager
+
+        # mtp 模式下需要在mem manger上扩展draft model使用的layer
+        added_mtp_layer_num = 0
+        if get_env_start_args().mtp_mode == "deepseekv3":
+            added_mtp_layer_num += get_env_start_args().mtp_step
+
         self.mem_manager = manager_class(
             self.max_total_token_num,
             dtype=self.data_type,
             head_num=1,
             head_dim=self.config["kv_lora_rank"] + self.config["qk_rope_head_dim"],
-            layer_num=self.config["num_hidden_layers"] + self.mtp_layer_num,
+            layer_num=self.config["num_hidden_layers"] + added_mtp_layer_num,
             mem_fraction=self.mem_fraction,
         )
         return
