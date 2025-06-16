@@ -3,7 +3,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import numpy as np
 import triton
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
 from lightllm.utils.infer_utils import calculate_time
 from lightllm.utils.envs_utils import get_env_start_args
@@ -11,7 +11,9 @@ from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 
 
-def padded_prepare_prefill_inputs(req_objs: List[InferReq], dest_batch_size: Optional[int] = None, is_multimodal=False):
+def padded_prepare_prefill_inputs(
+    req_objs: List[InferReq], dest_batch_size: Optional[int] = None, is_multimodal=False
+) -> Tuple[ModelInput, List[InferReq], int]:
 
     if dest_batch_size is None:
         req_num = len(req_objs)
@@ -94,7 +96,9 @@ def padded_prepare_prefill_inputs(req_objs: List[InferReq], dest_batch_size: Opt
     return model_input, run_reqs, padded_req_num
 
 
-def padded_prepare_decode_inputs(req_objs: List[InferReq], dest_batch_size: Optional[int] = None, is_multimodal=False):
+def padded_prepare_decode_inputs(
+    req_objs: List[InferReq], dest_batch_size: Optional[int] = None, is_multimodal=False
+) -> Tuple[ModelInput, List[InferReq], int]:
     run_reqs = []
     total_token_num = 0
     max_len_in_batch = 0

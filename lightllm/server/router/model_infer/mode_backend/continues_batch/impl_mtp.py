@@ -36,7 +36,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
 
     def _init_mtp_draft_model(self, main_kvargs: dict):
         self.mtp_step = self.args.mtp_step
-        self.draft_models = []
+        self.draft_models: List[Deepseek3MTPModel] = []
 
         os.environ["DISABLE_CHECK_MAX_LEN_INFER"] = "1"
         for i in range(self.mtp_step):
@@ -85,141 +85,100 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             g_infer_context.filter_reqs(aborted_reqs)
 
         if prefill_reqs:
-            model_input, run_reqs = prepare_prefill_inputs(
-                prefill_reqs, is_chuncked_mode=not self.disable_chunked_prefill, is_multimodal=self.is_multimodal
-            )
-            model_output = self.model.forward(model_input)
-
-            self._overlap_req_init_and_filter(
-                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
-            )
-
-            next_token_ids, next_token_probs = sample(model_output.logits, run_reqs, self.eos_id)
-            next_token_ids_cpu = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs_cpu = torch.log(next_token_probs).detach().cpu().numpy()
-
-            # spec prefill: MTP
-            draft_model_input = model_input
-            draft_model_input.hidden_states = model_output.hidden_states
-            for draft_model_idx in range(self.spec_step):
-                draft_model_input = prepare_mtp_prefill_inputs(
-                    prefill_reqs,
-                    model_input,
-                    next_token_ids_cpu,
-                    draft_model_idx,
-                    is_chunked_mode=not self.disable_chunked_prefill,
-                )
-                draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
-                _, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_model_output)
-                model_input.hidden_states = draft_model_output.hidden_states
-                self._save_prefill_draft_tokens(draft_next_token_ids_cpu, run_reqs, draft_model_idx)
-
-            self._post_handle(
-                run_reqs,
-                next_token_ids_cpu,
-                next_token_logprobs_cpu,
-                is_chuncked_mode=not self.disable_chunked_prefill,
-                do_filter_finished_reqs=False,
+            self.normal_mtp_prefill_reqs(
+                prefill_reqs=prefill_reqs, uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs
             )
 
         if decode_reqs:
-            model_input, run_reqs = prepare_decode_inputs(decode_reqs)
-            model_output = self.model.forward(model_input)
-            assert model_output.logits.shape[0] % self.spec_stride == 0
-
-            self._overlap_req_init_and_filter(
-                uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True
-            )
-
-            next_token_ids, next_token_probs = sample(model_output.logits, run_reqs, self.eos_id)
-            next_token_ids_cpu = next_token_ids.detach().cpu().numpy()
-            next_token_logprobs_cpu = torch.log(next_token_probs).detach().cpu().numpy()
-
-            # verify
-            mem_indexes_cpu = model_input.mem_indexes.cpu()
-            accepted_reqs, accepted_index, need_free_mem_indexes = self._verify(
-                next_token_ids_cpu, run_reqs, mem_indexes_cpu
-            )
-            self._post_handle(
-                accepted_reqs,
-                next_token_ids_cpu[accepted_index],
-                next_token_logprobs_cpu[accepted_index],
-                is_chuncked_mode=not self.disable_chunked_prefill,
-                do_filter_finished_reqs=False,
-            )
-
-            # share some inference info with the main model
-            draft_model_input = model_input
-            draft_model_input.input_ids = next_token_ids
-            draft_model_input.hidden_states = model_output.hidden_states
-            # process the draft model output
-            for draft_model_idx in range(self.spec_step):
-                # spec decode: MTP
-                draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
-                draft_next_token_ids, draft_next_token_ids_cpu = self._gen_draft_tokens(draft_model_output)
-                # prepare inputs for the next draft model
-                draft_model_input.input_ids = draft_next_token_ids
-                draft_model_input.hidden_states = draft_model_output.hidden_states
-                self._save_decode_draft_token_ids(draft_next_token_ids_cpu, run_reqs, draft_model_idx)
-
-            if need_free_mem_indexes:
-                g_infer_state_lock.acquire()
-                g_infer_context.req_manager.mem_manager.free(need_free_mem_indexes)
-                g_infer_state_lock.release()
+            self.normal_mtp_decode(decode_reqs=decode_reqs, uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
 
-    def _gen_draft_tokens(self, model_output: ModelOutput):
-        logits = model_output.logits
-        probs = torch.softmax(logits, dim=-1)
-        draft_next_token_ids = torch.argmax(probs, dim=-1)
-        return draft_next_token_ids, draft_next_token_ids.detach().cpu().numpy()
-
-    def _verify(self, next_token_ids: torch.Tensor, run_reqs: List[InferReq], draft_mem_indexes: torch.Tensor):
-        accepted_reqs = []
-        accepted_index = []
-        need_free_mem_indexes = []
-        assert next_token_ids.shape[0] % self.spec_stride == 0
-        batch_size = next_token_ids.shape[0] // self.spec_stride
-        for b in range(batch_size):
-            req: InferReq = run_reqs[b % self.spec_stride]
-            req_start_idx = b * self.spec_stride
-            req_end_idx = (b + 1) * self.spec_stride
-            # step_idx==0 means the output of the main model
-            for step_idx in range(self.spec_stride):
-                if step_idx == 0 or req.mtp_gen_token_ids[step_idx - 1] == next_token_ids[req_start_idx + step_idx - 1]:
-                    accepted_reqs.append(req)
-                    accepted_index.append(req_start_idx + step_idx)
-                    req.mtp_step_accepted_token_num += 1 if step_idx != 0 else 0
-                else:
-                    need_free_mem_indexes.extend(draft_mem_indexes[req_start_idx + step_idx : req_end_idx])
-                    break
-            #  reset the mtp status
-            req.mtp_gen_token_ids = []
-        return accepted_reqs, accepted_index, need_free_mem_indexes
-
-    def _save_prefill_draft_tokens(
-        self, draft_next_token_ids: torch.Tensor, run_reqs: List[InferReq], draft_model_idx: int
+    def normal_mtp_prefill_reqs(
+        self, prefill_reqs: List[InferReq], uninit_reqs: List[InferReq], ok_finished_reqs: List[InferReq]
     ):
-        batch_size = len(run_reqs)
-        for i in range(batch_size):
-            req = run_reqs[i]
-            # if the request has unfinished chunked tokens, skip it.
-            if req.get_chuncked_input_token_len() < req.get_cur_total_len():
-                continue
-            req.mtp_gen_token_ids.append(draft_next_token_ids[i])
+        model_input, run_reqs = prepare_prefill_inputs(
+            prefill_reqs, is_chuncked_mode=not self.disable_chunked_prefill, is_multimodal=self.is_multimodal
+        )
+        model_output = self.model.forward(model_input)
 
-    def _save_decode_draft_token_ids(
-        self, draft_next_token_ids: torch.Tensor, run_reqs: List[InferReq], draft_model_idx: int
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
+
+        next_token_ids_gpu, next_token_probs = sample(model_output.logits, run_reqs, self.eos_id)
+        next_token_ids_cpu = next_token_ids_gpu.detach().cpu().numpy()
+        next_token_logprobs_cpu = torch.log(next_token_probs).detach().cpu().numpy()
+
+        self._post_handle(
+            run_reqs,
+            next_token_ids_cpu,
+            next_token_logprobs_cpu,
+            is_chuncked_mode=not self.disable_chunked_prefill,
+            do_filter_finished_reqs=False,
+        )
+
+        # mtp kv fill
+        draft_next_token_ids_gpu = next_token_ids_gpu
+        draft_model_output = model_output
+        draft_model_input = model_input
+        # spec prefill: MTP, 这个地方只是为了填充draft model的 kv， 并不会使用生成的token_id。
+        for draft_model_idx in range(self.mtp_step):
+            draft_model_input = prepare_mtp_prefill_inputs(
+                model_input=draft_model_input,
+                b_next_token_ids=draft_next_token_ids_gpu,
+                dedeepseekv3_mtp_draft_input_hiddens=draft_model_output.deepseekv3_mtp_main_output_hiddens,
+            )
+
+            draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
+            draft_next_token_ids_gpu, draft_next_token_ids_cpu = self._gen_argmax_token_ids(draft_model_output)
+        return
+
+    def normal_mtp_decode(
+        self, decode_reqs: List[InferReq], uninit_reqs: List[InferReq], ok_finished_reqs: List[InferReq]
     ):
-        batch_size = len(run_reqs) // self.spec_stride
-        for i in range(batch_size):
-            req: InferReq = run_reqs[self.spec_stride * i]
-            # append the draft token
-            req.mtp_gen_token_ids.append(draft_next_token_ids[i * self.spec_stride + req.mtp_step_accepted_token_num])
-            #  reset the mtp status
-            if draft_model_idx == self.spec_step - 1:
-                if self.is_master_in_dp:
-                    req.set_total_accepted_len()
-                req.mtp_step_accepted_token_num = 0
+        model_input, run_reqs = prepare_decode_inputs(decode_reqs)
+        model_output = self.model.forward(model_input)
+
+        self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
+
+        next_token_ids_gpu, next_token_probs = sample(model_output.logits, run_reqs, self.eos_id)
+        next_token_ids_cpu = next_token_ids_gpu.detach().cpu().numpy()
+        next_token_logprobs_cpu = torch.log(next_token_probs).detach().cpu().numpy()
+
+        # verify
+        mem_indexes_cpu = model_input.mem_indexes.detach().cpu().numpy()
+        verify_ok_reqs, verify_ok_req_indexes, verify_ok_req_last_indexes, need_free_mem_indexes = self._verify_mtp(
+            run_reqs, next_token_ids_cpu, mem_indexes_cpu
+        )
+
+        self._post_handle(
+            verify_ok_reqs,
+            next_token_ids_cpu[verify_ok_req_indexes],
+            next_token_logprobs_cpu[verify_ok_req_indexes],
+            is_chuncked_mode=False,
+            do_filter_finished_reqs=False,
+        )
+
+        # share some inference info with the main model
+        draft_model_input = model_input
+        draft_model_output = model_output
+        draft_next_token_ids = next_token_ids_gpu
+        # process the draft model output
+        for draft_model_idx in range(self.mtp_step):
+
+            draft_model_input.input_ids = draft_next_token_ids
+            draft_model_input.deepseekv3_mtp_draft_input_hiddens = draft_model_output.deepseekv3_mtp_main_output_hiddens
+            # spec decode: MTP
+            draft_model_output: ModelOutput = self.draft_models[draft_model_idx].forward(draft_model_input)
+            draft_next_token_ids, draft_next_token_ids_cpu = self._gen_argmax_token_ids(draft_model_output)
+
+            unique_reqs = [run_reqs[index] for index in verify_ok_req_last_indexes]
+            self._update_reqs_mtp_gen_token_ids(
+                reqs=unique_reqs, mtp_draft_next_token_ids=draft_next_token_ids_cpu[verify_ok_req_last_indexes]
+            )
+
+        if need_free_mem_indexes:
+            g_infer_state_lock.acquire()
+            g_infer_context.req_manager.mem_manager.free(need_free_mem_indexes)
+            g_infer_state_lock.release()
+        return

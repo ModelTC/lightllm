@@ -16,6 +16,7 @@ from lightllm.server.router.model_infer.infer_batch import InferReq, InferSampli
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
 from lightllm.common.basemodel.basemodel import TpPartBaseModel
+from lightllm.common.basemodel.batch_objs import ModelOutput
 from lightllm.utils.dist_utils import init_distributed_env
 from lightllm.utils.envs_utils import get_unique_server_name
 from lightllm.server.core.objs import ShmReqManager, StartArgs
@@ -374,6 +375,76 @@ class ModeBackend:
     # 一些可以复用的通用功能函数
     def _trans_req_ids_to_req_objs(self, req_ids: List[int]) -> List[InferReq]:
         return [g_infer_context.requests_mapping[req_id] for req_id in req_ids]
+
+    # 对mtp 运行模式下的请求进行校验和过滤，保留校验成功的请求对象，并释放不再使用的kv 的 mem_index
+    def _verify_mtp(self, run_reqs: List[InferReq], next_token_ids_cpu: np.ndarray, input_mem_indexes_cpu: np.ndarray):
+        verify_ok_reqs = []
+        verify_ok_req_indexes = []
+        verify_ok_req_last_indexes = []
+        need_free_mem_indexes = []
+        grouped_reqs = self._group_mtp_run_reqs(run_reqs, next_token_ids_cpu, input_mem_indexes_cpu)
+        for req_group in grouped_reqs:
+            pre_req, pre_out_token_id, _, pre_index = req_group[0]
+            verify_ok_reqs.append(pre_req)
+            verify_ok_req_indexes.append(pre_index)
+            need_verify = True
+            verify_ok_count = 0
+            for i in range(1, len(req_group)):
+                cur_req, cur_out_token_id, cur_mem_index, cur_index = req_group[i]
+                cur_req: InferReq = cur_req
+                # cur_req 的输入，等于pre_req 的输出，表示校验成功
+                if need_verify and cur_req.mtp_gen_token_ids[i - 1] == pre_out_token_id:
+                    verify_ok_reqs.append(cur_req)
+                    verify_ok_req_indexes.append(cur_index)
+                    pre_req, pre_out_token_id, _, pre_index = (
+                        cur_req,
+                        cur_out_token_id,
+                        cur_mem_index,
+                        cur_index,
+                    )
+                    verify_ok_count += 1
+                    continue
+
+                need_verify = False
+                need_free_mem_indexes.append(cur_mem_index)
+
+            verify_ok_req_last_indexes.append(verify_ok_req_indexes[-1])
+
+            # 清理每个请求上的 mtp_gen_token_ids, 并更新接受率信息
+            pre_req.mtp_gen_token_ids = []
+            if self.is_master_in_dp:
+                pre_req.update_mtp_accepted_token_num(accept_token_num=verify_ok_count)
+
+        return verify_ok_reqs, verify_ok_req_indexes, verify_ok_req_last_indexes, need_free_mem_indexes
+
+    def _group_mtp_run_reqs(reqs: List[InferReq], next_token_ids_cpu: np.ndarray, input_mem_indexes: np.ndarray):
+        if not reqs:
+            return []
+
+        grouped_reqs = []
+        current_group = [(reqs[0], next_token_ids_cpu[0], input_mem_indexes[0], 0)]
+
+        for i in range(1, len(reqs)):
+            req = reqs[i]
+            if req.req_id == current_group[-1][0].req_id:
+                current_group.append((req, next_token_ids_cpu[i], input_mem_indexes[i], i))
+            else:
+                grouped_reqs.append(current_group)
+                current_group = [(req, next_token_ids_cpu[i], input_mem_indexes[i], i)]
+
+        grouped_reqs.append(current_group)
+        return grouped_reqs
+
+    def _gen_argmax_token_ids(self, model_output: ModelOutput):
+        logits = model_output.logits
+        probs = torch.softmax(logits, dim=-1)
+        draft_next_token_ids_gpu = torch.argmax(probs, dim=-1)
+        return draft_next_token_ids_gpu, draft_next_token_ids_gpu.detach().cpu().numpy()
+
+    def _update_reqs_mtp_gen_token_ids(self, reqs: List[InferReq], mtp_draft_next_token_ids: np.ndarray):
+        for req, token_id in zip(reqs, mtp_draft_next_token_ids):
+            req.mtp_gen_token_ids.append(token_id)
+        return
 
     def preload_prompt_cache_kv_buffer(self, model_cfg):
         self.logger.info("Preload prompt cache kv buffer.")

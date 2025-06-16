@@ -266,8 +266,6 @@ class InferReq:
         # 当开启后，mtp_gen_token_ids 保存多生成的多余的token_id,但是在后面的
         # 步骤中需要重新进行校验。
         self.mtp_gen_token_ids: List[int] = []
-        # 用于记录每一次 decode verify 接受的 mtp token 的数量
-        self.mtp_step_accepted_token_num = 0
 
     def init_all(self):
         if self.initialized is False:
@@ -323,26 +321,10 @@ class InferReq:
     def get_input_token_ids(self):
         return self.shm_req.shm_prompt_ids.arr[0 : self.get_cur_total_len()]
 
-    def get_input_token_ids_shift(self, next_token_ids_cpu: np.ndarray, shift: int = 1):
-        origin_input_ids = self.get_input_token_ids()
-        input_ids = np.concatenate([origin_input_ids, next_token_ids_cpu, self.mtp_gen_token_ids])
-        return input_ids[shift:]
-
     def get_chuncked_input_token_ids(self):
         chunked_start = self.cur_kv_len
         chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
         return self.shm_req.shm_prompt_ids.arr[0:chunked_end]
-
-    def get_chunked_input_token_ids_shift(self, next_token_ids_cpu: np.ndarray, shift: int = 1):
-        chunked_start = self.cur_kv_len
-        chunked_end = min(self.get_cur_total_len(), chunked_start + self.shm_req.chunked_prefill_size)
-        is_last_chunk = chunked_end == self.get_cur_total_len()
-        # if the current chunk is not the last chunk, the main model has not generated the next token,
-        # so we should not use the next token ids.
-        if not is_last_chunk:
-            next_token_ids_cpu = []
-        input_ids = self.get_input_token_ids_shift(next_token_ids_cpu, shift)
-        return input_ids[0:chunked_end]
 
     def get_chuncked_input_token_len(self):
         chunked_start = self.cur_kv_len
@@ -355,8 +337,8 @@ class InferReq:
         self.shm_req.shm_logprobs.arr[index] = logprob
         return
 
-    def set_total_accepted_len(self):
-        self.shm_req.mtp_accepted_token_num += self.mtp_step_accepted_token_num
+    def update_mtp_accepted_token_num(self, accept_token_num: int):
+        self.shm_req.mtp_accepted_token_num += accept_token_num
 
     def get_last_gen_token(self):
         return self.shm_req.shm_prompt_ids.arr[self.shm_req.input_len + self.cur_output_len - 1]

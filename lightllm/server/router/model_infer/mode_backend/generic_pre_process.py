@@ -1,12 +1,14 @@
 import torch
 import numpy as np
-from typing import List
+from typing import List, Tuple
 from lightllm.server.router.model_infer.infer_batch import InferReq, g_infer_context
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.batch_objs import ModelInput
 
 
-def prepare_prefill_inputs(req_objs: List[InferReq], is_chuncked_mode: bool, is_multimodal: bool = False):
+def prepare_prefill_inputs(
+    req_objs: List[InferReq], is_chuncked_mode: bool, is_multimodal: bool = False
+) -> Tuple[ModelInput, List[InferReq]]:
     run_reqs = []
     total_token_num = 0
     max_len_in_batch = 0
@@ -67,7 +69,7 @@ def prepare_prefill_inputs(req_objs: List[InferReq], is_chuncked_mode: bool, is_
     return model_input, run_reqs
 
 
-def prepare_decode_inputs(req_objs: List[InferReq]):
+def prepare_decode_inputs(req_objs: List[InferReq]) -> Tuple[ModelInput, List[InferReq]]:
     run_reqs = []
     total_token_num = 0
     max_len_in_batch = 0
