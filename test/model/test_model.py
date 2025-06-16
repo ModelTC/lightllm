@@ -16,7 +16,7 @@ class TestModelInfer(unittest.TestCase):
         args = get_env_start_args()
         if args.data_type is None:
             args.data_type = get_dtype(args.model_dir)
-        if args.spec_algo == "MTP":
+        if args.mtp_mode == "deepseekv3":
             test_model_inference_mtp(args)
         else:
             test_model_inference(args)

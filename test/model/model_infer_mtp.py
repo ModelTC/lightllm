@@ -7,8 +7,8 @@ from transformers import PretrainedConfig
 from lightllm.utils.dist_utils import init_distributed_env, get_current_rank_in_dp
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.models import get_model
-from lightllm.common.basemodel.microbatch_overlap_objs import DecodeMicroBatch, PrefillMicroBatch
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
+from lightllm.server.core.objs.start_args_type import StartArgs
 from torch.profiler import profile, record_function, ProfilerActivity
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.deepseek_mtp.model import Deepseek3MTPModel
@@ -17,36 +17,33 @@ import torch.cuda as cuda
 logger = init_logger(__name__)
 
 
-def init_mtp_model(args, kvargs, main_model):
-    spec_step = args.spec_step
+def init_mtp_model(args: StartArgs, kvargs, main_model):
+    mtp_step = args.mtp_step
     draft_models = []
 
     os.environ["DISABLE_CHECK_MAX_LEN_INFER"] = "1"
     mtp_model_kvargs = kvargs
     mtp_model_kvargs.update(
         {
-            "weight_dir": args.spec_model_dir,
+            "weight_dir": args.mtp_draft_model_dir,
             "max_total_token_num": main_model.mem_manager.size,
             "use_dynamic_prompt_cache": False,
             "disable_chunked_prefill": True,
-            "spec_algo": "MTP_MOUDLE",
+            "mtp_mode": args.mtp_mode,
             "main_model": main_model,
         }
     )
-    for i in range(spec_step):
+    for i in range(mtp_step):
+        mtp_model_cfg, _ = PretrainedConfig.get_config_dict(args.mtp_draft_model_dir)
         mtp_model_kvargs.update(
             {
                 "weight_dir": args.spec_model_dir,
                 "max_total_token_num": main_model.mem_manager.size,
                 "use_dynamic_prompt_cache": False,
                 "disable_chunked_prefill": True,
-                "spec_algo": "MTP_MOUDLE",
+                "mtp_mode": args.mtp_mode,
                 "main_model": main_model,
-            }
-        )
-        mtp_model_kvargs.update(
-            {
-                "last_mtp_module": i == spec_step - 1,
+                "mem_layer_start": main_model.config["num_hidden_layers"] + i * mtp_model_cfg["num_hidden_layers"],
             }
         )
         draft_models.append(Deepseek3MTPModel(mtp_model_kvargs))
@@ -143,7 +140,7 @@ def run_forward_once(args, input_len, output_len, batch_size, main_model, draft_
         b_ready_cache_len=b_ready_cache_len,
     )
 
-    model_output = main_model.forward(model_input)
+    model_output: ModelOutput = main_model.forward(model_input)
     prob_out = torch.softmax(model_output.logits, dim=-1)
     predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
     predict_ids = predict_ids.detach().cpu().numpy()
@@ -152,7 +149,7 @@ def run_forward_once(args, input_len, output_len, batch_size, main_model, draft_
 
     # Draft model Prefill
     # For simplicity, we'll just take the input of main_model to draft model.
-    model_input.hidden_states = model_output.hidden_states
+    model_input.deepseekv3_mtp_draft_input_hiddens = model_output.deepseekv3_mtp_main_output_hiddens
     for draft_model_id in range(len(draft_models)):
         draft_model = draft_models[draft_model_id]
         model_output = draft_model.forward(model_input)
@@ -160,7 +157,7 @@ def run_forward_once(args, input_len, output_len, batch_size, main_model, draft_
         predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
         predict_ids = predict_ids.detach().cpu().numpy()
         draft_ids.append(predict_ids)
-        model_input.hidden_states = model_output.hidden_states
+        model_input.deepseekv3_mtp_draft_input_hiddens = model_output.deepseekv3_mtp_main_output_hiddens
 
     torch.cuda.synchronize()
     prefill_end_time = time.time()
@@ -221,7 +218,7 @@ def run_forward_once(args, input_len, output_len, batch_size, main_model, draft_
 
         # draft decode
         model_input.input_ids = predict_ids.reshape(-1)
-        model_input.hidden_states = model_output.hidden_states
+        model_input.deepseekv3_mtp_draft_input_hiddens = model_output.deepseekv3_mtp_main_output_hiddens
 
         for draft_model_id in range(len(draft_models)):
             draft_model = draft_models[draft_model_id]
@@ -231,11 +228,11 @@ def run_forward_once(args, input_len, output_len, batch_size, main_model, draft_
             prob_out = torch.softmax(model_output.logits, dim=-1)
             predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
             model_input.input_ids = predict_ids.reshape(-1)
-            model_input.hidden_states = model_output.hidden_states
+            model_input.deepseekv3_mtp_draft_input_hiddens = model_output.deepseekv3_mtp_main_output_hiddens
 
         # accept all draft ids by default.
         model_input.input_ids = predict_ids.reshape(-1)
-        model_input.hidden_states = model_output.hidden_states
+        model_input.deepseekv3_mtp_draft_input_hiddens = model_output.deepseekv3_mtp_main_output_hiddens
         torch.cuda.synchronize()
         if i % 100 == 0 or i == output_len - 1:
             step_end_time = time.time()
