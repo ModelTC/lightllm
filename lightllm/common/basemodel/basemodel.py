@@ -427,7 +427,7 @@ class TpPartBaseModel:
         if self.is_deepseekv3_mtp_mode:
             graph_out_hiddens = g_cache_manager.alloc_tensor(
                 input_embs.shape,
-                data_type=input_embs.data_type,
+                data_type=input_embs.dtype,
                 is_graph_out=True,
                 microbatch_index=infer_state.microbatch_index,
                 graph_out_key=520,
@@ -602,7 +602,7 @@ class TpPartBaseModel:
         if self.is_deepseekv3_mtp_mode:
             graph_out_hiddens = g_cache_manager.alloc_tensor(
                 input_embs.shape,
-                data_type=input_embs.data_type,
+                data_type=input_embs.dtype,
                 is_graph_out=True,
                 microbatch_index=0,
                 graph_out_key=520,
@@ -610,7 +610,7 @@ class TpPartBaseModel:
             graph_out_hiddens.copy_(input_embs)
             graph_out_hiddens1 = g_cache_manager.alloc_tensor(
                 input_embs1.shape,
-                data_type=input_embs1.data_type,
+                data_type=input_embs1.dtype,
                 is_graph_out=True,
                 microbatch_index=1,
                 graph_out_key=520,
