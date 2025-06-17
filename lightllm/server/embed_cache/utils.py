@@ -5,19 +5,17 @@ import multiprocessing.shared_memory as shm
 
 
 def tensor2bytes(t: torch.Tensor):
-    if t.dtype == torch.float32:
-        t = t.cpu().numpy().tobytes()
-    else:
-        t = t.cpu().to(torch.uint16).numpy().tobytes()
-    return t
+    # t = t.cpu().numpy().tobytes()
+    # return t
+    buf = BytesIO()
+    torch.save(t.detach().cpu(), buf)
+    buf.seek(0)
+    return buf.read()
 
 
-def bytes2tensor(b, torch_dtype=torch.bfloat16):
-    if torch_dtype == torch.float32:
-        arr_loaded = np.frombuffer(b, dtype=np.float32)
-    else:
-        arr_loaded = np.frombuffer(b, dtype=np.uint16)
-    return torch.from_numpy(arr_loaded).to(torch_dtype)
+def bytes2tensor(b):
+    # return torch.from_numpy(np.frombuffer(b, dtype=np.float16)).cuda()
+    return torch.load(BytesIO(b))
 
 
 def create_shm(name, data):
