@@ -196,5 +196,4 @@ class Deepseek2TpPartModel(LlamaTpPartModel):
     @final
     def _context_forward(self, input_ids, infer_state):
         predict_logics = super()._context_forward(input_ids, infer_state)
-        dist_group_manager.clear_deepep_buffer()
         return predict_logics
