@@ -241,7 +241,7 @@ class TpPartBaseModel:
         else:
             return self._decode(model_input)
 
-    def _create_inferstate(self, model_input: ModelInput, batch_index: int = 0):
+    def _create_inferstate(self, model_input: ModelInput, microbatch_index: int = 0):
         infer_state = self.infer_state_class()
         infer_state.is_prefill = model_input.is_prefill
         infer_state.is_token_healing = self.is_token_healing
@@ -269,7 +269,8 @@ class TpPartBaseModel:
             (model_input.input_ids.shape[0], self.tp_k_head_num_ + self.tp_v_head_num_, self.head_dim_),
             self.data_type,
         )
-        infer_state.dist_group = dist_group_manager.get_group(batch_index)
+        infer_state.microbatch_index = microbatch_index
+        infer_state.dist_group = dist_group_manager.get_group(microbatch_index)
 
         # 特殊模型，特殊模式的特定变量初始化操作。
         infer_state.deepseekv3_mtp_draft_input_hiddens = model_input.deepseekv3_mtp_draft_input_hiddens
