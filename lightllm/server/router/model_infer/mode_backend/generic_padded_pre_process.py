@@ -88,6 +88,7 @@ def padded_prepare_prefill_inputs(
         mem_indexes=mem_indexes,
         b_req_idx=b_req_idx,
         b_seq_len=b_seq_len,
+        b_ready_cache_len=b_ready_cache_len,
         is_prefill=True,
     )
     if is_multimodal:
