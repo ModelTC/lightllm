@@ -8,7 +8,10 @@ def tensor2bytes(t: torch.Tensor):
     # t = t.cpu().numpy().tobytes()
     # return t
     buf = BytesIO()
-    torch.save(t.detach().cpu(), buf)
+    t = t.detach().cpu()
+    dest = torch.empty_like(t)
+    dest.copy_(t)
+    torch.save(dest, buf)
     buf.seek(0)
     return buf.read()
 
