@@ -109,18 +109,18 @@ class CudaGraph:
         with lightllm_capture_graph(dist_group1):
             with lightllm_capture_graph(dist_group):
                 with torch.cuda.graph(graph_obj, pool=self.mempool):
-                    predict_logics, predict_logics1 = decode_func(input_ids, infer_state, input_ids1, infer_state1)
+                    model_output, model_output1 = decode_func(input_ids, infer_state, input_ids1, infer_state1)
         self.graph[batch_size] = (
             graph_obj,
             input_ids,
             infer_state,
             input_ids1,
             infer_state1,
-            predict_logics,
-            predict_logics1,
+            model_output,
+            model_output1,
         )
         graph_obj.replay()
-        return predict_logics, predict_logics1
+        return model_output, model_output1
 
     def capture_decode(
         self,
@@ -162,15 +162,15 @@ class CudaGraph:
             graph_infer_state,
             graph_input_ids1,
             graph_infer_state1,
-            graph_predict_logics,
-            graph_predict_logics1,
+            graph_model_output,
+            graph_model_output1,
         ) = self.graph[batch_size]
         graph_input_ids.copy_(input_ids)
         graph_infer_state.copy_for_cuda_graph(infer_state)
         graph_input_ids1.copy_(input_ids1)
         graph_infer_state1.copy_for_cuda_graph(infer_state1)
         graph_obj.replay()
-        return graph_predict_logics, graph_predict_logics1
+        return graph_model_output, graph_model_output1
 
     def replay(self, input_ids, infer_state, input_ids1=None, infer_state1=None):
         if self.enable_decode_microbatch_overlap:
