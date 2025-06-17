@@ -193,6 +193,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         req_num, req_num1 = len(run_reqs), len(run_reqs1)
         all_run_reqs = run_reqs + run_reqs1
         need_free_mem_indexes = []
+        verify_ok_req_last_indexes = []
         if len(all_run_reqs) != 0:
             all_logits = torch.empty(
                 (req_num + req_num1, micro_output.logits.shape[1]),
@@ -227,7 +228,7 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         draft_micro_input, draft_micro_input1 = micro_input, micro_input1
 
         draft_next_token_ids_gpu = torch.zeros((micro_input.batch_size), dtype=torch.int64, device="cuda")
-        draft_next_token_ids_gpu1 = torch.zeros((micro_input.batch_size), dtype=torch.int64, device="cuda")
+        draft_next_token_ids_gpu1 = torch.zeros((micro_input1.batch_size), dtype=torch.int64, device="cuda")
         if req_num > 0:
             draft_next_token_ids_gpu[0:req_num].copy_(next_token_ids_gpu[0:req_num])
         if req_num1 > 1:
