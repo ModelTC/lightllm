@@ -338,6 +338,7 @@ class InferReq:
         return
 
     def update_mtp_accepted_token_num(self, accept_token_num: int):
+        # 用于统计 mtp 的接受率
         self.shm_req.mtp_accepted_token_num += accept_token_num
 
     def get_last_gen_token(self):
