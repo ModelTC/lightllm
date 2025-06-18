@@ -35,9 +35,6 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
 
     def init_custom(self):
         self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
-        model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs([], is_multimodal=self.is_multimodal)
-        self.model.forward(model_input)
-        assert len(run_reqs) == 0 and padded_req_num == 1
         return
 
     def prefill(self, reqs: List[Tuple]):
