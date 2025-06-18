@@ -187,14 +187,12 @@ class CudaGraph:
 
         model: TpPartBaseModel = model
 
-        # prefill init padding req.
-        predict_id = self._warmup_prefill(model)
         # decode cuda graph init
         for batch_size in self.cuda_graph_batch_sizes[::-1]:
             seq_len = 2
             total_token_num = batch_size * seq_len
             max_len_in_batch = self.graph_max_len_in_batch
-            input_ids = torch.tensor([predict_id for _ in range(batch_size)], dtype=torch.int32, device="cuda")
+            input_ids = torch.tensor([1 for _ in range(batch_size)], dtype=torch.int32, device="cuda")
             mem_indexes = model.mem_manager.alloc(len(input_ids)).cuda()
             b_req_idx = torch.tensor(
                 [model.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
@@ -211,7 +209,7 @@ class CudaGraph:
                 b_req_idx=b_req_idx,
                 b_seq_len=b_seq_len,
                 is_prefill=False,
-                **self._gen_special_model_input(model, batch_size),
+                **model._gen_special_model_input(batch_size),
             )
             model_output: ModelOutput = model.forward(model_input)
             del model_output
@@ -241,8 +239,6 @@ class CudaGraph:
 
         model: TpPartBaseModel = model
 
-        predict_id = self._warmup_prefill(model)
-
         for batch_size in self.cuda_graph_batch_sizes[::-1]:
             decode_batches = []
             for micro_batch_index in [0, 1]:
@@ -250,7 +246,7 @@ class CudaGraph:
                 seq_len = 2
                 total_token_num = batch_size * seq_len
                 max_len_in_batch = self.graph_max_len_in_batch
-                input_ids = torch.tensor([predict_id for _ in range(batch_size)], dtype=torch.int32, device="cuda")
+                input_ids = torch.tensor([1 for _ in range(batch_size)], dtype=torch.int32, device="cuda")
                 mem_indexes = model.mem_manager.alloc(len(input_ids)).cuda()
                 b_req_idx = torch.tensor(
                     [model.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
@@ -266,9 +262,10 @@ class CudaGraph:
                     mem_indexes=mem_indexes,
                     b_req_idx=b_req_idx,
                     b_seq_len=b_seq_len,
-                    **self._gen_special_model_input(model, batch_size),
+                    **model._gen_special_model_input(batch_size),
                 )
                 decode_batches.append(micro_batch)
+                del micro_batch
 
                 for var_name, var_value in list(locals().items()):
                     if isinstance(var_value, torch.Tensor):
@@ -280,6 +277,8 @@ class CudaGraph:
             model.mem_manager.free_all()
             model.req_manager.free_all()
 
+            del decode_batches
+
             # release local tensors
             for var_name, var_value in list(locals().items()):
                 if isinstance(var_value, torch.Tensor):
@@ -290,63 +289,3 @@ class CudaGraph:
             f"Capture overlap cudagraph success, batch_size <={self.max_batch_size} "
             f"and max_len_in_batch <= {self.graph_max_len_in_batch} will infer with cudagraph."
         )
-
-    def _warmup_prefill(self, model) -> int:
-        from .basemodel import TpPartBaseModel
-
-        model: TpPartBaseModel = model
-
-        # prefill init padding req.
-        prefill_input_len = 1
-        batch_size = 1
-        dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
-        b_req_idx = torch.tensor(
-            [model.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
-        )
-        mem_indexes = torch.tensor(
-            [model.mem_manager.HOLD_TOKEN_MEMINDEX for _ in range(batch_size)], dtype=torch.int32, device="cuda"
-        )
-        b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
-        b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
-        total_token_num = prefill_input_len * batch_size
-        model_input = ModelInput(
-            batch_size=batch_size,
-            total_token_num=total_token_num,
-            max_len_in_batch=prefill_input_len,
-            input_ids=dummy_input_ids,
-            mem_indexes=mem_indexes,
-            b_req_idx=b_req_idx,
-            b_seq_len=b_seq_len,
-            b_ready_cache_len=b_ready_cache_len,
-            is_prefill=True,
-            multimodal_params=[],
-            **self._gen_special_model_input(model, total_token_num),
-        )
-
-        model_output: ModelOutput = model.forward(model_input)
-        del dummy_input_ids
-        del b_req_idx
-        del mem_indexes
-        del b_seq_len
-        del b_ready_cache_len
-        prob_out = torch.softmax(model_output.logits, dim=-1)
-        del model_output
-        predict_ids = torch.argmax(prob_out, dim=1, keepdim=True)
-        del prob_out
-        predict_ids = predict_ids.detach().cpu().numpy()
-        predict_id = int(predict_ids[0][0])
-        torch.cuda.empty_cache()
-        return predict_id
-
-    def _gen_special_model_input(self, model, batch_size):
-        special_model_input = {}
-
-        is_deepseekv3_mtp_draft_model = "Deepseek3MTPModel" in str(model.__class__)
-        if is_deepseekv3_mtp_draft_model:
-            special_model_input["deepseekv3_mtp_draft_input_hiddens"] = torch.randn(
-                batch_size, model.config["hidden_size"], dtype=model.data_type, device="cuda"
-            )
-        else:
-            special_model_input["deepseekv3_mtp_draft_input_hiddens"] = None
-
-        return special_model_input

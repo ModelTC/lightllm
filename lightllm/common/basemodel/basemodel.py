@@ -99,6 +99,7 @@ class TpPartBaseModel:
         self._init_some_value()
         self._init_custom()
         self._init_inferstate_cls()
+        self._init_padded_req()
         self._init_cudagraph()
         self._check_max_len_infer()
         torch.cuda.empty_cache()
@@ -688,3 +689,63 @@ class TpPartBaseModel:
             logger.error(exception_str)
             raise Exception(exception_str)
         return
+
+    @final
+    @torch.no_grad()
+    def _init_padded_req(self):
+        """
+        对 padded 所使用的req 进行初始化， 目前有非常多的地方需要使用，所以将其初始化固定为固定流程
+        """
+        # 做一次 同步
+        torch.distributed.barrier()
+
+        # prefill init padding req.
+        prefill_input_len = 1
+        batch_size = 1
+        dummy_input_ids = torch.ones((batch_size,), dtype=torch.int32, device="cuda")
+        b_req_idx = torch.tensor(
+            [self.req_manager.HOLD_REQUEST_ID for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+        )
+        mem_indexes = torch.tensor(
+            [self.mem_manager.HOLD_TOKEN_MEMINDEX for _ in range(batch_size)], dtype=torch.int32, device="cuda"
+        )
+        b_seq_len = torch.ones(batch_size, dtype=torch.int32, device="cuda")
+        b_ready_cache_len = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+        total_token_num = prefill_input_len * batch_size
+        model_input = ModelInput(
+            batch_size=batch_size,
+            total_token_num=total_token_num,
+            max_len_in_batch=prefill_input_len,
+            input_ids=dummy_input_ids,
+            mem_indexes=mem_indexes,
+            b_req_idx=b_req_idx,
+            b_seq_len=b_seq_len,
+            b_ready_cache_len=b_ready_cache_len,
+            is_prefill=True,
+            multimodal_params=[],
+            **self._gen_special_model_input(total_token_num),
+        )
+
+        model_output: ModelOutput = self.forward(model_input)
+        del model_input
+        del dummy_input_ids
+        del b_req_idx
+        del mem_indexes
+        del b_seq_len
+        del b_ready_cache_len
+        del model_output
+        torch.cuda.empty_cache()
+        return
+
+    def _gen_special_model_input(self, token_num: int):
+        special_model_input = {}
+
+        is_deepseekv3_mtp_draft_model = "Deepseek3MTPModel" in str(self.__class__)
+        if is_deepseekv3_mtp_draft_model:
+            special_model_input["deepseekv3_mtp_draft_input_hiddens"] = torch.randn(
+                token_num, self.config["hidden_size"], dtype=self.data_type, device="cuda"
+            )
+        else:
+            special_model_input["deepseekv3_mtp_draft_input_hiddens"] = None
+
+        return special_model_input
