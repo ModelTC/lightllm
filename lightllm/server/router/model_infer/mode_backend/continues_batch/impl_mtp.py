@@ -126,7 +126,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             draft_model_input = prepare_mtp_prefill_inputs(
                 model_input=draft_model_input,
                 b_next_token_ids=draft_next_token_ids_gpu,
-                dedeepseekv3_mtp_draft_input_hiddens=draft_model_output.deepseekv3_mtp_main_output_hiddens,
+                deepseekv3_mtp_draft_input_hiddens=draft_model_output.deepseekv3_mtp_main_output_hiddens,
             )
 
             draft_model_output = self.draft_models[draft_model_idx].forward(draft_model_input)
