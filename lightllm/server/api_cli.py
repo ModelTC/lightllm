@@ -330,7 +330,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--graph_max_batch_size",
         type=int,
-        default=64,
+        default=256,
         help="""Maximum batch size that can be captured by the cuda graph for decodign stage.
                 The default value is 8. It will turn into eagar mode if encounters a larger value.""",
     )
@@ -349,7 +349,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--graph_grow_step_size",
         type=int,
-        default=8,
+        default=16,
         help="""
         For batch_size values from graph_split_batch_size to graph_max_batch_size,
         a new CUDA graph will be generated for every increment of graph_grow_step_size.
