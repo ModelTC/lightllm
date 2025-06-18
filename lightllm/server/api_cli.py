@@ -432,6 +432,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         help="""Specifies the number of additional tokens to predict using the draft model.
         Currently, this feature supports only the DeepSeekV3 model.
         Increasing this value allows for more predictions,
-        but ensure that the model is compatible with the specified step count.""",
+        but ensure that the model is compatible with the specified step count.
+        currently, deepseekv3 model only support 1 step""",
     )
     return parser
