@@ -40,29 +40,9 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         max_decode_num = self.reduce_tensor.item()
         if max_decode_num != 0:
             if not self.enable_decode_microbatch_overlap:
-                self.normal_decode(decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
+                DPChunkedPrefillBackend.normal_decode(self, decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
             else:
-                self.overlap_decode(decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
+                DPChunkedPrefillBackend.overlap_decode(self, decode_reqs, max_decode_num, uninit_reqs, ok_finished_reqs)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
-        return
-
-    def normal_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        DPChunkedPrefillBackend.normal_decode(
-            self,
-            decode_reqs=decode_reqs,
-            max_decode_num=max_decode_num,
-            uninit_reqs=uninit_reqs,
-            ok_finished_reqs=ok_finished_reqs,
-        )
-        return
-
-    def overlap_decode(self, decode_reqs: List[InferReq], max_decode_num: int, uninit_reqs, ok_finished_reqs):
-        DPChunkedPrefillBackend.overlap_decode(
-            self,
-            decode_reqs=decode_reqs,
-            max_decode_num=max_decode_num,
-            uninit_reqs=uninit_reqs,
-            ok_finished_reqs=ok_finished_reqs,
-        )
         return

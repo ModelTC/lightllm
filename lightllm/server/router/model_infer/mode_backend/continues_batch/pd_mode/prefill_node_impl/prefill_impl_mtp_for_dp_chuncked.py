@@ -4,7 +4,6 @@ from lightllm.server.router.model_infer.infer_batch import g_infer_context
 from lightllm.utils.log_utils import init_logger
 from .prefill_impl_for_dp_chuncked import DPChunkedForPrefillNode
 from ....dp_backend.impl_mtp import DPChunkedPrefillWithMTPBackend
-from ...impl_mtp import ContinuesBatchWithMTPBackend
 
 logger = init_logger(__name__)
 
@@ -16,7 +15,7 @@ class DPChunkedForMtpPrefillNode(DPChunkedForPrefillNode):
 
     def init_model(self, kvargs):
         super().init_model(kvargs)
-        ContinuesBatchWithMTPBackend._init_mtp_draft_model(self, kvargs)
+        DPChunkedPrefillWithMTPBackend._init_mtp_draft_model(self, kvargs)
         return
 
     def decode(self):
