@@ -331,8 +331,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         "--graph_max_batch_size",
         type=int,
         default=256,
-        help="""Maximum batch size that can be captured by the cuda graph for decodign stage.
-                The default value is 8. It will turn into eagar mode if encounters a larger value.""",
+        help="""Maximum batch size that can be captured by the cuda graph for decodign stage.""",
     )
     parser.add_argument(
         "--graph_split_batch_size",
