@@ -32,11 +32,14 @@ class CudaGraph:
         max_batch_size = self.max_batch_size
         graph_grow_step_size = self.args.graph_grow_step_size
 
-        batch_sizes = [i for i in range(1, min(graph_split_batch_size, max_batch_size) + 1)]
-        for _batch_size in range(
-            graph_split_batch_size + graph_grow_step_size, max_batch_size + 1, graph_grow_step_size
-        ):
+        batch_sizes = [i for i in range(1, graph_split_batch_size + 1)]
+        for _batch_size in range(graph_split_batch_size + graph_grow_step_size, max_batch_size, graph_grow_step_size):
             batch_sizes.append(_batch_size)
+
+        batch_sizes = list(set([e for e in batch_sizes if e < max_batch_size]))
+        batch_sizes.append(max_batch_size)
+        batch_sizes.sort()
+
         self.cuda_graph_batch_sizes = batch_sizes
         assert batch_sizes[-1] == self.max_batch_size
         logger.info(f"cuda graph batch_sizes: {self.cuda_graph_batch_sizes}")
@@ -255,6 +258,7 @@ class CudaGraph:
                 b_seq_len.fill_(seq_len)
 
                 micro_batch = ModelInput(
+                    is_prefill=False,
                     batch_size=batch_size,
                     total_token_num=total_token_num,
                     max_len_in_batch=max_len_in_batch,

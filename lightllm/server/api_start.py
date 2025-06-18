@@ -119,6 +119,9 @@ def normal_or_p_d_start(args):
     if args.mtp_mode is not None:
         assert args.mtp_draft_model_dir is not None
         assert args.mtp_step > 0
+    else:
+        assert args.mtp_draft_model_dir is None
+        assert args.mtp_step == 0
 
     # 检查GPU数量是否足够
     if args.visual_gpu_ids is None:
