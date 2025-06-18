@@ -130,7 +130,7 @@ class ModelRpcServer:
         enable_mtp = self.args.mtp_mode is not None
 
         if is_prefill_node:
-            if self.args.mtp_mode == "deepseekv3":
+            if enable_mtp:
                 if self.args.dp > 1:
                     self.backend = DPChunkedForMtpPrefillNode(self.info_queue, self.mem_queue)
                 else:
@@ -141,7 +141,7 @@ class ModelRpcServer:
                 else:
                     self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
         elif is_decode_node:
-            if self.args.mtp_mode == "deepseekv3":
+            if enable_mtp:
                 if self.args.dp > 1:
                     self.backend = DPForMtpDecodeNode(self.info_queue, self.mem_queue)
                 else:
