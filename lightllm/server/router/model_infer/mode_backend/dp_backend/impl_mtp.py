@@ -1,14 +1,8 @@
 import torch
 import torch.distributed as dist
 import numpy as np
-import triton
 from typing import List, Tuple
-from lightllm.server.router.model_infer.mode_backend.base_backend import ModeBackend
-from lightllm.utils.infer_utils import set_random_seed
-from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
-from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq, InferSamplingParams
-from lightllm.server.core.objs import FinishStatus
-from lightllm.utils.log_utils import init_logger
+from lightllm.server.router.model_infer.infer_batch import g_infer_context, InferReq
 from lightllm.server.router.model_infer.mode_backend.generic_post_process import sample
 from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.server.router.model_infer.mode_backend.continues_batch.impl_mtp import ContinuesBatchWithMTPBackend
