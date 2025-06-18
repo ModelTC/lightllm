@@ -30,9 +30,6 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         self.enable_prefill_microbatch_overlap = get_env_start_args().enable_prefill_microbatch_overlap
         pass
 
-    def init_model(self, kvargs):
-        super().init_model(kvargs)
-
     def init_custom(self):
         self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
         return
