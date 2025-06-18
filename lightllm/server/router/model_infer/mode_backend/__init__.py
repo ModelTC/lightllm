@@ -14,3 +14,9 @@ from .chunked_prefill.impl_for_xgrammar_mode import XgrammarBackend
 from .continues_batch.pd_mode.prefill_node_impl.prefill_impl_for_dp_chuncked import DPChunkedForPrefillNode
 from .continues_batch.pd_mode.decode_node_impl.decode_impl_for_dp import DPForDecodeNode
 from .continues_batch.impl_mtp import ContinuesBatchWithMTPBackend
+
+# mtp and pd mode backend
+from .continues_batch.pd_mode.decode_node_impl.decode_impl_mtp_for_dp import DPForMtpDecodeNode
+from .continues_batch.pd_mode.decode_node_impl.decode_impl_mtp import ContinuesBatchBackendForMtpDecodeNode
+from .continues_batch.pd_mode.prefill_node_impl.prefill_impl_mtp import ChunckedPrefillForMtpPrefillNode
+from .continues_batch.pd_mode.prefill_node_impl.prefill_impl_mtp_for_dp_chuncked import DPChunkedForMtpPrefillNode

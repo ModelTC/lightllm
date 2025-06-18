@@ -23,6 +23,10 @@ from lightllm.server.router.model_infer.mode_backend import (
     DPChunkedForPrefillNode,
     ContinuesBatchWithMTPBackend,
     DPChunkedPrefillWithMTPBackend,
+    DPForMtpDecodeNode,
+    ContinuesBatchBackendForMtpDecodeNode,
+    ChunckedPrefillForMtpPrefillNode,
+    DPChunkedForMtpPrefillNode,
 )
 from lightllm.server.router.model_infer.mode_backend.redundancy_expert_manager import RedundancyExpertManager
 from lightllm.server.core.objs import RpcShmParams, RpcShmResults, ShmSyncStatusArray
@@ -126,15 +130,27 @@ class ModelRpcServer:
         enable_mtp = self.args.mtp_mode is not None
 
         if is_prefill_node:
-            if self.args.dp > 1:
-                self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
+            if self.args.mtp_mode == "deepseekv3":
+                if self.args.dp > 1:
+                    self.backend = DPChunkedForMtpPrefillNode(self.info_queue, self.mem_queue)
+                else:
+                    self.backend = ChunckedPrefillForMtpPrefillNode(self.info_queue, self.mem_queue)
             else:
-                self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
+                if self.args.dp > 1:
+                    self.backend = DPChunkedForPrefillNode(self.info_queue, self.mem_queue)
+                else:
+                    self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
         elif is_decode_node:
-            if self.args.dp > 1:
-                self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
+            if self.args.mtp_mode == "deepseekv3":
+                if self.args.dp > 1:
+                    self.backend = DPForMtpDecodeNode(self.info_queue, self.mem_queue)
+                else:
+                    self.backend = ContinuesBatchBackendForMtpDecodeNode(self.info_queue, self.mem_queue)
             else:
-                self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+                if self.args.dp > 1:
+                    self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
+                else:
+                    self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
         elif self.args.dp > 1:
             if enable_mtp:
                 self.backend = DPChunkedPrefillWithMTPBackend()
