@@ -55,6 +55,7 @@ class FirstTokenConstraintBackend(ChunkedPrefillBackend):
                 run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=False, do_filter_finished_reqs=False
             )
             del model_output
+            del logits
 
         # 再 prefill
         if len(decode_reqs) == 0 or (self.forward_step % self.max_wait_step == 0) or (self.need_prefill_count > 0):
@@ -76,6 +77,7 @@ class FirstTokenConstraintBackend(ChunkedPrefillBackend):
                     run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False
                 )
                 del model_output
+                del logits
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         self.forward_step += 1

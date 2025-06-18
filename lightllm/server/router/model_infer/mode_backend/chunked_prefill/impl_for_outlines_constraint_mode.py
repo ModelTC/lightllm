@@ -93,6 +93,7 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
                 extra_post_req_handle_func=self._update_state_fsm,
             )
             del model_output
+            del logits
 
         # 再 prefill
         if len(decode_reqs) == 0 or (self.forward_step % self.max_wait_step == 0) or (self.need_prefill_count > 0):
@@ -126,6 +127,7 @@ class OutlinesConstraintBackend(ChunkedPrefillBackend):
                     extra_post_req_handle_func=self._update_state_fsm,
                 )
                 del model_output
+                del logits
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         self.forward_step += 1
