@@ -543,8 +543,8 @@ class HttpServerManager:
                         x_session_id = request.headers.get("X-Session-Id", "") if request is not None else ""
                         prompt_cache_ratio = prompt_cache_len / prompt_tokens
 
-                        mtp_avg_token_per_step = out_token_counter / (
-                            out_token_counter - metadata["mtp_accepted_token_num"]
+                        mtp_avg_token_per_step = out_token_counter / max(
+                            (out_token_counter - metadata["mtp_accepted_token_num"]), 1
                         )
                         format_start_time = datetime.datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
                         logger.info(
