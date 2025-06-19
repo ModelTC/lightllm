@@ -14,7 +14,8 @@ if HAS_LIGHTLLM_KERNEL:
         return light_ops.per_token_quant_bf16_fp8(tensor)
 
 else:
-    scaled_fp8_quant = vllm_ops.scaled_fp8_quant
+    if HAS_VLLM:
+        scaled_fp8_quant = vllm_ops.scaled_fp8_quant
 
 
 class BaseQuantizationMethod(QuantizationMethod):
@@ -114,7 +115,7 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         return out
 
 
-@QUANTMETHODS.register(["vllm-fp8w8a8-b128, fp8w8a8-b128"])
+@QUANTMETHODS.register(["vllm-fp8w8a8-b128", "fp8w8a8-b128"])
 class FP8w8a8B128QuantizationMethod(BaseQuantizationMethod):
     def __init__(self):
         super().__init__()
