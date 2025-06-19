@@ -299,7 +299,7 @@ class XgrammarBackend(ChunkedPrefillBackend):
                         sample_params.xgrammar_matcher = self.cache[key].copy()
             elif sample_params.guided_json is not None:
                 if not hasattr(sample_params, "xgrammar_matcher"):
-                    key = ("json", sample_params.guided_grammar)
+                    key = ("json", sample_params.guided_json)
                     value = self.cache.get(key)
                     if value:
                         sample_params.xgrammar_matcher = value.copy()
