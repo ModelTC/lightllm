@@ -9,11 +9,11 @@ from lightllm.models.bloom.layer_infer.post_layer_infer import BloomPostLayerInf
 
 from lightllm.common.build_utils import repair_config
 from lightllm.common.mem_utils import select_mem_manager_class
-from lightllm.common.basemodel import TpPartBaseModel
+from lightllm.common.basemodel import BaseModelRunner
 
 
 @ModelRegistry("starcoder2")
-class Starcoder2TpPartModel(TpPartBaseModel):
+class Starcoder2TpPartModel(BaseModelRunner):
     # weight class
     pre_and_post_weight_class = Starcoder2PreAndPostLayerWeight
     transformer_weight_class = Starcoder2TransformerLayerWeight

@@ -186,9 +186,9 @@ class CudaGraph:
     def warmup(self, model):
         logger.info("Begin capture cudagraph, use the --disable_cudagraph to disable it.")
         # for typing easy
-        from .basemodel import TpPartBaseModel
+        from .basemodel import BaseModelRunner
 
-        model: TpPartBaseModel = model
+        model: BaseModelRunner = model
 
         # decode cuda graph init
         for batch_size in self.cuda_graph_batch_sizes[::-1]:
@@ -238,9 +238,9 @@ class CudaGraph:
     def warmup_overlap(self, model):
         logger.info("Begin capture overlap cudagraph, use the --disable_cudagraph to disable it.")
         # for typing easy
-        from .basemodel import TpPartBaseModel
+        from .basemodel import BaseModelRunner
 
-        model: TpPartBaseModel = model
+        model: BaseModelRunner = model
 
         for batch_size in self.cuda_graph_batch_sizes[::-1]:
             decode_batches = []

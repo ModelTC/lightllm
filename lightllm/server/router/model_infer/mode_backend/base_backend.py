@@ -15,7 +15,7 @@ from lightllm.server.router.dynamic_prompt.radix_cache import RadixCache
 from lightllm.server.router.model_infer.infer_batch import InferReq, InferSamplingParams
 from lightllm.server.router.token_load import TokenLoad
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock, InferStateLock
-from lightllm.common.basemodel.basemodel import TpPartBaseModel
+from lightllm.common.basemodel.basemodel import BaseModelRunner
 from lightllm.common.basemodel.batch_objs import ModelOutput
 from lightllm.utils.dist_utils import init_distributed_env
 from lightllm.utils.envs_utils import get_unique_server_name
@@ -115,7 +115,7 @@ class ModeBackend:
             "run_mode": self.run_mode,
         }
         self.model, self.is_multimodal = get_model(model_cfg, model_kvargs)
-        self.model: TpPartBaseModel = self.model  # for easy typing
+        self.model: BaseModelRunner = self.model  # for easy typing
         set_random_seed(2147483647)
         self.radix_cache = (
             RadixCache(

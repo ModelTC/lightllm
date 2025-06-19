@@ -9,7 +9,7 @@ from .layer_infer.template.transformer_layer_infer_template import TransformerLa
 from .layer_infer.template.pre_layer_infer_template import PreLayerInferTpl
 from .layer_infer.template.post_layer_infer_template import PostLayerInferTpl
 from .infer_struct import InferStateInfo
-from .basemodel import TpPartBaseModel
+from .basemodel import BaseModelRunner
 
 
 __all__ = [
@@ -22,7 +22,7 @@ __all__ = [
     "TransformerLayerInfer",
     "TransformerLayerInferTpl",
     "InferStateInfo",
-    "TpPartBaseModel",
+    "BaseModelRunner",
     "PreLayerInferTpl",
     "PostLayerInferTpl",
 ]

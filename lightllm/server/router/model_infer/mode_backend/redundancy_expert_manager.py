@@ -7,7 +7,7 @@ import lightllm.utils.petrel_helper as utils
 import threading
 import json
 from typing import List
-from lightllm.common.basemodel.basemodel import TpPartBaseModel
+from lightllm.common.basemodel.basemodel import BaseModelRunner
 from lightllm.common.basemodel.layer_weights.meta_weights.fused_moe_weight_ep_redundancy import (
     FusedMoeWeightEPAutoRedundancy,
 )
@@ -23,7 +23,7 @@ logger = init_logger(__name__)
 
 
 class RedundancyExpertManager:
-    def __init__(self, model: TpPartBaseModel):
+    def __init__(self, model: BaseModelRunner):
         self.args = get_env_start_args()
         self.model = model
         self.ep_fused_moeweights: List[FusedMoeWeightEPAutoRedundancy] = []

@@ -30,7 +30,7 @@ logger = init_logger(__name__)
 torch.backends.cudnn.enabled = True
 
 
-class TpPartBaseModel:
+class BaseModelRunner:
     # weight class
     pre_and_post_weight_class = None
     transformer_weight_class = None

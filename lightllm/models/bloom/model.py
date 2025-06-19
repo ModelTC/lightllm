@@ -8,13 +8,13 @@ from lightllm.models.bloom.layer_infer.transformer_layer_infer import BloomTrans
 from lightllm.models.bloom.layer_weights.pre_and_post_layer_weight import BloomPreAndPostLayerWeight
 from lightllm.models.bloom.layer_weights.transformer_layer_weight import BloomTransformerLayerWeight
 from lightllm.models.bloom.layer_weights.hf_load_utils import load_hf_weights
-from lightllm.common.basemodel import InferStateInfo, TpPartBaseModel
+from lightllm.common.basemodel import InferStateInfo, BaseModelRunner
 
 from lightllm.common.build_utils import repair_config
 
 
 @ModelRegistry("bloom")
-class BloomTpPartModel(TpPartBaseModel):
+class BloomTpPartModel(BaseModelRunner):
     # weight class
     pre_and_post_weight_class = BloomPreAndPostLayerWeight
     transformer_weight_class = BloomTransformerLayerWeight

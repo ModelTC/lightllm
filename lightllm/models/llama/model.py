@@ -14,7 +14,7 @@ from lightllm.common.basemodel.layer_weights.hf_load_utils import load_hf_weight
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
 from lightllm.models.llama.flashattention_infer_struct import FlashAttentionStateInfo
 from lightllm.models.llama.flashinfer_struct import LlamaFlashInferStateInfo
-from lightllm.common.basemodel import TpPartBaseModel
+from lightllm.common.basemodel import BaseModelRunner
 from lightllm.common.mem_utils import select_mem_manager_class
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
@@ -45,7 +45,7 @@ class LlamaFlashInferStateExtraInfo:
 
 
 @ModelRegistry("llama")
-class LlamaTpPartModel(TpPartBaseModel):
+class LlamaTpPartModel(BaseModelRunner):
     # weight class
     pre_and_post_weight_class = LlamaPreAndPostLayerWeight
     transformer_weight_class = LlamaTransformerLayerWeight

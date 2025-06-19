@@ -2,7 +2,7 @@ import os
 import json
 import torch
 from lightllm.models.registry import ModelRegistry
-from lightllm.common.basemodel import TpPartBaseModel
+from lightllm.common.basemodel import BaseModelRunner
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
@@ -13,7 +13,7 @@ from lightllm.common.mem_utils import select_mem_manager_class
 
 
 @ModelRegistry("mistral")
-class MistralTpPartModel(TpPartBaseModel):
+class MistralTpPartModel(BaseModelRunner):
     # weight class
     pre_and_post_weight_class = LlamaPreAndPostLayerWeight
     transformer_weight_class = LlamaTransformerLayerWeight

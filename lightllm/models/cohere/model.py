@@ -1,6 +1,6 @@
 import os
 import torch
-from lightllm.common.basemodel.basemodel import TpPartBaseModel
+from lightllm.common.basemodel.basemodel import BaseModelRunner
 from lightllm.common.basemodel.layer_infer.template.transformer_layer_infer_cohere_template import (
     TransformerLayerCohereInferTpl,
 )

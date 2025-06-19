@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from lightllm.models.registry import ModelRegistry
-from lightllm.common.basemodel.basemodel import TpPartBaseModel
+from lightllm.common.basemodel.basemodel import BaseModelRunner
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.models.llama.layer_infer.post_layer_infer import LlamaPostLayerInfer
 from lightllm.models.llama.layer_infer.pre_layer_infer import LlamaPreLayerInfer
@@ -16,7 +16,7 @@ logger = init_logger(__name__)
 
 
 @ModelRegistry("mixtral")
-class MixtralTpPartModel(TpPartBaseModel):
+class MixtralTpPartModel(BaseModelRunner):
     # weight class
     pre_and_post_weight_class = LlamaPreAndPostLayerWeight
     transformer_weight_class = MixtralTransformerLayerWeight
