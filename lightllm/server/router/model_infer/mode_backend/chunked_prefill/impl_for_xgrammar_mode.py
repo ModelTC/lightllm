@@ -51,7 +51,6 @@ class XgrammarBackend(ChunkedPrefillBackend):
                 logger.error(f"Failed to compile {type}: {e}")
                 raise
 
-
         self.dispatch_grammar = dispatch_grammar
         return
 
@@ -172,11 +171,6 @@ class XgrammarBackend(ChunkedPrefillBackend):
                     sample_params.xgrammar_matcher = xgr.GrammarMatcher(ctx)
             elif sample_params.guided_json is not None:
                 if not hasattr(sample_params, "xgrammar_matcher"):
-                    try:
-                        ctx = self.dispatch_grammar("schema", sample_params.guided_json)
-                        sample_params.xgrammar_matcher = xgr.GrammarMatcher(ctx)
-                    except Exception as e:
-                        logger.error(f"Failed to compile schema: {e}")
-                        # Handle the error appropriately, e.g., by setting a default matcher or skipping the schema
-                        continue
+                    ctx = self.dispatch_grammar("schema", sample_params.guided_json)
+                    sample_params.xgrammar_matcher = xgr.GrammarMatcher(ctx)
         return
