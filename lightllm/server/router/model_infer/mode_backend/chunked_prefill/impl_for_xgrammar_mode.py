@@ -40,12 +40,17 @@ class XgrammarBackend(ChunkedPrefillBackend):
         @functools.lru_cache(maxsize=200)
         def dispatch_grammar(type: str, grammar: str):
             logger.info(f"grammar cache miss for {type}: '{grammar}'")
-            if type == "grammar":
-                return self.xgrammar_compiler.compile_grammar(grammar)
-            elif type == "schema":
-                return self.xgrammar_compiler.compile_json_schema(grammar)
-            else:
-                raise ValueError(f"Unknown xgrammar type: {type}")
+            try:
+                if type == "grammar":
+                    return self.xgrammar_compiler.compile_grammar(grammar)
+                elif type == "schema":
+                    return self.xgrammar_compiler.compile_json_schema(grammar)
+                else:
+                    raise ValueError(f"Unknown xgrammar type: {type}")
+            except Exception as e:
+                logger.error(f"Failed to compile {type}: {e}")
+                raise
+
 
         self.dispatch_grammar = dispatch_grammar
         return
