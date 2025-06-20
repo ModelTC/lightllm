@@ -1,5 +1,6 @@
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.common.int8kv_mem_manager import INT8KVMemoryManager
+from lightllm.common.fp8kv_mem_manager import FP8KVMemoryManager
 from lightllm.common.ppl_int8kv_mem_manager import PPLINT8KVMemoryManager
 from lightllm.common.ppl_int4kv_mem_manager import PPLINT4KVMemoryManager
 from lightllm.utils.log_utils import init_logger
@@ -20,6 +21,9 @@ def select_mem_manager_class(mode):
         logger.info("Model kv cache using mode triton int8kv")
     elif "triton_fp8kv" in mode:
         raise Exception("currently only for deepseek")
+    elif "calibration_fp8kv" in mode:
+        memory_manager_class = FP8KVMemoryManager
+        logger.info("Model kv cache using mode calibration fp8kv")
     else:
         memory_manager_class = MemoryManager
         logger.info("Model kv cache using mode normal")
