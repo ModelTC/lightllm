@@ -41,6 +41,7 @@ def test_model_inference(args):
             "run_mode": "normal",
             "max_seq_length": args.max_req_total_len,
             "disable_cudagraph": args.disable_cudagraph,
+            "mode": args.mode,
         }
         proc = multiprocessing.Process(
             target=tppart_model_infer,
@@ -213,7 +214,7 @@ def torch_profile(fn, log_dir=None):
     ) as prof:
         fn()
     if get_current_rank_in_dp() == 0:
-        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))
 
 
 def run_forward_once(model_kvargs, input_len, output_len, batch_size, model_part, enable_overlap, torch_profile=False):
