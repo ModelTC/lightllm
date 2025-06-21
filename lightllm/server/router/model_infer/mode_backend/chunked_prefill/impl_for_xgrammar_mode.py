@@ -38,7 +38,7 @@ class XgrammarBackend(ChunkedPrefillBackend):
         eos_token_ids.extend(self.args.eos_id)
 
         @functools.lru_cache(maxsize=200)
-        def dispatch_grammar(type: str, grammar: str):
+        def get_cached_grammar(type: str, grammar: str):
             logger.info(f"grammar cache miss for {type}: '{grammar}'")
             try:
                 if type == "grammar":
@@ -51,7 +51,7 @@ class XgrammarBackend(ChunkedPrefillBackend):
                 logger.error(f"Failed to compile {type}: {e}")
                 raise
 
-        self.dispatch_grammar = dispatch_grammar
+        self.get_cached_grammar = get_cached_grammar
         return
 
     @calculate_time(show=False, min_cost_ms=300)
@@ -167,10 +167,10 @@ class XgrammarBackend(ChunkedPrefillBackend):
             sample_params = run_obj.sampling_param
             if sample_params.guided_grammar is not None:
                 if not hasattr(sample_params, "xgrammar_matcher"):
-                    ctx = self.dispatch_grammar("grammar", sample_params.guided_grammar)
+                    ctx = self.get_cached_grammar("grammar", sample_params.guided_grammar)
                     sample_params.xgrammar_matcher = xgr.GrammarMatcher(ctx)
             elif sample_params.guided_json is not None:
                 if not hasattr(sample_params, "xgrammar_matcher"):
-                    ctx = self.dispatch_grammar("schema", sample_params.guided_json)
+                    ctx = self.get_cached_grammar("schema", sample_params.guided_json)
                     sample_params.xgrammar_matcher = xgr.GrammarMatcher(ctx)
         return
