@@ -142,6 +142,7 @@ def test_kernel(
             a, w1, w2, w1_scale, w2_scale, topk_ids, topk_weights, out1, out2, down_in = input_tuples[index]
             if is_up:
                 grouped_matmul(
+                    topk_ids.numel(),
                     a,
                     None,
                     expert_to_token_num,
@@ -158,6 +159,7 @@ def test_kernel(
                 )
             else:
                 grouped_matmul(
+                    topk_ids.numel(),
                     down_in,
                     None,
                     expert_to_token_num,

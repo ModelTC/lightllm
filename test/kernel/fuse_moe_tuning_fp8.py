@@ -58,14 +58,37 @@ def test_kernel(
     test_count: int,
     use_fp8_w8a8: bool,
     is_up: bool,
+    block_shape,
     **config,
 ):
     set_seed()
     input_tuples = []
 
     a = torch.randn((m, k), device="cuda", dtype=dtype) / 10
-    w1 = torch.randn((expert_num, 2 * n, k), device="cuda", dtype=dtype) / 10
-    w2 = torch.randn((expert_num, k, n), device="cuda", dtype=dtype) / 10
+    w1_scale = w2_scale = None
+
+    if use_fp8_w8a8:
+        init_dtype = dtype
+        w1 = torch.randn(expert_num, 2 * n, k, dtype=init_dtype).cuda()
+        w2 = torch.randn(expert_num, k, 2 * n // 2, dtype=init_dtype).cuda()
+        w1 = w1.to(torch.float8_e4m3fn)
+        w2 = w2.to(torch.float8_e4m3fn)
+
+        if block_shape is None:
+            w1_scale = torch.randn(expert_num, dtype=torch.float32).cuda()
+            w2_scale = torch.randn(expert_num, dtype=torch.float32).cuda()
+        else:
+            block_n, block_k = block_shape[0], block_shape[1]
+            n_tiles_w1 = (2 * n + block_n - 1) // block_n
+            n_tiles_w2 = (k + block_n - 1) // block_n
+            k_tiles_w1 = (k + block_k - 1) // block_k
+            k_tiles_w2 = (2 * n // 2 + block_k - 1) // block_k
+            w1_scale = torch.rand((expert_num, n_tiles_w1, k_tiles_w1), dtype=torch.float32).cuda()
+            w2_scale = torch.rand((expert_num, n_tiles_w2, k_tiles_w2), dtype=torch.float32).cuda()
+    else:
+        w1 = torch.randn(expert_num, 2 * n, k, dtype=dtype).cuda()
+        w2 = torch.randn(expert_num, k, 2 * n // 2, dtype=dtype).cuda()
+
     rnd_logics = torch.randn(m, expert_num, device="cuda")
     topk_values, topk_ids = torch.topk(rnd_logics, topk, dim=1)
     topk_weights = torch.randn((m, topk), device="cuda", dtype=dtype) / 10
@@ -75,12 +98,6 @@ def test_kernel(
     moe_align(topk_ids=topk_ids, out=expert_to_tokens)
     expert_to_token_num = torch.empty((expert_num,), dtype=torch.int32, device="cuda")
     moe_align1(expert_to_tokens, topk_weights, expert_to_weights, expert_to_token_num, topk=topk)
-    if use_fp8_w8a8:
-        w1, w1_scale = quantize_moe(w1)
-        w2, w2_scale = quantize_moe(w2)
-    else:
-        w1_scale = torch.empty((0,))
-        w2_scale = torch.empty((0,))
 
     out1 = torch.zeros((m * topk, 2 * n), dtype=torch.bfloat16, device="cuda")
     down_in = torch.zeros((m * topk, n), dtype=torch.bfloat16, device="cuda")
@@ -142,6 +159,7 @@ def test_kernel(
             a, w1, w2, w1_scale, w2_scale, topk_ids, topk_weights, out1, out2, down_in = input_tuples[index]
             if is_up:
                 grouped_matmul(
+                    topk_ids.numel(),
                     a,
                     None,
                     expert_to_token_num,
@@ -158,6 +176,7 @@ def test_kernel(
                 )
             else:
                 grouped_matmul(
+                    topk_ids.numel(),
                     down_in,
                     None,
                     expert_to_token_num,
@@ -197,6 +216,7 @@ def worker(
     test_count: int,
     use_fp8_w8a8: bool,
     is_up: bool,
+    block_shape,
     test_configs,
     queue,
 ):
@@ -212,6 +232,7 @@ def worker(
                 test_count=test_count,
                 use_fp8_w8a8=use_fp8_w8a8,
                 is_up=is_up,
+                block_shape=block_shape,
                 **test_configs[index],
             )
             queue.put(cost_time)  # Put result in queue
@@ -278,6 +299,7 @@ def tuning_configs(
     test_count: int,
     use_fp8_w8a8: bool,
     is_up: bool,
+    block_shape,
 ):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(device_id)
     best_config, best_cost_time = None, 10000000
@@ -300,6 +322,7 @@ def tuning_configs(
                 test_count,
                 use_fp8_w8a8,
                 is_up,
+                block_shape,
                 test_configs,
                 queue,
             ),
@@ -333,6 +356,7 @@ def tuning_configs(
                 test_count,
                 use_fp8_w8a8,
                 is_up,
+                block_shape,
                 test_configs,
                 queue,
             ),
@@ -364,10 +388,11 @@ if __name__ == "__main__":
     from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
 
     # tuning to get deepseekv2 large configs and store in H800, tp 8
-    expert_num = 160
-    n = 192  # up is n * 2
-    hidden_dim = 5120
-    topk_num = 6
+    expert_num = 256
+    n = 256  # up is n * 2
+    hidden_dim = 7168
+    topk_num = 8
+    block_shape = [128, 128]
 
     up_dict = {}
     for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
@@ -383,6 +408,7 @@ if __name__ == "__main__":
                 "test_count": 20,
                 "use_fp8_w8a8": True,
                 "is_up": True,
+                "block_shape": block_shape,
             },
         )
         up_dict[m] = ans
@@ -411,6 +437,7 @@ if __name__ == "__main__":
                 "test_count": 20,
                 "use_fp8_w8a8": True,
                 "is_up": False,
+                "block_shape": block_shape,
             },
         )
         down_dict[m] = ans
