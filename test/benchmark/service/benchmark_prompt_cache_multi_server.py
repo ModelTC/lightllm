@@ -1,3 +1,28 @@
+"""
+benchmark_multi_server.py
+
+This script is used for automated benchmarking of multiple model services (e.g., llama-7b, llama-13b),
+evaluating their performance under different input lengths, output lengths, number of turns, concurrent users,
+and worker threads.
+
+Main features:
+- Supports automated testing for multiple models and parameter combinations.
+- Collects and outputs various performance metrics, including throughput, QPS, and latency.
+- Saves results as a Markdown table for easy analysis.
+
+Parameter description:
+- models: Model names and their service URLs to be tested.
+- first_input_lens: List of token lengths for the first input.
+- subsequent_input_lens: List of token lengths for subsequent inputs.
+- output_lens: List of output token lengths.
+- num_turns: List of dialogue turns.
+- num_workers: List of concurrent worker counts.
+- num_users: List of concurrent user counts.
+- result_dir: Directory to save results.
+
+Example:
+    python benchmark_multi_server.py
+"""
 import os
 import itertools
 from easydict import EasyDict

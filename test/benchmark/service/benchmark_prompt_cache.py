@@ -1,3 +1,25 @@
+"""
+This script benchmarks the performance of a large language model inference service via HTTP API,
+supporting multi-user and multi-turn dialogue scenarios.
+
+Main arguments:
+- --model_url: Service address
+- --model_name: Model name (for result file naming)
+- --num_workers: Number of concurrent processes
+- --first_input_len: Input length for the first turn
+- --subsequent_input_len: Input length for subsequent turns
+- --output_len: Number of tokens generated per turn
+- --num_turns: Number of dialogue turns per user
+- --num_users: Number of users
+- --result_dir: Directory to save results
+- --print: Whether to print the result
+- --cache: Whether to cache the result
+- --use_cache: Whether to use cached results
+
+Example usage:
+python benchmark_prompt_cache.py --address http://localhost:8090 --model_name llama \\
+--num_workers 1 --first_input_len 512 --subsequent_input_len 32 --output_len 32 --num_turns 5 --num_users 1
+"""
 import requests
 import json
 import operator
