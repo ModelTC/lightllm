@@ -1,10 +1,12 @@
 import os
+import argparse
 import torch
 import time
 import torch.multiprocessing as mp
 from lightllm.common.fused_moe.grouped_fused_moe import fused_experts_impl, moe_align, moe_align1, grouped_matmul
 from typing import List
 from lightllm.utils.log_utils import init_logger
+from transformers import AutoConfig
 
 logger = init_logger(__name__)
 
@@ -382,17 +384,33 @@ def tuning_configs(
     return best_config, best_cost_time
 
 
-if __name__ == "__main__":
+def main(args):
     torch.multiprocessing.set_start_method("spawn")
     from lightllm.utils.tuning_utils import mp_tuning
     from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
 
-    # tuning to get deepseekv2 large configs and store in H800, tp 8
-    expert_num = 256
-    n = 256  # up is n * 2
-    hidden_dim = 7168
-    topk_num = 8
-    block_shape = [128, 128]
+    config = AutoConfig.from_pretrained(args.model, trust_remote_code=True)
+    if config.architectures[0] == "Qwen3MoeForCausalLM":
+        expert_num = config.num_experts
+        topk_num = config.num_experts_per_tok
+        n = 2 * config.moe_intermediate_size // args.tp
+    elif config.architectures[0] in ["DeepseekV2ForCausalLM", "DeepseekV3ForCausalLM"]:
+        expert_num = config.n_routed_experts
+        topk_num = config.num_experts_per_tok
+        n = 2 * config.moe_intermediate_size // args.tp
+    else:
+        pass
+
+    hidden_dim = getattr(config, "hidden_size", None) or config.text_config.hidden_size
+    use_fp8_w8a8 = args.use_fp8_w8a8
+    block_shape = None
+    if (
+        hasattr(config, "quantization_config")
+        and "weight_block_size" in config.quantization_config
+    ):
+        block_shape = config.quantization_config["weight_block_size"]
+        assert len(block_shape) == 2
+        use_fp8_w8a8 = True
 
     up_dict = {}
     for m in [1, 8, 64, 128, 256, 512, 1024, 4096, 8192]:
@@ -406,7 +424,7 @@ if __name__ == "__main__":
                 "topk": topk_num,
                 "dtype": torch.bfloat16,
                 "test_count": 20,
-                "use_fp8_w8a8": True,
+                "use_fp8_w8a8": use_fp8_w8a8,
                 "is_up": True,
                 "block_shape": block_shape,
             },
@@ -418,7 +436,7 @@ if __name__ == "__main__":
             topk_num=topk_num,
             expert_num=expert_num,
             mul_routed_weight=False,
-            use_fp8_w8a8=True,
+            use_fp8_w8a8=use_fp8_w8a8,
             out_dtype=str(torch.bfloat16),
             config_json=up_dict,
         )
@@ -435,7 +453,7 @@ if __name__ == "__main__":
                 "topk": topk_num,
                 "dtype": torch.bfloat16,
                 "test_count": 20,
-                "use_fp8_w8a8": True,
+                "use_fp8_w8a8": use_fp8_w8a8,
                 "is_up": False,
                 "block_shape": block_shape,
             },
@@ -448,7 +466,17 @@ if __name__ == "__main__":
             topk_num=1,
             expert_num=expert_num,
             mul_routed_weight=True,
-            use_fp8_w8a8=True,
+            use_fp8_w8a8=use_fp8_w8a8,
             out_dtype=str(torch.bfloat16),
             config_json=down_dict,
         )
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model", type=str, default="deepseek-ai/DeepSeek-R1"
+    )
+    parser.add_argument("--tp", type=int, default=8)
+    parser.add_argument("--use_fp8_w8a8", action="store_true")
+    args = parser.parse_args()
+    main(args)
