@@ -225,8 +225,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         k = kv[:, :, : self.tp_k_head_num_, :].view(torch.float8_e4m3fn)
         v = kv[:, :, self.tp_k_head_num_ :, :].view(torch.float8_e4m3fn)
         offline_scales = infer_state.mem_manager.offline_fp8_quant_manager.scales_list
-        k_descale = offline_scales[self.layer_num_] if offline_scales is not None else None
-        v_descale = offline_scales[self.layer_num_] if offline_scales is not None else None
+        k_descale = offline_scales[self.layer_num_][0] if offline_scales is not None else None
+        v_descale = offline_scales[self.layer_num_][1] if offline_scales is not None else None
         infer_state.prefill_wrapper.run(
             q.view(q.shape[0], -1, self.head_dim_),
             (k, v),
@@ -517,8 +517,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         k = kv[:, :, : self.tp_k_head_num_, :].view(torch.float8_e4m3fn)
         v = kv[:, :, self.tp_k_head_num_ :, :].view(torch.float8_e4m3fn)
         offline_scales = infer_state.mem_manager.offline_fp8_quant_manager.scales_list
-        k_descale = offline_scales[self.layer_num_] if offline_scales is not None else None
-        v_descale = offline_scales[self.layer_num_] if offline_scales is not None else None
+        k_descale = offline_scales[self.layer_num_][0] if offline_scales is not None else None
+        v_descale = offline_scales[self.layer_num_][1] if offline_scales is not None else None
         infer_state.decode_wrapper.run(
             q.view(calcu_shape1),
             (k, v),

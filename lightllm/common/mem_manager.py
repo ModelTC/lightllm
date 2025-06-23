@@ -27,8 +27,9 @@ class OfflineFP8QuantManager:
         self.qmax = torch.finfo(torch.float8_e4m3fn).max
         self.model_arch = get_model_architectures(get_env_start_args().model_dir)
         self.layer_num = layer_num
+        self.head_num = head_num
         self.total_head_num = head_num * dist.get_world_size() if dist.is_initialized() else head_num
-        self.scales_shape = [layer_num, 2 * head_num] if get_env_start_args().enable_fa3 else [layer_num]
+        self.scales_shape = [layer_num, 2 * head_num] if get_env_start_args().enable_fa3 else [layer_num, 2]
         self.scales = None
         self.scales_list = []
         self.abs_max = None
@@ -62,9 +63,11 @@ class OfflineFP8QuantManager:
                         f"not match current model head num {self.total_head_num}"
                     )
                 if get_env_start_args().enable_fa3:
-                    assert len(cfg["scales_shape"]) == 2, "this config is not for fa3 backend"
+                    if cfg["quant_type"] != "per_head":
+                        raise ValueError(f"quant type {cfg['num_head']} in config not match fa3 backend")
                 else:
-                    assert len(cfg["scales_shape"]) == 1, "this config is not for flashinfer backend"
+                    if cfg["quant_type"] != "per_tensor":
+                        raise ValueError(f"quant type {cfg['quant_type']} in config not match flashinfer backend")
 
                 self.qmin = cfg["qmin"]
                 self.qmax = cfg["qmax"]
@@ -73,6 +76,8 @@ class OfflineFP8QuantManager:
                 full_scales_list = cfg["scales"]
                 self.scales_list = full_scales_list
                 self.scales = torch.tensor(self.scales_list, dtype=torch.float32, device="cuda").view(self.scales_shape)
+                if not get_env_start_args().enable_fa3:
+                    self.scales = torch.repeat_interleave(self.scales, self.head_num, dim=-1)
                 if get_env_start_args().enable_fa3 and dist.is_initialized() and dist.get_world_size() > 1:
                     half_head = self.total_head_num // 2
                     start_head = dist.get_rank() * head_num
@@ -103,7 +108,9 @@ class OfflineFP8QuantManager:
             if get_env_start_args().enable_fa3:
                 kv_max = kv_buffer.abs().amax(dim=(0, 2)).to(torch.float32)
             else:
-                kv_max = kv_buffer.abs().amax(dim=()).to(torch.float32)
+                k_max = kv_buffer[:, : self.head_num, :].abs().amax(dim=()).to(torch.float32)
+                v_max = kv_buffer[:, self.head_num :, :].abs().amax(dim=()).to(torch.float32)
+                kv_max = torch.tensor([k_max, v_max], device="cuda", dtype=torch.float32)
             self.abs_max[layer_index] = torch.maximum(self.abs_max[layer_index], kv_max)
             if self.count == self.warmup_counts + self.inference_counts - 1 and layer_index == self.layer_num - 1:
                 final_abs_max = self.abs_max
@@ -136,6 +143,7 @@ class OfflineFP8QuantManager:
         cfg = {
             "version": "1.0",
             "architectures": self.model_arch,
+            "quant_type": "per_head" if get_env_start_args().enable_fa3 else "per_tensor",
             "qmin": self.qmin,
             "qmax": self.qmax,
             "num_layers": self.layer_num,
