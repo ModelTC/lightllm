@@ -22,6 +22,9 @@ from safetensors import safe_open
 from transformers.utils import TensorType
 from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from lightllm.models.qwen2_vl.qwen2_visual import PatchEmbed, VisionRotaryEmbedding
+from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
+from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
+
 
 # adapted from
 # https://github.com/huggingface/transformers/blob/
@@ -75,10 +78,13 @@ class Qwen2RMSNorm(nn.Module):
 
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
+        return rms_norm(
+            hidden_states, weight=self.weight, eps=self.variance_epsilon, use_custom_tensor_mananger=True
+        ).to(input_dtype)
+        # hidden_states = hidden_states.to(torch.float32)
+        # variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        # hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        # return self.weight * hidden_states.to(input_dtype)
 
     def extra_repr(self):
         return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
@@ -260,14 +266,23 @@ class Qwen2_5_VLVisionBlock(nn.Module):
         return hidden_states
 
 
+class TritonGELU(nn.Module):
+    def __init__(self, use_custom_tensor_mananger: bool = False):
+        super().__init__()
+        self.use_pool = use_custom_tensor_mananger
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return gelu_fwd(x, use_custom_tensor_mananger=self.use_pool)
+
+
 class Qwen2_5_VLPatchMerger(nn.Module):
     def __init__(self, dim: int, context_dim: int, spatial_merge_size: int = 2) -> None:
         super().__init__()
-        self.hidden_size = context_dim * (spatial_merge_size ** 2)
+        self.hidden_size = context_dim * (spatial_merge_size**2)
         self.ln_q = Qwen2RMSNorm(context_dim, eps=1e-6)
         self.mlp = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
-            nn.GELU(),
+            TritonGELU(use_custom_tensor_mananger=True),
             nn.Linear(self.hidden_size, dim),
         )
 
@@ -484,7 +499,6 @@ class Qwen2_5_VisionTransformerPretrainedModel(nn.Module):
         return hidden_states
 
     def load_model(self, weight_dir):
-
         processor_config_path = os.path.join(weight_dir, "preprocessor_config.json")
         with open(processor_config_path, "r") as f:
             processor_config_dict = json.load(f)
@@ -532,7 +546,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(nn.Module):
                 raise Exception("Unsupport input types: {} for {}".format(type(img), img))
 
             # must devide merge_length
-            cur_num = img_tensors[-1].shape[0] // (self.spatial_merge_size ** 2)
+            cur_num = img_tensors[-1].shape[0] // (self.spatial_merge_size**2)
 
             valid_ids.append([valid_id, valid_id + cur_num])
             valid_id += cur_num
@@ -543,7 +557,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(nn.Module):
         imgs = torch.cat(img_tensors, dim=0)
         grid_thw = torch.cat(img_grids, dim=0)
 
-        pixel_values = imgs.cuda().to(dtype=torch.float32)
+        pixel_values = imgs.cuda().to(dtype=self.get_dtype())
         image_grid_thw = grid_thw.cuda()
 
         pixel_values = pixel_values.type(self.get_dtype())
