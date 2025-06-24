@@ -32,6 +32,12 @@ void per_token_quant_bf16_fp8(
     Tensor& scales
 );
 
+void per_token_quant_bf16_int8(
+    Tensor& output,
+    const Tensor& input,
+    Tensor& scales
+);
+
 std::tuple<Tensor, Tensor> add_norm_quant_bf16_fp8(
     Tensor& X, const Tensor &R, const Tensor &W,
     const fp32_t eps
