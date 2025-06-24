@@ -419,7 +419,7 @@ class HttpServerManager:
         if self.is_multinode_tp_master:
             async with self.transfer_lock:
                 for sender in self.multinode_req_manager:
-                    sender.send_pyobj(
+                    await sender.send_pyobj(
                         (prompt, sampling_params, original_multimodal_params),
                         protocol=pickle.HIGHEST_PROTOCOL,
                     )
@@ -450,12 +450,14 @@ class HttpServerManager:
 
         if self.pd_mode.is_P():
             if self.enable_multimodal:
-                self.send_to_visual.send_pyobj(
+                await self.send_to_visual.send_pyobj(
                     group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
             else:
-                self.send_to_router.send_pyobj(
+
+                # P 模式下，直接将请求发送到路由器
+                await self.send_to_router.send_pyobj(
                     group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
@@ -463,7 +465,7 @@ class HttpServerManager:
 
         if self.pd_mode.is_D():
             # 在 D 模式下，不需要传输真的多模态参数，因为其已经被 P 处理好了, 传输一个空的即可
-            self.send_to_router.send_pyobj(
+            await self.send_to_router.send_pyobj(
                 group_req_objs.to_group_req_index(),
                 protocol=pickle.HIGHEST_PROTOCOL,
             )
@@ -471,12 +473,12 @@ class HttpServerManager:
 
         if self.pd_mode.is_normal():
             if self.enable_multimodal:
-                self.send_to_visual.send_pyobj(
+                await self.send_to_visual.send_pyobj(
                     group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
             else:
-                self.send_to_router.send_pyobj(
+                await self.send_to_router.send_pyobj(
                     group_req_objs.to_group_req_index(),
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
