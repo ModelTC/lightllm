@@ -434,4 +434,10 @@ def make_argument_parser() -> argparse.ArgumentParser:
         but ensure that the model is compatible with the specified step count.
         currently, deepseekv3 model only support 1 step""",
     )
+    parser.add_argument(
+        "--pd_chunk_size",
+        type=int,
+        default=0,
+        help="""Specifies the chunk size for pd mode.""",
+    )
     return parser

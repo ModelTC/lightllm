@@ -237,19 +237,37 @@ class HttpServerManagerForPDMaster:
             raise ServerBusyError()
 
         sampling_params.move_kv_to_decode_node.initialize(None)
-        sampling_params.max_new_tokens = old_max_new_tokens - 1
         sampling_params.suggested_dp_index = up_status_event.upkv_status.dp_index
 
-        await d_node.websocket.send_bytes(pickle.dumps((ObjType.REQ, (prompt_ids, sampling_params, multimodal_params))))
+        remaining_tokens = old_max_new_tokens - 1
+        pd_chunk_size = self.args.pd_chunk_size
+        current_prompt_ids = list(prompt_ids)
 
-        while True:
-            await req_status.wait_to_ready()
-            if await request.is_disconnected():
-                raise Exception(f"req_id {group_request_id} disconnected")
-            if await req_status.can_read(self.req_id_to_out_inf):
-                token_list = await req_status.pop_all_tokens()
-                for sub_req_id, request_output, metadata, finish_status in token_list:
-                    yield sub_req_id, request_output, metadata, finish_status
+        while remaining_tokens > 0:
+            chunk_size = min(remaining_tokens, pd_chunk_size) if pd_chunk_size > 0 else remaining_tokens
+            sampling_params.max_new_tokens = chunk_size
+            await d_node.websocket.send_bytes(
+                pickle.dumps((ObjType.REQ, (current_prompt_ids, sampling_params, multimodal_params)))
+            )
+
+            chunk_finished = False
+            while not chunk_finished:
+                await req_status.wait_to_ready()
+                if await request.is_disconnected():
+                    raise Exception(f"req_id {group_request_id} disconnected")
+
+                if await req_status.can_read(self.req_id_to_out_inf):
+                    token_list = await req_status.pop_all_tokens()
+                    for sub_req_id, request_output, metadata, finish_status in token_list:
+                        current_prompt_ids.append(metadata.get("id"))
+                        remaining_tokens -= 1
+
+                        if finish_status.is_finished() or remaining_tokens == 0:
+                            chunk_finished = True
+                        if remaining_tokens == 0:
+                            finish_status = FinishStatus(FinishStatus.FINISHED_LENGTH)
+
+                        yield sub_req_id, request_output, metadata, finish_status
 
         return
 
@@ -268,6 +286,8 @@ class HttpServerManagerForPDMaster:
         group_request_id = sampling_params.group_request_id
         unfinished_count = sampling_params.best_of
         is_first_token = True
+
+        max_new_tokens = sampling_params.max_new_tokens
 
         async for sub_req_id, out_str, metadata, finish_status in self.fetch_stream(
             p_node, d_node, prompt, sampling_params, multimodal_params, request
