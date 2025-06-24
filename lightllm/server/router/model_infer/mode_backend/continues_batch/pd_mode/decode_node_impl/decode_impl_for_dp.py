@@ -18,11 +18,6 @@ class DPForDecodeNode(ContinuesBatchBackendForDecodeNode):
         self.enable_decode_microbatch_overlap = get_env_start_args().enable_decode_microbatch_overlap
         return
 
-    def init_custom(self):
-        super().init_custom()
-        self.reduce_tensor = torch.tensor([0], dtype=torch.int32, device="cuda", requires_grad=False)
-        return
-
     def prefill(self, reqs: List[Tuple]):
         self._init_reqs(reqs, init_req_obj=False)
         return
