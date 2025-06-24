@@ -25,6 +25,8 @@ from lightllm.models.internvl.model import (
     InternVLPhi3TpPartModel,
     InternVLQwen2TpPartModel,
     InternVLDeepSeek2TpPartModel,
+    InternVLQwen3TpPartModel,
+    InternVLQwen3MOETpPartModel,
 )
 from lightllm.models.internvl.model import InternVLInternlm2TpPartModel
 from lightllm.models.qwen2_vl.model import Qwen2VLTpPartModel
