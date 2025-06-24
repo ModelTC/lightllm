@@ -1,6 +1,6 @@
 <div align="center">
   <picture>
-    <img alt="LightLLM" src="assets/logo.png" width=90%>
+    <img alt="LightLLM" src="assets/logo_new.png" width=90%>
   </picture>
 </div>
 
