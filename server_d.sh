@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=1 KV_TRANS_USE_P2P=1 LOADWORKER=10 python3 -m lightllm.server.api_server \
+CUDA_VISIBLE_DEVICES=2,3 KV_TRANS_USE_P2P=1 LOADWORKER=1 python3 -m lightllm.server.api_server \
   --model_dir /mtc/DeepSeek-V3 \
   --run_mode "decode" \
   --host 10.120.178.74 \
