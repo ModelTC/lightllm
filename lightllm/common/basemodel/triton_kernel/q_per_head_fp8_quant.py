@@ -8,12 +8,10 @@ import triton.language as tl
 def _per_head_max_reduce_kernel(
     Q,
     Scales,
-    BatchIds,
     StartLoc,
     stride_q_t,
     stride_q_h,
     stride_scales_b,
-    SET_BATCH_IDS: tl.constexpr,
     FP8_MAX: tl.constexpr,
     BLOCK_T: tl.constexpr,
     BLOCK_D: tl.constexpr,
@@ -32,8 +30,6 @@ def _per_head_max_reduce_kernel(
         mask = (t_idx[:, None] < end_loc) & (q_range[None, :] < stride_q_h)
         q_vals = tl.load(q_ptrs, mask=mask, other=0.0)
         max_val = tl.maximum(tl.max(q_vals.abs()), max_val)
-        if SET_BATCH_IDS:
-            tl.store(BatchIds + t_idx, b_id, mask=t_idx < end_loc)
 
     scale = tl.where(max_val > 0, max_val / FP8_MAX, 1.0)
     scale_ptr = Scales + b_id * stride_scales_b + h_id
@@ -73,29 +69,29 @@ def _apply_quantization_kernel(
 
 
 @torch.no_grad()
-def q_per_head_fp8_quant(q, seq_lens, b1_start_loc):
+def q_per_head_fp8_quant(q, seq_lens, b1_start_loc, scale_out=None, batch_ids=None):
     T, H, D = q.shape
     B = seq_lens.shape[0]
-    device = q.device
-
-    q_out = torch.empty_like(q, dtype=torch.float8_e4m3fn)
-    scales = torch.empty((B, H), dtype=torch.float32, device=device)
-    batch_ids = torch.zeros((T,), dtype=torch.int32, device=device)
 
     BLOCK_D = triton.next_power_of_2(D)
     BLOCK_T = 256
     num_warps = 4
     num_stages = 2
+
+    q_out = torch.empty_like(q, dtype=torch.float8_e4m3fn)
+    if scale_out is None:
+        scale_out = torch.empty((B, H), dtype=torch.float32, device=q.device)
+    if batch_ids is None:
+        batch_ids = torch.repeat_interleave(torch.arange(B, device=q.device), seq_lens)
+
     _per_head_max_reduce_kernel[(B, H)](
         q,
-        scales,
-        batch_ids,
+        scale_out,
         b1_start_loc,
         q.stride(0),
         q.stride(1),
-        scales.stride(0),
+        scale_out.stride(0),
         FP8_MAX=torch.finfo(torch.float8_e4m3fn).max,
-        SET_BATCH_IDS=B > 1,
         BLOCK_T=BLOCK_T,
         BLOCK_D=BLOCK_D,
         num_warps=num_warps,
@@ -106,19 +102,19 @@ def q_per_head_fp8_quant(q, seq_lens, b1_start_loc):
         q,
         q_out,
         batch_ids,
-        scales,
+        scale_out,
         q.stride(0),
         q.stride(1),
         q_out.stride(0),
         q_out.stride(1),
-        scales.stride(0),
+        scale_out.stride(0),
         FP8_MIN=torch.finfo(torch.float8_e4m3fn).min,
         FP8_MAX=torch.finfo(torch.float8_e4m3fn).max,
         BLOCK_D=BLOCK_D,
         num_warps=num_warps,
         num_stages=num_stages,
     )
-    return q_out, scales
+    return q_out, scale_out
 
 
 def ref_q_per_head_fp8_quant(q, seq_lens):

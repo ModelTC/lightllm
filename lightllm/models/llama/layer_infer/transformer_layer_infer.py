@@ -132,7 +132,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                     LlamaTransformerLayerInfer._token_decode_attention_flashinfer_fp8, self
                 )
             else:
-                raise Exception("fp8 kvcache only support fa3 and flashinfer backend")
+                raise Exception("calibration fp8 kvcache only support fa3 and flashinfer backend")
         elif "triton_flashdecoding" in self.mode:
             self._token_attention_kernel = partial(
                 LlamaTransformerLayerInfer._token_decode_attention_flashdecoding, self
@@ -333,6 +333,13 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _context_attention_flashattention_fp8(
         self, q, kv, infer_state: FlashAttentionStateInfo, layer_weight, out=None
     ):
+        q, q_scale = q_per_head_fp8_quant(
+            q.view(q.shape[0], self.tp_k_head_num_, -1),
+            infer_state.b_seq_len,
+            infer_state.cu_seqlens_q,
+            infer_state.q_scale,
+            infer_state.batch_ids,
+        )
         cache_k = (
             (infer_state.mem_manager.kv_buffer[self.layer_num_][:, : self.tp_k_head_num_, :])
             .reshape(-1, 1, self.tp_k_head_num_, self.head_dim_)
@@ -347,29 +354,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             .reshape(-1, 1, self.tp_v_head_num_, self.head_dim_)
             .view(torch.float8_e4m3fn)
         )
-        q, q_scale = q_per_head_fp8_quant(
-            q.view(q.shape[0], self.tp_k_head_num_, -1),
-            infer_state.b_seq_len,
-            infer_state.cu_seqlens_q,
-        )
-        q = q.view(-1, self.tp_q_head_num_, self.head_dim_)
-        q_descale = q_scale
-        ones_scales = torch.ones((infer_state.batch_size, self.tp_k_head_num_), device=q.device, dtype=torch.float32)
-        offline_scales = infer_state.mem_manager.offline_fp8_quant_manager.scales
-        k_descale = (
-            offline_scales[self.layer_num_][: self.tp_k_head_num_].expand(infer_state.batch_size, self.tp_k_head_num_)
-            if offline_scales is not None
-            else ones_scales
-        )
-        v_descale = (
-            offline_scales[self.layer_num_][self.tp_k_head_num_ :].expand(infer_state.batch_size, self.tp_k_head_num_)
-            if offline_scales is not None
-            else ones_scales
-        )
-        Lq = q.shape[-1]
-        sm_scale = 1.0 / (Lq ** 0.5)
         o = flash_attn_with_kvcache(
-            q=q,
+            q=q.view(-1, self.tp_q_head_num_, self.head_dim_),
             k_cache=cache_k,
             v_cache=cache_v,
             page_table=infer_state.page_table,
@@ -377,13 +363,12 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             cu_seqlens_q=infer_state.cu_seqlens_q,
             cu_seqlens_k_new=infer_state.cu_seqlens_k,
             max_seqlen_q=infer_state.q_max_seq_len,
-            softmax_scale=sm_scale,
             causal=True,
             window_size=(-1, -1),
             softcap=0.0,
-            q_descale=q_descale,
-            k_descale=k_descale,
-            v_descale=v_descale,
+            q_descale=q_scale,
+            k_descale=infer_state.k_descale[self.layer_num_],
+            v_descale=infer_state.v_descale[self.layer_num_],
             return_softmax_lse=False,
         )
         return o
@@ -867,24 +852,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             .view(torch.float8_e4m3fn)
         )
         q, q_scale = scaled_fp8_quant(q.view(q.shape[0] * self.tp_k_head_num_, -1), use_per_token_if_dynamic=True)
-        q = q.view(-1, self.tp_q_head_num_, self.head_dim_)
-        q_descale = q_scale.view(q.shape[0], self.tp_k_head_num_)
-        ones_scales = torch.ones((infer_state.batch_size, self.tp_k_head_num_), device=q.device, dtype=torch.float32)
-        offline_scales = infer_state.mem_manager.offline_fp8_quant_manager.scales
-        k_descale = (
-            offline_scales[self.layer_num_][: self.tp_k_head_num_].expand(infer_state.batch_size, self.tp_k_head_num_)
-            if offline_scales is not None
-            else ones_scales
-        )
-        v_descale = (
-            offline_scales[self.layer_num_][self.tp_k_head_num_ :].expand(infer_state.batch_size, self.tp_k_head_num_)
-            if offline_scales is not None
-            else ones_scales
-        )
-        Lq = q.shape[-1]
-        sm_scale = 1.0 / (Lq ** 0.5)
         o = flash_attn_with_kvcache(
-            q=q,
+            q=q.view(-1, self.tp_q_head_num_, self.head_dim_),
             k_cache=cache_k,
             v_cache=cache_v,
             page_table=infer_state.page_table,
@@ -892,13 +861,12 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             cu_seqlens_q=infer_state.cu_seqlens_q,
             cu_seqlens_k_new=infer_state.cu_seqlens_k,
             max_seqlen_q=1,
-            softmax_scale=sm_scale,
             causal=False,
             window_size=(-1, -1),
             softcap=0.0,
-            q_descale=q_descale,
-            k_descale=k_descale,
-            v_descale=v_descale,
+            q_descale=q_scale.view(infer_state.batch_size, self.tp_k_head_num_),
+            k_descale=infer_state.k_descale[self.layer_num_],
+            v_descale=infer_state.v_descale[self.layer_num_],
             return_softmax_lse=False,
         )
         return o

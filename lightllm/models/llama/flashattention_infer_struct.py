@@ -28,8 +28,16 @@ class FlashAttentionStateInfo(LlamaInferStateInfo):
         if self.is_prefill:
             self.cu_seqlens_q = self.b1_cu_q_seq_len.int()
             self.cu_seqlens_k = self.b1_cu_kv_seq_len.int()
-            self.page_table = torch.empty((self.batch_size, self.max_seq_len), dtype=torch.int32).to(input_ids.device)
+            self.page_table = torch.empty(
+                (self.batch_size, self.max_seq_len), dtype=torch.int32, device=input_ids.device
+            )
             self.page_table.copy_(model.req_manager.req_to_token_indexs[self.b_req_idx, : self.max_seq_len])
+            if "calibration_fp8kv" in model.mode:
+                device = input_ids.device
+                self.q_scale = torch.empty(
+                    (self.batch_size, self.mem_manager.head_num), dtype=torch.float32, device=device
+                )
+                self.batch_ids = torch.repeat_interleave(torch.arange(self.batch_size, device=device), self.b_q_seq_len)
         else:
             # Meta information of flashattention for decoding
             self.cu_seqlens_q = self.b1_cu_q_seq_len.int()
@@ -43,12 +51,38 @@ class FlashAttentionStateInfo(LlamaInferStateInfo):
                     : self.batch_size * model.graph_max_len_in_batch
                 ].reshape(self.batch_size, model.graph_max_len_in_batch)
             else:
-                self.page_table = torch.empty((self.batch_size, self.max_len_in_batch), dtype=torch.int32).to(
-                    input_ids.device
+                self.page_table = torch.empty(
+                    (self.batch_size, self.max_len_in_batch), dtype=torch.int32, device=input_ids.device
                 )
 
             self.page_table[:, :max_seq_len_k].copy_(
                 model.req_manager.req_to_token_indexs[self.b_req_idx, :max_seq_len_k]
             )
             self.page_table[:, max_seq_len_k:].fill_(0)
+
+        if "calibration_fp8kv" in model.mode:
+            offline_scales = self.mem_manager.offline_fp8_quant_manager.scales
+            head_num = self.mem_manager.head_num
+            self.k_descale = (
+                offline_scales[:, :head_num]
+                .view(-1, 1, head_num)
+                .expand(offline_scales.shape[0], self.batch_size, head_num)
+                if offline_scales is not None
+                else torch.ones(
+                    (self.mem_manager.layer_num, self.batch_size, head_num),
+                    dtype=torch.float32,
+                    device=input_ids.device,
+                )
+            )
+            self.v_descale = (
+                offline_scales[:, head_num:]
+                .view(-1, 1, head_num)
+                .expand(offline_scales.shape[0], self.batch_size, head_num)
+                if offline_scales is not None
+                else torch.ones(
+                    (self.mem_manager.layer_num, self.batch_size, head_num),
+                    dtype=torch.float32,
+                    device=input_ids.device,
+                )
+            )
         return
