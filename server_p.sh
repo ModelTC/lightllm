@@ -1,0 +1,14 @@
+CUDA_VISIBLE_DEVICES=0 KV_TRANS_USE_P2P=1 LOADWORKER=1 python3 -m lightllm.server.api_server \
+  --model_dir /mtc/DeepSeek-V3 \
+  --run_mode "prefill" \
+  --host 10.120.178.74 \
+  --port 8017 \
+  --tp 1 \
+  --nccl_port 2732 \
+  --max_total_token_num 400000 \
+  --tokenizer_mode fast \
+  --pd_master_ip 10.120.178.74 \
+  --pd_master_port 60011 \
+  --max_req_total_len 16000 \
+  --running_max_req_size 128 \
+  --disable_cudagraph
