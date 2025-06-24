@@ -9,7 +9,7 @@ class TestQuantBF16(unittest.TestCase):
     def setUp(self):
         """Set up common test parameters."""
         self.tokens = [1024, 13325]
-        self.hiddenDims = [256, 511, 1023, 1024, 1025, 1032, 3200, 3201, 3208, 12800]
+        self.hiddenDims = [3, 256, 511, 1023, 1024, 1025, 1032, 3200, 3201, 3208, 12800]
         self.device = "cuda"
         self.dtype = torch.bfloat16
 
@@ -20,7 +20,7 @@ class TestQuantBF16(unittest.TestCase):
                 with self.subTest(shape=[token, hiddenDim]):
                     input = torch.rand(size=[token, hiddenDim], device=self.device, dtype=self.dtype) - 0.5
                     y_real, scales_real = ops.scaled_fp8_quant(
-                        input.contiguous().cuda(self.device), scale=None, use_per_token_if_dynamic=True
+                        input.contiguous(), scale=None, use_per_token_if_dynamic=True
                     )
                     y_pred, scales_pred = per_token_quant_bf16_fp8(input)
                     self.assertTrue(
