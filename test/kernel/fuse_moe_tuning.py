@@ -389,7 +389,7 @@ def main(args):
     from lightllm.utils.tuning_utils import mp_tuning
     from lightllm.common.fused_moe.moe_kernel_configs import MoeGroupedGemmKernelConfig
 
-    config = AutoConfig.from_pretrained(args.model, trust_remote_code=True)
+    config = AutoConfig.from_pretrained(args.model_dir, trust_remote_code=True)
     if config.architectures[0] == "Qwen3MoeForCausalLM":
         expert_num = config.num_experts
         topk_num = config.num_experts_per_tok
@@ -404,10 +404,7 @@ def main(args):
     hidden_dim = getattr(config, "hidden_size", None) or config.text_config.hidden_size
     use_fp8_w8a8 = args.use_fp8_w8a8
     block_shape = None
-    if (
-        hasattr(config, "quantization_config")
-        and "weight_block_size" in config.quantization_config
-    ):
+    if hasattr(config, "quantization_config") and "weight_block_size" in config.quantization_config:
         block_shape = config.quantization_config["weight_block_size"]
         assert len(block_shape) == 2
         use_fp8_w8a8 = True
@@ -471,11 +468,10 @@ def main(args):
             config_json=down_dict,
         )
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model", type=str, default="deepseek-ai/DeepSeek-R1"
-    )
+    parser.add_argument("--model_dir", type=str, default="deepseek-ai/DeepSeek-R1")
     parser.add_argument("--tp", type=int, default=8)
     parser.add_argument("--use_fp8_w8a8", action="store_true")
     args = parser.parse_args()
