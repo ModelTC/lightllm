@@ -250,6 +250,7 @@ class ModeBackend:
         is_chuncked_mode: bool,
         do_filter_finished_reqs: bool,
         extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
+        extra_post_req_handle_chunk_func: Optional[Callable[[InferReq], None]] = None,
     ) -> List[int]:
         """
         extra_post_req_handle_func 用于提供在一个请求确定输出的时候，给出额外的后处理操作，主要是用于
@@ -273,6 +274,10 @@ class ModeBackend:
             if req_obj.is_finished_or_aborted():
                 finished_req_ids.append(req_obj.shm_req.request_id)
                 continue
+
+            if extra_post_req_handle_chunk_func is not None:
+                # 如果存在额外的处理函数，则调用这个函数进行处理。
+                extra_post_req_handle_chunk_func(req_obj)
 
             # 对于没有到达需要输出 token 阶段的请求，直接略过
             if req_obj.cur_kv_len < req_obj.get_cur_total_len():
