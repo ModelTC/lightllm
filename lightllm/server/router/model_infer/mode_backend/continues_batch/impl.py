@@ -48,7 +48,7 @@ class ContinuesBatchBackend(ModeBackend):
         extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
     ):
         model_input, run_reqs = prepare_prefill_inputs(
-            prefill_reqs, is_chuncked_mode=False, is_multimodal=self.is_multimodal
+            prefill_reqs, is_chuncked_mode=not self.disable_chunked_prefill, is_multimodal=self.is_multimodal
         )
         model_output = self.model.forward(model_input)
         logits = model_output.logits
