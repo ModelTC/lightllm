@@ -13,7 +13,6 @@ __global__ void device_per_token_quant_bf16_to_fp8_general(
     const bf16_t* __restrict__ input,  // Input tensor in BF16 format
     fp8_e4m3_t* __restrict__ output,   // Output tensor in FP8 format
     fp32_t* __restrict__ scales,       // Output scales for each token
-    const int64_t M,                  // Number of rows in the input tensor
     const int64_t N
 ) {
     const int32_t bid = blockIdx.x;
@@ -38,7 +37,7 @@ __global__ void device_per_token_quant_bf16_to_fp8_general(
         workspace1[i] = local_bf16;
 
         fp32_t tmp = cvt_bf16_f32(local_bf16);
-        local_max = fmaxf(local_max, tmp);
+        local_max = fmaxf(local_max, fabsf(tmp));
     }
 
     // Reduce the maximum value across the block
@@ -71,7 +70,6 @@ __global__ void device_per_token_quant_bf16_to_fp8_vpt(
     const bf16_t* __restrict__ input,  // Input tensor in BF16 format
     fp8_e4m3_t* __restrict__ output,   // Output tensor in FP8 format
     fp32_t* __restrict__ scales,       // Output scales for each token
-    const int64_t M,                  // Number of rows in the input tensor
     const int32_t N
 ) {
     constexpr int32_t VPT = 8;
@@ -147,8 +145,7 @@ template<int32_t TPB, int32_t N>
 __global__ void device_per_token_quant_bf16_to_fp8(
     const bf16_t* __restrict__ input,  // Input tensor in BF16 format
     fp8_e4m3_t* __restrict__ output,   // Output tensor in FP8 format
-    fp32_t* __restrict__ scales,       // Output scales for each token
-    const int64_t M                  // Number of rows in the input tensor
+    fp32_t* __restrict__ scales       // Output scales for each token
 ) {
     constexpr int32_t VPT = 8;
 
@@ -243,8 +240,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 32:
@@ -252,8 +248,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 64:
@@ -261,8 +256,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 512:
@@ -270,8 +264,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 1024:
@@ -279,8 +272,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 3200:
@@ -288,8 +280,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 4096:
@@ -297,8 +288,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         case 12800:
@@ -306,8 +296,7 @@ void per_token_quant_bf16_fp8 (
             <<<blocks, 256, 0, at::cuda::getCurrentCUDAStream()>>>(
                 PTR<bf16_t>(contiguous_input),
                 PTR<fp8_e4m3_t>(output),
-                PTR<fp32_t>(contiguous_scales),
-                M
+                PTR<fp32_t>(contiguous_scales)
             );
             break;
         default: {
@@ -319,7 +308,6 @@ void per_token_quant_bf16_fp8 (
                     PTR<bf16_t>(contiguous_input),
                     PTR<fp8_e4m3_t>(output),
                     PTR<fp32_t>(contiguous_scales),
-                    M,
                     N
                 );
             } else {
@@ -328,7 +316,6 @@ void per_token_quant_bf16_fp8 (
                     PTR<bf16_t>(contiguous_input),
                     PTR<fp8_e4m3_t>(output),
                     PTR<fp32_t>(contiguous_scales),
-                    M,
                     N
                 );
             }

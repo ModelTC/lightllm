@@ -9,7 +9,7 @@ class TestQuantBF16(unittest.TestCase):
     def setUp(self):
         """Set up common test parameters."""
         self.tokens = [1024, 13325]
-        self.hiddenDims = [256, 511, 1023, 1024, 1025, 1032, 3200, 3201, 3208, 12800]
+        self.hiddenDims = [3, 256, 511, 1023, 1024, 1025, 1032, 3200, 3201, 3208, 12800]
         self.device = "cuda"
         self.dtype = torch.bfloat16
 
