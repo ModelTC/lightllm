@@ -1,4 +1,4 @@
-API parameter
+接口调用详解
 ==========================
 
 
@@ -9,16 +9,16 @@ API parameter
 :code:`GET /healthz`
 ~~~~~~~~~~~~~~~~~~~~
 
-Get the current server running status
+获取当前的服务器的运行状态
 
-**Usage Examples**： 
+**调用示例**： 
 
 .. code-block:: console
 
     $ curl http://0.0.0.0:8080/health
 
 
-**Output Examples**：
+**输出示例**：
 
 .. code-block:: python
 
@@ -29,16 +29,16 @@ Get the current server running status
 :code:`GET /token_load`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Get the current server token usage
+获取当前的服务器使用token的情况
 
-**Usage Examples**： 
+**调用示例**： 
 
 .. code-block:: console
 
     $ curl http://0.0.0.0:8080/token_load
 
 
-**Output Examples**：
+**输出示例**：
 
 .. code-block:: python
 
@@ -48,9 +48,9 @@ Get the current server token usage
 :code:`POST /generate`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Calling the model to implement text completion
+调用模型实现文本补全
 
-**Usage Examples**： 
+**调用示例**： 
 
 .. code-block:: console
 
@@ -66,7 +66,7 @@ Calling the model to implement text completion
     $     }'
 
 
-**Output Examples**：
+**输出示例**：
 
 .. code-block:: python
 
@@ -76,10 +76,10 @@ Calling the model to implement text completion
 :code:`POST /generate_stream`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Streaming returns text completion results
+流式返回文本补全结果
 
 
-**Usage Examples**： 
+**调用示例**： 
 
 .. code-block:: console
 
@@ -94,7 +94,7 @@ Streaming returns text completion results
     $      "multimodal_params":{}
     $     }'
 
-**Output Examples**：
+**输出示例**：
 
 ::
 
@@ -107,9 +107,9 @@ Streaming returns text completion results
 
 :code:`POST /get_score`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Reward model, get the dialogue score.
+reward 类模型，获取对话分数
 
-**Usage Examples**： 
+**调用示例**： 
 
 .. code-block:: python
 
@@ -134,14 +134,8 @@ Reward model, get the dialogue score.
     else:
         print(f"Error: {response.status_code}, {response.text}")
 
-**Output Examples**：
+**输出示例**：
 
 ::
 
     Result: {'score': 0.4892578125, 'prompt_tokens': 39, 'finish_reason': 'stop'}
-
-
-:code:`POST /v1/chat/completions`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-openai type api， see `openai API docs <https://platform.openai.com/docs/api-reference/introduction>`_  for details.

@@ -40,45 +40,35 @@ Lightllm 整合了众多的开源方案的优点，包括但不限于 FasterTran
    :maxdepth: 1
    :caption: 快速入门
 
-   getting_started/framework
    安装指南 <getting_started/installation>
+   快速开始 <getting_started/quickstart>
+   性能评测 <getting_started/benchmark>
 
 .. toctree::
    :maxdepth: 1
-   :caption: 启动教学
+   :caption: 部署教程
 
-   快速开始 <getting_started/quickstart>
-   DeepSeek R1 部署 <getting_started/deepseek_deployment>
+   DeepSeek R1 部署 <tutorial/deepseek_deployment>
+   多模态部署 <tutorial/multimodal>
+   奖励模型部署 <tutorial/reward_model>
+   OpenAI 接口使用 <tutorial/openai>
+   APIServer 参数详解 <tutorial/api_server_args_zh>
+   lightllm api介绍 <tutorial/api_param>
    
 .. toctree::
    :maxdepth: 1
-   :caption: 性能评测
-
-   服务性能评测 <server/benchmark>
-   静态性能评测 <server/static_benchmark>
-
-.. toctree::
-   :maxdepth: 1
-   :caption: 模型
+   :caption: 模型支持
 
    支持的模型列表 <models/supported_models>
-   启动和测试模型示例 <models/test>
    添加新模型 <models/add_new_model>
-
-.. toctree::
-   :maxdepth: 1
-   :caption: 使用服务
-
-   user/api_param
-   user/openapi_docs
-   
    
 .. toctree::
    :maxdepth: 1
-   :caption: 开发者文档
+   :caption: 架构介绍
 
-   dev/token_attention
-   dev/router
+   架构介绍 <framework/framework>
+   token attention介绍 <framework/token_attention>
+   峰值显存调度器介绍 <framework/router>
    
 .. Indices and tables
 .. ==================

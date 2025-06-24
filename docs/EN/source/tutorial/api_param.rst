@@ -1,56 +1,50 @@
-接口调用详解
-==========================
-
+API Call Details
+================
 
 :code:`GET /health`
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 :code:`HEAD /health`
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 :code:`GET /healthz`
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
-获取当前的服务器的运行状态
+Get the current server running status
 
-**调用示例**： 
+**Call Example**: 
 
 .. code-block:: console
 
     $ curl http://0.0.0.0:8080/health
 
-
-**输出示例**：
+**Output Example**:
 
 .. code-block:: python
 
     {"message":"Ok"}
 
-
-
 :code:`GET /token_load`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
 
-获取当前的服务器使用token的情况
+Get the current server token usage status
 
-**调用示例**： 
+**Call Example**: 
 
 .. code-block:: console
 
     $ curl http://0.0.0.0:8080/token_load
 
-
-**输出示例**：
+**Output Example**:
 
 .. code-block:: python
 
     {"current_load":0.0,"logical_max_load":0.0,"dynamic_max_load":0.0}
 
-
 :code:`POST /generate`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
 
-调用模型实现文本补全
+Call the model to implement text completion
 
-**调用示例**： 
+**Call Example**: 
 
 .. code-block:: console
 
@@ -65,21 +59,18 @@
     $      "multimodal_params":{}
     $     }'
 
-
-**输出示例**：
+**Output Example**:
 
 .. code-block:: python
 
     {"generated_text": [" What is the difference between AI and ML? What are the differences between AI and ML"], "count_output_tokens": 17, "finish_reason": "length", "prompt_tokens": 4}
 
-
 :code:`POST /generate_stream`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-流式返回文本补全结果
+Stream return text completion results
 
-
-**调用示例**： 
+**Call Example**: 
 
 .. code-block:: console
 
@@ -94,7 +85,7 @@
     $      "multimodal_params":{}
     $     }'
 
-**输出示例**：
+**Output Example**:
 
 ::
 
@@ -104,12 +95,11 @@
 
     data:{"token": {"id": 279, "text": " the", "logprob": -1.5594439506530762, "special": false, "count_output_tokens": 3, "prompt_tokens": 4}, "generated_text": null, "finished": true, "finish_reason": "length", "details": null}
 
-
 :code:`POST /get_score`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-reward 类模型，获取对话分数
+~~~~~~~~~~~~~~~~~~~~~~~
+Reward model, get conversation score
 
-**调用示例**： 
+**Call Example**: 
 
 .. code-block:: python
 
@@ -134,14 +124,8 @@ reward 类模型，获取对话分数
     else:
         print(f"Error: {response.status_code}, {response.text}")
 
-**输出示例**：
+**Output Example**:
 
 ::
 
-    Result: {'score': 0.4892578125, 'prompt_tokens': 39, 'finish_reason': 'stop'}
-
-
-:code:`POST /v1/chat/completions`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-openai 格式接口， 请查看 `openai 接口文档 <https://platform.openai.com/docs/api-reference/introduction>`_ 查看更多信息。
+    Result: {'score': 0.4892578125, 'prompt_tokens': 39, 'finish_reason': 'stop'} 
