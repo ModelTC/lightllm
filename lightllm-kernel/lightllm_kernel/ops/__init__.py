@@ -77,7 +77,7 @@ from .allgather import (
     allgather_register_graph_buffers,
     allgather_get_graph_buffer_ipc_meta,
 )
-from .quant import per_token_quant_bf16_fp8
+from .quant import per_token_quant_bf16_fp8, per_token_quant_bf16_int8
 from .gemm import cutlass_scaled_mm_bias_ls
 from .moe import grouped_topk
 from .attention import group8_int8kv_flashdecoding_stage1, group_int8kv_decode_attention
@@ -85,6 +85,7 @@ from .attention import group8_int8kv_flashdecoding_stage1, group_int8kv_decode_a
 __all__ = [
     "rmsnorm_bf16",
     "per_token_quant_bf16_fp8",
+    "per_token_quant_bf16_int8",
     "pre_tp_norm_bf16",
     "post_tp_norm_bf16",
     "add_norm_quant_bf16_fp8",

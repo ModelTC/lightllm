@@ -68,6 +68,12 @@ __device__ inline bf16x2_t _float22bf162_rn(fp32x2_t val) {
     return bf16x2_t(low, high);
 }
 
+__device__ inline int8_t float_to_int8_rn(fp32_t x) {
+  uint32_t dst;
+  asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=r"(dst) : "f"(x));
+  return reinterpret_cast<const int8_t&>(dst);
+}
+
 template <typename T>
 __host__ __device__ T Cdiv(T numerator, T denominator) {
     return (numerator + denominator - 1) / denominator;
