@@ -16,6 +16,7 @@ if triton.__version__ >= "2.1.0":
         sm_scale,
         seq_len,
         Out,
+        head_dim,
         q_stride_b,
         q_stride_s,
         q_stride_h,
@@ -43,9 +44,10 @@ if triton.__version__ >= "2.1.0":
         # initialize offsets
         offs_n = tl.arange(0, BLOCK_N)
         offs_d = tl.arange(0, BLOCK_DMODEL)
+        mask_d = offs_d < head_dim
         offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
         off_q = cur_batch * q_stride_b + cur_head * q_stride_h + offs_m[:, None] * q_stride_s + offs_d[None, :]
-        q = tl.load(Q + off_q, mask=offs_m[:, None] < seq_len, other=0.0)
+        q = tl.load(Q + off_q, mask=offs_m[:, None] < seq_len & mask_d[None, :], other=0.0)
         # initialize pointer to m and l
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -60,7 +62,7 @@ if triton.__version__ >= "2.1.0":
                 + cur_head * k_stride_h
                 + offs_d[:, None]
             )
-            k = tl.load(K + off_k, mask=(start_n + offs_n[None, :]) < seq_len, other=0.0)
+            k = tl.load(K + off_k, mask=((start_n + offs_n[None, :]) < seq_len) & mask_d[:, None], other=0.0)
 
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
             qk += tl.dot(q, k)
@@ -82,7 +84,7 @@ if triton.__version__ >= "2.1.0":
                 + cur_head * v_stride_h
                 + offs_d[None, :]
             )
-            v = tl.load(V + off_v, mask=(start_n + offs_n[:, None]) < seq_len, other=0.0)
+            v = tl.load(V + off_v, mask=((start_n + offs_n[:, None]) < seq_len) & mask_d[None, :], other=0.0)
             p = p.to(v.dtype)
             acc += tl.dot(p, v)
             # update m_i and l_i
@@ -95,7 +97,7 @@ if triton.__version__ >= "2.1.0":
         # initialize pointers to output
         off_o = cur_batch * o_stride_b + offs_m[:, None] * o_stride_s + cur_head * o_stride_h + offs_d[None, :]
         out_ptrs = Out + off_o
-        tl.store(out_ptrs, acc, mask=offs_m[:, None] < seq_len)
+        tl.store(out_ptrs, acc, mask=(offs_m[:, None] < seq_len) & mask_d[None, :])
         return
 
     @torch.no_grad()
@@ -108,8 +110,9 @@ if triton.__version__ >= "2.1.0":
         BLOCK = 64
         # shape constraints
         batch_size, seq_len, head_num, head_dim = q.shape
+        BLOCK_DMODEL = triton.next_power_of_2(head_dim)
 
-        sm_scale = 1.0 / (head_dim ** 0.5)  # 计算scale系数
+        sm_scale = 1.0 / (head_dim**0.5)  # 计算scale系数
         # grid = (batch_size, head_num, triton.cdiv(seq_len, BLOCK))  # batch, head,
         grid = (triton.cdiv(seq_len, BLOCK), head_num, batch_size)  # batch, head,
         num_warps = 4
@@ -120,6 +123,7 @@ if triton.__version__ >= "2.1.0":
             sm_scale,
             seq_len,
             o,
+            head_dim,
             q.stride(0),
             q.stride(1),
             q.stride(2),
@@ -137,7 +141,7 @@ if triton.__version__ >= "2.1.0":
             o.stride(2),
             o.stride(3),
             BLOCK_M=BLOCK,
-            BLOCK_DMODEL=head_dim,
+            BLOCK_DMODEL=BLOCK_DMODEL,
             BLOCK_N=BLOCK,
             num_warps=num_warps,
             num_stages=2,
@@ -160,7 +164,7 @@ try:
         o,
     ):
         head_dim = q.shape[-1]
-        softmax_scale = head_dim ** -0.5
+        softmax_scale = head_dim**-0.5
         _flash_attn_forward(
             q,
             k,
@@ -214,7 +218,7 @@ def torch_att(q, k, v):
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
-    scale = head_dim ** -0.5
+    scale = head_dim**-0.5
     attn = (q * scale) @ k.transpose(-2, -1)
     attn = attn.softmax(dim=-1)
     out = attn @ v
@@ -226,7 +230,7 @@ def test():
     import torch
     import numpy as np
 
-    B, L, H, D = 4, 1025, 7, 128
+    B, L, H, D = 1, 4784, 16, 128
     dtype = torch.float16
     q = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
     k = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
@@ -248,3 +252,7 @@ def test():
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
+
+
+if __name__ == "__main__":
+    test()

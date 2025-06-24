@@ -24,6 +24,8 @@ from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from lightllm.models.qwen2_vl.qwen2_visual import PatchEmbed, VisionRotaryEmbedding
 from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
 from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
+from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
+from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
 
 
 # adapted from
@@ -153,28 +155,33 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         else:
             cos, sin = position_embeddings
         q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
+        q = q.unsqueeze(0)
+        k = k.unsqueeze(0)
+        v = v.unsqueeze(0)
+        attn_output = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device)
+        flash_attention_fwd(q, k, v, attn_output)
 
-        attention_mask = torch.full(
-            [1, seq_length, seq_length],
-            torch.finfo(q.dtype).min,
-            device=q.device,
-            dtype=q.dtype,
-        )
-        for i in range(1, len(cu_seqlens)):
-            attention_mask[
-                ...,
-                cu_seqlens[i - 1] : cu_seqlens[i],
-                cu_seqlens[i - 1] : cu_seqlens[i],
-            ] = 0
+        # attention_mask = torch.full(
+        #     [1, seq_length, seq_length],
+        #     torch.finfo(q.dtype).min,
+        #     device=q.device,
+        #     dtype=q.dtype,
+        # )
+        # for i in range(1, len(cu_seqlens)):
+        #     attention_mask[
+        #         ...,
+        #         cu_seqlens[i - 1] : cu_seqlens[i],
+        #         cu_seqlens[i - 1] : cu_seqlens[i],
+        #     ] = 0
 
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
-        attn_weights = torch.matmul(q, k.transpose(1, 2)) / math.sqrt(self.head_dim)
-        attn_weights = attn_weights + attention_mask
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
-        attn_output = torch.matmul(attn_weights, v)
-        attn_output = attn_output.transpose(0, 1)
+        # q = q.transpose(0, 1)
+        # k = k.transpose(0, 1)
+        # v = v.transpose(0, 1)
+        # attn_weights = torch.matmul(q, k.transpose(1, 2)) / math.sqrt(self.head_dim)
+        # attn_weights = attn_weights + attention_mask
+        # attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
+        # attn_output = torch.matmul(attn_weights, v)
+        # attn_output = attn_output.transpose(0, 1)
         attn_output = attn_output.reshape(seq_length, -1)
         attn_output = self.proj(attn_output)
         return attn_output
