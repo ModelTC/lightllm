@@ -227,6 +227,8 @@ def normal_or_p_d_start(args):
     # p d 分离模式下，decode节点的调度间隙是0
     if args.run_mode == "decode":
         args.router_max_wait_tokens = 0
+    if args.dp > 1:
+        args.router_max_wait_tokens = 0
 
     send_and_receive_node_ip(args)  # 多机用于收发node ip
     set_env_start_args(args)
