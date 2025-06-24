@@ -23,9 +23,6 @@ class DPChunkedPrefillWithMTPBackend(ContinuesBatchWithMTPBackend):
         self.enable_prefill_microbatch_overlap = get_env_start_args().enable_prefill_microbatch_overlap
         pass
 
-    def init_custom(self):
-        return
-
     def prefill(self, reqs: List[Tuple]):
         self._init_reqs(reqs, init_req_obj=False)
         return
