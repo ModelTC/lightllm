@@ -3,6 +3,9 @@ import numpy as np
 from typing import List
 from lightllm.utils.envs_utils import get_env_start_args
 from ..infer_batch import InferReq
+from lightllm.utils.log_utils import init_logger
+
+logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
@@ -75,6 +78,7 @@ class ChunkedPrefillState:
         if dp_max_prefill_num > 0 and (use_ratio > 0.6 or step_ok):
             if use_ratio < 0.2:
                 self.dp_current_wait_step = 0
+                logger.info(f"dp chuncked prefill effective GPU Utilization Rate {use_ratio}")
 
             return True
         else:
