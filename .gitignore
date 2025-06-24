@@ -6,3 +6,7 @@ dist
 .idea
 .vscode
 tmp/
+
+*.log
+*.sh
+*.json

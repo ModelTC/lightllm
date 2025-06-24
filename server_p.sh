@@ -1,13 +1,13 @@
-CUDA_VISIBLE_DEVICES=0,1 KV_TRANS_USE_P2P=1 LOADWORKER=1 python3 -m lightllm.server.api_server \
-  --model_dir /mtc/wufeiyang/Qwen2.5-72B-Instruct \
+CUDA_VISIBLE_DEVICES=0 KV_TRANS_USE_P2P=1 LOADWORKER=1 python3 -m lightllm.server.api_server \
+  --model_dir /mnt/youwei-data/zhuohang/model/Qwen/Qwen2.5-14B \
   --run_mode "prefill" \
-  --host 10.120.178.74 \
+  --host 127.0.1.1 \
   --port 8017 \
   --tp 1 \
   --nccl_port 2732 \
-  --max_total_token_num 400000 \
+  --max_total_token_num 16392 \
   --tokenizer_mode fast \
-  --pd_master_ip 10.120.178.74 \
+  --pd_master_ip 127.0.1.1 \
   --pd_master_port 60011 \
   --max_req_total_len 16000 \
   --running_max_req_size 128 \
