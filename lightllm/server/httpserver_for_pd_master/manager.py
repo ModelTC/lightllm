@@ -262,12 +262,21 @@ class HttpServerManagerForPDMaster:
                         current_prompt_ids.append(metadata.get("id"))
                         remaining_tokens -= 1
 
-                        if finish_status.is_finished() or remaining_tokens == 0:
-                            chunk_finished = True
-                        if remaining_tokens == 0:
-                            finish_status = FinishStatus(FinishStatus.FINISHED_LENGTH)
+                        final_finish_status = finish_status
 
-                        yield sub_req_id, request_output, metadata, finish_status
+                        # reach max new tokens, really finished
+                        if remaining_tokens == 0:
+                            final_finish_status = FinishStatus(FinishStatus.FINISHED_LENGTH)
+                            chunk_finished = True
+                        # reach chunk size, not really finished
+                        elif final_finish_status.is_finished():
+                            final_finish_status = FinishStatus(FinishStatus.NO_FINISH)
+                            chunk_finished = True
+
+                        yield sub_req_id, request_output, metadata, final_finish_status
+
+                        if final_finish_status.is_finished():
+                            break
 
         return
 
