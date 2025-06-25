@@ -1,0 +1,1512 @@
+INFO 06-24 21:55:24 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-24 21:55:24 [importing.py:53] Triton module has been replaced with a placeholder.
+INFO 06-24 21:55:25 [__init__.py:239] Automatically detected platform cuda.
+WARNING 06-24 21:55:27 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-24 21:55:27 [grouped_fused_moe_ep.py:26] no deepep or deep_gemm
+INFO 06-24 21:55:27 [communication_op.py:61] deep_ep is not installed, you can't use the api of it.
+INFO 06-24 21:55:27 [api_start.py:79] zmq mode head: ipc:///tmp/_2732_0_
+INFO 06-24 21:55:27 [api_start.py:81] use tgi api: False
+INFO 06-24 21:55:27 [api_start.py:192] alloced ports: [10216, 10253, 10154, 10095, 10138, 10064, 10217, 10074, 10133]
+INFO 06-24 21:55:27 [api_start.py:233] all start args:Namespace(run_mode='prefill', host='127.0.1.1', port=8017, httpserver_workers=1, zmq_mode='ipc:///tmp/_2732_0_', pd_master_ip='127.0.1.1', pd_master_port=60011, pd_decode_rpyc_port=42000, config_server_host=None, config_server_port=None, model_name='default_model_name', model_dir='/mnt/youwei-data/zhuohang/model/Qwen/Qwen2.5-14B', tokenizer_mode='fast', load_way='HF', max_total_token_num=16392, mem_fraction=0.9, batch_max_tokens=8448, eos_id=[151643], tool_call_parser=None, running_max_req_size=128, nnodes=1, node_rank=0, multinode_httpmanager_port=12345, multinode_router_gloo_port=20001, tp=1, dp=1, max_req_total_len=16000, nccl_host='127.0.0.1', nccl_port=2732, use_config_server_to_init_nccl=False, mode=[], trust_remote_code=False, disable_log_stats=False, log_stats_interval=10, router_token_ratio=0.0, router_max_new_token_len=1024, router_max_wait_tokens=6, disable_aggressive_schedule=False, use_dynamic_prompt_cache=False, disable_dynamic_prompt_cache=False, chunked_prefill_size=4096, disable_chunked_prefill=False, diverse_mode=False, token_healing_mode=False, output_constraint_mode='none', first_token_constraint_mode=False, enable_multimodal=False, enable_multimodal_audio=False, enable_mps=False, disable_custom_allreduce=False, enable_custom_allgather=False, enable_tpsp_mix_mode=False, enable_prefill_microbatch_overlap=False, enable_decode_microbatch_overlap=False, enable_flashinfer_prefill=False, enable_flashinfer_decode=False, enable_fa3=False, cache_capacity=200, cache_reserved_ratio=0.5, data_type='bfloat16', return_all_prompt_logprobs=False, use_reward_model=False, long_truncation_mode=None, use_tgi_api=False, health_monitor=False, metric_gateway=None, job_name='lightllm', grouping_key=[], push_interval=10, visual_infer_batch_size=1, visual_gpu_ids=[0], visual_tp=1, visual_dp=1, visual_nccl_ports=[29500], enable_monitor_auth=False, disable_cudagraph=True, graph_max_batch_size=256, graph_split_batch_size=32, graph_grow_step_size=16, graph_max_len_in_batch=16000, quant_type='none', quant_cfg=None, vit_quant_type='none', vit_quant_cfg=None, sampling_backend='triton', ep_redundancy_expert_config_path=None, auto_update_redundancy_expert=False, mtp_mode=None, mtp_draft_model_dir=None, mtp_step=0, pd_chunk_size=0, router_port=10216, detokenization_port=10253, detokenization_pub_port=10154, visual_port=10095, audio_port=10138, cache_port=10064, metric_port=10217, pd_node_infer_rpyc_ports=[10133], pd_node_id=287595743282619216970276961428881885738, pd_p_allowed_port_min=20000, pd_p_allowed_port_max=30000)
+INFO 06-24 21:55:29 [start_utils.py:37] init func start_metric_manager : init ok
+INFO 06-24 21:55:31 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-24 21:55:32 [importing.py:53] Triton module has been replaced with a placeholder.
+INFO 06-24 21:55:32 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-24 21:55:33 [importing.py:53] Triton module has been replaced with a placeholder.
+INFO 06-24 21:55:33 [__init__.py:239] Automatically detected platform cuda.
+INFO 06-24 21:55:34 [__init__.py:239] Automatically detected platform cuda.
+WARNING 06-24 21:55:35 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-24 21:55:35 [grouped_fused_moe_ep.py:26] no deepep or deep_gemm
+INFO 06-24 21:55:35 [communication_op.py:61] deep_ep is not installed, you can't use the api of it.
+INFO 06-24 21:55:35 [shm_req_manager.py:59] create lock shm 2732_0_req_shm_total
+INFO 06-24 21:55:35 [atomic_array_lock.py:29] create lock shm 2732_0_array_reqs_lock
+INFO 06-24 21:55:35 [atomic_lock.py:26] create lock shm 2732_0_shm_reqs_manager_lock
+INFO 06-24 21:55:35 [shared_arr.py:17] create shm 2732_0_mem_manger_can_use_token_num_0
+INFO 06-24 21:55:35 [shared_arr.py:17] create shm 2732_0_shared_token_load
+INFO 06-24 21:55:35 [shared_arr.py:17] create shm 2732_0_shared_token_load_ext_infos
+INFO 06-24 21:55:36 [model_rpc.py:70] Initialized RPC server for rank 0.
+INFO 06-24 21:55:36 [shm_req_manager.py:62] link lock shm 2732_0_req_shm_total
+INFO 06-24 21:55:36 [atomic_array_lock.py:32] link lock shm 2732_0_array_reqs_lock
+INFO 06-24 21:55:36 [atomic_lock.py:29] link lock shm 2732_0_shm_reqs_manager_lock
+INFO 06-24 21:55:36 [model_rpc.py:184] use ChunckedPrefillForPrefillNode
+WARNING 06-24 21:55:36 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-24 21:55:36 [grouped_fused_moe_ep.py:26] no deepep or deep_gemm
+INFO 06-24 21:55:36 [communication_op.py:61] deep_ep is not installed, you can't use the api of it.
+INFO 06-24 21:55:36 [manager.py:41] pub_to_httpserver sendhwm 1000
+INFO 06-24 21:55:36 [shm_req_manager.py:62] link lock shm 2732_0_req_shm_total
+INFO 06-24 21:55:36 [atomic_array_lock.py:32] link lock shm 2732_0_array_reqs_lock
+INFO 06-24 21:55:36 [atomic_lock.py:29] link lock shm 2732_0_shm_reqs_manager_lock
+INFO 06-24 21:55:38 [shared_arr.py:20] link shm 2732_0_shared_token_load
+INFO 06-24 21:55:38 [shared_arr.py:20] link shm 2732_0_shared_token_load_ext_infos
+INFO 06-24 21:55:38 [shared_arr.py:17] create shm 2732_0_dp_rank_0_lock_tp_infos
+INFO 06-24 21:55:38 [basemodel.py:134] Initial quantization. The default quantization method is none
+INFO 06-24 21:55:38 [mem_utils.py:11] mode setting params: []
+INFO 06-24 21:55:38 [mem_utils.py:25] Model kv cache using mode normal
+INFO 06-24 21:55:38 [shared_arr.py:20] link shm 2732_0_mem_manger_can_use_token_num_0
+INFO 06-24 21:56:04 [basemodel.py:652] begin check max_len infer
+INFO 06-24 21:56:05 [basemodel.py:680] check max_len 8448 infer ok
+INFO 06-24 21:56:05 [shared_arr.py:17] create shm 2732_0_refed_tokens_num_0
+INFO 06-24 21:56:05 [shared_arr.py:17] create shm 2732_0_tree_total_tokens_num_0
+INFO 06-24 21:56:05 [base_backend.py:135] loaded model class <class 'lightllm.models.qwen2.model.Qwen2TpPartModel'>
+INFO 06-24 21:56:05 [prefill_impl.py:36] lock_nccl_group ranks 0
+INFO 06-24 21:56:05 [shared_arr.py:20] link shm 2732_0_refed_tokens_num_0
+INFO 06-24 21:56:05 [shared_arr.py:20] link shm 2732_0_tree_total_tokens_num_0
+INFO 06-24 21:56:05 [manager.py:196] use req queue QueueForPDChunkedPrefill
+INFO 06-24 21:56:08 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-24 21:56:09 [importing.py:53] Triton module has been replaced with a placeholder.
+INFO 06-24 21:56:10 [__init__.py:239] Automatically detected platform cuda.
+WARNING 06-24 21:56:13 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-24 21:56:13 [grouped_fused_moe_ep.py:26] no deepep or deep_gemm
+INFO 06-24 21:56:13 [communication_op.py:61] deep_ep is not installed, you can't use the api of it.
+INFO 06-24 21:56:13 [rpyc_fix_utils.py:85] change socket buffer from 212992 212992 change to 4194304
+INFO 06-24 21:56:13 [rpyc_fix_utils.py:113] change socket buffer from 212992 212992 change to 4194304
+INFO 06-24 21:56:13 [prefill_kv_move_manager.py:55] rpyc connect to infer rpyc port: 10133 ok
+INFO 06-24 21:56:13 [net_utils.py:51] get hostname ip 127.0.1.1
+INFO 06-24 21:56:13 [prefill_trans_process.py:154] prefill trans kv process for device: 0 started!
+INFO 06-24 21:56:15 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-24 21:56:16 [importing.py:53] Triton module has been replaced with a placeholder.
+INFO 06-24 21:56:18 [__init__.py:239] Automatically detected platform cuda.
+WARNING 06-24 21:56:20 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-24 21:56:20 [grouped_fused_moe_ep.py:26] no deepep or deep_gemm
+INFO 06-24 21:56:20 [communication_op.py:61] deep_ep is not installed, you can't use the api of it.
+INFO 06-24 21:56:20 [prefill_infer_rpyc.py:51] put mem manager to mem_queue ok
+INFO 06-24 21:56:20 [prefill_kv_move_manager.py:246] prefill kv move manager process started
+INFO 06-24 21:56:20 [start_utils.py:37] init func start_router_process : init ok
+INFO 06-24 21:56:20 [start_utils.py:37] init func start_detokenization_process : init ok
+INFO 06-24 21:56:20 [api_start.py:57] start process pid 1411123
+INFO 06-24 21:56:20 [api_start.py:58] http server pid 1414655
+INFO 06-24 21:56:24 [cache_tensor_manager.py:17] USE_GPU_TENSOR_CACHE is On
+INFO 06-24 21:56:24 [importing.py:53] Triton module has been replaced with a placeholder.
+INFO 06-24 21:56:25 [__init__.py:239] Automatically detected platform cuda.
+WARNING 06-24 21:56:27 [light_utils.py:13] lightllm_kernel is not installed, you can't use the api of it.
+WARNING 06-24 21:56:27 [grouped_fused_moe_ep.py:26] no deepep or deep_gemm
+INFO 06-24 21:56:27 [communication_op.py:61] deep_ep is not installed, you can't use the api of it.
+INFO 06-24 21:56:27 [api_http.py:326] server start up
+INFO 06-24 21:56:27 [atomic_array_lock.py:32] link lock shm 2732_0_lightllm_resource_lock
+INFO 06-24 21:56:27 [shm_req_manager.py:62] link lock shm 2732_0_req_shm_total
+INFO 06-24 21:56:27 [atomic_array_lock.py:32] link lock shm 2732_0_array_reqs_lock
+INFO 06-24 21:56:27 [atomic_lock.py:29] link lock shm 2732_0_shm_reqs_manager_lock
+INFO 06-24 21:56:28 [atomic_lock.py:29] link lock shm 2732_0_req_id_gen_lock
+INFO 06-24 21:56:28 [shared_arr.py:20] link shm 2732_0_latest_success_infer_time_mark
+INFO 06-24 21:56:28 [shared_arr.py:20] link shm 2732_0_shared_token_load
+INFO 06-24 21:56:28 [shared_arr.py:20] link shm 2732_0_shared_token_load_ext_infos
+INFO 06-24 21:56:28 [api_http.py:330] server start up ok, loop use is <uvloop.Loop running=True closed=False debug=False>
+INFO 06-24 21:56:28 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:56:28 [pd_loop.py:92] Sent registration JSON: {'node_id': 287595743282619216970276961428881885738, 'client_ip_port': '127.0.1.1:8017', 'mode': 'prefill', 'start_args': {'run_mode': 'prefill', 'host': '127.0.1.1', 'port': 8017, 'httpserver_workers': 1, 'zmq_mode': 'ipc:///tmp/_2732_0_', 'pd_master_ip': '127.0.1.1', 'pd_master_port': 60011, 'pd_decode_rpyc_port': 42000, 'config_server_host': None, 'config_server_port': None, 'model_name': 'default_model_name', 'model_dir': '/mnt/youwei-data/zhuohang/model/Qwen/Qwen2.5-14B', 'tokenizer_mode': 'fast', 'load_way': 'HF', 'max_total_token_num': 16392, 'mem_fraction': 0.9, 'batch_max_tokens': 8448, 'eos_id': [151643], 'tool_call_parser': None, 'running_max_req_size': 128, 'nnodes': 1, 'node_rank': 0, 'multinode_httpmanager_port': 12345, 'multinode_router_gloo_port': 20001, 'tp': 1, 'dp': 1, 'max_req_total_len': 16000, 'nccl_host': '127.0.0.1', 'nccl_port': 2732, 'use_config_server_to_init_nccl': False, 'mode': [], 'trust_remote_code': False, 'disable_log_stats': False, 'log_stats_interval': 10, 'router_token_ratio': 0.0, 'router_max_new_token_len': 1024, 'router_max_wait_tokens': 6, 'disable_aggressive_schedule': False, 'use_dynamic_prompt_cache': False, 'disable_dynamic_prompt_cache': False, 'chunked_prefill_size': 4096, 'disable_chunked_prefill': False, 'diverse_mode': False, 'token_healing_mode': False, 'output_constraint_mode': 'none', 'first_token_constraint_mode': False, 'enable_multimodal': False, 'enable_multimodal_audio': False, 'enable_mps': False, 'disable_custom_allreduce': False, 'enable_custom_allgather': False, 'enable_tpsp_mix_mode': False, 'enable_prefill_microbatch_overlap': False, 'enable_decode_microbatch_overlap': False, 'enable_flashinfer_prefill': False, 'enable_flashinfer_decode': False, 'enable_fa3': False, 'cache_capacity': 200, 'cache_reserved_ratio': 0.5, 'data_type': 'bfloat16', 'return_all_prompt_logprobs': False, 'use_reward_model': False, 'long_truncation_mode': None, 'use_tgi_api': False, 'health_monitor': False, 'metric_gateway': None, 'job_name': 'lightllm', 'grouping_key': [], 'push_interval': 10, 'visual_infer_batch_size': 1, 'visual_gpu_ids': [0], 'visual_tp': 1, 'visual_dp': 1, 'visual_nccl_ports': [29500], 'enable_monitor_auth': False, 'disable_cudagraph': True, 'graph_max_batch_size': 256, 'graph_split_batch_size': 32, 'graph_grow_step_size': 16, 'graph_max_len_in_batch': 16000, 'quant_type': 'none', 'quant_cfg': None, 'vit_quant_type': 'none', 'vit_quant_cfg': None, 'sampling_backend': 'triton', 'ep_redundancy_expert_config_path': None, 'auto_update_redundancy_expert': False, 'mtp_mode': None, 'mtp_draft_model_dir': None, 'mtp_step': 0, 'pd_chunk_size': 0, 'router_port': 10216, 'detokenization_port': 10253, 'detokenization_pub_port': 10154, 'visual_port': 10095, 'audio_port': 10138, 'cache_port': 10064, 'metric_port': 10217, 'pd_node_infer_rpyc_ports': [10133], 'pd_node_id': 287595743282619216970276961428881885738, 'pd_p_allowed_port_min': 20000, 'pd_p_allowed_port_max': 30000}}
+INFO 06-24 21:56:58 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:56:58 [statics_utils.py:24] mean first cost: 0.0 ms
+INFO 06-24 21:56:58 [statics_utils.py:24] mean per token cost: 0.0 ms
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:8 
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:16 
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:24 
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:32 
+INFO 06-24 21:57:15 [manager.py:224] router recive req id 8 cost time 0.07434654235839844 s
+INFO 06-24 21:57:15 [manager.py:224] router recive req id 16 cost time 0.025234222412109375 s
+INFO 06-24 21:57:15 [manager.py:224] router recive req id 24 cost time 0.014957904815673828 s
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:40 
+INFO 06-24 21:57:15 [manager.py:224] router recive req id 32 cost time 0.009561538696289062 s
+INFO 06-24 21:57:15 [manager.py:224] router recive req id 40 cost time 0.010047435760498047 s
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:48 
+INFO 06-24 21:57:15 [manager.py:68] detokenization recv req id 8 cost time 0.10156798362731934 s
+INFO 06-24 21:57:15 [manager.py:68] detokenization recv req id 16 cost time 0.052925825119018555 s
+INFO 06-24 21:57:15 [manager.py:68] detokenization recv req id 24 cost time 0.043247222900390625 s
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:56 
+INFO 06-24 21:57:15 [manager.py:68] detokenization recv req id 32 cost time 0.03420853614807129 s
+INFO 06-24 21:57:15 [manager.py:224] router recive req id 48 cost time 0.0063211917877197266 s
+INFO 06-24 21:57:15 [manager.py:68] detokenization recv req id 40 cost time 0.025928497314453125 s
+INFO 06-24 21:57:15 [manager.py:68] detokenization recv req id 48 cost time 0.00784921646118164 s
+INFO 06-24 21:57:15 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:64 
+DEBUG 06-24 21:57:15 [manager.py:391] Prefill Batch: batch_id=183192395226738958363005591887549515689, time:1750773435.9941852s req_ids:[8, 16, 24, 32, 40, 48] 
+DEBUG 06-24 21:57:15 [manager.py:391] 
+DEBUG 06-24 21:57:15 [stats.py:37] Avg tokens(prompt+generate) throughput:   63.452 tokens/s
+DEBUG 06-24 21:57:15 [stats.py:37] Avg prompt tokens throughput:             63.452 tokens/s
+DEBUG 06-24 21:57:15 [stats.py:37] Avg generate tokens throughput:            0.000 tokens/s
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:72 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:80 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:88 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:96 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:104 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:112 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:120 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:128 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:136 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:144 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:152 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:160 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:168 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:176 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:184 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:192 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:200 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:208 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:216 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:224 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:232 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:240 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:248 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:256 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:264 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:272 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:280 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:288 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:296 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:304 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:312 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:320 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:328 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:336 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:344 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:352 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:360 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:368 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:376 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:384 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:392 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:400 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:408 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:416 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:424 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:432 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:440 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:448 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:456 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:464 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:472 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:480 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:488 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:496 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:504 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:512 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:520 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:528 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:536 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:544 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:552 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:560 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:568 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:576 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:584 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:592 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:600 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:608 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:616 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:624 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:632 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:640 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:648 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:656 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:664 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:672 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:680 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:688 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:696 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:704 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:712 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:720 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:728 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:736 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:744 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:752 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:760 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:768 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:776 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:784 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:792 
+INFO 06-24 21:57:16 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:800 
+INFO 06-24 21:57:17 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:17 [manager.py:162] detoken release req id 8
+INFO 06-24 21:57:17 [manager.py:162] detoken release req id 16
+INFO 06-24 21:57:17 [manager.py:162] detoken release req id 24
+INFO 06-24 21:57:17 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:8 first_token_cost:2066.8702125549316ms total_cost_time:2066.9257640838623ms,out_token_counter:1 mean_per_token_cost_time: 0.05555152893066406ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:17 [manager.py:162] detoken release req id 32
+INFO 06-24 21:57:17 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:16 first_token_cost:2017.4884796142578ms total_cost_time:2017.5154209136963ms,out_token_counter:1 mean_per_token_cost_time: 0.026941299438476562ms prompt_token_num:1055 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:17 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:24 first_token_cost:2007.4079036712646ms total_cost_time:2007.4307918548584ms,out_token_counter:1 mean_per_token_cost_time: 0.02288818359375ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:17 [manager.py:162] detoken release req id 40
+INFO 06-24 21:57:17 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:32 first_token_cost:1997.9596138000488ms total_cost_time:1997.981071472168ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:17 [manager.py:162] detoken release req id 48
+INFO 06-24 21:57:17 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:40 first_token_cost:1989.2513751983643ms total_cost_time:1989.2728328704834ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:17 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:48 first_token_cost:1971.0087776184082ms total_cost_time:1971.02952003479ms,out_token_counter:1 mean_per_token_cost_time: 0.020742416381835938ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:18 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+DEBUG 06-24 21:57:18 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:18 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:18 [infer_batch.py:156] radix refed token num 6345
+DEBUG 06-24 21:57:18 [infer_batch.py:156] radix hold token num 6345
+DEBUG 06-24 21:57:18 [infer_batch.py:156] mem manager can alloc token num 10047
+DEBUG 06-24 21:57:18 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:18 [batch.py:51] router release req id 8
+INFO 06-24 21:57:18 [batch.py:51] router release req id 16
+INFO 06-24 21:57:18 [batch.py:51] router release req id 24
+INFO 06-24 21:57:18 [batch.py:51] router release req id 32
+INFO 06-24 21:57:18 [batch.py:51] router release req id 40
+INFO 06-24 21:57:18 [batch.py:51] router release req id 48
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 56 cost time 2.0529732704162598 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 64 cost time 2.0450782775878906 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 56 cost time 2.054810047149658 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 72 cost time 2.036593198776245 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 80 cost time 2.0283164978027344 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 88 cost time 1.9868121147155762 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 64 cost time 2.047435998916626 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 96 cost time 1.981055736541748 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 104 cost time 1.9764375686645508 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 112 cost time 1.9717299938201904 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 72 cost time 2.039720058441162 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 120 cost time 1.9665844440460205 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 128 cost time 1.9616596698760986 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 80 cost time 2.032367706298828 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 136 cost time 1.953277349472046 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 144 cost time 1.9455409049987793 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 152 cost time 1.9381029605865479 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 88 cost time 1.9917616844177246 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 160 cost time 1.9307143688201904 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 168 cost time 1.9222908020019531 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 96 cost time 1.9869613647460938 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 176 cost time 1.9146487712860107 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 184 cost time 1.9070994853973389 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 192 cost time 1.8989145755767822 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 104 cost time 1.983229160308838 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 200 cost time 1.8905799388885498 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 112 cost time 1.9795911312103271 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 208 cost time 1.883430004119873 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 216 cost time 1.8658819198608398 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 224 cost time 1.8562607765197754 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 232 cost time 1.8481740951538086 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 120 cost time 1.976130723953247 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 240 cost time 1.8409795761108398 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 248 cost time 1.8338754177093506 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 256 cost time 1.8289406299591064 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 264 cost time 1.8243746757507324 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 272 cost time 1.8194279670715332 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 128 cost time 1.9731316566467285 s
+INFO 06-24 21:57:18 [manager.py:224] router recive req id 280 cost time 1.814791202545166 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 136 cost time 1.9656925201416016 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 144 cost time 1.9588980674743652 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 152 cost time 1.9523286819458008 s
+DEBUG 06-24 21:57:18 [manager.py:391] Prefill Batch: batch_id=183435466452217083455255300120862165865, time:1750773438.0651114s req_ids:[56, 64, 72, 80, 88, 96, 104] 
+DEBUG 06-24 21:57:18 [manager.py:391] 
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 160 cost time 1.978437900543213 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 168 cost time 1.9713377952575684 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 176 cost time 1.964714765548706 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 184 cost time 1.958141565322876 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 192 cost time 1.951369047164917 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 200 cost time 1.943962574005127 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 208 cost time 1.9369051456451416 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 216 cost time 1.9202401638031006 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 224 cost time 1.9116225242614746 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 232 cost time 1.904437780380249 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 240 cost time 1.8981175422668457 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 248 cost time 1.8918724060058594 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 256 cost time 1.8877604007720947 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 264 cost time 1.8840248584747314 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 272 cost time 1.8799102306365967 s
+INFO 06-24 21:57:18 [manager.py:68] detokenization recv req id 280 cost time 1.8761711120605469 s
+INFO 06-24 21:57:18 [rpyc_fix_utils.py:36] change socket buffer from 2626560 131072 change to 4194304
+INFO 06-24 21:57:18 [prefill_trans_process.py:61] connect start PDTransJoinInfo(decode_id=148730891575017957868136796871489876076, decode_device_id=-1, prefill_id=287595743282619216970276961428881885738, prefill_device_id=0, pd_prefill_nccl_ip='127.0.1.1', pd_prefill_nccl_port=20000, connect_id='11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc')
+INFO 06-24 21:57:18 [prefill_trans_process.py:64] connect src_id 287595743282619216970276961428881885738 dest_id 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc
+INFO 06-24 21:57:18 [pynccl_wrapper.py:75] Found nccl from library libnccl.so.2
+INFO 06-24 21:57:18 [pynccl.py:180] LightLLM is using nccl==2.21.5
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 288 cost time 2.843327045440674 s
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 56
+INFO 06-24 21:57:19 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 64
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 72
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:56 first_token_cost:3107.999324798584ms total_cost_time:3108.043432235718ms,out_token_counter:1 mean_per_token_cost_time: 0.04410743713378906ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:15 lightllm_req_id:64 first_token_cost:3099.2417335510254ms total_cost_time:3099.2672443389893ms,out_token_counter:1 mean_per_token_cost_time: 0.025510787963867188ms prompt_token_num:1062 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 80
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:72 first_token_cost:3090.4550552368164ms total_cost_time:3090.477228164673ms,out_token_counter:1 mean_per_token_cost_time: 0.022172927856445312ms prompt_token_num:1050 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 88
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:80 first_token_cost:3082.355737686157ms total_cost_time:3082.376480102539ms,out_token_counter:1 mean_per_token_cost_time: 0.020742416381835938ms prompt_token_num:1057 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:88 first_token_cost:3040.7509803771973ms total_cost_time:3040.7721996307373ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1058 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 96
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:96 first_token_cost:3034.8153114318848ms total_cost_time:3034.8355770111084ms,out_token_counter:1 mean_per_token_cost_time: 0.020265579223632812ms prompt_token_num:1061 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:104 first_token_cost:3030.2133560180664ms total_cost_time:3030.233383178711ms,out_token_counter:1 mean_per_token_cost_time: 0.02002716064453125ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:19 [manager.py:162] detoken release req id 104
+INFO 06-24 21:57:19 [prefill_trans_process.py:81] PDTransJoinInfo(decode_id=148730891575017957868136796871489876076, decode_device_id=-1, prefill_id=287595743282619216970276961428881885738, prefill_device_id=0, pd_prefill_nccl_ip='127.0.1.1', pd_prefill_nccl_port=20000, connect_id='11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc') kv trans connected!
+INFO 06-24 21:57:19 [prefill_trans_obj.py:104] create KVTransConnectObj success: connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc decode_node_id: 148730891575017957868136796871489876076 prefill_node_id: 287595743282619216970276961428881885738 device_index: 0 
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 288 cost time 2.852398157119751 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 8 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 1.1529920101165771 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 16 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 1.1361424922943115 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 24 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 1.1195614337921143 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 32 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 1.10410737991333 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 40 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 1.090341329574585 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 48 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 1.0786843299865723 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 56 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.008833646774291992 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 64 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0019044876098632812 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 8 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.013906478881835938 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 8 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 24 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 32 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 40 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 48 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 56 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 64 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 72 in_len:1050 v_len: 1050 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009841203689575195 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 80 in_len:1057 v_len: 1057 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0033121109008789062 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:222] kv_trans_handle_loop get task id: 16 in_len:1055 v_len: 1055 move_len: 1055 dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc to start kv movequeue time 1.1567583084106445 s 
+INFO 06-24 21:57:19 [prefill_trans_process.py:34] trans start: id: 16 in_len:1055 v_len: 1055 move_len: 1055 dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc
+INFO 06-24 21:57:19 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 72 in_len:1050 v_len: 1050 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007048368453979492 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 72 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 80 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 88 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0039234161376953125 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 88 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.004856109619140625 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 88 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 96 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0009615421295166016 s 
+INFO 06-24 21:57:19 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 96 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.004712343215942383 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 96 not send, decode is busy
+INFO 06-24 21:57:19 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 8
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 24
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 32
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 40
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 48
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 56
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 64
+DEBUG 06-24 21:57:19 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:19 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:19 [infer_batch.py:156] radix refed token num 6333
+DEBUG 06-24 21:57:19 [infer_batch.py:156] radix hold token num 13738
+DEBUG 06-24 21:57:19 [infer_batch.py:156] mem manager can alloc token num 2654
+DEBUG 06-24 21:57:19 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 72
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 80
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 88
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 96
+INFO 06-24 21:57:19 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 104 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00585484504699707 s 
+INFO 06-24 21:57:19 [batch.py:51] router release req id 56
+INFO 06-24 21:57:19 [batch.py:51] router release req id 64
+INFO 06-24 21:57:19 [batch.py:51] router release req id 72
+INFO 06-24 21:57:19 [batch.py:51] router release req id 80
+INFO 06-24 21:57:19 [batch.py:51] router release req id 88
+INFO 06-24 21:57:19 [batch.py:51] router release req id 96
+INFO 06-24 21:57:19 [batch.py:51] router release req id 104
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 296 cost time 2.904078483581543 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 304 cost time 2.9004077911376953 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 296 cost time 2.9058501720428467 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 312 cost time 2.89624285697937 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 104 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.006551504135131836 s
+INFO 06-24 21:57:19 [prefill_trans_obj.py:166] prefill node kv move task req_id: 104 not send, decode is busy
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 320 cost time 2.8917062282562256 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 328 cost time 2.8868372440338135 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 304 cost time 2.9025967121124268 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 336 cost time 2.882467031478882 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 344 cost time 2.8421084880828857 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 352 cost time 2.8355062007904053 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 312 cost time 2.899076223373413 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 360 cost time 2.830348253250122 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 368 cost time 2.8254940509796143 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 376 cost time 2.820925235748291 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 320 cost time 2.8958187103271484 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 384 cost time 2.8162660598754883 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 392 cost time 2.8115522861480713 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 400 cost time 2.806875705718994 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 328 cost time 2.891998052597046 s
+INFO 06-24 21:57:19 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 104
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 408 cost time 2.8029000759124756 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 336 cost time 2.888749361038208 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 416 cost time 2.798424005508423 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 424 cost time 2.7936484813690186 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 432 cost time 2.7890119552612305 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 344 cost time 2.849390983581543 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 440 cost time 2.7844791412353516 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 448 cost time 2.7797770500183105 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 352 cost time 2.843766689300537 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 456 cost time 2.7765212059020996 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 360 cost time 2.8396759033203125 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 464 cost time 2.7719948291778564 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 472 cost time 2.767430067062378 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 480 cost time 2.7624762058258057 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 368 cost time 2.8358266353607178 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 488 cost time 2.757695198059082 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 496 cost time 2.75347638130188 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 504 cost time 2.7491462230682373 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 376 cost time 2.832227945327759 s
+INFO 06-24 21:57:19 [manager.py:224] router recive req id 512 cost time 2.744821310043335 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 384 cost time 2.8284521102905273 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 392 cost time 2.824519157409668 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 400 cost time 2.820510149002075 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 408 cost time 2.816723346710205 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 416 cost time 2.812837600708008 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 424 cost time 2.808816432952881 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 432 cost time 2.804975748062134 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 440 cost time 2.8012473583221436 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 448 cost time 2.797304391860962 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 456 cost time 2.7937395572662354 s
+DEBUG 06-24 21:57:19 [manager.py:391] Prefill Batch: batch_id=92541181842414176735446229458234978367, time:1750773439.1856368s req_ids:[112, 120, 128, 136, 144, 152, 160, 168] 
+DEBUG 06-24 21:57:19 [manager.py:391] 
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 464 cost time 2.7900025844573975 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 472 cost time 2.814335584640503 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 480 cost time 2.811356544494629 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 488 cost time 2.8079729080200195 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 496 cost time 2.804640293121338 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 504 cost time 2.801222324371338 s
+INFO 06-24 21:57:19 [manager.py:68] detokenization recv req id 512 cost time 2.7986178398132324 s
+INFO 06-24 21:57:19 [prefill_trans_process.py:42] trans finished: id: 16 in_len:1055 v_len: 1055 move_len: 1055 dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc move len: 1055
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 520 cost time 4.18721604347229 s
+INFO 06-24 21:57:20 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 112
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 120
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 128
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:112 first_token_cost:4553.349018096924ms total_cost_time:4553.433895111084ms,out_token_counter:1 mean_per_token_cost_time: 0.08487701416015625ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 136
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:120 first_token_cost:4548.264026641846ms total_cost_time:4548.290967941284ms,out_token_counter:1 mean_per_token_cost_time: 0.026941299438476562ms prompt_token_num:1058 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 144
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:128 first_token_cost:4543.472051620483ms total_cost_time:4543.494939804077ms,out_token_counter:1 mean_per_token_cost_time: 0.02288818359375ms prompt_token_num:1049 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 152
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:136 first_token_cost:4535.346984863281ms total_cost_time:4535.3686809539795ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 160
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:144 first_token_cost:4527.52161026001ms total_cost_time:4527.5421142578125ms,out_token_counter:1 mean_per_token_cost_time: 0.020503997802734375ms prompt_token_num:1048 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:152 first_token_cost:4519.891738891602ms total_cost_time:4519.912958145142ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1046 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:162] detoken release req id 168
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:160 first_token_cost:4512.29453086853ms total_cost_time:4512.31575012207ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1050 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:168 first_token_cost:4503.759384155273ms total_cost_time:4503.7806034088135ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1050 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 520 cost time 4.196249008178711 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 112 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0020177364349365234 s 
+INFO 06-24 21:57:20 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 112 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.008722305297851562 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 112 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 120 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0048978328704833984 s 
+INFO 06-24 21:57:20 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 120 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.00770878791809082 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 120 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 128 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.007648468017578125 s 
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 136 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0018413066864013672 s 
+INFO 06-24 21:57:20 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 128 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.012303352355957031 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 128 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 136 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 144 in_len:1048 v_len: 1048 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009046792984008789 s 
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 152 in_len:1046 v_len: 1046 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0028464794158935547 s 
+INFO 06-24 21:57:20 [prefill_trans_process.py:44] trans cost time: 1.5370166301727295,move_total_kv_len: 1055, id: 16 in_len:1055 v_len: 1055 move_len: 1055 dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc
+INFO 06-24 21:57:20 [prefill_trans_obj.py:196] _transfer_kv data ok, req_id: 16 cost total time: 2.695488214492798 s
+INFO 06-24 21:57:20 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 112
+INFO 06-24 21:57:20 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 144 in_len:1048 v_len: 1048 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.01164865493774414 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 144 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 152 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 160 in_len:1050 v_len: 1050 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009674549102783203 s 
+INFO 06-24 21:57:20 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 168 in_len:1050 v_len: 1050 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00382232666015625 s 
+DEBUG 06-24 21:57:20 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:20 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:20 [infer_batch.py:156] radix refed token num 8408
+DEBUG 06-24 21:57:20 [infer_batch.py:156] radix hold token num 15808
+DEBUG 06-24 21:57:20 [infer_batch.py:156] mem manager can alloc token num 584
+DEBUG 06-24 21:57:20 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:20 [batch.py:51] router release req id 112
+INFO 06-24 21:57:20 [batch.py:51] router release req id 120
+INFO 06-24 21:57:20 [batch.py:51] router release req id 128
+INFO 06-24 21:57:20 [batch.py:51] router release req id 136
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 120
+INFO 06-24 21:57:20 [batch.py:51] router release req id 144
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 128
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 136
+INFO 06-24 21:57:20 [batch.py:51] router release req id 152
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 16
+INFO 06-24 21:57:20 [batch.py:51] router release req id 160
+INFO 06-24 21:57:20 [batch.py:51] router release req id 168
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 528 cost time 4.2441792488098145 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 536 cost time 4.239896059036255 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 544 cost time 4.23553466796875 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 528 cost time 4.245772361755371 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 552 cost time 4.231782913208008 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 560 cost time 4.22771143913269 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 568 cost time 4.223820924758911 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 536 cost time 4.2426581382751465 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 576 cost time 4.219863414764404 s
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 144
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 544 cost time 4.23926568031311 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 584 cost time 4.21586275100708 s
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 152
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 592 cost time 4.212351322174072 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 552 cost time 4.235877513885498 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 600 cost time 4.207972526550293 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 608 cost time 4.203743934631348 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 560 cost time 4.23270320892334 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 616 cost time 4.199443817138672 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 624 cost time 4.19502067565918 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 632 cost time 4.190509080886841 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 640 cost time 4.186006546020508 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 568 cost time 4.22925877571106 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 648 cost time 4.181662082672119 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 656 cost time 4.177393674850464 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 664 cost time 4.172720193862915 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 576 cost time 4.2260565757751465 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 672 cost time 4.168277740478516 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 680 cost time 4.16365385055542 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 688 cost time 4.159157991409302 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 696 cost time 4.15469765663147 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 704 cost time 4.150240898132324 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 712 cost time 4.1457295417785645 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 584 cost time 4.223072528839111 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 720 cost time 4.14218282699585 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 728 cost time 4.13811993598938 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 736 cost time 4.133428573608398 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 592 cost time 4.220565557479858 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 744 cost time 4.128777742385864 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 752 cost time 4.12431788444519 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 760 cost time 4.119714975357056 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 768 cost time 4.114940881729126 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 776 cost time 4.110274791717529 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 784 cost time 4.105071544647217 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 600 cost time 4.217778921127319 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 792 cost time 4.100350618362427 s
+INFO 06-24 21:57:20 [manager.py:224] router recive req id 800 cost time 4.095543622970581 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 608 cost time 4.214792966842651 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 616 cost time 4.211430549621582 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 624 cost time 4.208020210266113 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 160 in_len:1050 v_len: 1050 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.02581334114074707 s
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 160 not send, decode is busy
+INFO 06-24 21:57:20 [prefill_trans_obj.py:166] prefill node kv move task req_id: 168 not send, decode is busy
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 632 cost time 4.204531669616699 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 640 cost time 4.2012012004852295 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 648 cost time 4.197704315185547 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 656 cost time 4.194422245025635 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 664 cost time 4.190845489501953 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 672 cost time 4.187482833862305 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 680 cost time 4.1839280128479 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 688 cost time 4.18047571182251 s
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 160
+DEBUG 06-24 21:57:20 [manager.py:391] Prefill Batch: batch_id=201455354752215698501524051058319870647, time:1750773440.7145548s req_ids:[176, 184, 192, 200, 208, 216, 224] 
+DEBUG 06-24 21:57:20 [manager.py:391] 
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 696 cost time 4.177005767822266 s
+INFO 06-24 21:57:20 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 168
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 704 cost time 4.173741340637207 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 712 cost time 4.170109510421753 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 720 cost time 4.16648006439209 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 728 cost time 4.163381576538086 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 736 cost time 4.159599781036377 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 744 cost time 4.155829429626465 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 752 cost time 4.152259588241577 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 760 cost time 4.14850926399231 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 768 cost time 4.144503593444824 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 776 cost time 4.1405723094940186 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 784 cost time 4.136146783828735 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 792 cost time 4.132099390029907 s
+INFO 06-24 21:57:20 [manager.py:68] detokenization recv req id 800 cost time 4.127938747406006 s
+INFO 06-24 21:57:21 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 176
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 184
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:176 first_token_cost:5522.639989852905ms total_cost_time:5522.682666778564ms,out_token_counter:1 mean_per_token_cost_time: 0.04267692565917969ms prompt_token_num:1056 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:184 first_token_cost:5515.013217926025ms total_cost_time:5515.039682388306ms,out_token_counter:1 mean_per_token_cost_time: 0.026464462280273438ms prompt_token_num:1050 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 192
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:192 first_token_cost:5506.82806968689ms total_cost_time:5506.8519115448ms,out_token_counter:1 mean_per_token_cost_time: 0.02384185791015625ms prompt_token_num:1058 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 200
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:200 first_token_cost:5498.515605926514ms total_cost_time:5498.550653457642ms,out_token_counter:1 mean_per_token_cost_time: 0.03504753112792969ms prompt_token_num:1063 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:208 first_token_cost:5490.27419090271ms total_cost_time:5490.3223514556885ms,out_token_counter:1 mean_per_token_cost_time: 0.048160552978515625ms prompt_token_num:1057 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 208
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:216 first_token_cost:5472.749710083008ms total_cost_time:5472.784519195557ms,out_token_counter:1 mean_per_token_cost_time: 0.034809112548828125ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 216
+INFO 06-24 21:57:21 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:224 first_token_cost:5463.237047195435ms total_cost_time:5463.2627964019775ms,out_token_counter:1 mean_per_token_cost_time: 0.02574920654296875ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:21 [manager.py:162] detoken release req id 224
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 176 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.008868217468261719 s 
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 184 in_len:1050 v_len: 1050 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.002635955810546875 s 
+INFO 06-24 21:57:21 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 176 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.012252092361450195 s
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 176 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 184 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 192 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009368896484375 s 
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 200 in_len:1063 v_len: 1063 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.003036975860595703 s 
+INFO 06-24 21:57:21 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 192 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009622812271118164 s
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 192 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 200 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 208 in_len:1057 v_len: 1057 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.005233287811279297 s 
+INFO 06-24 21:57:21 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:21 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 208 in_len:1057 v_len: 1057 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007521152496337891 s
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 208 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 176
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 216 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.006842136383056641 s 
+INFO 06-24 21:57:21 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 224 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.000782012939453125 s 
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 184
+DEBUG 06-24 21:57:21 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:21 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:21 [infer_batch.py:156] radix refed token num 5290
+DEBUG 06-24 21:57:21 [infer_batch.py:156] radix hold token num 15809
+DEBUG 06-24 21:57:21 [infer_batch.py:156] mem manager can alloc token num 583
+DEBUG 06-24 21:57:21 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 192
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 200
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 208
+INFO 06-24 21:57:21 [batch.py:51] router release req id 176
+INFO 06-24 21:57:21 [batch.py:51] router release req id 184
+INFO 06-24 21:57:21 [batch.py:51] router release req id 192
+INFO 06-24 21:57:21 [batch.py:51] router release req id 200
+INFO 06-24 21:57:21 [batch.py:51] router release req id 208
+INFO 06-24 21:57:21 [batch.py:51] router release req id 216
+INFO 06-24 21:57:21 [batch.py:51] router release req id 224
+INFO 06-24 21:57:21 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 216 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010659933090209961 s
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 216 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_trans_obj.py:166] prefill node kv move task req_id: 224 not send, decode is busy
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 216
+INFO 06-24 21:57:21 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 224
+DEBUG 06-24 21:57:21 [manager.py:391] Prefill Batch: batch_id=128383818688016428732547559065532079804, time:1750773441.7364323s req_ids:[232, 240, 248, 256, 264, 272, 280] 
+DEBUG 06-24 21:57:21 [manager.py:391] 
+INFO 06-24 21:57:22 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 232
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 240
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 248
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 256
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 264
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:232 first_token_cost:6473.076820373535ms total_cost_time:6473.118305206299ms,out_token_counter:1 mean_per_token_cost_time: 0.041484832763671875ms prompt_token_num:1063 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:240 first_token_cost:6465.898275375366ms total_cost_time:6465.925931930542ms,out_token_counter:1 mean_per_token_cost_time: 0.02765655517578125ms prompt_token_num:1048 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 272
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:248 first_token_cost:6458.858489990234ms total_cost_time:6458.880662918091ms,out_token_counter:1 mean_per_token_cost_time: 0.022172927856445312ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:256 first_token_cost:6453.812837600708ms total_cost_time:6453.834533691406ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1054 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [manager.py:162] detoken release req id 280
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:264 first_token_cost:6449.409961700439ms total_cost_time:6449.431657791138ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1054 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:272 first_token_cost:6444.46873664856ms total_cost_time:6444.489240646362ms,out_token_counter:1 mean_per_token_cost_time: 0.020503997802734375ms prompt_token_num:1058 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:280 first_token_cost:6439.7313594818115ms total_cost_time:6439.752101898193ms,out_token_counter:1 mean_per_token_cost_time: 0.020742416381835938ms prompt_token_num:1061 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 232 in_len:1063 v_len: 1063 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.001619100570678711 s 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 232 in_len:1063 v_len: 1063 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007566690444946289 s
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 232 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 240 in_len:1048 v_len: 1048 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004763364791870117 s 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 240 in_len:1048 v_len: 1048 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007576942443847656 s
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 240 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 248 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0076656341552734375 s 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 256 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.002526998519897461 s 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 248 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007674455642700195 s
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 248 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 256 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 264 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00623011589050293 s 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 272 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0016736984252929688 s 
+INFO 06-24 21:57:22 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 232
+DEBUG 06-24 21:57:22 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:22 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:22 [infer_batch.py:156] radix refed token num 6334
+DEBUG 06-24 21:57:22 [infer_batch.py:156] radix hold token num 15843
+DEBUG 06-24 21:57:22 [infer_batch.py:156] mem manager can alloc token num 549
+DEBUG 06-24 21:57:22 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 240
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 248
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 256
+INFO 06-24 21:57:22 [batch.py:51] router release req id 232
+INFO 06-24 21:57:22 [batch.py:51] router release req id 240
+INFO 06-24 21:57:22 [batch.py:51] router release req id 248
+INFO 06-24 21:57:22 [batch.py:51] router release req id 256
+INFO 06-24 21:57:22 [batch.py:51] router release req id 264
+INFO 06-24 21:57:22 [batch.py:51] router release req id 272
+INFO 06-24 21:57:22 [batch.py:51] router release req id 280
+INFO 06-24 21:57:22 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 264 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009365320205688477 s
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 264 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 272 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 280 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0067102909088134766 s 
+INFO 06-24 21:57:22 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 280 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.005312204360961914 s
+INFO 06-24 21:57:22 [prefill_trans_obj.py:166] prefill node kv move task req_id: 280 not send, decode is busy
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 264
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 272
+INFO 06-24 21:57:22 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 280
+DEBUG 06-24 21:57:22 [manager.py:391] Prefill Batch: batch_id=105466661178272767147654849707186787718, time:1750773442.742199s req_ids:[288, 296, 304, 312, 320, 328, 336, 344] 
+DEBUG 06-24 21:57:22 [manager.py:391] 
+INFO 06-24 21:57:23 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 288
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 296
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:288 first_token_cost:7568.840265274048ms total_cost_time:7568.888187408447ms,out_token_counter:1 mean_per_token_cost_time: 0.04792213439941406ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 304
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:296 first_token_cost:7564.2688274383545ms total_cost_time:7564.295768737793ms,out_token_counter:1 mean_per_token_cost_time: 0.026941299438476562ms prompt_token_num:1061 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 312
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:304 first_token_cost:7559.7474575042725ms total_cost_time:7559.769868850708ms,out_token_counter:1 mean_per_token_cost_time: 0.022411346435546875ms prompt_token_num:1051 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 320
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:312 first_token_cost:7555.351972579956ms total_cost_time:7555.373668670654ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1054 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:320 first_token_cost:7550.553798675537ms total_cost_time:7550.575494766235ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1057 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:328 first_token_cost:7545.566082000732ms total_cost_time:7545.602083206177ms,out_token_counter:1 mean_per_token_cost_time: 0.03600120544433594ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:336 first_token_cost:7541.104316711426ms total_cost_time:7541.126489639282ms,out_token_counter:1 mean_per_token_cost_time: 0.022172927856445312ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:344 first_token_cost:7500.508069992065ms total_cost_time:7500.529766082764ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1049 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 328
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 336
+INFO 06-24 21:57:23 [manager.py:162] detoken release req id 344
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 288 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0034797191619873047 s 
+INFO 06-24 21:57:23 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 288 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010988235473632812 s
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 288 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 296 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009880542755126953 s 
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 304 in_len:1051 v_len: 1051 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.005002260208129883 s 
+INFO 06-24 21:57:23 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 296 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009933948516845703 s
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 296 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 304 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 312 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010309934616088867 s 
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 320 in_len:1057 v_len: 1057 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0040853023529052734 s 
+INFO 06-24 21:57:23 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 312 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.008486032485961914 s
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 312 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 320 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 328 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00830388069152832 s 
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 336 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.003463268280029297 s 
+INFO 06-24 21:57:23 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 288
+DEBUG 06-24 21:57:23 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:23 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:23 [infer_batch.py:156] radix refed token num 7383
+DEBUG 06-24 21:57:23 [infer_batch.py:156] radix hold token num 15833
+DEBUG 06-24 21:57:23 [infer_batch.py:156] mem manager can alloc token num 559
+DEBUG 06-24 21:57:23 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:23 [batch.py:51] router release req id 288
+INFO 06-24 21:57:23 [batch.py:51] router release req id 296
+INFO 06-24 21:57:23 [batch.py:51] router release req id 304
+INFO 06-24 21:57:23 [batch.py:51] router release req id 312
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 296
+INFO 06-24 21:57:23 [batch.py:51] router release req id 320
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 304
+INFO 06-24 21:57:23 [batch.py:51] router release req id 328
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 312
+INFO 06-24 21:57:23 [batch.py:51] router release req id 336
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 320
+INFO 06-24 21:57:23 [batch.py:51] router release req id 344
+INFO 06-24 21:57:23 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 328 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009533166885375977 s
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 328 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 336 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 344 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009120464324951172 s 
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 328
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 336
+INFO 06-24 21:57:23 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 344 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.00877833366394043 s
+INFO 06-24 21:57:23 [prefill_trans_obj.py:166] prefill node kv move task req_id: 344 not send, decode is busy
+INFO 06-24 21:57:23 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 344
+DEBUG 06-24 21:57:23 [manager.py:391] Prefill Batch: batch_id=24528051848475343217428906132102045920, time:1750773443.890494s req_ids:[352, 360, 368, 376, 384, 392, 400] 
+DEBUG 06-24 21:57:23 [manager.py:391] 
+INFO 06-24 21:57:24 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 352
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 360
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:352 first_token_cost:8504.795789718628ms total_cost_time:8504.839897155762ms,out_token_counter:1 mean_per_token_cost_time: 0.04410743713378906ms prompt_token_num:1056 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 368
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:360 first_token_cost:8499.641180038452ms total_cost_time:8499.666452407837ms,out_token_counter:1 mean_per_token_cost_time: 0.025272369384765625ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:368 first_token_cost:8494.734048843384ms total_cost_time:8494.755506515503ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1051 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 376
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:376 first_token_cost:8490.172386169434ms total_cost_time:8490.193605422974ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1063 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 384
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:384 first_token_cost:8485.517740249634ms total_cost_time:8485.54015159607ms,out_token_counter:1 mean_per_token_cost_time: 0.022411346435546875ms prompt_token_num:1063 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 392
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:392 first_token_cost:8480.722188949585ms total_cost_time:8480.743408203125ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:400 first_token_cost:8475.736141204834ms total_cost_time:8475.756406784058ms,out_token_counter:1 mean_per_token_cost_time: 0.020265579223632812ms prompt_token_num:1049 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:24 [manager.py:162] detoken release req id 400
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 352 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0008697509765625 s 
+INFO 06-24 21:57:24 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 352 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.012676715850830078 s
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 352 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 360 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009419918060302734 s 
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 368 in_len:1051 v_len: 1051 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004806995391845703 s 
+INFO 06-24 21:57:24 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 360 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009534835815429688 s
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 360 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 368 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 376 in_len:1063 v_len: 1063 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009966135025024414 s 
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 384 in_len:1063 v_len: 1063 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004705905914306641 s 
+INFO 06-24 21:57:24 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 352
+DEBUG 06-24 21:57:24 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:24 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:24 [infer_batch.py:156] radix refed token num 6332
+DEBUG 06-24 21:57:24 [infer_batch.py:156] radix hold token num 15824
+DEBUG 06-24 21:57:24 [infer_batch.py:156] mem manager can alloc token num 568
+DEBUG 06-24 21:57:24 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 360
+INFO 06-24 21:57:24 [batch.py:51] router release req id 352
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 368
+INFO 06-24 21:57:24 [batch.py:51] router release req id 360
+INFO 06-24 21:57:24 [batch.py:51] router release req id 368
+INFO 06-24 21:57:24 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 376 in_len:1063 v_len: 1063 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010133743286132812 s
+INFO 06-24 21:57:24 [batch.py:51] router release req id 376
+INFO 06-24 21:57:24 [batch.py:51] router release req id 384
+INFO 06-24 21:57:24 [batch.py:51] router release req id 392
+INFO 06-24 21:57:24 [batch.py:51] router release req id 400
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 376 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 384 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 392 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.011520147323608398 s 
+INFO 06-24 21:57:24 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 400 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.007290840148925781 s 
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 376
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 384
+INFO 06-24 21:57:24 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 392 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009365081787109375 s
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 392 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_trans_obj.py:166] prefill node kv move task req_id: 400 not send, decode is busy
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 392
+INFO 06-24 21:57:24 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 400
+DEBUG 06-24 21:57:24 [manager.py:391] Prefill Batch: batch_id=191998082800694326435444267982571911092, time:1750773444.8943431s req_ids:[408, 416, 424, 432, 440, 448, 456] 
+DEBUG 06-24 21:57:24 [manager.py:391] 
+INFO 06-24 21:57:25 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 408
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 416
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:408 first_token_cost:9469.240427017212ms total_cost_time:9469.283819198608ms,out_token_counter:1 mean_per_token_cost_time: 0.043392181396484375ms prompt_token_num:1065 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 424
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:416 first_token_cost:9464.5094871521ms total_cost_time:9464.535474777222ms,out_token_counter:1 mean_per_token_cost_time: 0.025987625122070312ms prompt_token_num:1047 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 432
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:424 first_token_cost:9459.718704223633ms total_cost_time:9459.740400314331ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1056 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:432 first_token_cost:9454.83422279358ms total_cost_time:9454.855680465698ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1055 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 440
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:440 first_token_cost:9450.320720672607ms total_cost_time:9450.342893600464ms,out_token_counter:1 mean_per_token_cost_time: 0.022172927856445312ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 448
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:448 first_token_cost:9445.702314376831ms total_cost_time:9445.725440979004ms,out_token_counter:1 mean_per_token_cost_time: 0.023126602172851562ms prompt_token_num:1062 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:456 first_token_cost:9441.13302230835ms total_cost_time:9441.15424156189ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1062 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:25 [manager.py:162] detoken release req id 456
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 408 in_len:1065 v_len: 1065 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004118204116821289 s 
+INFO 06-24 21:57:25 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 408 in_len:1065 v_len: 1065 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009727954864501953 s
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 408 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 416 in_len:1047 v_len: 1047 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0096893310546875 s 
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 424 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004786968231201172 s 
+INFO 06-24 21:57:25 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 416 in_len:1047 v_len: 1047 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.00877523422241211 s
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 416 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 424 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 432 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009337425231933594 s 
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 440 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004602670669555664 s 
+INFO 06-24 21:57:25 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 408
+DEBUG 06-24 21:57:25 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:25 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:25 [infer_batch.py:156] radix refed token num 6334
+DEBUG 06-24 21:57:25 [infer_batch.py:156] radix hold token num 15836
+DEBUG 06-24 21:57:25 [infer_batch.py:156] mem manager can alloc token num 556
+DEBUG 06-24 21:57:25 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:25 [batch.py:51] router release req id 408
+INFO 06-24 21:57:25 [batch.py:51] router release req id 416
+INFO 06-24 21:57:25 [batch.py:51] router release req id 424
+INFO 06-24 21:57:25 [batch.py:51] router release req id 432
+INFO 06-24 21:57:25 [batch.py:51] router release req id 440
+INFO 06-24 21:57:25 [batch.py:51] router release req id 448
+INFO 06-24 21:57:25 [batch.py:51] router release req id 456
+INFO 06-24 21:57:25 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 432 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011211633682250977 s
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 432 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 440 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 416
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 448 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.01125788688659668 s 
+INFO 06-24 21:57:25 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 456 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00641179084777832 s 
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 424
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 432
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 440
+INFO 06-24 21:57:25 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 448 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011875152587890625 s
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 448 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_trans_obj.py:166] prefill node kv move task req_id: 456 not send, decode is busy
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 448
+INFO 06-24 21:57:25 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 456
+DEBUG 06-24 21:57:25 [manager.py:391] Prefill Batch: batch_id=218303380001311569318333645359995508613, time:1750773445.8957012s req_ids:[464, 472, 480, 488, 496, 504, 512] 
+DEBUG 06-24 21:57:25 [manager.py:391] 
+DEBUG 06-24 21:57:25 [manager.py:248] dp_i 0 current batch size: 7 
+DEBUG 06-24 21:57:25 [manager.py:248] dp_i 0 paused req num: 0 
+DEBUG 06-24 21:57:25 [manager.py:248] dp_i 0 frozen token num: 0 
+DEBUG 06-24 21:57:25 [manager.py:248] dp_i 0 estimated_peak_token_count: 7405 
+DEBUG 06-24 21:57:25 [manager.py:248] dp_i 0 token used ratio: 0.0 not contain prompt cache tree unrefed token
+DEBUG 06-24 21:57:25 [manager.py:248] dp_i 0 token used ratio: 0.9660810151293314 contain prompt cache tree unrefed token
+DEBUG 06-24 21:57:26 [stats.py:37] Avg tokens(prompt+generate) throughput: 5661.956 tokens/s
+DEBUG 06-24 21:57:26 [stats.py:37] Avg prompt tokens throughput:           5650.788 tokens/s
+DEBUG 06-24 21:57:26 [stats.py:37] Avg generate tokens throughput:           11.169 tokens/s
+INFO 06-24 21:57:26 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 464
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 472
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 480
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:464 first_token_cost:10434.598922729492ms total_cost_time:10434.705018997192ms,out_token_counter:1 mean_per_token_cost_time: 0.10609626770019531ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:472 first_token_cost:10430.545806884766ms total_cost_time:10430.574655532837ms,out_token_counter:1 mean_per_token_cost_time: 0.028848648071289062ms prompt_token_num:1061 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 488
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:480 first_token_cost:10425.76789855957ms total_cost_time:10425.791263580322ms,out_token_counter:1 mean_per_token_cost_time: 0.023365020751953125ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 496
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:488 first_token_cost:10420.909881591797ms total_cost_time:10420.931339263916ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1051 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 504
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:496 first_token_cost:10416.791915893555ms total_cost_time:10416.813850402832ms,out_token_counter:1 mean_per_token_cost_time: 0.02193450927734375ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [manager.py:162] detoken release req id 512
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:504 first_token_cost:10412.447452545166ms total_cost_time:10412.468910217285ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:512 first_token_cost:10408.00404548645ms total_cost_time:10408.025979995728ms,out_token_counter:1 mean_per_token_cost_time: 0.02193450927734375ms prompt_token_num:1054 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 464 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0048732757568359375 s 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 464 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011396169662475586 s
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 464 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 472 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.011648893356323242 s 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 480 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.006359100341796875 s 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 488 in_len:1051 v_len: 1051 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0016443729400634766 s 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 472 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010746479034423828 s
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 472 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 480 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 488 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 496 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.008312463760375977 s 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 504 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0033416748046875 s 
+INFO 06-24 21:57:26 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 464
+DEBUG 06-24 21:57:26 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:26 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:26 [infer_batch.py:156] radix refed token num 6338
+DEBUG 06-24 21:57:26 [infer_batch.py:156] radix hold token num 15846
+DEBUG 06-24 21:57:26 [infer_batch.py:156] mem manager can alloc token num 546
+DEBUG 06-24 21:57:26 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 472
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 480
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 488
+INFO 06-24 21:57:26 [batch.py:51] router release req id 464
+INFO 06-24 21:57:26 [batch.py:51] router release req id 472
+INFO 06-24 21:57:26 [batch.py:51] router release req id 480
+INFO 06-24 21:57:26 [batch.py:51] router release req id 488
+INFO 06-24 21:57:26 [batch.py:51] router release req id 496
+INFO 06-24 21:57:26 [batch.py:51] router release req id 504
+INFO 06-24 21:57:26 [batch.py:51] router release req id 512
+INFO 06-24 21:57:26 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 496 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010193109512329102 s
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 496 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 504 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 512 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00936269760131836 s 
+INFO 06-24 21:57:26 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 512 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.008563041687011719 s
+INFO 06-24 21:57:26 [prefill_trans_obj.py:166] prefill node kv move task req_id: 512 not send, decode is busy
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 496
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 504
+INFO 06-24 21:57:26 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 512
+DEBUG 06-24 21:57:26 [manager.py:391] Prefill Batch: batch_id=161650577233271773526771599162437663158, time:1750773446.900781s req_ids:[520, 528, 536, 544, 552, 560, 568, 576] 
+DEBUG 06-24 21:57:26 [manager.py:391] 
+INFO 06-24 21:57:27 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 520
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 528
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:520 first_token_cost:11542.181491851807ms total_cost_time:11542.22321510315ms,out_token_counter:1 mean_per_token_cost_time: 0.04172325134277344ms prompt_token_num:1051 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:528 first_token_cost:11537.727355957031ms total_cost_time:11537.752628326416ms,out_token_counter:1 mean_per_token_cost_time: 0.025272369384765625ms prompt_token_num:1045 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 536
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:536 first_token_cost:11533.485889434814ms total_cost_time:11533.507585525513ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1049 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 544
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:544 first_token_cost:11529.413938522339ms total_cost_time:11529.436111450195ms,out_token_counter:1 mean_per_token_cost_time: 0.022172927856445312ms prompt_token_num:1062 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 552
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:552 first_token_cost:11525.158405303955ms total_cost_time:11525.179624557495ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:560 first_token_cost:11521.02780342102ms total_cost_time:11521.04902267456ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1047 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 560
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:568 first_token_cost:11516.887664794922ms total_cost_time:11516.90936088562ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 568
+INFO 06-24 21:57:27 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:576 first_token_cost:11512.858629226685ms total_cost_time:11512.879371643066ms,out_token_counter:1 mean_per_token_cost_time: 0.020742416381835938ms prompt_token_num:1068 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:27 [manager.py:162] detoken release req id 576
+INFO 06-24 21:57:27 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 520 in_len:1051 v_len: 1051 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.007232189178466797 s 
+INFO 06-24 21:57:27 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 528 in_len:1045 v_len: 1045 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0026750564575195312 s 
+INFO 06-24 21:57:27 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 520 in_len:1051 v_len: 1051 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.012886285781860352 s
+INFO 06-24 21:57:27 [prefill_trans_obj.py:166] prefill node kv move task req_id: 520 not send, decode is busy
+INFO 06-24 21:57:27 [prefill_trans_obj.py:166] prefill node kv move task req_id: 528 not send, decode is busy
+INFO 06-24 21:57:27 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 536 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.011229753494262695 s 
+INFO 06-24 21:57:27 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 544 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.006566762924194336 s 
+INFO 06-24 21:57:27 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 552 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0017480850219726562 s 
+INFO 06-24 21:57:28 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 536 in_len:1049 v_len: 1049 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009779691696166992 s
+INFO 06-24 21:57:28 [prefill_trans_obj.py:166] prefill node kv move task req_id: 536 not send, decode is busy
+INFO 06-24 21:57:28 [prefill_trans_obj.py:166] prefill node kv move task req_id: 544 not send, decode is busy
+INFO 06-24 21:57:28 [prefill_trans_obj.py:166] prefill node kv move task req_id: 552 not send, decode is busy
+INFO 06-24 21:57:28 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 560 in_len:1047 v_len: 1047 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.007314920425415039 s 
+INFO 06-24 21:57:28 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 568 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0025243759155273438 s 
+INFO 06-24 21:57:28 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 520
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 528
+DEBUG 06-24 21:57:28 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:28 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:28 [infer_batch.py:156] radix refed token num 6346
+DEBUG 06-24 21:57:28 [infer_batch.py:156] radix hold token num 15840
+DEBUG 06-24 21:57:28 [infer_batch.py:156] mem manager can alloc token num 552
+DEBUG 06-24 21:57:28 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:28 [batch.py:51] router release req id 520
+INFO 06-24 21:57:28 [batch.py:51] router release req id 528
+INFO 06-24 21:57:28 [batch.py:51] router release req id 536
+INFO 06-24 21:57:28 [batch.py:51] router release req id 544
+INFO 06-24 21:57:28 [batch.py:51] router release req id 552
+INFO 06-24 21:57:28 [batch.py:51] router release req id 560
+INFO 06-24 21:57:28 [batch.py:51] router release req id 568
+INFO 06-24 21:57:28 [batch.py:51] router release req id 576
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 536
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 544
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 552
+INFO 06-24 21:57:28 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 560 in_len:1047 v_len: 1047 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.009374856948852539 s
+INFO 06-24 21:57:28 [prefill_trans_obj.py:166] prefill node kv move task req_id: 560 not send, decode is busy
+INFO 06-24 21:57:28 [prefill_trans_obj.py:166] prefill node kv move task req_id: 568 not send, decode is busy
+INFO 06-24 21:57:28 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 576 in_len:1068 v_len: 1068 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0072596073150634766 s 
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 560
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 568
+INFO 06-24 21:57:28 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 576 in_len:1068 v_len: 1068 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010232925415039062 s
+INFO 06-24 21:57:28 [prefill_trans_obj.py:166] prefill node kv move task req_id: 576 not send, decode is busy
+INFO 06-24 21:57:28 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 576
+DEBUG 06-24 21:57:28 [manager.py:391] Prefill Batch: batch_id=67017997309100946241665083556177100204, time:1750773448.0456958s req_ids:[584, 592, 600, 608, 616, 624, 632] 
+DEBUG 06-24 21:57:28 [manager.py:391] 
+INFO 06-24 21:57:28 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:57:28 [statics_utils.py:24] mean first cost: 7008.399413691626 ms
+INFO 06-24 21:57:28 [statics_utils.py:24] mean per token cost: 0.027954578399658203 ms
+INFO 06-24 21:57:28 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 584
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 592
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:584 first_token_cost:12511.72685623169ms total_cost_time:12511.76929473877ms,out_token_counter:1 mean_per_token_cost_time: 0.042438507080078125ms prompt_token_num:1068 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:592 first_token_cost:12507.427453994751ms total_cost_time:12507.45415687561ms,out_token_counter:1 mean_per_token_cost_time: 0.026702880859375ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 600
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:600 first_token_cost:12503.117799758911ms total_cost_time:12503.142595291138ms,out_token_counter:1 mean_per_token_cost_time: 0.0247955322265625ms prompt_token_num:1071 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 608
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:608 first_token_cost:12498.862743377686ms total_cost_time:12498.884439468384ms,out_token_counter:1 mean_per_token_cost_time: 0.021696090698242188ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:616 first_token_cost:12494.251251220703ms total_cost_time:12494.272232055664ms,out_token_counter:1 mean_per_token_cost_time: 0.0209808349609375ms prompt_token_num:1062 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 616
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:624 first_token_cost:12489.952325820923ms total_cost_time:12489.9742603302ms,out_token_counter:1 mean_per_token_cost_time: 0.02193450927734375ms prompt_token_num:1054 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:632 first_token_cost:12485.601663589478ms total_cost_time:12485.623121261597ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1055 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 624
+INFO 06-24 21:57:28 [manager.py:162] detoken release req id 632
+INFO 06-24 21:57:28 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 584 in_len:1068 v_len: 1068 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.002023935317993164 s 
+INFO 06-24 21:57:29 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 584 in_len:1068 v_len: 1068 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011422157287597656 s
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 584 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 592 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009478092193603516 s 
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 600 in_len:1071 v_len: 1071 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0046541690826416016 s 
+INFO 06-24 21:57:29 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 592 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.008721351623535156 s
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 592 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 600 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 608 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.009311199188232422 s 
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 616 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004762172698974609 s 
+INFO 06-24 21:57:29 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 608 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.0055027008056640625 s
+INFO 06-24 21:57:29 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 608 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 616 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 584
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 624 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.005312681198120117 s 
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 632 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0006544589996337891 s 
+DEBUG 06-24 21:57:29 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:29 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:29 [infer_batch.py:156] radix refed token num 6347
+DEBUG 06-24 21:57:29 [infer_batch.py:156] radix hold token num 15857
+DEBUG 06-24 21:57:29 [infer_batch.py:156] mem manager can alloc token num 535
+DEBUG 06-24 21:57:29 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 592
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 600
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 608
+INFO 06-24 21:57:29 [batch.py:51] router release req id 584
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 616
+INFO 06-24 21:57:29 [batch.py:51] router release req id 592
+INFO 06-24 21:57:29 [batch.py:51] router release req id 600
+INFO 06-24 21:57:29 [batch.py:51] router release req id 608
+INFO 06-24 21:57:29 [batch.py:51] router release req id 616
+INFO 06-24 21:57:29 [batch.py:51] router release req id 624
+INFO 06-24 21:57:29 [batch.py:51] router release req id 632
+INFO 06-24 21:57:29 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 624 in_len:1054 v_len: 1054 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007875204086303711 s
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 624 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_trans_obj.py:166] prefill node kv move task req_id: 632 not send, decode is busy
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 624
+INFO 06-24 21:57:29 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 632
+DEBUG 06-24 21:57:29 [manager.py:391] Prefill Batch: batch_id=47045407989267376152470951590131429777, time:1750773449.049589s req_ids:[640, 648, 656, 664, 672, 680, 688] 
+DEBUG 06-24 21:57:29 [manager.py:391] 
+INFO 06-24 21:57:29 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 640
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 648
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:640 first_token_cost:13478.892087936401ms total_cost_time:13478.918552398682ms,out_token_counter:1 mean_per_token_cost_time: 0.026464462280273438ms prompt_token_num:1058 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:648 first_token_cost:13474.328994750977ms total_cost_time:13474.342823028564ms,out_token_counter:1 mean_per_token_cost_time: 0.013828277587890625ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 656
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:656 first_token_cost:13469.989776611328ms total_cost_time:13470.000267028809ms,out_token_counter:1 mean_per_token_cost_time: 0.01049041748046875ms prompt_token_num:1056 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:664 first_token_cost:13465.176105499268ms total_cost_time:13465.185642242432ms,out_token_counter:1 mean_per_token_cost_time: 0.0095367431640625ms prompt_token_num:1043 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 664
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:672 first_token_cost:13460.595607757568ms total_cost_time:13460.603952407837ms,out_token_counter:1 mean_per_token_cost_time: 0.008344650268554688ms prompt_token_num:1062 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:680 first_token_cost:13455.767631530762ms total_cost_time:13455.775499343872ms,out_token_counter:1 mean_per_token_cost_time: 0.007867813110351562ms prompt_token_num:1060 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 672
+INFO 06-24 21:57:29 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:688 first_token_cost:13451.16138458252ms total_cost_time:13451.169967651367ms,out_token_counter:1 mean_per_token_cost_time: 0.00858306884765625ms prompt_token_num:1069 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 680
+INFO 06-24 21:57:29 [manager.py:162] detoken release req id 688
+INFO 06-24 21:57:29 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 640 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.003117799758911133 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 640 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.006980419158935547 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 640 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 648 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0006282329559326172 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 648 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.003368854522705078 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 648 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 656 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004578828811645508 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 656 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.0031185150146484375 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 656 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 664 in_len:1043 v_len: 1043 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.008547067642211914 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 664 in_len:1043 v_len: 1043 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.003646373748779297 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 664 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 672 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0026831626892089844 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 672 in_len:1062 v_len: 1062 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.002583026885986328 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 672 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 680 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.005922794342041016 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 680 in_len:1060 v_len: 1060 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.003292560577392578 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 680 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 640
+DEBUG 06-24 21:57:30 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:30 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:30 [infer_batch.py:156] radix refed token num 6342
+DEBUG 06-24 21:57:30 [infer_batch.py:156] radix hold token num 15883
+DEBUG 06-24 21:57:30 [infer_batch.py:156] mem manager can alloc token num 509
+DEBUG 06-24 21:57:30 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 648
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 656
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 664
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 672
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 680
+INFO 06-24 21:57:30 [batch.py:51] router release req id 640
+INFO 06-24 21:57:30 [batch.py:51] router release req id 648
+INFO 06-24 21:57:30 [batch.py:51] router release req id 656
+INFO 06-24 21:57:30 [batch.py:51] router release req id 664
+INFO 06-24 21:57:30 [batch.py:51] router release req id 672
+INFO 06-24 21:57:30 [batch.py:51] router release req id 680
+INFO 06-24 21:57:30 [batch.py:51] router release req id 688
+INFO 06-24 21:57:30 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 688 in_len:1069 v_len: 1069 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.012074470520019531 s 
+INFO 06-24 21:57:30 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 688 in_len:1069 v_len: 1069 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010558128356933594 s
+INFO 06-24 21:57:30 [prefill_trans_obj.py:166] prefill node kv move task req_id: 688 not send, decode is busy
+INFO 06-24 21:57:30 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 688
+DEBUG 06-24 21:57:30 [manager.py:391] Prefill Batch: batch_id=248254461732847854709012582094359501133, time:1750773450.086136s req_ids:[696, 704, 712, 720, 728, 736, 744, 752] 
+DEBUG 06-24 21:57:30 [manager.py:391] 
+INFO 06-24 21:57:31 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 696
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 704
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:696 first_token_cost:14621.362209320068ms total_cost_time:14621.402740478516ms,out_token_counter:1 mean_per_token_cost_time: 0.040531158447265625ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:704 first_token_cost:14617.124557495117ms total_cost_time:14617.151260375977ms,out_token_counter:1 mean_per_token_cost_time: 0.026702880859375ms prompt_token_num:1056 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 712
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:712 first_token_cost:14612.886428833008ms total_cost_time:14612.910747528076ms,out_token_counter:1 mean_per_token_cost_time: 0.024318695068359375ms prompt_token_num:1048 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 720
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:720 first_token_cost:14608.647346496582ms total_cost_time:14608.66928100586ms,out_token_counter:1 mean_per_token_cost_time: 0.02193450927734375ms prompt_token_num:1061 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:728 first_token_cost:14604.609727859497ms total_cost_time:14604.631900787354ms,out_token_counter:1 mean_per_token_cost_time: 0.022172927856445312ms prompt_token_num:1055 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 728
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:736 first_token_cost:14600.08454322815ms total_cost_time:14600.10552406311ms,out_token_counter:1 mean_per_token_cost_time: 0.0209808349609375ms prompt_token_num:1055 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 736
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:744 first_token_cost:14595.526695251465ms total_cost_time:14595.547914505005ms,out_token_counter:1 mean_per_token_cost_time: 0.021219253540039062ms prompt_token_num:1047 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:752 first_token_cost:14591.10713005066ms total_cost_time:14591.128587722778ms,out_token_counter:1 mean_per_token_cost_time: 0.021457672119140625ms prompt_token_num:1053 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 744
+INFO 06-24 21:57:31 [manager.py:162] detoken release req id 752
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 696 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.005808353424072266 s 
+INFO 06-24 21:57:31 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 696 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010880708694458008 s
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 696 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 704 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010863780975341797 s 
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 712 in_len:1048 v_len: 1048 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0048520565032958984 s 
+INFO 06-24 21:57:31 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 704 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011660099029541016 s
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 704 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 712 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 720 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010832786560058594 s 
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 728 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004339456558227539 s 
+INFO 06-24 21:57:31 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 720 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011260509490966797 s
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 720 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 728 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 736 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010160446166992188 s 
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 744 in_len:1047 v_len: 1047 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004326820373535156 s 
+INFO 06-24 21:57:31 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 696
+DEBUG 06-24 21:57:31 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:57:31 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:31 [infer_batch.py:156] radix refed token num 7375
+DEBUG 06-24 21:57:31 [infer_batch.py:156] radix hold token num 15828
+DEBUG 06-24 21:57:31 [infer_batch.py:156] mem manager can alloc token num 564
+DEBUG 06-24 21:57:31 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 704
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 712
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 720
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 728
+INFO 06-24 21:57:31 [batch.py:51] router release req id 696
+INFO 06-24 21:57:31 [batch.py:51] router release req id 704
+INFO 06-24 21:57:31 [batch.py:51] router release req id 712
+INFO 06-24 21:57:31 [batch.py:51] router release req id 720
+INFO 06-24 21:57:31 [batch.py:51] router release req id 728
+INFO 06-24 21:57:31 [batch.py:51] router release req id 736
+INFO 06-24 21:57:31 [batch.py:51] router release req id 744
+INFO 06-24 21:57:31 [batch.py:51] router release req id 752
+INFO 06-24 21:57:31 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 736 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011093854904174805 s
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 736 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 744 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 752 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010010242462158203 s 
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 736
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 744
+INFO 06-24 21:57:31 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 752 in_len:1053 v_len: 1053 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.008131027221679688 s
+INFO 06-24 21:57:31 [prefill_trans_obj.py:166] prefill node kv move task req_id: 752 not send, decode is busy
+INFO 06-24 21:57:31 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 752
+DEBUG 06-24 21:57:31 [manager.py:391] Prefill Batch: batch_id=159894059491602842148363584452156276559, time:1750773451.243592s req_ids:[760, 768, 776, 784, 792, 800] 
+DEBUG 06-24 21:57:31 [manager.py:391] 
+INFO 06-24 21:57:32 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:57:32 [manager.py:162] detoken release req id 760
+INFO 06-24 21:57:32 [manager.py:162] detoken release req id 768
+INFO 06-24 21:57:32 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:760 first_token_cost:15483.526229858398ms total_cost_time:15483.655452728271ms,out_token_counter:1 mean_per_token_cost_time: 0.12922286987304688ms prompt_token_num:1064 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:32 [manager.py:162] detoken release req id 776
+INFO 06-24 21:57:32 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:768 first_token_cost:15479.77352142334ms total_cost_time:15479.809999465942ms,out_token_counter:1 mean_per_token_cost_time: 0.03647804260253906ms prompt_token_num:1052 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:32 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:776 first_token_cost:15475.495100021362ms total_cost_time:15475.528001785278ms,out_token_counter:1 mean_per_token_cost_time: 0.032901763916015625ms prompt_token_num:1057 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:32 [manager.py:162] detoken release req id 784
+INFO 06-24 21:57:32 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:784 first_token_cost:15470.622777938843ms total_cost_time:15470.65258026123ms,out_token_counter:1 mean_per_token_cost_time: 0.029802322387695312ms prompt_token_num:1051 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:32 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:792 first_token_cost:15466.00604057312ms total_cost_time:15466.034650802612ms,out_token_counter:1 mean_per_token_cost_time: 0.0286102294921875ms prompt_token_num:1061 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:32 [manager.py:162] detoken release req id 792
+INFO 06-24 21:57:32 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:57:16 lightllm_req_id:800 first_token_cost:15461.296558380127ms total_cost_time:15461.327075958252ms,out_token_counter:1 mean_per_token_cost_time: 0.030517578125ms prompt_token_num:1065 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:57:32 [manager.py:162] detoken release req id 800
+INFO 06-24 21:57:32 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 760 in_len:1064 v_len: 1064 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010465860366821289 s 
+INFO 06-24 21:57:32 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 768 in_len:1052 v_len: 1052 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004469871520996094 s 
+INFO 06-24 21:57:32 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 760 in_len:1064 v_len: 1064 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011321306228637695 s
+INFO 06-24 21:57:32 [prefill_trans_obj.py:166] prefill node kv move task req_id: 760 not send, decode is busy
+INFO 06-24 21:57:32 [prefill_trans_obj.py:166] prefill node kv move task req_id: 768 not send, decode is busy
+INFO 06-24 21:57:32 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 776 in_len:1057 v_len: 1057 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.010179758071899414 s 
+INFO 06-24 21:57:32 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 784 in_len:1051 v_len: 1051 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.004068851470947266 s 
+INFO 06-24 21:57:32 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+DEBUG 06-24 21:57:32 [req_manager.py:78] freed all request size 136
+INFO 06-24 21:57:32 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 776 in_len:1057 v_len: 1057 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.010899782180786133 s
+INFO 06-24 21:57:32 [prefill_trans_obj.py:166] prefill node kv move task req_id: 776 not send, decode is busy
+INFO 06-24 21:57:32 [prefill_trans_obj.py:166] prefill node kv move task req_id: 784 not send, decode is busy
+DEBUG 06-24 21:57:32 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:57:32 [infer_batch.py:156] radix refed token num 6350
+DEBUG 06-24 21:57:32 [infer_batch.py:156] radix hold token num 15847
+DEBUG 06-24 21:57:32 [infer_batch.py:156] mem manager can alloc token num 545
+DEBUG 06-24 21:57:32 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:57:32 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 792 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.00947117805480957 s 
+INFO 06-24 21:57:32 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 800 in_len:1065 v_len: 1065 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.003470897674560547 s 
+INFO 06-24 21:57:32 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 760
+INFO 06-24 21:57:32 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 768
+INFO 06-24 21:57:32 [batch.py:51] router release req id 760
+INFO 06-24 21:57:32 [batch.py:51] router release req id 768
+INFO 06-24 21:57:32 [batch.py:51] router release req id 776
+INFO 06-24 21:57:32 [batch.py:51] router release req id 784
+INFO 06-24 21:57:32 [batch.py:51] router release req id 792
+INFO 06-24 21:57:32 [batch.py:51] router release req id 800
+INFO 06-24 21:57:32 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 776
+INFO 06-24 21:57:32 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 784
+INFO 06-24 21:57:32 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 792 in_len:1061 v_len: 1061 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.011971712112426758 s
+INFO 06-24 21:57:32 [prefill_trans_obj.py:166] prefill node kv move task req_id: 792 not send, decode is busy
+INFO 06-24 21:57:32 [prefill_trans_obj.py:166] prefill node kv move task req_id: 800 not send, decode is busy
+INFO 06-24 21:57:32 [shm_req_manager.py:119] all shm req has been release ok
+INFO 06-24 21:57:32 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 792
+INFO 06-24 21:57:32 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 800
+DEBUG 06-24 21:57:36 [manager.py:283] dp_i 0 frozen token num: 0 
+DEBUG 06-24 21:57:36 [manager.py:283] 
+DEBUG 06-24 21:57:36 [manager.py:284] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-24 21:57:36 [manager.py:284] 
+INFO 06-24 21:57:58 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:57:58 [statics_utils.py:24] mean first cost: 8960.396783351898 ms
+INFO 06-24 21:57:58 [statics_utils.py:24] mean per token cost: 0.027647018432617188 ms
+WARNING 06-24 21:58:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:18 [manager.py:590] aborted group_request_id not exist
+INFO 06-24 21:58:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:808 
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_logprobs_99 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_logprobs_99
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_prompts_99 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_prompts_99
+INFO 06-24 21:58:18 [manager.py:224] router recive req id 808 cost time 0.03365135192871094 s
+INFO 06-24 21:58:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:816 
+INFO 06-24 21:58:18 [manager.py:68] detokenization recv req id 808 cost time 0.035724639892578125 s
+DEBUG 06-24 21:58:18 [manager.py:391] Prefill Batch: batch_id=116507823906490739156615915078303123438, time:1750773498.0802565s req_ids:[808] 
+DEBUG 06-24 21:58:18 [manager.py:391] 
+DEBUG 06-24 21:58:18 [manager.py:248] dp_i 0 current batch size: 1 
+DEBUG 06-24 21:58:18 [manager.py:248] dp_i 0 paused req num: 0 
+DEBUG 06-24 21:58:18 [manager.py:248] dp_i 0 frozen token num: 0 
+DEBUG 06-24 21:58:18 [manager.py:248] dp_i 0 estimated_peak_token_count: 1059 
+DEBUG 06-24 21:58:18 [manager.py:248] dp_i 0 token used ratio: 0.0 not contain prompt cache tree unrefed token
+DEBUG 06-24 21:58:18 [manager.py:248] dp_i 0 token used ratio: 0.9667520741825281 contain prompt cache tree unrefed token
+DEBUG 06-24 21:58:18 [stats.py:37] Avg tokens(prompt+generate) throughput:  764.296 tokens/s
+DEBUG 06-24 21:58:18 [stats.py:37] Avg prompt tokens throughput:            762.754 tokens/s
+DEBUG 06-24 21:58:18 [stats.py:37] Avg generate tokens throughput:            1.541 tokens/s
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_logprobs_98 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_logprobs_98
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_prompts_98 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_prompts_98
+INFO 06-24 21:58:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:824 
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_logprobs_97 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_logprobs_97
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_prompts_97 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_prompts_97
+INFO 06-24 21:58:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:832 
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_logprobs_96 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_logprobs_96
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_prompts_96 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_prompts_96
+INFO 06-24 21:58:18 [manager.py:336] recieved req X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:840 
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_logprobs_95 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_logprobs_95
+WARNING 06-24 21:58:18 [shm_array.py:25] size not same, unlink shm 2732_0_shm_prompts_95 and create again
+INFO 06-24 21:58:18 [shm_array.py:30] create shm 2732_0_shm_prompts_95
+INFO 06-24 21:58:18 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:58:18 [manager.py:162] detoken release req id 808
+INFO 06-24 21:58:18 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:808 first_token_cost:207.29327201843262ms total_cost_time:207.34190940856934ms,out_token_counter:1 mean_per_token_cost_time: 0.04863739013671875ms prompt_token_num:1058 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:58:18 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+DEBUG 06-24 21:58:18 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:58:18 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:58:18 [infer_batch.py:156] radix refed token num 1058
+DEBUG 06-24 21:58:18 [infer_batch.py:156] radix hold token num 15836
+DEBUG 06-24 21:58:18 [infer_batch.py:156] mem manager can alloc token num 556
+DEBUG 06-24 21:58:18 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:58:18 [batch.py:51] router release req id 808
+INFO 06-24 21:58:18 [manager.py:224] router recive req id 816 cost time 0.17960238456726074 s
+INFO 06-24 21:58:18 [manager.py:224] router recive req id 824 cost time 0.16028761863708496 s
+INFO 06-24 21:58:18 [manager.py:68] detokenization recv req id 816 cost time 0.1804039478302002 s
+INFO 06-24 21:58:18 [manager.py:224] router recive req id 832 cost time 0.14226198196411133 s
+INFO 06-24 21:58:18 [manager.py:68] detokenization recv req id 824 cost time 0.1611027717590332 s
+INFO 06-24 21:58:18 [manager.py:224] router recive req id 840 cost time 0.12623143196105957 s
+INFO 06-24 21:58:18 [manager.py:68] detokenization recv req id 832 cost time 0.14295721054077148 s
+INFO 06-24 21:58:18 [manager.py:68] detokenization recv req id 840 cost time 0.12695002555847168 s
+INFO 06-24 21:58:18 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 808 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.005694866180419922 s 
+INFO 06-24 21:58:18 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 808 in_len:1058 v_len: 1058 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.00798654556274414 s
+INFO 06-24 21:58:18 [prefill_trans_obj.py:166] prefill node kv move task req_id: 808 not send, decode is busy
+INFO 06-24 21:58:18 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 808
+DEBUG 06-24 21:58:18 [manager.py:391] Prefill Batch: batch_id=180573588197561696527024042514760098171, time:1750773498.271277s req_ids:[816, 824, 832, 840] 
+DEBUG 06-24 21:58:18 [manager.py:391] 
+INFO 06-24 21:58:18 [prefill_impl.py:93] prefill_req_handle_and_frozen_tokens
+INFO 06-24 21:58:18 [manager.py:162] detoken release req id 816
+INFO 06-24 21:58:18 [manager.py:162] detoken release req id 824
+INFO 06-24 21:58:18 [manager.py:162] detoken release req id 832
+INFO 06-24 21:58:18 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:816 first_token_cost:766.4666175842285ms total_cost_time:766.5369510650635ms,out_token_counter:1 mean_per_token_cost_time: 0.07033348083496094ms prompt_token_num:1046 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:58:18 [manager.py:162] detoken release req id 840
+INFO 06-24 21:58:18 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:824 first_token_cost:747.0569610595703ms total_cost_time:747.0846176147461ms,out_token_counter:1 mean_per_token_cost_time: 0.02765655517578125ms prompt_token_num:1055 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:58:18 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:832 first_token_cost:728.865385055542ms total_cost_time:728.8897037506104ms,out_token_counter:1 mean_per_token_cost_time: 0.024318695068359375ms prompt_token_num:1056 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:58:18 [manager.py:550] X-Request-Id: X-Session-Id: start_time:2025-06-24 21:58:18 lightllm_req_id:840 first_token_cost:712.9158973693848ms total_cost_time:712.9440307617188ms,out_token_counter:1 mean_per_token_cost_time: 0.028133392333984375ms prompt_token_num:1059 prompt_cache_len:0 prompt_cache_ratio:0.0 mtp_avg_token_per_step:1.0 
+INFO 06-24 21:58:18 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 816 in_len:1046 v_len: 1046 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.007913351058959961 s 
+INFO 06-24 21:58:18 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 824 in_len:1055 v_len: 1055 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0014026165008544922 s 
+INFO 06-24 21:58:18 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 816 in_len:1046 v_len: 1046 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007066965103149414 s
+INFO 06-24 21:58:18 [prefill_trans_obj.py:166] prefill node kv move task req_id: 816 not send, decode is busy
+INFO 06-24 21:58:18 [prefill_trans_obj.py:166] prefill node kv move task req_id: 824 not send, decode is busy
+INFO 06-24 21:58:18 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 832 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.0028319358825683594 s 
+INFO 06-24 21:58:18 [prefill_impl.py:145] prefill_req_handle_and_frozen_tokens end
+INFO 06-24 21:58:18 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 816
+INFO 06-24 21:58:18 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 824
+DEBUG 06-24 21:58:18 [req_manager.py:78] freed all request size 136
+DEBUG 06-24 21:58:18 [infer_batch.py:156] free a batch state:
+DEBUG 06-24 21:58:18 [infer_batch.py:156] radix refed token num 2115
+DEBUG 06-24 21:58:18 [infer_batch.py:156] radix hold token num 15834
+DEBUG 06-24 21:58:18 [infer_batch.py:156] mem manager can alloc token num 558
+DEBUG 06-24 21:58:18 [infer_batch.py:156] mem manager total size 16392
+INFO 06-24 21:58:18 [batch.py:51] router release req id 816
+INFO 06-24 21:58:18 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 832 in_len:1056 v_len: 1056 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007506370544433594 s
+INFO 06-24 21:58:18 [batch.py:51] router release req id 824
+INFO 06-24 21:58:18 [prefill_trans_obj.py:166] prefill node kv move task req_id: 832 not send, decode is busy
+INFO 06-24 21:58:18 [prefill_trans_obj.py:140] request_kv_trans_loop get task id: 840 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc queue time 0.003538370132446289 s 
+INFO 06-24 21:58:18 [batch.py:51] router release req id 832
+INFO 06-24 21:58:18 [batch.py:51] router release req id 840
+INFO 06-24 21:58:18 [prefill_trans_obj.py:154] request_kv_trans_loop request_data_transfer ok, id: 840 in_len:1059 v_len: 1059 move_len: None dp_index:0 connect_id: 11e3f6d2-2b1a-4c7c-8ebe-e30ab6464dbc cost time: 0.007813692092895508 s
+INFO 06-24 21:58:18 [prefill_trans_obj.py:166] prefill node kv move task req_id: 840 not send, decode is busy
+INFO 06-24 21:58:18 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 832
+INFO 06-24 21:58:18 [prefill_infer_rpyc.py:38] unfrozen tokens for req id: 840
+INFO 06-24 21:58:18 [shm_req_manager.py:119] all shm req has been release ok
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:19 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:20 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:21 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:22 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:23 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:24 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:25 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:26 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:28 [manager.py:590] aborted group_request_id not exist
+INFO 06-24 21:58:28 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:58:28 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 21:58:28 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:29 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:30 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:31 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:32 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:32 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:32 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:32 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:32 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:58:32 [manager.py:590] aborted group_request_id not exist
+DEBUG 06-24 21:58:38 [manager.py:283] dp_i 0 frozen token num: 0 
+DEBUG 06-24 21:58:38 [manager.py:283] 
+DEBUG 06-24 21:58:38 [manager.py:284] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-24 21:58:38 [manager.py:284] 
+INFO 06-24 21:58:58 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:58:58 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 21:58:58 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+WARNING 06-24 21:59:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:59:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:59:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:59:18 [manager.py:590] aborted group_request_id not exist
+WARNING 06-24 21:59:18 [manager.py:590] aborted group_request_id not exist
+INFO 06-24 21:59:28 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:59:28 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 21:59:28 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+DEBUG 06-24 21:59:38 [manager.py:283] dp_i 0 frozen token num: 0 
+DEBUG 06-24 21:59:38 [manager.py:283] 
+DEBUG 06-24 21:59:38 [manager.py:284] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-24 21:59:38 [manager.py:284] 
+INFO 06-24 21:59:58 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 21:59:58 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 21:59:58 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+INFO 06-24 22:00:28 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 22:00:28 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 22:00:28 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+DEBUG 06-24 22:00:39 [manager.py:283] dp_i 0 frozen token num: 0 
+DEBUG 06-24 22:00:39 [manager.py:283] 
+DEBUG 06-24 22:00:39 [manager.py:284] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-24 22:00:39 [manager.py:284] 
+INFO 06-24 22:00:58 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 22:00:58 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 22:00:58 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+INFO 06-24 22:01:28 [pd_loop.py:42] get pd_master_objs {0: PD_Master_Obj(node_id=0, host_ip_port='127.0.1.1:60011')}
+INFO 06-24 22:01:28 [statics_utils.py:24] mean first cost: 8563.83120445978 ms
+INFO 06-24 22:01:28 [statics_utils.py:24] mean per token cost: 0.028226489112490698 ms
+ERROR 06-24 22:01:39 [pd_loop.py:120] connetion to pd_master has error
+ERROR 06-24 22:01:39 [pd_loop.py:121] no close frame received or sent
+ERROR 06-24 22:01:39 [pd_loop.py:121] Traceback (most recent call last):
+ERROR 06-24 22:01:39 [pd_loop.py:121]   File "/home/youwei/bzh/lightllm-pd/lightllm/server/httpserver/pd_loop.py", line 99, in _pd_handle_task
+ERROR 06-24 22:01:39 [pd_loop.py:121]     recv_bytes = await websocket.recv()
+ERROR 06-24 22:01:39 [pd_loop.py:121]   File "/home/youwei/anaconda3/envs/lightllm_pd/lib/python3.9/site-packages/websockets/asyncio/connection.py", line 322, in recv
+ERROR 06-24 22:01:39 [pd_loop.py:121]     raise self.protocol.close_exc from self.recv_exc
+ERROR 06-24 22:01:39 [pd_loop.py:121] websockets.exceptions.ConnectionClosedError: no close frame received or sent
+DEBUG 06-24 22:01:40 [manager.py:283] dp_i 0 frozen token num: 0 
+DEBUG 06-24 22:01:40 [manager.py:283] 
+DEBUG 06-24 22:01:40 [manager.py:284] dp_i 0 estimated_peak_token_count: 0 
+DEBUG 06-24 22:01:40 [manager.py:284] 
+INFO 06-24 22:01:41 [api_start.py:25] Received SIGINT (Ctrl+C), forcing immediate exit...
+
+ERROR 06-24 22:01:41 [prefill_kv_move_manager.py:96] 
+Traceback (most recent call last):
+  File "/home/youwei/bzh/lightllm-pd/lightllm/server/router/model_infer/mode_backend/continues_batch/pd_mode/prefill_node_impl/prefill_kv_move_manager.py", line 85, in task_dispatcher_loop
+    move_task: KVMoveTask = self.info_queue.get()
+  File "/home/youwei/anaconda3/envs/lightllm_pd/lib/python3.9/multiprocessing/queues.py", line 103, in get
+    res = self._recv_bytes()
+  File "/home/youwei/anaconda3/envs/lightllm_pd/lib/python3.9/multiprocessing/connection.py", line 216, in recv_bytes
+    buf = self._recv_bytes(maxlength)
+  File "/home/youwei/anaconda3/envs/lightllm_pd/lib/python3.9/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/home/youwei/anaconda3/envs/lightllm_pd/lib/python3.9/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+KeyboardInterrupt
+INFO 06-24 22:01:41 [start_utils.py:106] Killing child process 1414656
+INFO 06-24 22:01:41 [start_utils.py:106] Killing child process 1415230
+INFO 06-24 22:01:41 [start_utils.py:108] Killing parent process 1414655
+INFO 06-24 22:01:41 [start_utils.py:53] Killing parent process 1411713
+INFO 06-24 22:01:41 [api_start.py:25] Received SIGINT (Ctrl+C), forcing immediate exit...
+INFO 06-24 22:01:41 [start_utils.py:108] Killing parent process 1414655
+INFO 06-24 22:01:41 [start_utils.py:51] Killing child process 1413850
+INFO 06-24 22:01:41 [start_utils.py:51] Killing child process 1414262
+INFO 06-24 22:01:41 [start_utils.py:53] Killing parent process 1411872
+INFO 06-24 22:01:41 [api_start.py:25] Received SIGINT (Ctrl+C), forcing immediate exit...
+INFO 06-24 22:01:41 [start_utils.py:108] Killing parent process 1414655
+INFO 06-24 22:01:41 [start_utils.py:51] Killing child process 1413850
+INFO 06-24 22:01:41 [start_utils.py:53] Killing parent process 1411872
+INFO 06-24 22:01:41 [api_start.py:25] Received SIGINT (Ctrl+C), forcing immediate exit...
+INFO 06-24 22:01:42 [start_utils.py:108] Killing parent process 1414655
+INFO 06-24 22:01:42 [start_utils.py:53] Killing parent process 1411872
+INFO 06-24 22:01:42 [start_utils.py:69] All processes terminated gracefully.
+INFO 06-24 22:01:42 [api_start.py:30] All processes have been forcefully terminated.
