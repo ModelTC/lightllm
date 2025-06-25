@@ -240,11 +240,11 @@ class HttpServerManagerForPDMaster:
         sampling_params.suggested_dp_index = up_status_event.upkv_status.dp_index
 
         remaining_tokens = old_max_new_tokens - 1
-        pd_chunk_size = self.args.pd_chunk_size
+        chunked_max_new_token = self.args.chunked_max_new_token
         current_prompt_ids = list(prompt_ids)
 
         while remaining_tokens > 0:
-            chunk_size = min(remaining_tokens, pd_chunk_size) if pd_chunk_size > 0 else remaining_tokens
+            chunk_size = min(remaining_tokens, chunked_max_new_token) if chunked_max_new_token > 0 else remaining_tokens
             sampling_params.max_new_tokens = chunk_size
             await d_node.websocket.send_bytes(
                 pickle.dumps((ObjType.REQ, (current_prompt_ids, sampling_params, multimodal_params)))

@@ -60,6 +60,12 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default="default_model_name",
         help="just help to distinguish internal model name, use 'host:port/get_model_name' to get",
     )
+    parser.add_argument(
+        "--chunked_max_new_token",
+        type=int,
+        default=0,
+        help="""Specifies the chunk size for pd mode.""",
+    )
 
     parser.add_argument(
         "--model_dir",
@@ -433,11 +439,5 @@ def make_argument_parser() -> argparse.ArgumentParser:
         Increasing this value allows for more predictions,
         but ensure that the model is compatible with the specified step count.
         currently, deepseekv3 model only support 1 step""",
-    )
-    parser.add_argument(
-        "--pd_chunk_size",
-        type=int,
-        default=0,
-        help="""Specifies the chunk size for pd mode.""",
     )
     return parser
