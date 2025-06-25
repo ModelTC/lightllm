@@ -268,8 +268,12 @@ class HttpServerManagerForPDMaster:
                         if remaining_tokens == 0:
                             final_finish_status = FinishStatus(FinishStatus.FINISHED_LENGTH)
                             chunk_finished = True
+                        # reach stop token, really finished
+                        elif finish_status == FinishStatus.FINISHED_STOP:
+                            final_finish_status = FinishStatus(FinishStatus.FINISHED_STOP)
+                            chunk_finished = True
                         # reach chunk size, not really finished
-                        elif final_finish_status.is_finished():
+                        elif finish_status == FinishStatus.FINISHED_LENGTH:
                             final_finish_status = FinishStatus(FinishStatus.NO_FINISH)
                             chunk_finished = True
 
