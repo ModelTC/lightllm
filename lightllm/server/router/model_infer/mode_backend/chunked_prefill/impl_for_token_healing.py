@@ -57,15 +57,14 @@ class TokenHealingBackend(ChunkedPrefillBackend):
 
         # 再 prefill
         if self.chunked_prefill_state.need_prefill(prefill_reqs=prefill_reqs, decode_reqs=decode_reqs):
-            self._topk_repair(run_reqs=prefill_reqs)
             ContinuesBatchBackend.normal_prefill_reqs(
+                self,
                 prefill_reqs=prefill_reqs,
                 uninit_reqs=uninit_reqs,
                 ok_finished_reqs=ok_finished_reqs,
                 mask_func=self._prefill_mask_callback,
                 extra_post_req_handle_func=self._update_tokenhealing_req_prefix_str,
             )
-            self._topk_recover(run_reqs=prefill_reqs)
 
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
@@ -140,21 +139,6 @@ class TokenHealingBackend(ChunkedPrefillBackend):
                 mask[i, ok_token_id_list] = False
         else:
             mask[i, :] = False
-        return
-
-    def _topk_repair(self, run_reqs: list[InferReq]):
-        for req_obj in run_reqs:
-            if len(req_obj.prefix_str) != 0:
-                req_obj.origin_topk = req_obj.sampling_param.shm_param.top_k
-                req_obj.sampling_param.shm_param.top_k = 1
-            else:
-                req_obj.origin_topk = req_obj.sampling_param.shm_param.top_k
-        return
-
-    def _topk_recover(self, run_reqs: list[InferReq]):
-        for req_obj in run_reqs:
-            if hasattr(req_obj, "origin_topk"):
-                req_obj.sampling_param.shm_param.top_k = req_obj.origin_topk
         return
 
     def _init_prefix_infos(self, run_reqs: List[InferReq]):
