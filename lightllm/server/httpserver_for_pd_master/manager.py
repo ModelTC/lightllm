@@ -300,8 +300,6 @@ class HttpServerManagerForPDMaster:
         unfinished_count = sampling_params.best_of
         is_first_token = True
 
-        max_new_tokens = sampling_params.max_new_tokens
-
         async for sub_req_id, out_str, metadata, finish_status in self.fetch_stream(
             p_node, d_node, prompt, sampling_params, multimodal_params, request
         ):
