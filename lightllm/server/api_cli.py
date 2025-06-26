@@ -204,7 +204,7 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=0,
         help="""dp_prefill_wait_step is used to control the pacing of dp chunked prefill mode, aiming to reduce
                 computational waste during prefill. However, higher values can negatively impact the
-                first token latency. It is generally recommended to set this value between 0 and 6.""",
+                first token latency. It is generally recommended to set this value between 0 and 12.""",
     )
 
     parser.add_argument(
