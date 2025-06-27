@@ -237,19 +237,50 @@ class HttpServerManagerForPDMaster:
             raise ServerBusyError()
 
         sampling_params.move_kv_to_decode_node.initialize(None)
-        sampling_params.max_new_tokens = old_max_new_tokens - 1
         sampling_params.suggested_dp_index = up_status_event.upkv_status.dp_index
 
-        await d_node.websocket.send_bytes(pickle.dumps((ObjType.REQ, (prompt_ids, sampling_params, multimodal_params))))
+        remaining_tokens = old_max_new_tokens - 1
+        chunked_max_new_token = self.args.chunked_max_new_token
+        current_prompt_ids = list(prompt_ids)
 
-        while True:
-            await req_status.wait_to_ready()
-            if await request.is_disconnected():
-                raise Exception(f"req_id {group_request_id} disconnected")
-            if await req_status.can_read(self.req_id_to_out_inf):
-                token_list = await req_status.pop_all_tokens()
-                for sub_req_id, request_output, metadata, finish_status in token_list:
-                    yield sub_req_id, request_output, metadata, finish_status
+        while remaining_tokens > 0:
+            chunk_size = min(remaining_tokens, chunked_max_new_token) if chunked_max_new_token > 0 else remaining_tokens
+            sampling_params.max_new_tokens = chunk_size
+            await d_node.websocket.send_bytes(
+                pickle.dumps((ObjType.REQ, (current_prompt_ids, sampling_params, multimodal_params)))
+            )
+
+            chunk_finished = False
+            while not chunk_finished:
+                await req_status.wait_to_ready()
+                if await request.is_disconnected():
+                    raise Exception(f"req_id {group_request_id} disconnected")
+
+                if await req_status.can_read(self.req_id_to_out_inf):
+                    token_list = await req_status.pop_all_tokens()
+                    for sub_req_id, request_output, metadata, finish_status in token_list:
+                        current_prompt_ids.append(metadata.get("id"))
+                        remaining_tokens -= 1
+
+                        final_finish_status = finish_status
+
+                        # reach max new tokens, really finished
+                        if remaining_tokens == 0:
+                            final_finish_status = FinishStatus(FinishStatus.FINISHED_LENGTH)
+                            chunk_finished = True
+                        # reach stop token, really finished
+                        elif finish_status == FinishStatus.FINISHED_STOP:
+                            final_finish_status = FinishStatus(FinishStatus.FINISHED_STOP)
+                            chunk_finished = True
+                        # reach chunk size, not really finished
+                        elif finish_status == FinishStatus.FINISHED_LENGTH:
+                            final_finish_status = FinishStatus(FinishStatus.NO_FINISH)
+                            chunk_finished = True
+
+                        yield sub_req_id, request_output, metadata, final_finish_status
+
+                        if final_finish_status.is_finished():
+                            break
 
         return
 
