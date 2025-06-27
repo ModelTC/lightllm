@@ -41,7 +41,7 @@ class LlamaFlashInferStateExtraInfo:
             ),
         ]
         self.q_data_type = model.data_type
-        self.kv_data_type = model.data_type
+        self.kv_data_type = torch.float8_e4m3fn if "calibration_fp8kv" in model.mode else model.data_type
 
 
 @ModelRegistry("llama")
@@ -63,6 +63,8 @@ class LlamaTpPartModel(TpPartBaseModel):
             get_env_start_args().enable_flashinfer_prefill or get_env_start_args().enable_flashinfer_decode
         )
         super().__init__(kvargs)
+        if get_env_start_args().export_kv_quant_calibration:
+            self.mem_manager.offline_fp8_quant_manager.enable_calibration()
         return
 
     def _init_config(self):
