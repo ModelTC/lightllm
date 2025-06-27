@@ -1,4 +1,3 @@
-import os
 import torch
 import triton
 import torch.functional as F
@@ -135,16 +134,16 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _att_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        return rmsnorm_forward(
-            input, weight=layer_weight.att_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
-        )
+        out = self.alloc_tensor(input.shape, input.dtype)
+        rmsnorm_forward(input, weight=layer_weight.att_norm_weight_.weight, eps=self.eps_, out=out)
+        return out
 
     def _ffn_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        return rmsnorm_forward(
-            input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
-        )
+        out = self.alloc_tensor(input.shape, input.dtype)
+        rmsnorm_forward(input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_, out=out)
+        return out
 
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight

@@ -2,11 +2,10 @@ import os
 import torch
 import triton
 import triton.language as tl
-from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
 @triton.jit
-def _rms_norm_low_accuracy_kernel(
+def _rmsnorm_kernel(
     X,  # pointer to the input
     Y,  # pointer to the output
     W,  # pointer to the weights
@@ -42,15 +41,9 @@ def _rms_norm_low_accuracy_kernel(
         tl.store(Y + cols * y_stride1, y.to(Y.dtype.element_ty), mask=mask)
 
 
-def rmsnorm_forward_low_accuracy(x: torch.Tensor, weight, eps, use_custom_tensor_mananger: bool = False):
+def rmsnorm(x: torch.Tensor, weight, eps, out=None):
     # allocate output
-    if use_custom_tensor_mananger:
-        shape = x.shape
-        dtype = x.dtype
-        device = x.device
-        y = g_cache_manager.alloc_tensor(shape, dtype, device=device)
-    else:
-        y = torch.empty_like(x)
+    y = torch.empty_like(x) if out is None else out
     # reshape input data into 2D tensor
     x_arg = x.view(-1, x.shape[-1])
     y_arg = y.view(-1, x.shape[-1])
@@ -68,7 +61,7 @@ def rmsnorm_forward_low_accuracy(x: torch.Tensor, weight, eps, use_custom_tensor
     if BLOCK_SIZE > 16384:
         BLOCK_SIZE = 16384
     # enqueue kernel
-    _rms_norm_low_accuracy_kernel[(M,)](
+    _rmsnorm_kernel[(M,)](
         x_arg,
         y_arg,
         weight,
@@ -85,7 +78,7 @@ def rmsnorm_forward_low_accuracy(x: torch.Tensor, weight, eps, use_custom_tensor
 
 
 @triton.jit
-def _rms_norm_high_accuracy_kernel(
+def _rms_norm_kernel(
     input,
     weight,
     output,
@@ -115,9 +108,7 @@ def _rms_norm_high_accuracy_kernel(
     tl.store(out_ptr + offsets * out_col_stride, out, mask=offsets < N_COLS)
 
 
-def rmsnorm_forward_high_accuracy(
-    hidden_states: torch.Tensor, weight: torch.Tensor, eps: float = 1e-5, use_custom_tensor_mananger: bool = False
-):
+def rms_norm(hidden_states: torch.Tensor, weight: torch.Tensor, eps: float = 1e-5, out=None):
     """Rms norm."""
 
     assert hidden_states.is_contiguous(), "hidden_states must be contiguous"
@@ -133,17 +124,12 @@ def rmsnorm_forward_high_accuracy(
     in_row_stride, in_col_stride = hidden_states.stride(0), hidden_states.stride(1)
 
     BLOCK_N = triton.next_power_of_2(hidden_dim)
-    if use_custom_tensor_mananger:
-        shape = hidden_states.shape
-        dtype = hidden_states.dtype
-        device = hidden_states.device
-        output = g_cache_manager.alloc_tensor(shape, dtype, device=device)
-    else:
-        output = torch.empty_like(hidden_states)
+
+    output = torch.empty_like(hidden_states) if out is None else out
 
     out_row_stride, out_col_stride = output.stride(0), output.stride(1)
     grid = (rows,)
-    _rms_norm_high_accuracy_kernel[grid](
+    _rms_norm_kernel[grid](
         hidden_states,
         weight,
         output,
@@ -171,14 +157,14 @@ def test_rms_norm(M, N, dtype, eps=1e-5, device="cuda"):
     weight = torch.rand(w_shape, dtype=dtype, device="cuda")
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device="cuda")
     # forward pass
-    y_tri = rmsnorm_forward_low_accuracy(x, weight, eps)
-    y_tri_high_acc = rmsnorm_forward_high_accuracy(x, weight, eps)
+    y_tri = rmsnorm_forward(x, weight, eps)
+    y_tri_1 = rms_norm(x, weight, eps)
     y_ref = torch_rms_norm(x.to(torch.float32), weight.to(torch.float32), eps).to(dtype)
 
     # compare
-    print("type:", y_tri.dtype, y_ref.dtype, y_tri_high_acc.dtype)
+    print("type:", y_tri.dtype, y_ref.dtype, y_tri_1.dtype)
     print("max delta:", torch.max(torch.abs(y_tri - y_ref)))
-    print("max delta:", torch.max(torch.abs(y_tri_high_acc - y_ref)))
+    print("max delta:", torch.max(torch.abs(y_tri_1 - y_ref)))
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)
     return
 
@@ -186,6 +172,6 @@ def test_rms_norm(M, N, dtype, eps=1e-5, device="cuda"):
 use_high_acc = os.getenv("RMSNORM_HIGH_ACCURACY", "False").upper() in ["ON", "TRUE", "1"]
 
 if use_high_acc:
-    rmsnorm_forward = rmsnorm_forward_high_accuracy
+    rmsnorm_forward = rms_norm
 else:
-    rmsnorm_forward = rmsnorm_forward_low_accuracy
+    rmsnorm_forward = rmsnorm

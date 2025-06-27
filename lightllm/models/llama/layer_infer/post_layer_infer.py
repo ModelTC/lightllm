@@ -25,7 +25,7 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         return
 
     def _norm(self, input, infer_state, layer_weight: LlamaPreAndPostLayerWeight) -> torch.Tensor:
-        return rmsnorm_forward(input, layer_weight.final_norm_weight_, eps=self.eps_, use_custom_tensor_mananger=True)
+        return rmsnorm_forward(input, layer_weight.final_norm_weight_, eps=self.eps_)
 
     def _slice_get_last_input(self, input_embdings, infer_state: LlamaInferStateInfo):
 

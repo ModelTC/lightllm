@@ -10,7 +10,7 @@ from lightllm.models.vit.layer_weights.transformer_layer_weight import ViTTransf
 from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
 from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
 from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
-from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward_high_accuracy as rms_norm
+from lightllm.models.llama.triton_kernel.rmsnorm import rms_norm
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
