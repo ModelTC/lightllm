@@ -20,8 +20,12 @@ class Deepseek3MTPPreLayerInfer(LlamaPreLayerInfer):
     ):
         tgt_embdings = infer_state.deepseekv3_mtp_draft_input_hiddens
         assert input_embdings.shape[0] == tgt_embdings.shape[0]
-        rmsnorm_forward(input_embdings, weight=layer_weight.enorm_weight_, eps=self.eps_, out=input_embdings)
-        rmsnorm_forward(tgt_embdings, weight=layer_weight.hnorm_weight_, eps=self.eps_, out=tgt_embdings)
+        input_embdings = rmsnorm_forward(
+            input_embdings, weight=layer_weight.enorm_weight_, eps=self.eps_, use_custom_tensor_mananger=True
+        )
+        tgt_embdings = rmsnorm_forward(
+            tgt_embdings, weight=layer_weight.hnorm_weight_, eps=self.eps_, use_custom_tensor_mananger=True
+        )
 
         cat_embdings = torch.cat((input_embdings, tgt_embdings), dim=-1)
 
@@ -36,8 +40,12 @@ class Deepseek3MTPPreLayerInfer(LlamaPreLayerInfer):
     ):
         tgt_embdings = infer_state.deepseekv3_mtp_draft_input_hiddens
         assert input_embdings.shape[0] == tgt_embdings.shape[0]
-        rmsnorm_forward(input_embdings, weight=layer_weight.enorm_weight_, eps=self.eps_, out=input_embdings)
-        rmsnorm_forward(tgt_embdings, weight=layer_weight.hnorm_weight_, eps=self.eps_, out=tgt_embdings)
+        input_embdings = rmsnorm_forward(
+            input_embdings, weight=layer_weight.enorm_weight_, eps=self.eps_, use_custom_tensor_mananger=True
+        )
+        tgt_embdings = rmsnorm_forward(
+            tgt_embdings, weight=layer_weight.hnorm_weight_, eps=self.eps_, use_custom_tensor_mananger=True
+        )
 
         cat_embdings = torch.cat((input_embdings, tgt_embdings), dim=-1)
 

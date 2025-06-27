@@ -1,3 +1,4 @@
+import os
 import torch
 import triton
 import torch.functional as F
@@ -14,7 +15,7 @@ from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
 from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd, token_att_fwd_int8k
 from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
 from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2, token_att_fwd2_int8v
-from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
+from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.models.llama.triton_kernel.silu_and_mul import silu_and_mul_fwd
 
@@ -134,16 +135,16 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
     def _att_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        out = self.alloc_tensor(input.shape, input.dtype)
-        rms_norm(input, weight=layer_weight.att_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True)
-        return out
+        return rmsnorm_forward(
+            input, weight=layer_weight.att_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+        )
 
     def _ffn_norm(
         self, input, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight
     ) -> torch.Tensor:
-        out = self.alloc_tensor(input.shape, input.dtype)
-        rms_norm(input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True)
-        return out
+        return rmsnorm_forward(
+            input, weight=layer_weight.ffn_norm_weight_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+        )
 
     def _get_qkv(
         self, input, cache_kv, infer_state: LlamaInferStateInfo, layer_weight: LlamaTransformerLayerWeight

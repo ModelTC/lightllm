@@ -154,16 +154,18 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             q = layer_weight.q_weight_.mm(input)
         else:
             q = layer_weight.q_a_proj_.mm(input)
-            rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
+            q = rmsnorm_forward(
+                q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, use_custom_tensor_mananger=True
+            )
             q = layer_weight.q_b_proj_.mm(q)
         q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
         q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
         layer_weight.kv_a_proj_with_mqa_.mm(input, out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim))
-        rmsnorm_forward(
+        cache_kv[:, :, : self.kv_lora_rank] = rmsnorm_forward(
             cache_kv[:, :, : self.kv_lora_rank],
             weight=layer_weight.kv_a_layernorm_.weight,
             eps=self.eps_,
-            out=cache_kv[:, :, : self.kv_lora_rank],
+            use_custom_tensor_mananger=True,
         )
 
         rotary_emb_fwd(
@@ -191,16 +193,16 @@ class Deepseek2TransformerLayerInfer(LlamaTransformerLayerInfer):
             q = layer_weight.q_weight_.mm(input)
         else:
             q = layer_weight.q_a_proj_.mm(input)
-            rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_, out=q)
+            q = rmsnorm_forward(q, weight=layer_weight.q_a_layernorm_.weight, eps=self.eps_)
             q = layer_weight.q_b_proj_.mm(q)
         q = q.view(-1, self.tp_q_head_num_, self.qk_nope_head_dim + self.qk_rope_head_dim)
         q_nope, q_rope = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
         layer_weight.kv_a_proj_with_mqa_.mm(input, out=cache_kv.view(-1, self.kv_lora_rank + self.qk_rope_head_dim))
-        rmsnorm_forward(
+        cache_kv[:, :, : self.kv_lora_rank] = rmsnorm_forward(
             cache_kv[:, :, : self.kv_lora_rank],
             weight=layer_weight.kv_a_layernorm_.weight,
             eps=self.eps_,
-            out=cache_kv[:, :, : self.kv_lora_rank],
+            use_custom_tensor_mananger=True,
         )
         rotary_emb_fwd(
             q_rope,

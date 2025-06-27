@@ -8,7 +8,7 @@ from lightllm.common.basemodel.layer_weights.base_layer_weight import BaseLayerW
 from lightllm.models.llama.layer_weights.pre_and_post_layer_weight import LlamaPreAndPostLayerWeight
 from einops import rearrange
 from lightllm.models.llama.infer_struct import LlamaInferStateInfo
-from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
+from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 from lightllm.common.basemodel import PostLayerInferTpl
 from lightllm.utils.infer_utils import mark_cost_time
 from lightllm.distributed.communication_op import all_gather
@@ -25,7 +25,7 @@ class LlamaPostLayerInfer(PostLayerInferTpl):
         return
 
     def _norm(self, input, infer_state, layer_weight: LlamaPreAndPostLayerWeight) -> torch.Tensor:
-        return rms_norm(input, layer_weight.final_norm_weight_, eps=self.eps_, use_custom_tensor_mananger=True)
+        return rmsnorm_forward(input, layer_weight.final_norm_weight_, eps=self.eps_, use_custom_tensor_mananger=True)
 
     def _slice_get_last_input(self, input_embdings, infer_state: LlamaInferStateInfo):
 

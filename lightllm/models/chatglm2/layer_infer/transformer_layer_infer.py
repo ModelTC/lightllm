@@ -10,7 +10,6 @@ from lightllm.models.chatglm2.layer_weights.transformer_layer_weight import Chat
 
 from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd
 from lightllm.common.basemodel.triton_kernel.destindex_copy_kv import destindex_copy_kv, destindex_copy_quantize_kv
-from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward
 
 
 class ChatGLM2TransformerLayerInfer(LlamaTransformerLayerInfer):

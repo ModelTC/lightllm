@@ -36,17 +36,18 @@ class Qwen3TransformerLayerInfer(LlamaTransformerLayerInfer):
             input, out=cache_kv.view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_) * self.head_dim_)
         ).view(-1, (self.tp_k_head_num_ + self.tp_v_head_num_), self.head_dim_)
 
-        rmsnorm_forward(
+        q = rmsnorm_forward(
             q.view(-1, self.head_dim_),
             weight=layer_weight.q_norm_weight_.weight,
             eps=self.eps_,
-            out=q.view(-1, self.head_dim_),
+            use_custom_tensor_mananger=True,
         )
 
         cache_kv[:, : self.tp_k_head_num_, :] = rmsnorm_forward(
             cache_kv[:, : self.tp_k_head_num_, :].reshape(-1, cache_kv.shape[-1]),
             weight=layer_weight.k_norm_weight_.weight,
             eps=self.eps_,
+            use_custom_tensor_mananger=True,
         ).view(-1, self.tp_k_head_num_, cache_kv.shape[-1])
 
         rotary_emb_fwd(
