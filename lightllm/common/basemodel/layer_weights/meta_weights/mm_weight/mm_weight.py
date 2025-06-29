@@ -41,11 +41,20 @@ class MMWeightTpl(BaseWeightTpl):
         self.has_bias: bool = None
 
     def mm(
-        self, input_tensor: torch.Tensor, out: Optional[torch.Tensor] = None, use_custom_tensor_mananger: bool = True
+        self,
+        input_tensor: torch.Tensor,
+        out: Optional[torch.Tensor] = None,
+        ls_weight: Optional[torch.Tensor] = None,
+        use_custom_tensor_mananger: bool = True,
     ) -> torch.Tensor:
         if self.quant_method is not None:
             return self.quant_method.apply(
-                input_tensor, self.weight, self.bias, out, use_custom_tensor_mananger=use_custom_tensor_mananger
+                input_tensor,
+                self.weight,
+                self.bias,
+                out,
+                ls_weight=ls_weight,
+                use_custom_tensor_mananger=use_custom_tensor_mananger,
             )
         if out is None:
             shape = (input_tensor.shape[0], self.weight.shape[1])
