@@ -165,11 +165,15 @@ def make_argument_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
                         | triton_gqa_attention | triton_gqa_flashdecoding | triton_fp8kv | calibration_fp8kv
+                        | export_fp8kv_calibration
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
                         triton_fp8kv mode use float8 to store kv cache, currently only for deepseek2;
-                        calibration_fp8kv mode use float8 to store kv cache, currently only for llama and qwen model;
+                        calibration_fp8kv mode use float8 to store kv cache, need fa3 backend,
+                        currently only for llama and qwen model;
+                        export_fp8kv_calibration record and export kv cache quant calibration results to a json file.
+                        It can be used for llama and qwen model. Calibration need to disable cudagraph and fa3 backend.
                         ppl_int8kv mode use int8 to store kv cache, and use ppl fast kernel;
                         ppl_fp16 mode use ppl fast fp16 decode attention kernel;
                         you need to read source code to make sure the supported detail mode for all models""",
@@ -442,12 +446,6 @@ def make_argument_parser() -> argparse.ArgumentParser:
         Increasing this value allows for more predictions,
         but ensure that the model is compatible with the specified step count.
         currently, deepseekv3 model only support 1 step""",
-    )
-    parser.add_argument(
-        "--export_kv_quant_calibration",
-        action="store_true",
-        help="""record and export kv cache quant calibration results to a json file.
-            It can be used for llama and qwen model. Calibration need to disable cudagraph.""",
     )
     parser.add_argument(
         "--kv_quant_calibration_config_path",

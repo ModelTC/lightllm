@@ -61,7 +61,7 @@ class FlashAttentionStateInfo(LlamaInferStateInfo):
             self.page_table[:, max_seq_len_k:].fill_(0)
 
         if "calibration_fp8kv" in model.mode:
-            offline_scales = self.mem_manager.offline_fp8_quant_manager.scales
+            offline_scales = self.mem_manager.scales
             head_num = self.mem_manager.head_num
             self.k_descale = (
                 offline_scales[:, :head_num]
