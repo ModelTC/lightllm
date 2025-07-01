@@ -3,11 +3,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from lightllm.common.basemodel import PreAndPostLayerWeight
-from lightllm.utils.dist_utils import (
-    get_current_device_id,
-    get_current_rank_in_dp,
-    get_dp_world_size,
-)
+from lightllm.utils.dist_utils import get_current_device_id
 
 
 class ViTPreAndPostLayerWeight(PreAndPostLayerWeight):
@@ -17,8 +13,6 @@ class ViTPreAndPostLayerWeight(PreAndPostLayerWeight):
         self.image_size = self.network_config_["image_size"]
         self.patch_size = self.network_config_["patch_size"]
         self.llm_hidden_size = self.network_config_["llm_hidden_size"]
-        self.tp_rank_ = get_current_rank_in_dp()
-        self.tp_world_size_ = get_dp_world_size()
         return
 
     def _cuda(self, cpu_tensor):
