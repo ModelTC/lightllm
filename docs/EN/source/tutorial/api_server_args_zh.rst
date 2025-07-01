@@ -64,6 +64,10 @@ PD disaggregation Mode Parameters
 
     Port number in configuration server mode
 
+.. option:: --chunked_max_new_token
+
+    Maximum token number for chunked decoding, default is ``0``, representing no chunked decoding
+
 Model Configuration Parameters
 -----------------------------
 
