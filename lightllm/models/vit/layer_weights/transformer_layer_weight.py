@@ -13,18 +13,12 @@ from lightllm.common.basemodel.layer_weights.meta_weights import (
 )
 from lightllm.utils.dist_utils import (
     get_current_device_id,
-    get_global_rank,
-    get_global_world_size,
 )
-from lightllm.utils.envs_utils import get_env_start_args
 
 
 class ViTTransformerLayerWeight(TransformerLayerWeight):
     def __init__(self, layer_num, data_type, network_config, mode=[], quant_cfg=None):
         super().__init__(layer_num, data_type, network_config, mode, quant_cfg)
-        if get_env_start_args().disable_extra_process_for_multimodal:
-            self.tp_world_size_ = get_global_world_size()
-            self.tp_rank_ = get_global_rank()
         return
 
     def _cuda(self, cpu_tensor):

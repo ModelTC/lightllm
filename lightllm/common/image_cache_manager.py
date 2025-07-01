@@ -58,7 +58,7 @@ class ImageCacheManager:
         """
         for uuid in uuid_list:
             if uuid in self._gpu_cache:
-                embed_cpu = self._gpu_cache[uuid].cpu(non_blocking=True)
+                embed_cpu = self._gpu_cache[uuid].cpu()
                 # Move to CPU cache and remove from GPU cache
                 self._gpu_cache.pop(uuid)
                 if uuid in self._cpu_cache:
@@ -68,6 +68,8 @@ class ImageCacheManager:
                     self._cpu_cache.popitem(last=False)
             elif uuid in self._cpu_cache:
                 self._cpu_cache.move_to_end(uuid)
+        print(self._gpu_cache.keys())
+        print(self._cpu_cache.keys())
         return
 
 

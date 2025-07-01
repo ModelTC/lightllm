@@ -68,7 +68,6 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
                 if self.disable_extra_process_for_multimodal:
                     img_embed = image_cache_manager.get_embed(img["uuid"])
                     img_weight.append(img_embed.reshape(img["token_num"], -1))
-                    print(img_weight[-1].shape)
                 else:
                     data = read_shm(get_shm_name_embed(img["uuid"]))
                     img_weight.append(bytes2tensor(data).cuda().reshape(img["token_num"], -1))

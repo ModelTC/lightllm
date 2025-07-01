@@ -38,11 +38,7 @@ class VisionTransformer:
     post_layer_infer_class = ViTPostLayerInfer
 
     def __init__(self, kvargs):
-        if get_env_start_args().disable_extra_process_for_multimodal:
-            # if we don't assign an extra process for visual model, the visual model uses tensor parallel by default.
-            self.tp_world_size_ = get_global_world_size()
-        else:
-            self.tp_world_size_ = get_dp_world_size()
+        self.tp_world_size_ = get_dp_world_size()
         self.weight_dir_ = kvargs["weight_dir"]
         self.load_way = kvargs.get("load_way", "HF")
         self.mode = [m.replace("int4weight", "w4a16").replace("int8weight", "w8a16") for m in kvargs.get("mode", [])]
