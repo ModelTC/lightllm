@@ -114,13 +114,11 @@ class Qwen3MOETransformerLayerInfer(LlamaTransformerLayerInfer):
             router_logits=router_logits,
             top_k=self.num_experts_per_tok,
             renormalize=self.norm_topk_prob,
-            use_grouped_topk=self.n_group,
-            topk_group=self.topk_group,
-            num_expert_group=self.n_group,
+            use_grouped_topk=False,
+            topk_group=None,
+            num_expert_group=None,
             is_prefill=infer_state.is_prefill,
         )
-        if self.n_shared_experts is not None:
-            ep_output.add_(shared_output)
 
         ep_output = ep_output.view(token_num, hidden_dim)
         return ep_output
