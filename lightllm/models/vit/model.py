@@ -18,7 +18,8 @@ from typing import List, Union, final
 from io import BytesIO
 from rpyc.utils.classic import obtain
 from lightllm.common.quantization import Quantcfg
-from lightllm.utils.dist_utils import get_dp_world_size
+from lightllm.utils.dist_utils import get_dp_world_size, get_global_world_size
+from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 
@@ -37,7 +38,11 @@ class VisionTransformer:
     post_layer_infer_class = ViTPostLayerInfer
 
     def __init__(self, kvargs):
-        self.tp_world_size_ = get_dp_world_size()
+        if get_env_start_args().disable_extra_process_for_multimodal:
+            # if we don't assign an extra process for visual model, the visual model uses tensor parallel by default.
+            self.tp_world_size_ = get_global_world_size()
+        else:
+            self.tp_world_size_ = get_dp_world_size()
         self.weight_dir_ = kvargs["weight_dir"]
         self.load_way = kvargs.get("load_way", "HF")
         self.mode = [m.replace("int4weight", "w4a16").replace("int8weight", "w8a16") for m in kvargs.get("mode", [])]
@@ -150,6 +155,8 @@ class VisionTransformer:
         return
 
     def _init_datatype(self):
+        if isinstance(self.data_type, torch.dtype):
+            return
         if self.data_type in ["fp16", "float16"]:
             self.data_type = torch.float16
         elif self.data_type in ["bf16", "bfloat16"]:
@@ -161,12 +168,14 @@ class VisionTransformer:
 
     @torch.no_grad()
     def forward(self, pixel_values):
-        g_cache_manager.cache_env_in()
+        if not get_env_start_args().disable_extra_process_for_multimodal:
+            g_cache_manager.cache_env_in()
         input_embs = self.pre_infer.forward(pixel_values, self.pre_post_weight)
         for i in range(self.layers_num + self.select_layer + 1):
             input_embs = self.layers_infer[i].forward(input_embs, self.trans_layers_weight[i])
         input_embs = self.post_infer.forward(input_embs[:, 1:, :], self.pre_post_weight)
-        g_cache_manager.cache_env_out()
+        if not get_env_start_args().disable_extra_process_for_multimodal:
+            g_cache_manager.cache_env_out()
         return input_embs
 
     @torch.no_grad()
@@ -181,6 +190,12 @@ class VisionTransformer:
                 image_data = read_shm(get_shm_name_data(img.uuid))
                 image_data = Image.open(BytesIO(image_data))
                 t = self.load_image_func(image_data, max_num=img.extra_params["image_patch_max_num"])
+                img_tensors.append(t)
+            elif isinstance(img, dict):
+                uuids.append(img["uuid"])
+                image_data = read_shm(get_shm_name_data(img["uuid"]))
+                image_data = Image.open(BytesIO(image_data))
+                t = self.load_image_func(image_data, max_num=img["extra_params"]["image_patch_max_num"])
                 img_tensors.append(t)
             else:
                 raise Exception("Unsupport input types: {} for {}".format(type(img), img))
