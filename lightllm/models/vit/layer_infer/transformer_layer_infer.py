@@ -21,7 +21,6 @@ class ViTTransformerLayerInfer:
     def __init__(self, layer_num, network_config, mode=[]):
         self.tp_rank_ = get_current_rank_in_dp()
         self.tp_world_size_ = get_dp_world_size()
-        print(f"tp_rank_: {self.tp_rank_}, tp_world_size_: {self.tp_world_size_}")
         self.eps_ = network_config["layer_norm_eps"]
         self.head_num = network_config["num_attention_heads"]
         self.tp_padding_head_num = network_config["padding_head_num"] // self.tp_world_size_

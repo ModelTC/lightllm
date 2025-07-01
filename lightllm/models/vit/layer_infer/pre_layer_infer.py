@@ -16,7 +16,6 @@ class ViTPreLayerInfer:
         self.tp_world_size_ = get_dp_world_size()
         self.network_config_ = network_config
         self.mode = mode
-        print(f"tp_rank_: {self.tp_rank_}, tp_world_size_: {self.tp_world_size_}")
         return
 
     def forward(self, pixel_values, layer_weight: ViTPreAndPostLayerWeight):
