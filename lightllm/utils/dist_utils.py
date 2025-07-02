@@ -79,14 +79,17 @@ def init_vision_distributed_env(kvargs):
 
 def run_once(func):
     has_run = False
+
     def wrapper(*args, **kwargs):
         nonlocal has_run
         if not has_run:
             has_run = True
             return func(*args, **kwargs)
         else:
-            return None 
+            return None
+
     return wrapper
+
 
 @run_once
 def init_distributed_env(kvargs):

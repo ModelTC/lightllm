@@ -42,6 +42,7 @@ class DeepGEMMFP8w8a8B128QuantizationMethod(DeepGEMMBaseQuantizationMethod):
 
     def quantize(self, weight: torch.Tensor):
         from lightllm.common.quantization.triton_quant.fp8.fp8w8a8_block_quant_kernel import weight_quant
+
         return weight_quant(weight, self.block_size)
 
     def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):

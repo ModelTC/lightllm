@@ -105,7 +105,7 @@ class Qwen3MOETransformerLayerInfer(LlamaTransformerLayerInfer):
 
         hidden_states = input
         token_num, hidden_dim = hidden_states.shape
-        
+
         router_logits = layer_weight.moe_gate.mm(hidden_states)
         ep_output = layer_weight.experts.experts(
             hidden_states,
