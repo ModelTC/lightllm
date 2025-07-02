@@ -48,6 +48,7 @@ class VisionTransformer:
         self.quant_cfg_path = kvargs.get("quant_cfg", None)
         self.load_image_func = get_load_image_func(self.weight_dir_)
         self.max_batch_size = kvargs.get("max_batch_size", 1)
+        self.enable_tensor_cache = not get_env_start_args().disable_extra_process_for_multimodal
 
         self._init_datatype()
         self._init_config()
@@ -64,6 +65,7 @@ class VisionTransformer:
         disable_check_max_len_infer = os.getenv("DISABLE_CHECK_MAX_LEN_INFER", None) is not None
         if disable_check_max_len_infer:
             return
+        self.enable_tensor_cache = True
 
         try:
             dummy_images = torch.randn(
@@ -71,6 +73,7 @@ class VisionTransformer:
             ).cuda()
             all_img_embeds = self.forward(dummy_images)
             del all_img_embeds
+            del dummy_images
             logger.info(f"vit check max_len {self.max_batch_size} infer ok")
         except (RuntimeError, torch.OutOfMemoryError) as e:
             logger.exception(str(e))
@@ -79,6 +82,7 @@ class VisionTransformer:
             )
             logger.error(exception_str)
             raise Exception(exception_str)
+        self.enable_tensor_cache = not get_env_start_args().disable_extra_process_for_multimodal
         return
 
     def _init_config(self):
@@ -164,13 +168,13 @@ class VisionTransformer:
 
     @torch.no_grad()
     def forward(self, pixel_values):
-        if not get_env_start_args().disable_extra_process_for_multimodal:
+        if self.enable_tensor_cache:
             g_cache_manager.cache_env_in()
         input_embs = self.pre_infer.forward(pixel_values, self.pre_post_weight)
         for i in range(self.layers_num + self.select_layer + 1):
             input_embs = self.layers_infer[i].forward(input_embs, self.trans_layers_weight[i])
         input_embs = self.post_infer.forward(input_embs[:, 1:, :], self.pre_post_weight)
-        if not get_env_start_args().disable_extra_process_for_multimodal:
+        if self.enable_tensor_cache:
             g_cache_manager.cache_env_out()
         return input_embs
 

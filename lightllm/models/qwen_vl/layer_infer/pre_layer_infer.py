@@ -43,9 +43,11 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
                 if not image_cache_manager.query_embed(img["uuid"]):
                     infer_images.append(img)
         if len(infer_images) > 0:
-            img_embeds, uuids, valid_ids = layer_weight.visual_model.encode(infer_images)
-            for uuid, valid_id in zip(uuids, valid_ids):
-                image_cache_manager.set_embed(uuid, img_embeds[valid_id[0] : valid_id[1]])
+            infer_batch_size = get_env_start_args().visual_infer_batch_size
+            for i in range(0, len(infer_images), infer_batch_size):
+                img_embeds, uuids, valid_ids = layer_weight.visual_model.encode(infer_images[i : i + infer_batch_size])
+                for uuid, valid_id in zip(uuids, valid_ids):
+                    image_cache_manager.set_embed(uuid, img_embeds[valid_id[0] : valid_id[1]])
 
     def context_forward(self, input_ids, infer_state: LlamaInferStateInfo, layer_weight: LlamaPreAndPostLayerWeight):
 
