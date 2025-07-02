@@ -1,5 +1,4 @@
 import torch
-
 import triton
 import triton.language as tl
 import math
@@ -32,6 +31,9 @@ if triton.__version__ >= "2.1.0":
         o_stride_s,
         o_stride_h,
         o_stride_d,
+        head_dim_act,
+        is_varlen: tl.constexpr,
+        cu_seqlens,
         BLOCK_M: tl.constexpr,
         BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
@@ -40,12 +42,30 @@ if triton.__version__ >= "2.1.0":
         cur_head = tl.program_id(1)
         start_m = tl.program_id(0)
 
+        if is_varlen == 1:
+            seq_start = tl.load(cu_seqlens + cur_batch).to(tl.int32)
+            seq_end = tl.load(cu_seqlens + cur_batch + 1).to(tl.int32)
+            seq_len = seq_end - seq_start
+            q_stride_b = 0
+            k_stride_b = 0
+            v_stride_b = 0
+            o_stride_b = 0
+        else:
+            seq_start = 0
+
         # initialize offsets
         offs_n = tl.arange(0, BLOCK_N)
         offs_d = tl.arange(0, BLOCK_DMODEL)
         offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        off_q = cur_batch * q_stride_b + cur_head * q_stride_h + offs_m[:, None] * q_stride_s + offs_d[None, :]
-        q = tl.load(Q + off_q, mask=offs_m[:, None] < seq_len, other=0.0)
+
+        mask_d = offs_d < head_dim_act
+        off_q = (
+            cur_batch * q_stride_b
+            + cur_head * q_stride_h
+            + (seq_start + offs_m[:, None]) * q_stride_s
+            + offs_d[None, :] * q_stride_d
+        )
+        q = tl.load(Q + off_q, mask=(offs_m[:, None] < seq_len) & mask_d[None, :], other=0.0)
         # initialize pointer to m and l
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
@@ -56,14 +76,14 @@ if triton.__version__ >= "2.1.0":
             # -- compute qk ----
             off_k = (
                 cur_batch * k_stride_b
-                + (start_n + offs_n[None, :]) * k_stride_s
+                + (seq_start + start_n + offs_n[None, :]) * k_stride_s
                 + cur_head * k_stride_h
-                + offs_d[:, None]
+                + offs_d[:, None] * k_stride_d
             )
-            k = tl.load(K + off_k, mask=(start_n + offs_n[None, :]) < seq_len, other=0.0)
+            k = tl.load(K + off_k, mask=((start_n + offs_n[None, :]) < seq_len) & mask_d[:, None], other=0.0)
 
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-            qk += tl.dot(q, k)
+            qk += tl.dot(q, k, out_dtype=tl.float32, allow_tf32=False)
             qk *= sm_scale
             qk += tl.where((start_n + offs_n[None, :]) < seq_len, 0, float("-inf"))
 
@@ -78,11 +98,13 @@ if triton.__version__ >= "2.1.0":
             # update acc
             off_v = (
                 cur_batch * v_stride_b
-                + (start_n + offs_n[:, None]) * v_stride_s
+                + (seq_start + start_n + offs_n[:, None]) * v_stride_s
                 + cur_head * v_stride_h
-                + offs_d[None, :]
+                + offs_d[None, :] * v_stride_d
             )
-            v = tl.load(V + off_v, mask=(start_n + offs_n[:, None]) < seq_len, other=0.0)
+            v = tl.load(V + off_v, mask=((start_n + offs_n[:, None]) < seq_len) & mask_d[None, :], other=0.0).to(
+                tl.float32
+            )
             p = p.to(v.dtype)
             acc += tl.dot(p, v)
             # update m_i and l_i
@@ -93,9 +115,14 @@ if triton.__version__ >= "2.1.0":
         o_scale = tl.exp(m_i - l_i)
         acc = acc * o_scale[:, None]
         # initialize pointers to output
-        off_o = cur_batch * o_stride_b + offs_m[:, None] * o_stride_s + cur_head * o_stride_h + offs_d[None, :]
+        off_o = (
+            cur_batch * o_stride_b
+            + (seq_start + offs_m[:, None]) * o_stride_s
+            + cur_head * o_stride_h
+            + offs_d[None, :] * o_stride_d
+        )
         out_ptrs = Out + off_o
-        tl.store(out_ptrs, acc, mask=offs_m[:, None] < seq_len)
+        tl.store(out_ptrs, acc, mask=(offs_m[:, None] < seq_len) & mask_d[None, :])
         return
 
     @torch.no_grad()
@@ -104,11 +131,20 @@ if triton.__version__ >= "2.1.0":
         k,
         v,
         o,
+        cu_seqlens=None,  # q k v cu_seqlens,
+        max_seqlens=None,
     ):
         BLOCK = 64
         # shape constraints
-        batch_size, seq_len, head_num, head_dim = q.shape
 
+        batch_size, seq_len, head_num, head_dim = q.shape
+        if cu_seqlens is not None and max_seqlens is not None:
+            assert q.shape[0] == 1
+            cu_seqlens = cu_seqlens.to(q.device, torch.int32)
+            seq_len = max_seqlens
+            batch_size = cu_seqlens.numel() - 1
+
+        d_pad = triton.next_power_of_2(head_dim)
         sm_scale = 1.0 / (head_dim ** 0.5)  # 计算scale系数
         # grid = (batch_size, head_num, triton.cdiv(seq_len, BLOCK))  # batch, head,
         grid = (triton.cdiv(seq_len, BLOCK), head_num, batch_size)  # batch, head,
@@ -136,8 +172,11 @@ if triton.__version__ >= "2.1.0":
             o.stride(1),
             o.stride(2),
             o.stride(3),
+            head_dim,
+            is_varlen=1 if cu_seqlens is not None else 0,
+            cu_seqlens=0 if cu_seqlens is None else cu_seqlens,
             BLOCK_M=BLOCK,
-            BLOCK_DMODEL=head_dim,
+            BLOCK_DMODEL=d_pad,
             BLOCK_N=BLOCK,
             num_warps=num_warps,
             num_stages=2,
@@ -158,6 +197,8 @@ try:
         k,
         v,
         o,
+        cu_seqlens=None,
+        max_seqlens=None,
     ):
         head_dim = q.shape[-1]
         softmax_scale = head_dim ** -0.5
@@ -168,13 +209,13 @@ try:
             None,
             None,  # k_new, v_new
             o,  # out
-            None,
-            None,
+            cu_seqlens,
+            cu_seqlens,
             None,  # cu_seqlens_q/k/k_new
             None,
             None,  # seqused_q/k
-            None,
-            None,  # max_seqlen_q/k
+            max_seqlens,
+            max_seqlens,  # max_seqlen_q/k
             None,
             None,
             None,  # page_table, kv_batch_idx, leftpad_k,
@@ -198,15 +239,15 @@ except ImportError:
     _flash_attn_v3_available = False
 
 
-def flash_attention_fwd(q, k, v, o):
+def flash_attention_fwd(q, k, v, o, cu_seqlens=None, max_seqlens=None):
     """
     统一的 Flash Attention 接口。如果 _flash_attn_forward 存在，
     则使用 flash_attention_v3_fwd，否则使用 Triton 版本。
     """
     if _flash_attn_v3_available and is_hopper():
-        flash_attention_v3_fwd(q, k, v, o)
+        flash_attention_v3_fwd(q, k, v, o, cu_seqlens, max_seqlens)
     else:
-        _flash_attention_triton_fwd(q, k, v, o)
+        _flash_attention_triton_fwd(q, k, v, o, cu_seqlens, max_seqlens)
 
 
 def torch_att(q, k, v):
