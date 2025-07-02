@@ -19,9 +19,8 @@ def weight_quant_kernel(x_ptr, s_ptr, y_ptr, M, N, BLOCK_SIZE: tl.constexpr):
     amax = tl.max(tl.abs(x))
 
     max_fp8e4m3_val = 448.0 
-    scale = amax / (max_fp8e4m3_val + 1e-6) 
-
-    y = (x / scale).to(y_ptr.dtype.element_ty)
+    scale = amax / max_fp8e4m3_val
+    y = (x / (scale + 1e-6)).to(y_ptr.dtype.element_ty)
 
     tl.store(y_ptr + offs, y, mask=mask)
     tl.store(s_ptr + pid_m * n_blocks + pid_n, scale)
