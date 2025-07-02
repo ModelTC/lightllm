@@ -23,11 +23,6 @@ class Qwen3MOEModel(Qwen3TpPartModel):
         super().__init__(kvargs)
         return
 
-    def _init_config(self):
-        super()._init_config()
-        # self.config["num_hidden_layers"] = 2
-        # self.config["n_layer"] = 2
-        
     def _init_custom(self):
         super()._init_custom()
         dist_group_manager.new_deepep_group(self.config["num_experts"], self.config["hidden_size"])
