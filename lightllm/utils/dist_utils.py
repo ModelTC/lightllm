@@ -77,6 +77,18 @@ def init_vision_distributed_env(kvargs):
     del _a
 
 
+def run_once(func):
+    has_run = False
+    def wrapper(*args, **kwargs):
+        nonlocal has_run
+        if not has_run:
+            has_run = True
+            return func(*args, **kwargs)
+        else:
+            return None 
+    return wrapper
+
+@run_once
 def init_distributed_env(kvargs):
     assert kvargs["world_size"] % kvargs["args"].nnodes == 0, "world_size should be divided by nnodes"
     node_world_size = kvargs["world_size"] // kvargs["args"].nnodes
