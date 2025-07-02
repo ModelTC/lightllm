@@ -40,7 +40,7 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
         infer_images = []
         for _, p in enumerate(infer_state.multimodal_params):
             for img in p["images"] + p["audios"]:
-                if not image_cache_manager.query_embed(img["uuid"]):
+                if (img["_prefill_"] is True) and (not image_cache_manager.query_embed(img["uuid"])):
                     infer_images.append(img)
         if len(infer_images) > 0:
             infer_batch_size = get_env_start_args().visual_infer_batch_size
@@ -60,11 +60,14 @@ class LlamaMultimodalPreLayerInfer(LlamaPreLayerInfer):
         device = layer_weight.wte_weight_.device
         dtype = layer_weight.wte_weight_.dtype
         hidden_size = layer_weight.wte_weight_.shape[1]
+
+        infer_state.mark_multimodal_objs_for_prefill(input_ids=input_ids)
+
         self._infer_image_embeds(infer_state, layer_weight)
         for batch_id, p in enumerate(infer_state.multimodal_params):
             for img in p["images"] + p["audios"]:
                 # skip the same image
-                if img["token_id"] in img_start_token_ids:
+                if img["token_id"] in img_start_token_ids or img["_prefill_"] is False:
                     continue
                 # pull the img_embeds by uid from shm
                 if self.disable_extra_process_for_multimodal:
