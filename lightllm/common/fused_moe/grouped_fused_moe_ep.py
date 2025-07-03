@@ -142,6 +142,11 @@ def fused_experts_impl(
 
         # scatter
         all_tokens = sum(num_recv_tokens_per_expert_list)  # calcu padding all nums.
+
+        # 用于调试负载平衡的重要日志
+        #rank=dist.get_rank()
+        #logger.info(f"prefill, [{rank}], all_tokens = {all_tokens}, num_recv_tokens_per_expert_list: {num_recv_tokens_per_expert_list}")
+
         # gather_out shape [recive_num_tokens, hidden]
         gather_out = torch.empty_like(recv_x[0], device=hidden_states.device, dtype=hidden_states.dtype)
         if all_tokens > 0:
@@ -219,6 +224,13 @@ def fused_experts_impl(
             async_finish=False,
             return_recv_hook=False,
         )
+
+        # 用于调试负载平衡的重要日志
+        # when decoding graph is open, we can not call logger. --profile can close cuda graph
+        #rank=dist.get_rank()
+        #all_tokens = sum(masked_m)
+        #logger.info(f"decode, [{rank}], all_tokens = {all_tokens}, expected_m = {expected_m}, num_recv_tokens_per_expert: {masked_m}")
+
         # deepgemm
         gemm_out_b = masked_group_gemm(recv_x, masked_m, hidden_states.dtype, w1, w1_scale, w2, w2_scale, expected_m)
         # low latency combine

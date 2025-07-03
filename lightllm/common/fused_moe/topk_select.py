@@ -21,6 +21,7 @@ import os
 import torch
 from lightllm.utils.sgl_utils import sgl_ops
 from lightllm.utils.light_utils import light_ops
+from lightllm.utils.balance_utils import BalancedTensor
 from typing import Callable, List, Optional, Tuple
 from lightllm.common.fused_moe.softmax_topk import softmax_topk
 
@@ -226,5 +227,12 @@ def select_experts(
         topk_weights, topk_ids = custom_routing_function(
             hidden_states=hidden_states, gating_output=router_logits, topk=top_k, renormalize=renormalize
         )
+
+    # EP fake负载平衡开关
+    if os.environ.get("EP_FAKE_BALANCE_ENABLED") == "true":
+        M, _ = hidden_states.shape
+        balanced_tensor_collection = BalancedTensor()
+        balance_topk_ids = balanced_tensor_collection.get_balance_topk_ids(M)
+        topk_ids.copy_(balance_topk_ids)
 
     return topk_weights, topk_ids
