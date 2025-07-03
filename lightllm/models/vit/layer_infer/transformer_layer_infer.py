@@ -103,9 +103,13 @@ class ViTTransformerLayerInfer:
 
     def _context_attention_kernel(self, q, k, v) -> torch.Tensor:
         out = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device)
-        batch_size = q.shape[0]
-        seq_len = q.shape[1]
-        flash_attention_fwd(q, k, v, out)
+        batch_size, seq_len, head_num, head_dim = q.shape
+        total_len = batch_size * seq_len
+        reshape = lambda t: t.view(total_len, head_num, head_dim)
+        q, k, v, out = map(reshape, (q, k, v, out))
+        cu_seqlens = torch.arange(batch_size + 1, dtype=torch.int32, device=q.device) * seq_len
+        max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+        flash_attention_fwd(q, k, v, out, cu_seqlens, max_seqlen)
         return out.reshape(batch_size, seq_len, -1)
 
     def _get_o(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:

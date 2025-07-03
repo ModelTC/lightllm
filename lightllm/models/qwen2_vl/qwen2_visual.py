@@ -44,6 +44,7 @@ from transformers.utils import TensorType
 from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from lightllm.models.qwen2_vl.vision_process import Qwen2VLImageProcessor
 from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
+from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 from transformers.utils import is_flash_attn_2_available
 
@@ -224,10 +225,13 @@ class VisionFlashAttention(nn.Module):
         q, k, v = self.qkv(hidden_states).reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0)
         q = apply_rotary_pos_emb_vision(q.unsqueeze(0), rotary_pos_emb)
         k = apply_rotary_pos_emb_vision(k.unsqueeze(0), rotary_pos_emb)
-        v = v.unsqueeze(0)
+        q = q.squeeze(0)
+        k = k.squeeze(0)
 
+        cu_seqlens = cu_seqlens.to(q.device, torch.int32)
         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
-        attn_output = torch.empty_like(q, dtype=q.dtype, device=q.device)
+        attn_output = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device)
+
         flash_attention_fwd(q, k, v, attn_output, cu_seqlens, max_seqlen)
         attn_output = attn_output.reshape(seq_length, -1)
         attn_output = self.proj(attn_output)

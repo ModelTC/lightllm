@@ -2,7 +2,9 @@ import torch
 import triton
 import triton.language as tl
 import math
+import time
 import torch.nn.functional as F
+from typing import Optional, Tuple
 from lightllm.utils.device_utils import is_hopper
 
 if triton.__version__ >= "2.1.0":
@@ -82,9 +84,7 @@ if triton.__version__ >= "2.1.0":
                 + cur_head * v_stride_h
                 + offs_d[None, :] * v_stride_d
             )
-            v = tl.load(V + off_v, mask=((start_n + offs_n[:, None]) < seq_len) & mask_d[None, :], other=0.0).to(
-                tl.float32
-            )
+            v = tl.load(V + off_v, mask=((start_n + offs_n[:, None]) < seq_len) & mask_d[None, :], other=0.0)
             p = p.to(v.dtype)
             acc += tl.dot(p, v)
             # update m_i and l_i
@@ -106,36 +106,17 @@ if triton.__version__ >= "2.1.0":
         k,
         v,
         o,
-        cu_seqlens=None,  # q k v cu_seqlens,
-        max_seqlen=None,
+        cu_seqlens,  # q k v cu_seqlens,
+        max_seqlen,
     ):
         BLOCK = 64
         # shape constraints
-        assert q.shape == k.shape == v.shape == o.shape, "q, k, v, o must have the same shape"
-
-        if q.ndim == 4:
-            bs, seq_len, head_num, head_dim = q.shape
-            total_len = bs * seq_len
-            reshape_fn = lambda t: t.view(total_len, head_num, head_dim)
-            q, k, v, o = [reshape_fn(x) for x in (q, k, v, o)]
-        elif q.ndim == 3:
-            total_len, head_num, head_dim = q.shape
-        else:
-            raise ValueError("q,k,v,o must be 3d or 4d")
-
-        if cu_seqlens is None:  # 说明是定长的
-            cu_seqlens = torch.arange(bs + 1, dtype=torch.int32, device=q.device) * seq_len
-        else:
-            cu_seqlens = cu_seqlens.to(q.device, torch.int32)
-
-        if max_seqlen is None:
-            max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
-
+        assert q.ndim == k.ndim == v.ndim == o.ndim == 3, "q, k, v, o must be 3D tensors"
+        _, head_num, head_dim = q.shape
         batch_size = cu_seqlens.numel() - 1
 
-        d_pad = triton.next_power_of_2(head_dim)
         sm_scale = 1.0 / (head_dim ** 0.5)  # 计算scale系数
-
+        d_pad = triton.next_power_of_2(head_dim)
         grid = (triton.cdiv(max_seqlen, BLOCK), head_num, batch_size)  # batch, head,
         num_warps = 4
         _fwd_kernel[grid](
@@ -180,18 +161,11 @@ try:
         k,
         v,
         o,
-        cu_seqlens=None,
-        max_seqlen=None,
+        cu_seqlens,
+        max_seqlen,
     ):
         head_dim = q.shape[-1]
         softmax_scale = head_dim ** -0.5
-        if cu_seqlens is not None:
-            cu_seqlens = cu_seqlens.to(q.device, torch.int32)
-            if q.ndim == 4:
-                bs, seq_len, head_num, head_dim = q.shape
-                total_len = bs * seq_len
-                reshape_fn = lambda t: t.view(total_len, head_num, head_dim)
-                q, k, v, o = [reshape_fn(x) for x in (q, k, v, o)]
         _flash_attn_forward(
             q,
             k,
@@ -229,7 +203,7 @@ except ImportError:
     _flash_attn_v3_available = False
 
 
-def flash_attention_fwd(q, k, v, o, cu_seqlens=None, max_seqlen=None):
+def flash_attention_fwd(q, k, v, o, cu_seqlens, max_seqlen):
     """
     统一的 Flash Attention 接口。如果 _flash_attn_forward 存在，
     则使用 flash_attention_v3_fwd，否则使用 Triton 版本。
@@ -238,44 +212,3 @@ def flash_attention_fwd(q, k, v, o, cu_seqlens=None, max_seqlen=None):
         flash_attention_v3_fwd(q, k, v, o, cu_seqlens, max_seqlen)
     else:
         _flash_attention_triton_fwd(q, k, v, o, cu_seqlens, max_seqlen)
-
-
-def torch_att(q, k, v):
-    head_dim = q.shape[-1]
-    q = q.transpose(1, 2)
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
-    scale = head_dim ** -0.5
-    attn = (q * scale) @ k.transpose(-2, -1)
-    attn = attn.softmax(dim=-1)
-    out = attn @ v
-    out = out.transpose(1, 2).contiguous()
-    return out
-
-
-def test():
-    import torch
-    import numpy as np
-
-    B, L, H, D = 4, 1025, 7, 128
-    dtype = torch.float16
-    q = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
-    k = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
-    v = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
-    o = torch.empty((B, L, H, D), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
-    torch_out = torch_att(q, k, v)
-    import time
-
-    torch.cuda.synchronize()
-    a = time.time()
-    for i in range(100):
-        flash_attention_fwd(q, k, v, o)
-        # o = torch_att(q, k, v)
-    torch.cuda.synchronize()
-    b = time.time()
-    # print(o.shape, torch_out.shape)
-    print((b - a) / 100 * 1000)
-
-    print("max ", torch.max(torch.abs(torch_out - o)))
-    print("mean ", torch.mean(torch.abs(torch_out - o)))
-    assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)

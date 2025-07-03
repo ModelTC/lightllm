@@ -23,6 +23,7 @@ from transformers.utils import TensorType
 from lightllm.server.multimodal_params import MultimodalParams, ImageItem
 from lightllm.models.qwen2_vl.qwen2_visual import PatchEmbed, VisionRotaryEmbedding
 from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
+from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
 
 # adapted from
 # https://github.com/huggingface/transformers/blob/
@@ -149,12 +150,9 @@ class Qwen2_5_VLVisionFlashAttention(nn.Module):
             cos, sin = position_embeddings
         q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
 
-        q = q.unsqueeze(0)
-        k = k.unsqueeze(0)
-        v = v.unsqueeze(0)
-
+        cu_seqlens = cu_seqlens.to(q.device, torch.int32)
         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
-        attn_output = torch.empty_like(q)
+        attn_output = g_cache_manager.alloc_tensor(q.shape, q.dtype, device=q.device)
         flash_attention_fwd(q, k, v, attn_output, cu_seqlens, max_seqlen)
         attn_output = attn_output.reshape(seq_length, -1)
         attn_output = self.proj(attn_output)
