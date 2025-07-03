@@ -243,7 +243,7 @@ def normal_or_p_d_start(args):
             ],
             start_args=[(cache_port, args)],
         )
-        if args.enable_multimodal_audio and not args.disable_extra_process_for_multimodal:
+        if args.enable_multimodal_audio:
             from .audioserver.manager import start_audio_process
 
             process_manager.start_submodule_processes(
@@ -263,7 +263,7 @@ def normal_or_p_d_start(args):
                 ],
             )
 
-        elif not args.disable_extra_process_for_multimodal:
+        else:
             process_manager.start_submodule_processes(
                 start_funcs=[
                     start_visual_process,

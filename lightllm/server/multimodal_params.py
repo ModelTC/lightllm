@@ -119,7 +119,6 @@ class ImageItem:
         ret["uuid"] = self.uuid
         ret["token_id"] = self.token_id
         ret["token_num"] = self.token_num
-        ret["extra_params"] = self.extra_params
         return ret
 
     def to_origin_dict(self):
