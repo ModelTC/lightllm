@@ -289,6 +289,10 @@ class ModeBackend:
             # 对于没有到达需要输出 token 阶段的请求，直接略过, 说明还
             # 处于chuncked prefill kv 填充的阶段。
             if req_obj.cur_kv_len < req_obj.get_cur_total_len():
+                # chunk transfer
+                if extra_post_req_handle_chunk_func is not None:
+                    extra_post_req_handle_chunk_func(req_obj)
+
                 continue
 
             # 将生成的下一个token的信息写入到管理对象中。
@@ -309,6 +313,9 @@ class ModeBackend:
 
             # 更新判断请求的 finished 状态
             req_obj.update_finish_status(self.eos_id)
+
+            if extra_post_req_handle_chunk_func is not None:
+                extra_post_req_handle_chunk_func(req_obj)
 
             if extra_post_req_handle_func is not None:
                 extra_post_req_handle_func(req_obj, next_token_id, next_token_logprob)
