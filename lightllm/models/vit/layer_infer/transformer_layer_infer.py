@@ -1,13 +1,8 @@
 import torch
-import torch.functional as F
 import torch.distributed as dist
-import numpy as np
-from typing import Tuple
-from functools import partial
-import triton
+
 
 from lightllm.models.vit.layer_weights.transformer_layer_weight import ViTTransformerLayerWeight
-from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward, torch_rms_norm
 from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
 from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
 from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
@@ -108,7 +103,7 @@ class ViTTransformerLayerInfer:
         reshape = lambda t: t.view(total_len, head_num, head_dim)
         q, k, v, out = map(reshape, (q, k, v, out))
         cu_seqlens = torch.arange(batch_size + 1, dtype=torch.int32, device=q.device) * seq_len
-        max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+        max_seqlen = seq_len
         flash_attention_fwd(q, k, v, out, cu_seqlens, max_seqlen)
         return out.reshape(batch_size, seq_len, -1)
 

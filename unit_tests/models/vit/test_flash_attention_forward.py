@@ -1,10 +1,7 @@
 import torch
-import triton
-import triton.language as tl
 import math
 import time
-import torch.nn.functional as F
-from typing import Optional, Tuple
+import pytest
 from lightllm.models.vit.triton_kernel.flashattention_nopad import flash_attention_fwd
 
 
@@ -34,7 +31,8 @@ def reference_attention_varlen(q, k, v, cu):
     return out
 
 
-def test_varlen(batch=4, heads=8, d=80, dtype=torch.bfloat16, atol=1e-2, device="cuda:0"):
+@pytest.mark.parametrize("dtype,atol", [(torch.float16, 1e-2), (torch.bfloat16, 2e-2)])
+def test_varlen(dtype, atol, batch=4, heads=8, d=80, device="cuda:0"):
     torch.manual_seed(0)
     lengths = torch.randint(1, 257, (batch,))
     max_len = int(lengths.max().item())
@@ -49,10 +47,10 @@ def test_varlen(batch=4, heads=8, d=80, dtype=torch.bfloat16, atol=1e-2, device=
     out_tri = torch.randn_like(q)
     flash_attention_fwd(q, k, v, out_tri, cu, max_len)
     a = time.time()
-    for _ in range(1000):
+    for _ in range(100):
         flash_attention_fwd(q, k, v, out_tri, cu, max_len)
     b = time.time()
-    print(f"flash_attention_fwd time: {(b - a) / 1000 * 1000:.2f} ms")
+    print(f"flash_attention_fwd time: {(b - a) / 100 * 1000:.2f} ms")
     out_ref = reference_attention_varlen(q, k, v, cu)
 
     max_err = (out_ref - out_tri).abs().max().item()
@@ -62,7 +60,4 @@ def test_varlen(batch=4, heads=8, d=80, dtype=torch.bfloat16, atol=1e-2, device=
 
 
 if __name__ == "__main__":
-    tests = [(torch.float16, 1e-2), (torch.bfloat16, 2e-2)]
-    for dt, tol in tests:
-        test_varlen(dtype=dt, atol=tol)
-    print("✓ variable-length Flash-Attention all dtypes pass")
+    pytest.main()

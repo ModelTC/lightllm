@@ -135,7 +135,7 @@ if torch.__version__ >= "2.1.0" and (not _disable_gpu_tensor_cache):
             # shape 类型转换
             if isinstance(shape, list):
                 shape = torch.Size(shape)
-            
+
             # cache manager 没有被正常使用时
             if not self.cache_env_ok:
                 return torch.empty(shape, dtype=data_type, device=device, requires_grad=False)
