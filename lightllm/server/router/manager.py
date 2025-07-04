@@ -442,7 +442,7 @@ class RouterManager:
         else:
             return self.max_total_token_num - self.read_only_statics_mem_manager.get_unrefed_token_num(dp_index)
 
-    def recv_reqs(self):
+    async def loop_for_netio_req(self):
         while True:
             try:
                 recv_req: GroupReqIndexes = self.recv_from_httpserver.recv_pyobj(zmq.NOBLOCK)
@@ -451,12 +451,8 @@ class RouterManager:
                 else:
                     assert False, f"Error Req Inf {recv_req}"
             except zmq.ZMQError:
-                return
-
-    async def loop_for_netio_req(self):
-        while True:
-            self.recv_reqs()
-            await asyncio.sleep(0.01)
+                await asyncio.sleep(0.01)
+                continue
 
     def clean_up(self):
         return
