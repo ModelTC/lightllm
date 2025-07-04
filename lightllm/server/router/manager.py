@@ -108,8 +108,8 @@ class RouterManager:
         g_router_lock.obj = self.router_lock
 
         # 调度和推理进行折叠使用的线程池
-        self.overlap_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        self.schedule_task = None
+        # self.overlap_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        # self.schedule_task = None
         return
 
     async def wait_to_model_ready(self):
@@ -285,33 +285,17 @@ class RouterManager:
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
 
-    async def get_schedule_result(self, running_batch: Batch):
-        if self.schedule_task is None:
-            _start_time = time.time()
+    def get_new_batch(self):
+        limit_router_queue_length = None
+        if self.is_multinode_tp:
+            # 使用 all_reduce 获取最小值
+            limit_router_queue_length = len(self.req_queue.waiting_req_list)
+            limit_router_queue_length_tensor = torch.tensor(limit_router_queue_length, dtype=torch.int32, device="cpu")
+            dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
+            limit_router_queue_length = limit_router_queue_length_tensor.item()
 
-            def get_new_batch():
-                if time.time() - _start_time < 0.001:
-                    time.sleep(0.003)
-
-                limit_router_queue_length = None
-                if self.is_multinode_tp:
-                    # 使用 all_reduce 获取最小值
-                    limit_router_queue_length = len(self.req_queue.waiting_req_list)
-                    limit_router_queue_length_tensor = torch.tensor(
-                        limit_router_queue_length, dtype=torch.int32, device="cpu"
-                    )
-                    dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
-                    limit_router_queue_length = limit_router_queue_length_tensor.item()
-
-                new_batch = self.req_queue.generate_new_batch(running_batch, limit_router_queue_length)
-                return new_batch
-
-            self.schedule_task = asyncio.get_running_loop().run_in_executor(self.overlap_thread_pool, get_new_batch)
-            return None
-        else:
-            result = await self.schedule_task
-            self.schedule_task = None
-            return result
+        new_batch = self.req_queue.generate_new_batch(self.running_batch, limit_router_queue_length)
+        return new_batch
 
     async def _step(self):
         """
@@ -319,47 +303,16 @@ class RouterManager:
         """
         # 删除所有已经 finished 的 req
         # 当前无运行请求时
-        if self.running_batch is None:
-            new_batch: Batch = await self.get_schedule_result(self.running_batch)
-            if new_batch is not None:
-                self.metric_client.histogram_observe("lightllm_batch_next_size", len(new_batch.reqs))
-                for req in new_batch.reqs:
-                    self.metric_client.histogram_observe(
-                        "lightllm_request_queue_duration_bucket", time.time() - req.start_time
-                    )
-                self.stats_tool.count_prompt_tokens(new_batch)
+        new_batch = None
+        if not self.batch_queue.empty():
+            new_batch = self.batch_queue.get_nowait()
+        if new_batch is not None:
+            await self._prefill_batch(new_batch)
+            self._filter_runing_batch()
+            if self.running_batch is None:
                 self.running_batch = new_batch
-                await self._prefill_batch(self.running_batch)
-                self._filter_runing_batch()
-
-                # 激进调度控制
-                if not self.args.disable_aggressive_schedule:
-                    self.has_wait_tokens = self.max_wait_tokens
-
-            elif self.is_multinode_and_multidp:
-                # 在多节点多 dp 的模式下，如果当前 running_batch 为None, 也需要不断的调用 decode 操作，
-                # 因为其他节点上的dp可能存在运行的请求，所以本节点也需要调用decode，推理后端的backend会
-                # padding 一些fake的请求来使推理过程可以正常完成。主要是给 deepseekv3 这种类型的大模型
-                # 使用的，其ep并行模式下需要所有节点协同。
-                await self._decode_batch(self.running_batch)
-
-            return
-
-        # 有运行请求，当持续decode的次数到达一个阈值，或者有上次预调度的结果存在的时。
-        if self.has_wait_tokens >= self.max_wait_tokens or self.schedule_task is not None:
-            new_mini_batch = await self.get_schedule_result(self.running_batch)
-            self.has_wait_tokens = 0
-            if new_mini_batch is not None:
-
-                # 激进调度控制
-                if not self.args.disable_aggressive_schedule:
-                    self.has_wait_tokens = self.max_wait_tokens
-
-                self.stats_tool.count_prompt_tokens(new_mini_batch)
-                await self._prefill_batch(new_mini_batch)
-                if not new_mini_batch.is_clear():
-                    self.running_batch.merge(new_mini_batch)
-                return
+            else:
+                self.running_batch.merge(new_batch)
 
         # Check if need pause some requests for decode.
         for dp_index in range(self.dp_size_in_node):
@@ -375,36 +328,29 @@ class RouterManager:
         # Decode
         self.stats_tool.count_output_tokens(self.running_batch)
         await self._decode_batch(self.running_batch)
+        if self.world_size // self.nnodes == 1:
+            # node_world_size == 1 时，协程不会让出来，导致无法调度新请求，所以sleep 1ms，可以修改一下
+            await asyncio.sleep(0.001)
         self._filter_runing_batch()
         self.has_wait_tokens += 1
         return
 
     async def _prefill_batch(self, batch: Batch):
-        start_time = time.time()
-        self.metric_client.counter_inc("lightllm_batch_inference_count", "prefill")
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
         await self.model_rpc_client.prefill(reqs)
         batch.filter_out_finished_req(self.shm_req_manager)
         self._send_detokenization_pack()
 
         logger.debug(f"Prefill Batch: {batch.simple_log()} \n")
-        self.metric_client.histogram_observe(
-            "lightllm_batch_inference_duration_bucket", time.time() - start_time, "prefill"
-        )
         return
 
     async def _decode_batch(self, batch: Batch):
-        start_time = time.time()
-        self.metric_client.counter_inc("lightllm_batch_inference_count", "decode")
         await self.model_rpc_client.decode()
         # 在 self.is_multinode_and_multidp 为 True 时，传入的 batch 对象可能为 None。
         if batch is not None:
             batch.filter_out_finished_req(self.shm_req_manager)
 
         self._send_detokenization_pack()
-        self.metric_client.histogram_observe(
-            "lightllm_batch_inference_duration_bucket", time.time() - start_time, "decode"
-        )
         return
 
     async def _pause_reqs(self, pasue_reqs):
@@ -418,7 +364,7 @@ class RouterManager:
             return
 
     def _can_decode(self, batch: Batch, dp_index: int):
-        if self.is_pd_run_mode or self.is_safe_schedule:
+        if self.is_pd_run_mode or self.is_safe_schedule or batch is None:
             return True
         return (
             batch.get_batch_decode_need_tokens()[dp_index] + self.get_used_tokens(dp_index) <= self.max_total_token_num
@@ -451,7 +397,10 @@ class RouterManager:
                 else:
                     assert False, f"Error Req Inf {recv_req}"
             except zmq.ZMQError:
-                await asyncio.sleep(0.01)
+                new_batch = self.get_new_batch()
+                if new_batch is not None:
+                    self.batch_queue.put_nowait(new_batch)
+                await asyncio.sleep(0.005)
                 continue
 
     def clean_up(self):
@@ -491,6 +440,8 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     loop = asyncio.new_event_loop()
     loop.set_exception_handler(handle_exception)
     asyncio.set_event_loop(loop)
+    router.batch_queue = asyncio.Queue()
+
     loop.create_task(router.loop_for_fwd())
     loop.run_until_complete(router.loop_for_netio_req())
     return
