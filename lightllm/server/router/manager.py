@@ -108,7 +108,7 @@ class RouterManager:
         g_router_lock.obj = self.router_lock
 
         # 调度和推理进行折叠使用的线程池
-        self.schedule_new_batch : Batch = None
+        self.schedule_new_batch: Batch = None
         self.schedule_lock = asyncio.Lock()
         self.schedule_sem = asyncio.Semaphore(1)
         return
@@ -294,9 +294,11 @@ class RouterManager:
             limit_router_queue_length_tensor = torch.tensor(limit_router_queue_length, dtype=torch.int32, device="cpu")
             dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
             limit_router_queue_length = limit_router_queue_length_tensor.item()
-        
+
         # 调度的时候需要考虑当前运行的batch，和调度了但是暂时还没有推理的部分请求。
-        new_batch = self.req_queue.generate_new_batch(Batch.merge(self.running_batch, self.schedule_new_batch), limit_router_queue_length)
+        new_batch = self.req_queue.generate_new_batch(
+            Batch.merge(self.running_batch, self.schedule_new_batch), limit_router_queue_length
+        )
         self.schedule_new_batch = Batch.merge(self.schedule_new_batch, new_batch)
         return
 
@@ -406,7 +408,6 @@ class RouterManager:
                 pass
 
             # 调度新的 batch
-
             self.generate_new_batch()
             await asyncio.sleep(0.005)
 
@@ -451,4 +452,3 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     loop.create_task(router.loop_for_fwd())
     loop.run_until_complete(router.loop_for_netio_req())
     return
- 
