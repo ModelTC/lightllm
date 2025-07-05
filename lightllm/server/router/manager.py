@@ -108,8 +108,9 @@ class RouterManager:
         g_router_lock.obj = self.router_lock
 
         # 调度和推理进行折叠使用的线程池
-        # self.overlap_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        # self.schedule_task = None
+        self.schedule_new_batch : Batch = None
+        self.schedule_lock = asyncio.Lock()
+        self.schedule_sem = asyncio.Semaphore(1)
         return
 
     async def wait_to_model_ready(self):
@@ -285,7 +286,7 @@ class RouterManager:
             if self.running_batch is None:
                 await asyncio.sleep(0.01)  # 10ms
 
-    def get_new_batch(self):
+    def generate_new_batch(self):
         limit_router_queue_length = None
         if self.is_multinode_tp:
             # 使用 all_reduce 获取最小值
@@ -293,9 +294,11 @@ class RouterManager:
             limit_router_queue_length_tensor = torch.tensor(limit_router_queue_length, dtype=torch.int32, device="cpu")
             dist.all_reduce(limit_router_queue_length_tensor, op=dist.ReduceOp.MIN, group=self.mulitnode_group)
             limit_router_queue_length = limit_router_queue_length_tensor.item()
-
-        new_batch = self.req_queue.generate_new_batch(self.running_batch, limit_router_queue_length)
-        return new_batch
+        
+        # 调度的时候需要考虑当前运行的batch，和调度了但是暂时还没有推理的部分请求。
+        new_batch = self.req_queue.generate_new_batch(Batch.merge(self.running_batch, self.schedule_new_batch), limit_router_queue_length)
+        self.schedule_new_batch = Batch.merge(self.schedule_new_batch, new_batch)
+        return
 
     async def _step(self):
         """
@@ -303,16 +306,17 @@ class RouterManager:
         """
         # 删除所有已经 finished 的 req
         # 当前无运行请求时
-        new_batch = None
-        if not self.batch_queue.empty():
-            new_batch = self.batch_queue.get_nowait()
+        new_batch = self.schedule_new_batch
+        self.schedule_new_batch = None
         if new_batch is not None:
             await self._prefill_batch(new_batch)
+            self.stats_tool.count_prompt_tokens(new_batch)
             self._filter_runing_batch()
-            if self.running_batch is None:
-                self.running_batch = new_batch
-            else:
-                self.running_batch.merge(new_batch)
+            if not new_batch.is_clear():
+                if self.running_batch is None:
+                    self.running_batch = new_batch
+                else:
+                    self.running_batch.merge(new_batch)
 
         # Check if need pause some requests for decode.
         for dp_index in range(self.dp_size_in_node):
@@ -391,17 +395,20 @@ class RouterManager:
     async def loop_for_netio_req(self):
         while True:
             try:
-                recv_req: GroupReqIndexes = self.recv_from_httpserver.recv_pyobj(zmq.NOBLOCK)
-                if isinstance(recv_req, GroupReqIndexes):
-                    self.add_req(recv_req)
-                else:
-                    assert False, f"Error Req Inf {recv_req}"
+                # 一次最多从 zmq 中取 24 个请求，防止 zmq 队列中请求数量过多导致阻塞了主循环。
+                for _ in range(36):
+                    recv_req: GroupReqIndexes = self.recv_from_httpserver.recv_pyobj(zmq.NOBLOCK)
+                    if isinstance(recv_req, GroupReqIndexes):
+                        self.add_req(recv_req)
+                    else:
+                        assert False, f"Error Req Inf {recv_req}"
             except zmq.ZMQError:
-                new_batch = self.get_new_batch()
-                if new_batch is not None:
-                    self.batch_queue.put_nowait(new_batch)
-                await asyncio.sleep(0.005)
-                continue
+                pass
+
+            # 调度新的 batch
+
+            self.generate_new_batch()
+            await asyncio.sleep(0.005)
 
     def clean_up(self):
         return
@@ -440,8 +447,8 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     loop = asyncio.new_event_loop()
     loop.set_exception_handler(handle_exception)
     asyncio.set_event_loop(loop)
-    router.batch_queue = asyncio.Queue()
 
     loop.create_task(router.loop_for_fwd())
     loop.run_until_complete(router.loop_for_netio_req())
     return
+ 
