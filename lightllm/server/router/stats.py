@@ -1,5 +1,6 @@
 import time
 from lightllm.utils.log_utils import init_logger
+from .batch import Batch
 
 logger = init_logger(__name__)
 
@@ -14,14 +15,14 @@ class Stats:
         self.prompt_tokens = 0
         return
     
-    def count_prompt_tokens(self, run_batch):
+    def count_prompt_tokens(self, run_batch: Batch):
         if self.log_stats:
             tokens = run_batch.input_tokens()
             self.prompt_tokens += tokens
             self.all_tokens += tokens
         return
     
-    def count_output_tokens(self, run_batch):
+    def count_output_tokens(self, run_batch: Batch):
         if self.log_stats:
             tokens = len(run_batch.reqs)
             self.output_tokens += tokens

@@ -67,18 +67,24 @@ class Batch:
         return len(self.reqs) == 0
 
     def merge(self, mini_batch: "Batch"):
+        if mini_batch is None:
+            return
+        
         for _req in mini_batch.reqs:
             self.reqs.append(_req)
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
         return
+    
+    @staticmethod
+    def merge_two_batch(batch1: "Batch", batch2: "Batch"):
+        if batch1 is None and batch2 is None:
+            return None
+        
+        not_none_batch = batch1 if batch1 is not None else batch2
 
-    def dp_merge(self, mini_batch: "Batch"):
-        if mini_batch is None:
-            return
-
-        for _req in mini_batch.reqs:
-            self.reqs.append(_req)
-        self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        merge_batch = Batch(-1, [], not_none_batch.dp_size_in_node)
+        merge_batch.merge(batch1)
+        merge_batch.merge(batch2)
         return
 
     def __repr__(self):
