@@ -295,9 +295,9 @@ class RouterManager:
 
         # 调度的时候需要考虑当前运行的batch，和调度了但是暂时还没有推理的部分请求。
         new_batch = self.req_queue.generate_new_batch(
-            Batch.merge(self.running_batch, self.schedule_new_batch), limit_router_queue_length
+            Batch.merge_two_batch(self.running_batch, self.schedule_new_batch), limit_router_queue_length
         )
-        self.schedule_new_batch = Batch.merge(self.schedule_new_batch, new_batch)
+        self.schedule_new_batch = Batch.merge_two_batch(self.schedule_new_batch, new_batch)
         return
 
     async def _step(self):
