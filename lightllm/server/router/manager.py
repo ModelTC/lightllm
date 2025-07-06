@@ -141,8 +141,6 @@ class RouterManager:
             self.model_rpc_servers.append(rpc_model)
 
         self.model_rpc_client = ModelRpcClient(
-            model_infer_servers=self.model_rpc_servers,
-            world_size=self.world_size,
             rpc_event=self.rpc_event,
             rpc_finished_event=self.rpc_finished_event,
         )
