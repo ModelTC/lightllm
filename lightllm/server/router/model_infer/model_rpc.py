@@ -69,10 +69,8 @@ class ModelRpcServer:
         self.rank_in_node = rank_in_node
         logger.info(f"Initialized RPC server for rank {self.rank}.")
 
-        # 多卡才是跨进程的
-        if self.args.tp != 1:
-            self.loop_thread = threading.Thread(target=self.rpc_loop)
-            self.loop_thread.start()
+        self.loop_thread = threading.Thread(target=self.rpc_loop)
+        self.loop_thread.start()
         return
 
     def rpc_loop(self):
