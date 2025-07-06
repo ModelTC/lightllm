@@ -306,11 +306,14 @@ class RouterManager:
         """
         事件处理循环
         """
-        # 删除所有已经 finished 的 req
-        # 当前无运行请求时
-        new_batch = self.schedule_new_batch
-        self.schedule_new_batch = None
-        if new_batch is not None:
+        # 判断是否有新请求加入推理
+        # 激进调度满足，有新的推理batch就需要进行加入。
+        # 或者延迟step的步数满足了当前条件，也需要进行新的推理batch的加入。
+        if (self.schedule_new_batch is not None) and (
+            (not self.args.disable_aggressive_schedule) or (self.has_wait_tokens >= self.max_wait_tokens)
+        ):
+            new_batch = self.schedule_new_batch
+            self.schedule_new_batch = None
             await self._prefill_batch(new_batch)
             self.stats_tool.count_prompt_tokens(new_batch)
             self._filter_runing_batch()
@@ -319,6 +322,7 @@ class RouterManager:
                     self.running_batch = new_batch
                 else:
                     self.running_batch.merge(new_batch)
+            self.has_wait_tokens = 0
 
         # Check if need pause some requests for decode.
         for dp_index in range(self.dp_size_in_node):
@@ -334,9 +338,6 @@ class RouterManager:
         # Decode
         self.stats_tool.count_output_tokens(self.running_batch)
         await self._decode_batch(self.running_batch)
-        if self.world_size // self.nnodes == 1:
-            # node_world_size == 1 时，协程不会让出来，导致无法调度新请求，所以sleep 1ms，可以修改一下
-            await asyncio.sleep(0.001)
         self._filter_runing_batch()
         self.has_wait_tokens += 1
         return
