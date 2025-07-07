@@ -1,26 +1,20 @@
-import copy
 import time
-import uuid
 import uvloop
 import asyncio
 import torch
-import rpyc
 import pickle
-import threading
 import inspect
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-import concurrent.futures
 import zmq
 import zmq.asyncio
 import torch.multiprocessing as mp
 import torch.distributed as dist
 import multiprocessing
 from typing import Dict, List, Optional
-from .batch import Batch
+from .batch import Batch, Req
 from .model_infer.model_rpc import start_model_process, ModelRpcClient
 from .req_queue import build_req_queue
-from lightllm.utils.infer_utils import calculate_time
 from lightllm.server.core.objs.io_objs import GroupReqIndexes
 from lightllm.server.core.objs import ShmReqManager, StartArgs
 from .dynamic_prompt.radix_cache import RadixCacheReadOnlyClient
@@ -109,8 +103,7 @@ class RouterManager:
 
         # 调度和推理进行折叠使用的线程池
         self.schedule_new_batch: Batch = None
-        self.schedule_lock = asyncio.Lock()
-        self.schedule_sem = asyncio.Semaphore(1)
+        self.schedule_event = asyncio.Event()
         return
 
     async def wait_to_model_ready(self):
@@ -222,7 +215,6 @@ class RouterManager:
             logger.info(f"router recive req id {req.request_id} cost time {time.time() - req.start_time} s")
         self.req_queue.extend(req_group)
         self.send_to_detokenization.send_pyobj(group_req_indexes, protocol=pickle.HIGHEST_PROTOCOL)
-
         return
 
     async def loop_for_fwd(
@@ -312,14 +304,10 @@ class RouterManager:
         ):
             new_batch = self.schedule_new_batch
             self.schedule_new_batch = None
+            self._add_new_batch_to_running_batch(new_batch=new_batch)
             await self._prefill_batch(new_batch)
             self.stats_tool.count_prompt_tokens(new_batch)
-            self._filter_runing_batch()
-            if not new_batch.is_clear():
-                if self.running_batch is None:
-                    self.running_batch = new_batch
-                else:
-                    self.running_batch.merge(new_batch)
+            self._filter_reqs_from_running_batch()
             self.has_wait_tokens = 0
 
         # Check if need pause some requests for decode.
@@ -335,38 +323,43 @@ class RouterManager:
 
         # Decode
         self.stats_tool.count_output_tokens(self.running_batch)
-        await self._decode_batch(self.running_batch)
-        self._filter_runing_batch()
+        await self._decode_batch()
+        self._filter_reqs_from_running_batch()
         self.has_wait_tokens += 1
         return
 
     async def _prefill_batch(self, batch: Batch):
+        # 添加新请求
         reqs = [r.to_router_rpc_obj() for r in batch.reqs]
         await self.model_rpc_client.prefill(reqs)
-        batch.filter_out_finished_req(self.shm_req_manager)
         self._send_detokenization_pack()
-
         logger.debug(f"Prefill Batch: {batch.simple_log()} \n")
         return
 
-    async def _decode_batch(self, batch: Batch):
+    async def _decode_batch(self):
+        self.schedule_event.set()
         await self.model_rpc_client.decode()
-        # 在 self.is_multinode_and_multidp 为 True 时，传入的 batch 对象可能为 None。
-        if batch is not None:
-            batch.filter_out_finished_req(self.shm_req_manager)
-
         self._send_detokenization_pack()
         return
 
-    async def _pause_reqs(self, pasue_reqs):
+    async def _pause_reqs(self, pasue_reqs: List[Req]):
         pasue_req_ids = [r.request_id for r in pasue_reqs]
         await self.model_rpc_client.pause_reqs(pasue_req_ids)
         return
 
-    def _filter_runing_batch(self):
-        if self.running_batch is not None and self.running_batch.is_clear():
-            self.running_batch = None
-            return
+    def _add_new_batch_to_running_batch(self, new_batch: Batch):
+        if self.running_batch is None:
+            self.running_batch = new_batch
+        else:
+            self.running_batch.merge(new_batch)
+        return
+
+    def _filter_reqs_from_running_batch(self):
+        if self.running_batch is not None:
+            self.running_batch.filter_out_finished_req(self.shm_req_manager)
+            if self.running_batch.is_clear():
+                self.running_batch = None
+        return
 
     def _can_decode(self, batch: Batch, dp_index: int):
         if self.is_pd_run_mode or self.is_safe_schedule or batch is None:
@@ -394,21 +387,35 @@ class RouterManager:
             return self.max_total_token_num - self.read_only_statics_mem_manager.get_unrefed_token_num(dp_index)
 
     async def loop_for_netio_req(self):
+        recv_max_count = 66
+
         while True:
             try:
-                # 一次最多从 zmq 中取 24 个请求，防止 zmq 队列中请求数量过多导致阻塞了主循环。
-                for _ in range(36):
+                # 一次最多从 zmq 中取 recv_max_count 个请求，防止 zmq 队列中请求数量过多导致阻塞了主循环。
+                for _ in range(recv_max_count):
                     recv_req: GroupReqIndexes = self.recv_from_httpserver.recv_pyobj(zmq.NOBLOCK)
                     if isinstance(recv_req, GroupReqIndexes):
                         self.add_req(recv_req)
                     else:
                         assert False, f"Error Req Inf {recv_req}"
+
+                # 当队列中存在较多的请求时，将一次接受的数量上调
+                recv_max_count = min(int(recv_max_count * 1.3), 300)
+
             except zmq.ZMQError:
+                # 当队列已经开始清空的时候，将一次接受的数量下调
+                recv_max_count = 66
+
+            try:
+                await asyncio.wait_for(self.schedule_event.wait(), timeout=0.02)
+            except asyncio.TimeoutError:
                 pass
 
-            # 调度新的 batch
-            self.generate_new_batch()
-            await asyncio.sleep(0.005)
+            if self.schedule_event.is_set():
+                self.generate_new_batch()
+                self.schedule_event.clear()
+
+        return
 
     def clean_up(self):
         return
