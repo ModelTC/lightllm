@@ -387,7 +387,7 @@ class RouterManager:
             return self.max_total_token_num - self.read_only_statics_mem_manager.get_unrefed_token_num(dp_index)
 
     async def loop_for_netio_req(self):
-        recv_max_count = 66
+        recv_max_count = 64
 
         while True:
             try:
@@ -400,11 +400,11 @@ class RouterManager:
                         assert False, f"Error Req Inf {recv_req}"
 
                 # 当队列中存在较多的请求时，将一次接受的数量上调
-                recv_max_count = min(int(recv_max_count * 1.3), 300)
+                recv_max_count = min(int(recv_max_count * 1.3), 256)
 
             except zmq.ZMQError:
                 # 当队列已经开始清空的时候，将一次接受的数量下调
-                recv_max_count = 66
+                recv_max_count = 64
 
             try:
                 await asyncio.wait_for(self.schedule_event.wait(), timeout=0.02)
