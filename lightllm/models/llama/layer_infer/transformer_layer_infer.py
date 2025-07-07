@@ -69,7 +69,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
 
     def _bind_attention(self):
         if get_env_start_args().enable_fa3:
-            if "calibration_fp8kv" in self.mode:
+            if "offline_calibration_fp8kv" in self.mode:
                 self._context_attention_kernel = partial(
                     LlamaTransformerLayerInfer._context_attention_flashattention_fp8, self
                 )
@@ -77,7 +77,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                     LlamaTransformerLayerInfer._token_decode_attention_flashattention_fp8, self
                 )
                 self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_fp8kv, self)
-            else:
+            elif "export_fp8kv_calibration" in self.mode or not self.mode:
                 self._context_attention_kernel = partial(
                     LlamaTransformerLayerInfer._context_attention_flashattention, self
                 )
@@ -90,6 +90,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                     )
                 else:
                     self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
+            else:
+                raise Exception(f"Unsupported mode for fa3 backend: {self.mode}")
             return
         elif get_env_start_args().enable_flashinfer_prefill:
             self._context_attention_kernel = partial(
@@ -127,8 +129,6 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         elif "triton_int8kv" in self.mode:
             self._token_attention_kernel = partial(LlamaTransformerLayerInfer._token_decode_attention_int8kv, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_int8kv, self)
-        elif "calibration_fp8kv" in self.mode:
-            raise Exception("calibration fp8 kvcache only support fa3 backend")
         elif "triton_flashdecoding" in self.mode:
             self._token_attention_kernel = partial(
                 LlamaTransformerLayerInfer._token_decode_attention_flashdecoding, self
@@ -147,7 +147,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                 LlamaTransformerLayerInfer._token_decode_attention_gqa_flashdecoding_vsm, self
             )
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
-        else:
+        elif not self.mode:
             if get_env_start_args().enable_flashinfer_decode:
                 self._token_attention_kernel = partial(
                     LlamaTransformerLayerInfer._token_decode_attention_flashinfer, self
@@ -155,6 +155,8 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             else:
                 self._token_attention_kernel = partial(LlamaTransformerLayerInfer._token_decode_attention_normal, self)
             self._copy_kv_to_mem_cache = partial(LlamaTransformerLayerInfer._copy_kv_to_mem_cache_normal, self)
+        else:
+            raise Exception(f"Unsupported mode: {self.mode}")
 
         return
 
@@ -314,7 +316,7 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
             infer_state.b_seq_len,
             infer_state.cu_seqlens_q,
             infer_state.q_scale,
-            infer_state.batch_ids,
+            infer_state.token_batch_ids,
         )
         cache_k = (
             (infer_state.mem_manager.kv_buffer[self.layer_num_][:, : self.tp_k_head_num_, :])

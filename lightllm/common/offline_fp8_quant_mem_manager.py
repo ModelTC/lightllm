@@ -8,6 +8,7 @@ from lightllm.utils.dist_utils import get_global_rank
 from lightllm.utils.config_utils import get_model_architectures
 from lightllm.utils.log_utils import init_logger
 from lightllm.utils.envs_utils import get_env_start_args
+from lightllm.common.basemodel.basemodel import get_model_init_status
 
 logger = init_logger(__name__)
 
@@ -23,93 +24,78 @@ class OfflineFP8QuantMemManager(MemoryManager):
             size, dtype if is_export_mode else torch.uint8, head_num, head_dim, layer_num, always_copy, mem_fraction
         )
 
-        self.qmin = torch.finfo(torch.float8_e4m3fn).min
         self.qmax = torch.finfo(torch.float8_e4m3fn).max
-        self.model_arch = get_model_architectures(get_env_start_args().model_dir)
+        self.qmin = torch.finfo(torch.float8_e4m3fn).min
         self.layer_num = layer_num
-        self.head_num = head_num
         self.total_head_num = head_num * dist.get_world_size() if dist.is_initialized() else head_num
-        self.scales_shape = [layer_num, 2 * head_num]
-        self.scales = None
-        self.scales_list = []
-        self.abs_max = None
-        self.warmup_counts = get_kv_quant_calibration_warmup_count()
-        self.inference_counts = get_kv_quant_calibration_inference_count()
         self.count = 0
-        self.enable_calib = False
-        self.is_export_mode = is_export_mode
+        self.scales = None
+        self.abs_max = None
+
         if is_export_mode:
-            self.abs_max = torch.zeros(self.scales_shape, dtype=torch.float32, device="cuda")
+            self.abs_max = torch.zeros((layer_num, 2 * head_num), dtype=torch.float32, device="cuda")
         elif get_env_start_args().kv_quant_calibration_config_path is not None:
             logger.info(
                 f"kv_quant_calibration_config_path {get_env_start_args().kv_quant_calibration_config_path} is set, "
                 "will load kv quant calibration config"
             )
-            if os.path.exists(get_env_start_args().kv_quant_calibration_config_path):
-                with open(get_env_start_args().kv_quant_calibration_config_path, "r") as f:
-                    cfg = json.load(f)
+            cfg = self._load_and_check_config()
 
-                if cfg["architectures"] != self.model_arch:
-                    raise ValueError(
-                        f"architectures {cfg['architectures']} in config "
-                        f"not match current model_arch {self.model_arch}"
-                    )
-                if cfg["num_layers"] != layer_num:
-                    raise ValueError(
-                        f"num_layers {cfg['num_layers']} in config " f"not match current layer_num {layer_num}"
-                    )
-                if cfg["num_head"] != self.total_head_num:
-                    raise ValueError(
-                        f"num_head {cfg['num_head']} in config "
-                        f"not match current model head num {self.total_head_num}"
-                    )
-                if get_env_start_args().enable_fa3:
-                    if cfg["quant_type"] != "per_head":
-                        raise ValueError(f"quant type {cfg['num_head']} in config not match fa3 backend")
-                else:
-                    raise ValueError("only support per_head quant type for fa3 backend, use --enable_fa3 in start args")
-
-                self.qmin = cfg["qmin"]
-                self.qmax = cfg["qmax"]
-                self.scales_shape = cfg["scales_shape"]
-
-                full_scales_list = cfg["scales"]
-                self.scales_list = full_scales_list
-                self.scales = torch.tensor(self.scales_list, dtype=torch.float32, device="cuda").view(self.scales_shape)
-                if dist.is_initialized() and dist.get_world_size() > 1:
-                    half_head = self.total_head_num // 2
-                    start_head = dist.get_rank() * head_num
-                    end_head = start_head + head_num
-                    k_scales = self.scales[:, start_head:end_head].contiguous()
-                    v_scales = self.scales[:, start_head + half_head : end_head + half_head].contiguous()
-                    current_scales = torch.cat((k_scales, v_scales), dim=-1)
-
-                    self.scales_list = current_scales.tolist()
-                    self.scales = current_scales
-            else:
-                raise FileNotFoundError(
-                    f"kv_quant_calibration_config {get_env_start_args().kv_quant_calibration_config_path} not found"
-                )
+            self.scales = torch.tensor(cfg["scales"], dtype=torch.float32, device="cuda").view(cfg["scales_shape"])
+            if dist.is_initialized() and dist.get_world_size() > 1:
+                half_head = self.total_head_num // 2
+                start_head = dist.get_rank() * head_num
+                end_head = start_head + head_num
+                k_scales = self.scales[:, start_head:end_head].contiguous()
+                v_scales = self.scales[:, start_head + half_head : end_head + half_head].contiguous()
+                self.scales = torch.cat((k_scales, v_scales), dim=-1)
         else:
-            logger.warning("scales is None, no kv_quant_calibration_config_path be set")
+            logger.warning("scales is None, no kv_quant_calibration_config_path be set, will use 1.0 as scales")
 
-    def enable_calibration(self):
-        assert (
-            get_env_start_args().enable_fa3
-        ), "Calibration is only supported in fa3 backend, use --enable_fa3 in start args"
-        assert self.is_export_mode, "Calibration is only supported in export mode"
-        assert get_env_start_args().disable_cudagraph, "Calibration is not supported in cudagraph mode"
-        logger.info("Enable kv cache calibration, will collect kv cache data for quantization calibration")
-        self.enable_calib = True
+    def _load_and_check_config(self):
+        if os.path.exists(get_env_start_args().kv_quant_calibration_config_path):
+            with open(get_env_start_args().kv_quant_calibration_config_path, "r") as f:
+                cfg = json.load(f)
+
+            if cfg["qmin"] != self.qmin:
+                raise ValueError(f"qmin {cfg['qmin']} in config not match torch.float8_e4m3fn.min {self.qmin}")
+            if cfg["qmax"] != self.qmax:
+                raise ValueError(f"qmax {cfg['qmax']} in config not match torch.float8_e4m3fn.max {self.qmax}")
+            model_arch = get_model_architectures(get_env_start_args().model_dir)
+            if cfg["architectures"] != model_arch:
+                raise ValueError(
+                    f"architectures {cfg['architectures']} in config " f"not match current model_arch {model_arch}"
+                )
+            if cfg["num_layers"] != self.layer_num:
+                raise ValueError(
+                    f"num_layers {cfg['num_layers']} in config " f"not match current layer_num {self.layer_num}"
+                )
+            if cfg["num_head"] != self.total_head_num:
+                raise ValueError(
+                    f"num_head {cfg['num_head']} in config " f"not match current model head num {self.total_head_num}"
+                )
+            if cfg["quant_type"] != "per_head":
+                raise ValueError(f"quant type {cfg['quant_type']} in config not match fa3 backend")
+
+            return cfg
+        else:
+            raise FileNotFoundError(
+                f"kv_quant_calibration_config {get_env_start_args().kv_quant_calibration_config_path} not found"
+            )
 
     def update_calibration_data(self, kv_buffer: torch.Tensor, layer_index: int):
-        if not self.enable_calib or self.count >= self.warmup_counts + self.inference_counts:
+        inference_counts = get_kv_quant_calibration_inference_count()
+        warmup_counts = get_kv_quant_calibration_warmup_count()
+        if not get_model_init_status() or self.count >= warmup_counts + inference_counts:
             return
 
-        if self.abs_max is not None and self.count >= self.warmup_counts:
+        if self.count == 0 and layer_index == 0:
+            logger.info("kv cache calibration mode will collect kv cache data for quantization calibration")
+
+        if self.abs_max is not None and self.count >= warmup_counts:
             kv_max = kv_buffer.abs().amax(dim=(0, 2)).to(torch.float32)
             self.abs_max[layer_index] = torch.maximum(self.abs_max[layer_index], kv_max)
-            if self.count == self.warmup_counts + self.inference_counts - 1 and layer_index == self.layer_num - 1:
+            if self.count == warmup_counts + inference_counts - 1 and layer_index == self.layer_num - 1:
                 final_abs_max = self.abs_max
                 if dist.is_initialized() and dist.get_world_size() > 1:
                     k_max, v_max = torch.chunk(self.abs_max, 2, dim=-1)
@@ -134,9 +120,10 @@ class OfflineFP8QuantMemManager(MemoryManager):
             self.count += 1
 
     def _export_calibration_data(self):
+        model_arch = get_model_architectures(get_env_start_args().model_dir)
         cfg = {
             "version": "1.0",
-            "architectures": self.model_arch,
+            "architectures": model_arch,
             "quant_type": "per_head",
             "qmin": self.qmin,
             "qmax": self.qmax,
@@ -149,7 +136,7 @@ class OfflineFP8QuantMemManager(MemoryManager):
             json.dump(cfg, f, indent=4)
         logger.info(
             f"Export kv cache calibration data to kv_cache_calib.json, "
-            f"architectures: {self.model_arch}, "
+            f"architectures: {model_arch}, "
             f"qmin: {self.qmin}, qmax: {self.qmax}, "
             f"total heads: {self.total_head_num}, "
             f"scales_shape: {list(self.abs_max.shape)}, "

@@ -69,7 +69,7 @@ def _apply_quantization_kernel(
 
 
 @torch.no_grad()
-def q_per_head_fp8_quant(q, seq_lens, b1_start_loc, scale_out=None, batch_ids=None):
+def q_per_head_fp8_quant(q, seq_lens, b1_start_loc, scale_out=None, token_batch_ids=None):
     T, H, D = q.shape
     B = seq_lens.shape[0]
 
@@ -81,8 +81,8 @@ def q_per_head_fp8_quant(q, seq_lens, b1_start_loc, scale_out=None, batch_ids=No
     q_out = torch.empty_like(q, dtype=torch.float8_e4m3fn)
     if scale_out is None:
         scale_out = torch.empty((B, H), dtype=torch.float32, device=q.device)
-    if batch_ids is None:
-        batch_ids = torch.repeat_interleave(torch.arange(B, device=q.device), seq_lens)
+    if token_batch_ids is None:
+        token_batch_ids = torch.repeat_interleave(torch.arange(B, device=q.device), seq_lens)
 
     _per_head_max_reduce_kernel[(B, H)](
         q,
@@ -101,7 +101,7 @@ def q_per_head_fp8_quant(q, seq_lens, b1_start_loc, scale_out=None, batch_ids=No
     _apply_quantization_kernel[(T, H)](
         q,
         q_out,
-        batch_ids,
+        token_batch_ids,
         scale_out,
         q.stride(0),
         q.stride(1),
@@ -122,18 +122,18 @@ def ref_q_per_head_fp8_quant(q, seq_lens):
     max_fp8 = torch.finfo(torch.float8_e4m3fn).max
     B = seq_lens.size(0)
     device = q.device
-    batch_ids = torch.repeat_interleave(torch.arange(B, device=device), seq_lens)
+    token_batch_ids = torch.repeat_interleave(torch.arange(B, device=device), seq_lens)
     max_per_time_head = q.abs().amax(dim=2)
     max_per_bh = torch.zeros((B, max_per_time_head.size(1)), device=device, dtype=max_per_time_head.dtype)
     max_per_bh.scatter_reduce_(
         0,
-        batch_ids.unsqueeze(-1).expand(-1, max_per_time_head.size(1)),
+        token_batch_ids.unsqueeze(-1).expand(-1, max_per_time_head.size(1)),
         max_per_time_head,
         reduce="amax",
         include_self=False,
     )
     scales = torch.where(max_per_bh > 0, max_per_bh / max_fp8, torch.ones_like(max_per_bh)).to(torch.float32)
-    scale_expanded = scales[batch_ids].view(-1, scales.size(1), 1)
+    scale_expanded = scales[token_batch_ids].view(-1, scales.size(1), 1)
     q_q = (q / scale_expanded).clamp(min_fp8, max_fp8).to(torch.float8_e4m3fn)
     return q_q, scales
 

@@ -22,12 +22,12 @@ def select_mem_manager_class(mode):
         logger.info("Model kv cache using mode triton int8kv")
     elif "triton_fp8kv" in mode:
         raise Exception("currently only for deepseek")
-    elif "calibration_fp8kv" in mode:
+    elif "offline_calibration_fp8kv" in mode:
         memory_manager_class = CalibrationFP8KVMemoryManager
-        logger.info("Model kv cache using mode calibration fp8kv")
+        logger.info("Model kv cache using mode offline calibration fp8kv")
     elif "export_fp8kv_calibration" in mode:
         memory_manager_class = ExportCalibrationMemoryManager
-        logger.info("Model kv cache using mode calibration fp8kv")
+        logger.info("Using mode export fp8kv calibration")
     else:
         memory_manager_class = MemoryManager
         logger.info("Model kv cache using mode normal")

@@ -29,6 +29,14 @@ logger = init_logger(__name__)
 
 torch.backends.cudnn.enabled = True
 
+g_model_init_done = False
+
+
+def get_model_init_status():
+    # 获取模型初始化状态
+    global g_model_init_done
+    return g_model_init_done
+
 
 class TpPartBaseModel:
     # weight class
@@ -103,6 +111,8 @@ class TpPartBaseModel:
         self._init_cudagraph()
         self._check_max_len_infer()
         torch.cuda.empty_cache()
+        global g_model_init_done
+        g_model_init_done = True
         return
 
     def _init_config(self):

@@ -164,13 +164,13 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=[],
         nargs="+",
         help="""Model mode: [triton_int8kv | ppl_int8kv | ppl_fp16 | triton_flashdecoding
-                        | triton_gqa_attention | triton_gqa_flashdecoding | triton_fp8kv | calibration_fp8kv
+                        | triton_gqa_attention | triton_gqa_flashdecoding | triton_fp8kv | offline_calibration_fp8kv
                         | export_fp8kv_calibration
                         triton_flashdecoding mode is for long context, current support llama llama2 qwen;
                         triton_gqa_attention and triton_gqa_flashdecoding is fast kernel for model which use GQA;
                         triton_int8kv mode use int8 to store kv cache, can increase token capacity, use triton kernel;
                         triton_fp8kv mode use float8 to store kv cache, currently only for deepseek2;
-                        calibration_fp8kv mode use float8 to store kv cache, need fa3 backend,
+                        offline_calibration_fp8kv mode use float8 to store kv cache, need fa3 backend,
                         currently only for llama and qwen model;
                         export_fp8kv_calibration record and export kv cache quant calibration results to a json file.
                         It can be used for llama and qwen model. Calibration need to disable cudagraph and fa3 backend.

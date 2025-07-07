@@ -63,9 +63,6 @@ class LlamaTpPartModel(TpPartBaseModel):
             get_env_start_args().enable_flashinfer_prefill or get_env_start_args().enable_flashinfer_decode
         )
         super().__init__(kvargs)
-        # 开启fp8量化校准导出模式时，会在此处真正启动对kv校准数据的收集, 避免warmup阶段数据的干扰
-        if "export_fp8kv_calibration" in self.mode:
-            self.mem_manager.enable_calibration()
         return
 
     def _init_config(self):

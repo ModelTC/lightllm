@@ -32,12 +32,6 @@ class FlashAttentionStateInfo(LlamaInferStateInfo):
                 (self.batch_size, self.max_seq_len), dtype=torch.int32, device=input_ids.device
             )
             self.page_table.copy_(model.req_manager.req_to_token_indexs[self.b_req_idx, : self.max_seq_len])
-            if "calibration_fp8kv" in model.mode:
-                device = input_ids.device
-                self.q_scale = torch.empty(
-                    (self.batch_size, self.mem_manager.head_num), dtype=torch.float32, device=device
-                )
-                self.batch_ids = torch.repeat_interleave(torch.arange(self.batch_size, device=device), self.b_q_seq_len)
         else:
             # Meta information of flashattention for decoding
             self.cu_seqlens_q = self.b1_cu_q_seq_len.int()
@@ -60,9 +54,20 @@ class FlashAttentionStateInfo(LlamaInferStateInfo):
             )
             self.page_table[:, max_seq_len_k:].fill_(0)
 
-        if "calibration_fp8kv" in model.mode:
+        if "offline_calibration_fp8kv" in model.mode:
+            if self.is_prefill:
+                device = input_ids.device
+                # q_scale和token_batch_ids在对q做per head量化使用，为了节省资源在推理外部初始化
+                self.q_scale = torch.empty(
+                    (self.batch_size, self.mem_manager.head_num), dtype=torch.float32, device=device
+                )
+                self.token_batch_ids = torch.repeat_interleave(
+                    torch.arange(self.batch_size, device=device), self.b_q_seq_len
+                )
+
             offline_scales = self.mem_manager.scales
             head_num = self.mem_manager.head_num
+            # 为了减少推理计算量，在推理外部初始化k_descale和v_descale
             self.k_descale = (
                 offline_scales[:, :head_num]
                 .view(-1, 1, head_num)
