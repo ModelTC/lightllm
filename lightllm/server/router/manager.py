@@ -100,13 +100,13 @@ class RouterManager:
         # 主要是为了防止调度失误，造成 OOM 等错误
         self.router_lock = mp.Lock()
         g_router_lock.obj = self.router_lock
-
-        # 调度和推理进行折叠使用的线程池
-        self.schedule_new_batch: Batch = None
-        self.schedule_event = asyncio.Event()
         return
 
     async def wait_to_model_ready(self):
+        # 调度使用的对象
+        self.schedule_new_batch: Batch = None
+        self.schedule_event = asyncio.Event()
+
         # 初始化模型
         self.model_rpc_servers = []
         # 用于 kv move 管理进程 和 推理进程进行task信息的交互。
@@ -426,6 +426,13 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
     graceful_registry(inspect.currentframe().f_code.co_name)
     start_parent_check_thread()
 
+    def handle_exception(loop, context):
+        logger.exception(f"Router Caught exception: {str(context)}")
+
+    loop = asyncio.new_event_loop()
+    loop.set_exception_handler(handle_exception)
+    asyncio.set_event_loop(loop)
+
     try:
         router = RouterManager(
             args,
@@ -434,7 +441,7 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
             metric_port=metric_port,
         )
 
-        asyncio.run(router.wait_to_model_ready())
+        loop.run_until_complete(router.wait_to_model_ready())
     except:
         import traceback
         import sys
@@ -447,14 +454,6 @@ def start_router_process(args, router_port, detokenization_port, metric_port, pi
         raise
 
     pipe_writer.send("init ok")
-
-    def handle_exception(loop, context):
-        logger.exception(f"Router Caught exception: {str(context)}")
-
-    loop = asyncio.new_event_loop()
-    loop.set_exception_handler(handle_exception)
-    asyncio.set_event_loop(loop)
-
     loop.create_task(router.loop_for_fwd())
     loop.run_until_complete(router.loop_for_netio_req())
     return
