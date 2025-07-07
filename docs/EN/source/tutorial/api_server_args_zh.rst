@@ -68,6 +68,10 @@ PD disaggregation Mode Parameters
 
     Maximum token number for chunked decoding, default is ``0``, representing no chunked decoding
 
+.. option:: --pd_max_retry_count
+
+    Maximum retry count for kv transmission in PD mode, default is ``3``
+
 Model Configuration Parameters
 -----------------------------
 

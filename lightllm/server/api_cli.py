@@ -66,6 +66,12 @@ def make_argument_parser() -> argparse.ArgumentParser:
         default=0,
         help="""Specifies the chunk size for pd mode.""",
     )
+    parser.add_argument(
+        "--pd_max_retry_count",
+        type=int,
+        default=3,
+        help="""Specifies the max retry count for pd mode.""",
+    )
 
     parser.add_argument(
         "--model_dir",
