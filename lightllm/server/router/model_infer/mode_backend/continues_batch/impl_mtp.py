@@ -17,6 +17,7 @@ from lightllm.server.router.model_infer.infer_batch import InferReq
 from lightllm.utils.infer_utils import calculate_time, mark_start, mark_end
 from lightllm.utils.log_utils import init_logger
 from lightllm.models.deepseek_mtp.model import Deepseek3MTPModel
+from lightllm.models.qwen3_moe_mtp.model import Qwen3MOEMTPModel
 from lightllm.common.basemodel.infer_lock import g_infer_state_lock
 from lightllm.common.basemodel.batch_objs import ModelOutput
 
@@ -36,11 +37,17 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
 
     def _init_mtp_draft_model(self, main_kvargs: dict):
         self.mtp_step = self.args.mtp_step
-        self.draft_models: List[Deepseek3MTPModel] = []
+        self.draft_models = []
 
         os.environ["DISABLE_CHECK_MAX_LEN_INFER"] = "1"
         for i in range(self.mtp_step):
             mtp_model_cfg, _ = PretrainedConfig.get_config_dict(self.args.mtp_draft_model_dir)
+            # mtp_model_type = mtp_model_cfg["model_type"]
+            if self.args.mtp_mode == "qwen3_moe":
+                mtp_model_cls = Qwen3MOEMTPModel
+            elif self.args.mtp_mode == "deepseekv3":
+                mtp_model_cls = Deepseek3MTPModel
+
             mtp_model_kvargs = {
                 "weight_dir": self.args.mtp_draft_model_dir,
                 "max_total_token_num": self.model.mem_manager.size,
@@ -66,9 +73,7 @@ class ContinuesBatchWithMTPBackend(ModeBackend):
             }
 
             mtp_model_cfg, _ = PretrainedConfig.get_config_dict(self.args.mtp_draft_model_dir)
-            assert mtp_model_cfg["model_type"] == "deepseek_v3"
-            assert mtp_model_cfg["architectures"][0] == "DeepseekV3ForCausalLMNextN"
-            self.draft_models.append(Deepseek3MTPModel(mtp_model_kvargs))
+            self.draft_models.append(mtp_model_cls(mtp_model_kvargs))
 
             self.logger.info(f"loaded mtp model class {self.draft_models[i].__class__}")
 

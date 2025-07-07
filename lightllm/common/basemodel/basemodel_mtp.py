@@ -29,6 +29,8 @@ class BaseMTPModelRunner(BaseModelRunner):
         super()._init_weights()
         self.pre_post_weight.wte_weight_ = self.main_model.pre_post_weight.wte_weight_
         self.pre_post_weight.lm_head_weight_ = self.main_model.pre_post_weight.lm_head_weight_
+        if "Qwen3MOEMTPModel" in str(self.__class__):
+            self.pre_post_weight.final_norm_weight_ = self.main_model.pre_post_weight.final_norm_weight_
         return
 
     def _init_infer_layer(self):

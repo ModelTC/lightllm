@@ -76,7 +76,7 @@ class BaseModelRunner:
         self.tp_world_size_ = get_dp_world_size()
         self.enable_tpsp_mix_mode = get_env_start_args().enable_tpsp_mix_mode
 
-        self.is_deepseekv3_mtp_mode = self.args.mtp_mode == "deepseekv3"
+        self.is_deepseekv3_mtp_mode = self.args.mtp_mode in ["deepseekv3", "qwen3_moe"]
 
         self._init_datatype()
         self._init_config()
@@ -740,7 +740,9 @@ class BaseModelRunner:
     def _gen_special_model_input(self, token_num: int):
         special_model_input = {}
 
-        is_deepseekv3_mtp_draft_model = "Deepseek3MTPModel" in str(self.__class__)
+        is_deepseekv3_mtp_draft_model = "Deepseek3MTPModel" in str(self.__class__) or "Qwen3MOEMTPModel" in str(
+            self.__class__
+        )
         if is_deepseekv3_mtp_draft_model:
             special_model_input["deepseekv3_mtp_draft_input_hiddens"] = torch.randn(
                 token_num, self.config["hidden_size"], dtype=self.data_type, device="cuda"
