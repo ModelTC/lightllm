@@ -212,6 +212,7 @@ class HttpServerManagerForPDMaster:
         self.req_id_to_out_inf[group_request_id] = req_status
 
         up_status_event = req_status.up_status_event
+        up_status_event.clear()
 
         d_start_args = d_node.start_args
         decode_node_dict = {
@@ -331,21 +332,20 @@ class HttpServerManagerForPDMaster:
                 prefill_node_dict = {
                     "node_id": p_start_args["pd_node_id"],
                     "ip": p_start_args["host"],
-                    "rpyc_port": p_start_args.get("pd_prefill_rpyc_port", p_start_args["rpyc_port"]),
-                    "max_new_tokens": 0,  # 表示这是回传操作
+                    "rpyc_port": d_start_args["pd_decode_rpyc_port"],
+                    "max_new_tokens": 0,
                     "pd_master_node_id": self.args.pd_node_id,
                 }
 
                 # 使用一个特殊的请求将KV Cache发送回prefill节点
+                sampling_params.max_new_tokens = 0
                 sampling_params.move_kv_to_decode_node.initialize(prefill_node_dict)
                 sampling_params.suggested_dp_index = -1
 
-                # 向decode节点发送回传KV Cache的指令
-                await d_node.websocket.send_bytes(
+                await p_node.websocket.send_bytes(
                     pickle.dumps((ObjType.REQ, (current_prompt_ids, sampling_params, multimodal_params)))
                 )
 
-                # 等待KV Cache回传完成
                 up_status_event = req_status.up_status_event
                 up_status_event.clear()
 
