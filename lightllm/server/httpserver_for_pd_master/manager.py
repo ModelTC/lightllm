@@ -123,7 +123,7 @@ class HttpServerManagerForPDMaster:
     ):
         start_time = time.time()
         group_request_id = self.id_gen.generate_id()
-        max_retries = self.args.max_retries
+        max_retries = self.args.pd_max_retry_count
         retry_count = 0
 
         try:
