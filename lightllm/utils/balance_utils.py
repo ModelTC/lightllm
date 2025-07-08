@@ -34,31 +34,27 @@ class BalancedTensor:
     def generate_balanced_tensor(self, num_tokens):
         # Evenly distribute num_tokens to num_selected experts out of num_experts.
         # Note that the num_selected experts activated by a token cannot be repeated.
-        # Performance is not that important, as it is only activated in special scenarios.
-        tensor = torch.zeros((num_tokens, self.num_selected), dtype=torch.int, device="cuda")
+        tensor = torch.empty((num_tokens, self.num_selected), dtype=torch.int, device="cuda")
         expert_load = torch.zeros(self.num_experts, dtype=torch.int, device="cuda")
 
         for i in range(num_tokens):
-            available_experts = torch.arange(self.num_experts, device="cuda")
-            selected = []
-            for _ in range(self.num_selected):
-                current_load = expert_load[available_experts]
-                min_load_indices = torch.where(current_load == current_load.min())[0]
+            selected_mask = torch.zeros(self.num_experts, dtype=torch.bool, device="cuda")
+            for j in range(self.num_selected):
+                # Use a large value for already selected experts to exclude them
+                load_view = torch.where(selected_mask, torch.iinfo(expert_load.dtype).max, expert_load)
+
+                min_load_indices = torch.where(load_view == load_view.min())[0]
+
                 if len(min_load_indices) > 1:
                     # If there are multiple least-loaded experts, select one randomly
-                    chosen_index = torch.randint(0, len(min_load_indices), (1,), device="cuda").item()
-                    chosen_expert_index = min_load_indices[chosen_index]
+                    rand_idx = torch.randint(0, len(min_load_indices), (1,), device="cuda").item()
+                    chosen_expert = min_load_indices[rand_idx]
                 else:
-                    chosen_expert_index = min_load_indices[0]
-                chosen_expert = available_experts[chosen_expert_index]
-                selected.append(chosen_expert)
-                # Remove the selected expert from the list of available experts
-                available_experts = torch.cat(
-                    [available_experts[:chosen_expert_index], available_experts[chosen_expert_index + 1 :]]
-                )
-                expert_load[chosen_expert] += 1
+                    chosen_expert = min_load_indices[0]
 
-            tensor[i] = torch.tensor(selected, dtype=torch.int, device="cuda")
+                tensor[i, j] = chosen_expert
+                expert_load[chosen_expert] += 1
+                selected_mask[chosen_expert] = True
 
         return tensor
 
