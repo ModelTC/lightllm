@@ -155,7 +155,7 @@ class HttpServerManagerForPDMaster:
                 except KVMoveTimeoutError as e:
                     retry_count += 1
                     if retry_count <= max_retries:
-                        logger.warning(f"KV move timeout for group_request_id {group_request_id}, attempt {retry_count}/{max_retries + 1}. Retrying with new nodes...")
+                        logger.warning(f"KV move timeout for group_request_id {group_request_id}, attempt {retry_count}/{max_retries}. Retrying with new nodes...")
                         # 清理当前请求状态，准备重试
                         await self.abort(group_request_id)
                         # 重新生成group_request_id避免冲突
@@ -270,26 +270,6 @@ class HttpServerManagerForPDMaster:
             chunk_size = min(remaining_tokens, chunked_max_new_token) if chunked_max_new_token > 0 else remaining_tokens
             sampling_params.max_new_tokens = chunk_size
 
-            # 如果不是第一个chunk，需要重新将KV Cache从prefill发送到decode节点
-            if remaining_tokens < old_max_new_tokens - 1:
-                # 重新设置KV Cache迁移参数，将KV Cache从prefill发送到decode节点
-                sampling_params.move_kv_to_decode_node.initialize(decode_node_dict)
-                sampling_params.suggested_dp_index = -1
-
-                # 创建新的迁移事件并等待KV Cache迁移完成
-                up_status_event = req_status.up_status_event
-                up_status_event.clear()
-
-                try:
-                    await asyncio.wait_for(up_status_event.wait(), timeout=60)
-                except asyncio.TimeoutError:
-                    logger.warning(f"group_request_id: {group_request_id} kv move time out err, server is busy now.")
-                    raise KVMoveTimeoutError(f"KV move timeout for group_request_id {group_request_id}")
-
-                # 迁移完成后，重置参数
-                sampling_params.move_kv_to_decode_node.initialize(None)
-                sampling_params.suggested_dp_index = up_status_event.upkv_status.dp_index
-
             await d_node.websocket.send_bytes(
                 pickle.dumps((ObjType.REQ, (current_prompt_ids, sampling_params, multimodal_params)))
             )
@@ -328,16 +308,17 @@ class HttpServerManagerForPDMaster:
 
             # 如果不是最后一个chunk，需要将KV Cache从decode节点发送回prefill节点
             if remaining_tokens > 0:
+                up_status_event = req_status.up_status_event
+                up_status_event.clear()
                 p_start_args = p_node.start_args
                 prefill_node_dict = {
                     "node_id": p_start_args["pd_node_id"],
                     "ip": p_start_args["host"],
-                    "rpyc_port": d_start_args["pd_decode_rpyc_port"],
+                    "rpyc_port": p_start_args["pd_decode_rpyc_port"],
                     "max_new_tokens": 0,
                     "pd_master_node_id": self.args.pd_node_id,
                 }
 
-                # 使用一个特殊的请求将KV Cache发送回prefill节点
                 sampling_params.max_new_tokens = 0
                 sampling_params.move_kv_to_decode_node.initialize(prefill_node_dict)
                 sampling_params.suggested_dp_index = -1
@@ -346,17 +327,11 @@ class HttpServerManagerForPDMaster:
                     pickle.dumps((ObjType.REQ, (current_prompt_ids, sampling_params, multimodal_params)))
                 )
 
-                up_status_event = req_status.up_status_event
-                up_status_event.clear()
-
                 try:
                     await asyncio.wait_for(up_status_event.wait(), timeout=60)
                 except asyncio.TimeoutError:
                     logger.warning(f"group_request_id: {group_request_id} kv move back time out err, server is busy now.")
                     raise KVMoveTimeoutError(f"KV move back timeout for group_request_id {group_request_id}")
-
-                # 回传完成后，重置参数
-                sampling_params.move_kv_to_decode_node.initialize(None)
 
         return
 
