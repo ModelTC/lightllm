@@ -19,8 +19,9 @@ def test_model_inference(args):
     ans_queue = Queue()
     workers = []
     dp_size = args.get("dp", 1)
-
-    for rank_id in range(args.node_rank * args.tp, (args.node_rank + 1) * args.tp):
+    node_world_size = args.tp // args.nnodes
+    
+    for rank_id in range(args.node_rank * node_world_size, (args.node_rank + 1) * node_world_size):
         model_kvargs = {
             "args": args,
             "nccl_host": args.nccl_host,
