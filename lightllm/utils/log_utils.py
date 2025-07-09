@@ -7,7 +7,7 @@ import os
 import time
 from typing import Optional
 
-_FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
+_FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(rank)s %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
 
 _LOG_LEVEL = os.environ.get("LIGHTLLM_LOG_LEVEL", "debug")
@@ -22,6 +22,7 @@ class NewLineFormatter(logging.Formatter):
         logging.Formatter.__init__(self, fmt, datefmt)
 
     def format(self, record):
+        record.rank = f"Rank:{os.getenv("LIGHTLLM_CURRENT_RANK_IN_NODE", "?")}"
         msg = logging.Formatter.format(self, record)
         if record.message != "":
             parts = msg.split(record.message)

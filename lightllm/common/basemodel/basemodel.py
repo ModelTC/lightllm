@@ -23,7 +23,7 @@ from lightllm.utils.envs_utils import get_env_start_args
 from lightllm.distributed.communication_op import CustomProcessGroup, dist_group_manager
 from lightllm.common.basemodel.batch_objs import ModelInput, ModelOutput
 from lightllm.utils.custom_kernel_utis import pad2dim_tensor_to_new_batch
-
+from lightllm.utils.profile_max_tokens import get_current_device_available_gpu_memory
 
 logger = init_logger(__name__)
 
@@ -84,6 +84,8 @@ class TpPartBaseModel:
         self._verify_params()
         self._init_quant()
 
+        logger.info(f"{get_current_device_available_gpu_memory()} GB available memory before load model.")
+        
         # 更连续的显存分配可以有更好的性能
         if self.max_total_token_num is None:
             self._init_weights()
@@ -92,6 +94,8 @@ class TpPartBaseModel:
             self._init_mem_manager()
             self._init_weights()
 
+        logger.info(f"{get_current_device_available_gpu_memory()} GB available memory after load model.")
+        
         self._init_kv_move_buffer()
         self._check_mem_size()
         self._init_req_manager()

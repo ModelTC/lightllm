@@ -9,6 +9,10 @@ from lightllm.utils.dist_utils import get_current_device_id
 
 data_type_dict = {"float32": 4, "float16": 2, "bfloat16": 2, "fp32": 4, "fp16": 2, "bf16": 2, "int8": 1, "int4": 0.5}
 
+def get_current_device_available_gpu_memory():
+    torch.cuda.empty_cache()
+    free_gpu_memory, _ = torch.cuda.mem_get_info(get_current_device_id())
+    return free_gpu_memory / (1024 ** 3) 
 
 def get_available_gpu_memory(world_size):
     """
