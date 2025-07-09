@@ -346,7 +346,9 @@ class TpPartBaseModel:
     ) -> ModelOutput:
         if self.graph is not None and self.graph.can_run(model_input.batch_size, model_input.max_len_in_batch):
             find_graph_batch_size = self.graph.find_closest_graph_batch_size(model_input.batch_size)
-            assert find_graph_batch_size is not None
+            if find_graph_batch_size is None:
+                logger.error("No suitable graph batch size found for batch_size={model_input.batch_size}, return None.")
+                return None
 
             padded_model_input = self._create_padded_decode_model_input(model_input, find_graph_batch_size)
             infer_state = self._create_inferstate(padded_model_input)
@@ -358,6 +360,8 @@ class TpPartBaseModel:
             )
             infer_state.init_some_extra_state(self, padded_model_input.input_ids)
 
+            # Check if a graph needs to be captured.
+            # get_graph returns None if a graph for the batch_size doesn't exist.
             if self.graph.get_graph(find_graph_batch_size) is None:
                 infer_state.is_cuda_graph = True
                 model_output: ModelOutput = self.graph.capture_decode(
@@ -499,7 +503,9 @@ class TpPartBaseModel:
 
         if self.graph is not None and self.graph.can_run(origin_batch_size, max_len_in_batch):
             find_graph_batch_size = self.graph.find_closest_graph_batch_size(origin_batch_size)
-            assert find_graph_batch_size is not None
+            if find_graph_batch_size is None:
+                logger.error("No suitable graph batch size found for batch_size={origin_batch_size}, return None.")
+                return None
 
             padded_model_input0 = self._create_padded_decode_model_input(model_input0, find_graph_batch_size)
             padded_model_input1 = self._create_padded_decode_model_input(model_input1, find_graph_batch_size)
@@ -520,6 +526,8 @@ class TpPartBaseModel:
             )
             infer_state1.init_some_extra_state(self, padded_model_input1.input_ids)
 
+            # Check if a graph needs to be captured.
+            # get_graph returns None if a graph for the batch_size doesn't exist.
             if self.graph.get_graph(find_graph_batch_size) is None:
                 infer_state0.is_cuda_graph = True
                 infer_state1.is_cuda_graph = True
