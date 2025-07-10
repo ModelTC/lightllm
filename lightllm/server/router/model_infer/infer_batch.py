@@ -273,8 +273,6 @@ class InferReq:
             self.shm_req = g_infer_context.shm_req_manager.get_req_obj_by_index(self.shm_index)
             self.shm_req.link_prompt_ids_shm_array()
             self.shm_req.link_logprobs_shm_array()
-            if isinstance(self.shm_req, PDNIXLChunkedPrefillReq):
-                self.in_prefill_or_transfer = False
 
             self.sampling_param: InferSamplingParams = InferSamplingParams(self.shm_req, self.vocab_size)
 

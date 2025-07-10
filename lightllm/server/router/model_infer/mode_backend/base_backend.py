@@ -315,7 +315,7 @@ class ModeBackend:
             req_obj.update_finish_status(self.eos_id)
 
             if extra_post_req_handle_chunk_func is not None:
-                extra_post_req_handle_chunk_func(req_obj)
+                extra_post_req_handle_chunk_func(req_obj, next_token_id, next_token_logprob)
 
             if extra_post_req_handle_func is not None:
                 extra_post_req_handle_func(req_obj, next_token_id, next_token_logprob)
