@@ -100,7 +100,16 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
         weight_scale = torch.cat(weight_scales, dim=0).reshape(-1)
         return qweights, weight_scale
 
-    def apply(self, input_tensor, weights, bias=None, out=None, workspace=None, use_custom_tensor_mananger=True):
+    def apply(
+        self,
+        input_tensor,
+        weights,
+        bias=None,
+        out=None,
+        ls_weight=None,
+        workspace=None,
+        use_custom_tensor_mananger=True,
+    ):
         x_q, x_scale = scaled_fp8_quant(input_tensor, scale=None, scale_ub=None, use_per_token_if_dynamic=True)
         m = input_tensor.shape[0]
         n = weights[0].shape[1]
@@ -111,7 +120,10 @@ class FP8w8a8QuantizationMethod(BaseQuantizationMethod):
                 )
             else:
                 out = torch.empty((m, n), dtype=input_tensor.dtype, device=input_tensor.device)
-        cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
+        if ls_weight is not None:
+            light_ops.cutlass_scaled_mm_bias_ls(out, x_q, weights[0], x_scale, weights[1], bias, ls_weight)
+        else:
+            cutlass_scaled_mm(out, x_q, weights[0], x_scale, weights[1], bias)
         return out
 
 

@@ -1,0 +1,70 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "cmake>=3.22",
+  "ninja",
+  "torch>=2.6.0",
+  "wheel",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "lightllm-kernel"
+version = "0.1.0"
+description = "CUDA kernel library for LightLLM"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+keywords = ["cuda", "lightllm"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: Apache Software License",
+  "Environment :: GPU :: NVIDIA CUDA",
+  "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+  "pybind11>=2.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "ruff",
+  "pre-commit",
+]
+test = [
+  "pytest",
+  "pytest-cov",
+]
+
+[project.urls]
+Homepage = "https://github.com/ModelTC/lightllm/tree/main/lightllm-kernel"
+Source = "https://github.com/ModelTC/lightllm/tree/main/lightllm-kernel"
+Issues = "https://github.com/ModelTC/lightllm/issues"
+
+[tool.wheel]
+
+exclude = ["dist*", "tests*"]
+
+[tool.scikit-build]
+cmake.minimum-version = "3.22"
+cmake.build-type = "Release"
+cmake.verbose = true
+
+cmake.args = ["-DCMAKE_CUDA_ARCHITECTURES=80;86;89;90"]
+
+wheel.py-api = "cp39"
+wheel.packages = ["lightllm_kernel"]
+wheel.license-files = ["LICENSE"]
+
+sdist.include = [
+  "CMakeLists.txt",
+  "csrc/**/*",
+  "third-party/cutlass/**/*",
+  "lightllm_kernel/**/*",
+  "LICENSE",
+  "README.md",
+]
+
+install.components = ["Python"]

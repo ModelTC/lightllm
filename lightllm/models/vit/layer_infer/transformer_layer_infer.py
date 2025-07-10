@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.distributed as dist
 
@@ -8,11 +9,10 @@ from lightllm.utils.dist_utils import get_current_rank_in_dp, get_dp_world_size
 from lightllm.models.vit.triton_kernel.gelu_vit import gelu_fwd
 from lightllm.models.vit.triton_kernel.rms_norm_vit import rms_norm
 from lightllm.common.basemodel.layer_infer.cache_tensor_manager import g_cache_manager
+from lightllm.utils.light_utils import HAS_LIGHTLLM_KERNEL, light_ops
 
 
 class ViTTransformerLayerInfer:
-    """ """
-
     def __init__(self, layer_num, network_config, mode=[]):
         self.tp_rank_ = get_current_rank_in_dp()
         self.tp_world_size_ = get_dp_world_size()
@@ -38,6 +38,15 @@ class ViTTransformerLayerInfer:
         input = input * torch.rsqrt(variance + self.eps_)
         out = weight * input.to(input_dtype)
         out = out.reshape(input_shape)
+        return out
+
+    def tp_norm_cuda(self, input, weight):
+        if self.tp_world_size_ == 1:
+            out = light_ops.rmsnorm_bf16(input, weight, self.eps_)
+        else:
+            tp_variance = light_ops.pre_tp_norm_bf16(input)
+            dist.all_reduce(tp_variance, op=dist.ReduceOp.SUM, async_op=False)
+            out = light_ops.post_tp_norm_bf16(input, weight, tp_variance, self.embed_dim_, self.eps_)
         return out
 
     def tp_norm(self, input, weight):
@@ -84,8 +93,12 @@ class ViTTransformerLayerInfer:
             )
 
     def _qk_norm(self, q, k, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
-        q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
-        k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
+        if HAS_LIGHTLLM_KERNEL:
+            q_norm = self.tp_norm_cuda(q, layer_weight.q_norm_weight_.weight)
+            k_norm = self.tp_norm_cuda(k, layer_weight.k_norm_weight_.weight)
+        else:
+            q_norm = self.tp_norm(q, layer_weight.q_norm_weight_.weight)
+            k_norm = self.tp_norm(k, layer_weight.k_norm_weight_.weight)
         return q_norm, k_norm
 
     def _get_qkv(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
@@ -111,10 +124,10 @@ class ViTTransformerLayerInfer:
         batch_size = input.shape[0]
         seq_len = input.shape[1]
         o_tensor = layer_weight.o_proj.mm(
-            input.view(-1, self.tp_padding_head_num * self.head_dim_), use_custom_tensor_mananger=True
+            input.view(-1, self.tp_padding_head_num * self.head_dim_),
+            ls_weight=layer_weight.ls1,
+            use_custom_tensor_mananger=True,
         )
-        if layer_weight.use_ls:
-            o_tensor.mul_(layer_weight.ls1)
         return o_tensor.reshape((batch_size, seq_len, -1))
 
     def _ffn(self, input, layer_weight: ViTTransformerLayerWeight) -> torch.Tensor:
@@ -122,10 +135,8 @@ class ViTTransformerLayerInfer:
         input_shape = input.shape
         input = None
         ffn1_out = gelu_fwd(fc1, use_custom_tensor_mananger=True)
-        ffn2_out = layer_weight.ffn_2_proj_.mm(ffn1_out, use_custom_tensor_mananger=True)
+        ffn2_out = layer_weight.ffn_2_proj_.mm(ffn1_out, ls_weight=layer_weight.ls2, use_custom_tensor_mananger=True)
         ffn1_out = None
-        if layer_weight.use_ls:
-            ffn2_out.mul_(layer_weight.ls2)
         return ffn2_out.reshape(input_shape)
 
     def _context_attention(self, input_embding, layer_weight):
