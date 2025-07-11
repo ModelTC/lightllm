@@ -148,7 +148,8 @@ class ModelRpcServer:
                     self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
 
         elif is_nixl_prefill_node:
-            if kvargs.get("args", None).dp > 1:
+            assert enable_mtp == False, "nixl pd does not support mtp now."
+            if self.args.dp > 1:
                 self.backend = PDNIXLDPBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
             else:
                 self.backend = PDNIXLBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
@@ -164,20 +165,20 @@ class ModelRpcServer:
                     self.backend = DPForDecodeNode(self.info_queue, self.mem_queue)
                 else:
                     self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
+
+        elif is_nixl_decode_node:
+            assert enable_mtp == False, "nixl pd does not support mtp now."
+            if self.args.dp > 1:
+                self.backend = PDNIXLDPBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+            else:
+                self.backend = PDNIXLBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
+
         elif self.args.dp > 1:
             if enable_mtp:
                 self.backend = DPChunkedPrefillWithMTPBackend()
             else:
                 self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
 
-        elif is_nixl_decode_node:
-            if kvargs.get("args", None).dp > 1:
-                self.backend = PDNIXLDPBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
-            else:
-                self.backend = PDNIXLBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
-
-        elif kvargs.get("dp_size", 1) > 1:
-            self.backend = DPChunkedPrefillBackend()
         elif use_reward_model:
             self.backend = RewardModelBackend()
         elif return_all_prompt_logprobs:
@@ -346,23 +347,6 @@ async def start_model_process(
     router_lock: mp.Queue,
 ):
     import lightllm.utils.rpyc_fix_utils as _
-<<<<<<< HEAD
-=======
-
-    # 单卡单机时不使用 rpc
-    if node_world_size == 1 and args.nnodes == 1:
-        return ModelRpcServer(
-            args,
-            rank,
-            rank_in_node,
-            node_world_size,
-            rpc_event,
-            rpc_finished_event,
-            info_queue,
-            result_queue,
-            mem_queue,
-        )
->>>>>>> fix lint.
 
     success_event = mp.Event()
     proc = mp.Process(

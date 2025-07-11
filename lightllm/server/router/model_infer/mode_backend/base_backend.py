@@ -261,7 +261,7 @@ class ModeBackend:
         is_chuncked_mode: bool,
         do_filter_finished_reqs: bool,
         extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
-        extra_post_req_handle_chunk_func: Optional[Callable[[InferReq], None]] = None,
+        call_post_handle_for_chunk: bool = False ,
     ) -> List[int]:
         """
         extra_post_req_handle_func 用于提供在一个请求确定输出的时候，给出额外的后处理操作，主要是用于
@@ -282,16 +282,12 @@ class ModeBackend:
             if self.is_master_in_dp:
                 shm_req.shm_cur_kv_len = req_obj.cur_kv_len
 
-            if extra_post_req_handle_chunk_func is not None:
-                # 如果存在额外的处理函数，则调用这个函数进行处理。
-                extra_post_req_handle_chunk_func(req_obj)
-
             # 对于没有到达需要输出 token 阶段的请求，直接略过, 说明还
             # 处于chuncked prefill kv 填充的阶段。
             if req_obj.cur_kv_len < req_obj.get_cur_total_len():
                 # chunk transfer
-                if extra_post_req_handle_chunk_func is not None:
-                    extra_post_req_handle_chunk_func(req_obj)
+                if call_post_handle_for_chunk and extra_post_req_handle_func:
+                    extra_post_req_handle_func(req_obj, next_token_id, next_token_logprob)
 
                 continue
 
@@ -313,9 +309,6 @@ class ModeBackend:
 
             # 更新判断请求的 finished 状态
             req_obj.update_finish_status(self.eos_id)
-
-            if extra_post_req_handle_chunk_func is not None:
-                extra_post_req_handle_chunk_func(req_obj, next_token_id, next_token_logprob)
 
             if extra_post_req_handle_func is not None:
                 extra_post_req_handle_func(req_obj, next_token_id, next_token_logprob)
