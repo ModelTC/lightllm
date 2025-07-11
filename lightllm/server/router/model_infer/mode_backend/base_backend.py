@@ -261,7 +261,7 @@ class ModeBackend:
         is_chuncked_mode: bool,
         do_filter_finished_reqs: bool,
         extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
-        call_post_handle_for_chunk: bool = False ,
+        call_post_handle_for_chunk: bool = False,
     ) -> List[int]:
         """
         extra_post_req_handle_func 用于提供在一个请求确定输出的时候，给出额外的后处理操作，主要是用于

@@ -52,9 +52,15 @@ class DPChunkedPrefillBackend(ModeBackend):
         self._overlap_req_init_and_filter(uninit_reqs=uninit_reqs, ok_finished_reqs=ok_finished_reqs, clear_list=True)
         return
 
-    def normal_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs,
-                            extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
-                            call_post_handle_for_chunk: bool = False):
+    def normal_prefill_reqs(
+        self,
+        prefill_reqs: List[InferReq],
+        max_prefill_num: int,
+        uninit_reqs,
+        ok_finished_reqs,
+        extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
+        call_post_handle_for_chunk: bool = False,
+    ):
         model_input, run_reqs, padded_req_num = padded_prepare_prefill_inputs(
             prefill_reqs, is_multimodal=self.is_multimodal
         )
@@ -67,9 +73,13 @@ class DPChunkedPrefillBackend(ModeBackend):
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
             self._post_handle(
-                run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False,
+                run_reqs,
+                next_token_ids,
+                next_token_logprobs,
+                is_chuncked_mode=True,
+                do_filter_finished_reqs=False,
                 extra_post_req_handle_func=extra_post_req_handle_func,
-                call_post_handle_for_chunk=call_post_handle_for_chunk
+                call_post_handle_for_chunk=call_post_handle_for_chunk,
             )
         return
 
@@ -121,9 +131,15 @@ class DPChunkedPrefillBackend(ModeBackend):
             )
         return
 
-    def overlap_prefill_reqs(self, prefill_reqs: List[InferReq], max_prefill_num: int, uninit_reqs, ok_finished_reqs,
-                            extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
-                            call_post_handle_for_chunk: bool = False):
+    def overlap_prefill_reqs(
+        self,
+        prefill_reqs: List[InferReq],
+        max_prefill_num: int,
+        uninit_reqs,
+        ok_finished_reqs,
+        extra_post_req_handle_func: Optional[Callable[[InferReq, int, float], None]] = None,
+        call_post_handle_for_chunk: bool = False,
+    ):
         (
             micro_input,
             run_reqs,
@@ -148,8 +164,12 @@ class DPChunkedPrefillBackend(ModeBackend):
             next_token_ids = next_token_ids.detach().cpu().numpy()
             next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
             self._post_handle(
-                all_run_reqs, next_token_ids, next_token_logprobs, is_chuncked_mode=True, do_filter_finished_reqs=False,
+                all_run_reqs,
+                next_token_ids,
+                next_token_logprobs,
+                is_chuncked_mode=True,
+                do_filter_finished_reqs=False,
                 extra_post_req_handle_func=extra_post_req_handle_func,
-                call_post_handle_for_chunk=call_post_handle_for_chunk
+                call_post_handle_for_chunk=call_post_handle_for_chunk,
             )
         return

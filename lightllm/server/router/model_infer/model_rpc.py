@@ -130,8 +130,8 @@ class ModelRpcServer:
         assert not (is_outlines_constraint_mode and is_xgrammar_constraint_mode), "only one constraint mode can be true"
         is_prefill_node = self.args.run_mode == "prefill"
         is_decode_node = self.args.run_mode == "decode"
-        is_nixl_prefill_node = self.args.run_mode == 'nixl_prefill'
-        is_nixl_decode_node = self.args.run_mode == 'nixl_decode'
+        is_nixl_prefill_node = self.args.run_mode == "nixl_prefill"
+        is_nixl_decode_node = self.args.run_mode == "nixl_decode"
 
         enable_mtp = self.args.mtp_mode is not None
 
@@ -148,7 +148,7 @@ class ModelRpcServer:
                     self.backend = ChunckedPrefillForPrefillNode(self.info_queue, self.mem_queue)
 
         elif is_nixl_prefill_node:
-            assert enable_mtp == False, "nixl pd does not support mtp now."
+            assert not enable_mtp, "nixl pd does not support mtp now."
             if self.args.dp > 1:
                 self.backend = PDNIXLDPBackendForPrefillNode(self.info_queue, self.result_queue, self.mem_queue)
             else:
@@ -167,7 +167,7 @@ class ModelRpcServer:
                     self.backend = ContinuesBatchBackendForDecodeNode(self.info_queue, self.mem_queue)
 
         elif is_nixl_decode_node:
-            assert enable_mtp == False, "nixl pd does not support mtp now."
+            assert not enable_mtp, "nixl pd does not support mtp now."
             if self.args.dp > 1:
                 self.backend = PDNIXLDPBackendForDecodeNode(self.info_queue, self.result_queue, self.mem_queue)
             else:
