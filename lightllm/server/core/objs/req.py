@@ -75,9 +75,8 @@ class Req(ctypes.Structure):
         ("is_paused", ctypes.c_bool),  # 标记一个Req因为显存资源管理的原因被临时暂停了。
         ("finish_status", FinishStatus),
         ("is_aborted", ctypes.c_bool),
-        # 这个标记变量是router进程读取到is_aborted信息后，将这个router_aborted 变量标记为True，因为推理进程
-        # 直接读取 is_aborted 变量可能会存在异步问题，但是router的执行线程和推理进程之间是线性运行的，所以router
-        # 进程写入的router_aborted信息，所有推理进程可以保证同时读取到的是正确信息，不会出现异步问题。
+        # 这个标记变量是router进程读取到is_aborted信息后，router 进程标记该请求已经被abort处理
+        # 等待推理进程处理，防止router进程反复给推理进程发送abort指令。
         ("router_aborted", ctypes.c_bool),
         # 当FinishStatus 是正常结束状态时，finish_token_index 用于标识结束的
         # token 的index位置
@@ -248,7 +247,7 @@ class Req(ctypes.Structure):
 # 估计不准确的问题，通过加长输出的长度，进行偏向保守一些的调度
 # 理论上不会多估计太多的 token 占用量, 同时得到较高的token显存
 # 使用率
-ADDED_OUTPUT_LEN = 6
+ADDED_OUTPUT_LEN = 16
 
 
 class NormalReq(Req):
